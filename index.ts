@@ -49,6 +49,12 @@ export * from './engine/scene';
 export * from './engine/material';
 export * from './engine/draw-list';
 
+// How much of a frame carries a picture, which is one reading rather than one per
+// caller: a run refusing a capture and a gate passing a resized surface are the
+// same claim about the same kind of buffer, and two versions of the arithmetic
+// would drift with nobody reading the one that drifted.
+export * from './renderer/frame-coverage';
+
 // The recording double: a caller wraps a device to collect what it was asked,
 // projects a trace down to the calls worth comparing, and compares two of them.
 // The tables the comparison reads, which calls touch a canvas and which fields
