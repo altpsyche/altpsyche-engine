@@ -37,7 +37,7 @@
 import http from 'node:http';
 import { rmSync } from 'node:fs';
 import { chromium } from 'playwright';
-import { CHROME, bundleForPage, loadFromRoot } from './lib.mjs';
+import { CHROME, bundleForPage, loadCorpus, loadFromRoot } from './lib.mjs';
 
 const W = 800;
 const H = 600;
@@ -52,38 +52,6 @@ const SOFTWARE_ARGS = [
   '--enable-unsafe-swiftshader',
   '--enable-unsafe-webgpu',
 ];
-
-/** The frame a fixture draws, plus the values its own entry starts its uniforms
- * at. The values are the corpus's rather than this file's, so a matrix aiming a
- * pair of surfaces is the matrix the fixture was written to be seen through
- * instead of a zero that would put every corner of the frame on one point and
- * have both sides agree about a picture with nothing in it. */
-function frameFor(engine, fixtures, fixture, one) {
-  const { description, code, generated } = fixture;
-
-  // The bytes arrive keyed by the address a description sends a reader to, and a
-  // frame wants them keyed by the resource that reads them, which is the same
-  // remapping a website's loader does after fetching those files.
-  const bytes = new Map();
-  for (const resource of description.resources) {
-    if (!resource.source) continue;
-    const made = generated.get(resource.source);
-    if (!made) throw new Error(`nothing generated ${resource.source} for ${one.id}`);
-    bytes.set(resource.name, made);
-  }
-
-  const frame = engine.frameOf(
-    one.id,
-    description,
-    { wgsl: code },
-    one.uniforms.map((uniform) => ({ name: uniform.name, type: uniform.type })),
-    engine.uniformBlockOf(code),
-    undefined,
-    bytes
-  );
-  const values = Object.fromEntries(one.uniforms.map((uniform) => [uniform.name, uniform.value]));
-  return { frame, values };
-}
 
 /** The trace the double records for one fixture, drawn through exactly the
  * sequence the page below draws it through. A step in one and not the other is a
@@ -110,8 +78,7 @@ async function main() {
   const engine = await loadFromRoot('index.ts');
   const backends = await loadFromRoot('renderer/webgpu.ts');
   const fake = await loadFromRoot('tests/support/fake-gpu.ts');
-  const corpus = await loadFromRoot('tests/support/fixture.ts');
-  const fixtures = await loadFromRoot('fixtures/capability-fixtures.ts');
+  const corpus = await loadCorpus();
 
   const { bundle, staging } = bundleForPage({
     'renderer/webgpu.ts': ['createWebGPUBackend'],
@@ -136,8 +103,7 @@ async function main() {
 
   let failures = 0;
 
-  for (const one of fixtures.CAPABILITY_FIXTURES) {
-    const { frame, values } = frameFor(engine, fixtures, corpus.loadFixture(one.id), one);
+  for (const { id, frame, values } of corpus) {
     const expected = await traceOffTheDouble(engine, backends, fake, frame, values);
 
     const result = await page.evaluate(
@@ -176,7 +142,7 @@ async function main() {
     );
 
     if (result.error || !result.trace) {
-      console.log(`FAIL ${one.id}  ${result.error ?? 'the page returned no trace'}`);
+      console.log(`FAIL ${id}  ${result.error ?? 'the page returned no trace'}`);
       failures++;
       continue;
     }
@@ -184,7 +150,7 @@ async function main() {
     const differences = engine.compareTraces(expected, result.trace);
     if (differences.length) {
       console.log(
-        `FAIL ${one.id}  ${differences.length} difference${differences.length === 1 ? '' : 's'} over ${expected.length} calls`
+        `FAIL ${id}  ${differences.length} difference${differences.length === 1 ? '' : 's'} over ${expected.length} calls`
       );
       for (const difference of differences.slice(0, 12)) console.log(`     ${difference}`);
       if (differences.length > 12) console.log(`     and ${differences.length - 12} more`);
@@ -192,14 +158,14 @@ async function main() {
       continue;
     }
 
-    console.log(`PASS ${one.id}  ${expected.length} calls agree, the double and the device call for call`);
+    console.log(`PASS ${id}  ${expected.length} calls agree, the double and the device call for call`);
   }
 
   await browser.close();
   host.close();
   rmSync(staging, { recursive: true, force: true });
 
-  const total = fixtures.CAPABILITY_FIXTURES.length;
+  const total = corpus.length;
   console.log(`\n${total - failures} of ${total} agree`);
   process.exitCode = failures ? 1 : 0;
 }
