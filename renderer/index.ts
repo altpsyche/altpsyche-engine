@@ -15,7 +15,7 @@
  * outside React had to build its own, which is why one of them never injected
  * the values the others did: they were written separately and drifted.
  */
-import type { BackendName, ShaderFrame, UniformValue } from './types';
+import type { BackendName, DeviceReport, ShaderFrame, UniformValue } from './types';
 
 /** How many compiled programs one renderer keeps warm at once. A program owns
  * a set of card resources, so a renderer that never lets one go grows its card
@@ -40,6 +40,12 @@ export interface FrameRenderer {
    * put. The program is built if it has not been drawn yet, since compiling is
    * the only thing that can answer it and the result is kept either way. */
   unreached(shader: ShaderFrame, names: string[]): string[];
+  /** What the device behind this backend says about itself, which is every
+   * ceiling it names and every optional part of its API it has. It is here
+   * because a caller deciding whether a frame is drawable at all reads a ceiling
+   * rather than a picture, and a caller that had to reach a backend to ask would
+   * be reaching past the only path this library offers. */
+  report(): DeviceReport;
   resize(width: number, height: number): void;
   dispose(): void;
 }
@@ -164,6 +170,10 @@ export async function createFrameRenderer(
 
     unreached(shader, names) {
       return programFor(shader).unreached(names);
+    },
+
+    report() {
+      return backend.report();
     },
 
     resize(width, height) {

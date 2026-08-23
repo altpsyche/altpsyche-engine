@@ -218,3 +218,19 @@ describe('what it gives back when it is done', () => {
     expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
   });
 });
+
+describe('what the device says about itself', () => {
+  it('answers through the door rather than making a caller hold a backend', async () => {
+    const { renderer } = await rendererOver();
+
+    const said = renderer.report();
+
+    // The ceilings and the optional parts are the device's own answers, so what
+    // is held here is that they arrive at all and that they arrive shaped: a
+    // caller deciding whether a frame is drawable reads a number, and a number
+    // that came back undefined reads as a device with no limit.
+    expect(Object.keys(said.limits).length).toBeGreaterThan(0);
+    for (const value of Object.values(said.limits)) expect(typeof value).toBe('number');
+    expect(Array.isArray(said.features)).toBe(true);
+  });
+});
