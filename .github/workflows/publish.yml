@@ -9,6 +9,13 @@
 # records who built a package and from which commit, and it can only do that when
 # the build happens here and the job is allowed to ask GitHub for an identity
 # token, which is the `id-token: write` permission below.
+#
+# That same identity token is what authenticates the publish, so there is no npm
+# token anywhere in here. npm is told once, on the package's own settings, which
+# repository and which workflow file may publish it, and a job that is not this one
+# gets nothing. What it costs is that the trust lives in a registry setting rather
+# than in this file, so a renamed workflow file stops publishing until the setting
+# is renamed with it.
 
 name: publish
 
@@ -30,8 +37,14 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+
+      # Authenticating a publish with the job's own identity needs a newer npm
+      # than any runtime bundles, and it is pinned rather than taken as latest
+      # because the tool that publishes is not a thing to let drift between one
+      # version and the next.
+      - run: npm install -g npm@12.0.2
 
       - run: npm ci
 
@@ -44,9 +57,8 @@ jobs:
         # --access public because the name is scoped, and a scoped package is
         # private by default, which would refuse the publish on a free account
         # rather than publish something nobody can install. --provenance is what
-        # the id-token permission above is for. prepublishOnly builds, so what
-        # ships is compiled from the commit being published rather than from
-        # whatever dist happened to be lying about.
+        # the id-token permission above is for, and it is also what signs in, so
+        # nothing here reads a secret. prepublishOnly builds, so what ships is
+        # compiled from the commit being published rather than from whatever dist
+        # happened to be lying about.
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
