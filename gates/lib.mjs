@@ -34,6 +34,13 @@ export const CARD_ARGS = ['--enable-features=Vulkan', '--ozone-platform=x11'];
 
 const esbuild = path.join(ROOT, 'node_modules/.bin/esbuild');
 
+// Nothing has installed this package into itself, so the name a consumer imports
+// resolves to nothing here and the bundler is told where it is, the same way the
+// test runner is told in its own config. What this buys is that a gate reaches the
+// door by the name everybody else uses, rather than by a relative path that would
+// keep working if the door stopped exporting something.
+const DOOR = `--alias:@altpsyche/engine=${path.join(ROOT, 'index.ts')}`;
+
 /**
  * The library's own modules, bundled for a page and hung off `window`.
  *
@@ -51,7 +58,7 @@ export function bundleForPage(imports) {
   }
   writeFileSync(entry, lines.join('\n'));
   const bundle = path.join(staging, 'bundle.js');
-  execFileSync(esbuild, [entry, '--bundle', `--outfile=${bundle}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+  execFileSync(esbuild, [entry, '--bundle', DOOR, `--outfile=${bundle}`], { stdio: ['ignore', 'pipe', 'pipe'] });
   return { bundle, staging };
 }
 
@@ -65,9 +72,28 @@ export function bundleForPage(imports) {
 export async function loadFromRoot(module) {
   const staging = mkdtempSync(path.join(os.tmpdir(), 'engine-gate-'));
   const compiled = path.join(staging, 'module.mjs');
-  execFileSync(esbuild, [path.join(ROOT, module), '--bundle', '--format=esm', `--outfile=${compiled}`], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const source = path.join(ROOT, module);
+  execFileSync(
+    esbuild,
+    [
+      source,
+      '--bundle',
+      '--format=esm',
+      // For this process rather than for a page, so a module that reads a file or
+      // a directory keeps the node built-ins it reads them with instead of the
+      // bundler refusing to resolve them.
+      '--platform=node',
+      DOOR,
+      // The bundle is written to a temporary directory, so a module that reads a
+      // file beside itself would look for it there and find nothing. The corpus
+      // is loaded exactly that way, by a module that walks from its own directory
+      // to the sources, so the directory it walks from is the one it was written
+      // in rather than the one it is running from.
+      `--define:import.meta.dirname=${JSON.stringify(path.dirname(source))}`,
+      `--outfile=${compiled}`,
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'] }
+  );
   const loaded = await import(compiled);
   rmSync(staging, { recursive: true, force: true });
   return loaded;
