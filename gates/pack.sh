@@ -19,6 +19,13 @@
 # because the two can differ: what a workflow built is not what is on this disk, and
 # the thing a consumer installs is the registry's copy rather than either.
 #
+# Packing compiles first, through the `prepack` script rather than a line here, so
+# every path that produces a tarball carries a library built from the tree it was
+# packed from. The output directory is not committed, so without that a run on a
+# fresh clone packs the licence, the readme and the manifest and nothing else: this
+# gate said `it carries: LICENSE README.md package.json` on a runner and passed
+# locally in the same commit, because a local checkout had a stale build lying about.
+#
 #   gates/pack.sh                              # the working tree
 #   gates/pack.sh '' @altpsyche/engine@0.2.0   # what is published
 set -euo pipefail

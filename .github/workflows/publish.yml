@@ -74,7 +74,9 @@ jobs:
         # private by default, which would refuse the publish on a free account
         # rather than publish something nobody can install. --provenance is what
         # the id-token permission above is for, and it is also what signs in, so
-        # nothing here reads a secret. prepublishOnly builds, so what ships is
-        # compiled from the commit being published rather than from whatever dist
-        # happened to be lying about.
+        # nothing here reads a secret. The build happens in `prepack`, which every
+        # path that makes a tarball runs, so what ships is compiled from the commit
+        # being published rather than from whatever output happened to be lying
+        # about. It used to be `prepublishOnly`, which publishing runs and packing
+        # does not, and the gate above packed a tarball with no library in it.
         run: npm publish --provenance --access public
