@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "declaration": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["@webgpu/types"]
+  },
+  // What gets published, named rather than swept up. This config compiles
+  // everything it can see and emits it, so a directory or a config file that
+  // arrives beside the sources ends up either in the package or failing the build:
+  // the tests did the second and the vitest config did it again. Listing the
+  // library instead means a new file is published because somebody said so.
+  "include": [
+    "index.ts",
+    "renderer/**/*.ts",
+    "engine/**/*.ts",
+    "shader-geometry.ts",
+    "wgsl-binding.ts",
+    "wgsl-layout.ts",
+    "wgsl-references.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

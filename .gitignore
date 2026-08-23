@@ -1,0 +1,9 @@
+# What a checkout of this package makes rather than carries. The site's own
+# ignore file cannot answer for these once the package is a repository of its
+# own, because its rules are written as paths inside the site.
+node_modules/
+dist/
+
+# What `npm pack` leaves behind, which is the thing that gets published rather
+# than something to commit.
+*.tgz

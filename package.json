@@ -1,0 +1,51 @@
+{
+  "name": "@altpsyche/engine",
+  "version": "0.1.0",
+  "description": "The AltPsyche renderer and the engine above it: one door onto WebGL 2 and WebGPU, and a scene becoming a frame.",
+  "license": "MIT",
+  "author": "Siva",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/altpsyche/altpsyche-engine.git"
+  },
+  "homepage": "https://github.com/altpsyche/altpsyche-engine",
+  "bugs": "https://github.com/altpsyche/altpsyche-engine/issues",
+  "keywords": [
+    "webgpu",
+    "webgl2",
+    "renderer",
+    "shader",
+    "wgsl",
+    "glsl",
+    "graphics"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@webgpu/types": "^0.1.71",
+    "jsdom": "^27.4.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.17"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

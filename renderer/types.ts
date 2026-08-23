@@ -1,0 +1,647 @@
+/**
+ * What a backend is, stated so the two of them stay interchangeable.
+ *
+ * The test this interface has to pass is that a caller never has to know which
+ * backend it holds. That is a live risk rather than a theoretical one, because
+ * the two backends specialize a shader by different mechanisms: one hands the
+ * tier numbers in when the pipeline is made, the other has a variant compiled
+ * per tier. So a caller asks for a program for a shader at a tier and the
+ * difference stays inside the backend. **A method one backend has to throw from
+ * is the wrong method.**
+ */
+
+export type BackendName = 'webgl2' | 'webgpu';
+
+/** Which language a backend takes its shaders in. It is not the same thing as
+ * the backend's name, because it is the artefact that has to be fetched for a
+ * target and a reader is sent one of them rather than both. */
+export type ShaderTarget = 'glsl' | 'wgsl';
+
+export type UniformValue = number | number[];
+
+/**
+ * One shader document, already fetched.
+ *
+ * A shader written in WGSL or Slang is one of these and a shader written in GLSL
+ * is two, which is the whole of what the two languages differ by here: the pair
+ * a WebGL 2 program links from and the single module a WebGPU pipeline is made
+ * from are both a list of documents with a pipeline naming which one runs at
+ * which stage.
+ */
+export interface ModuleSpec {
+  name: string;
+  code: string;
+  /** What this rung asks of the source, by the names it declares as overridable.
+   * The text is the same at every rung, so these numbers are the only thing
+   * separating a phone's picture from a desktop's, and they are spent when the
+   * pipeline is made rather than written into the code. */
+  overrides?: Record<string, number>;
+}
+
+/** Where one uniform sits in the block Slang gathers them all into. Read off the
+ * reflection the compiler emits, because the layout is the compiler's to decide
+ * and anything working it out from the source is a second answer that can
+ * disagree with the first. */
+export interface UniformSlot {
+  name: string;
+  offset: number;
+  size: number;
+}
+
+/**
+ * The block of numbers a page feeds by name. Every shader has exactly one.
+ *
+ * The positions are absent for a GLSL pair, and that absence is the instruction
+ * to ask the linked program where its members sit. The driver decides them there
+ * and it has been measured not to use the source's declaration order, while a
+ * WebGPU pipeline has nothing to ask, so the build computes them and sends them.
+ */
+export interface UniformResource {
+  kind: 'uniform';
+  name: string;
+  block?: UniformSlot[];
+}
+
+/** A size that is either a fixed number or the frame's own. `frame` is what makes
+ * a resource follow a resize, and it is the difference between a texture that
+ * still covers the picture after the reader drags the window and one that covers
+ * a corner of it. What was in a frame-sized texture is gone when it is rebuilt,
+ * because carrying the old contents over means scaling them, and that is a
+ * decision about a picture the renderer has no business making. */
+export type Extent = number | 'frame';
+
+/** A texture the frame writes, reads or shows. `use` is what the usage flags are
+ * built from, so a texture a pass writes and a later pass reads names both, and a
+ * flag nothing asked for is a texture the driver refuses the pipeline over. */
+export interface TextureResource {
+  kind: 'texture';
+  name: string;
+  size: [Extent, Extent];
+  format: GPUTextureFormat;
+  use: ('storage' | 'sample' | 'attachment')[];
+  /** Where its first contents come from, absent for a texture that starts empty.
+   * The whole address is written rather than the name of one of a rung's files,
+   * which is how a document says where it lives, because the bytes are the same
+   * at every rung and there is nothing for a rung name to choose between. */
+  source?: string;
+  /** Whether this texture carries a ladder of smaller copies of itself, each half
+   * the size of the one above it down to a single pixel, which is what lets it be
+   * read at any size without the picture sparkling as it shrinks. Nothing in
+   * WebGPU makes them, so the backend draws each level from the one above it.
+   *
+   * Absent for a texture read at its own size only. It is a fact about the
+   * texture rather than about a read, because the levels have to exist before any
+   * read can name one, and which level a read lands on is in the source. */
+  mips?: 'generate';
+  /** How many samples of each pixel this texture keeps, absent for the one every
+   * other texture keeps. Four is the only count core WebGPU guarantees, so it is
+   * the only one a description may carry, and the absence of the field is one.
+   *
+   * A texture holding several samples of a pixel is the narrowest kind there is:
+   * nothing can copy out of it, nothing can write into it from outside, it can
+   * carry no ladder, and a shader reads it only through a binding declared as
+   * multisampled. So it is written by a pass and averaged into a single-sampled
+   * texture of the same size and format at the end of that pass, which is what
+   * the resolve name on the pass's colour says.
+   */
+  samples?: 4;
+  /** Those contents, once fetched, which is four bytes a pixel in the texture's
+   * own format laid out row by row. It is absent from a description for the same
+   * reason a uniform block's positions are: the build writes an address and the
+   * runtime fills in what came back from it. */
+  data?: Uint8Array<ArrayBuffer>;
+}
+
+/** How a texture is read when a shader samples between its pixels rather than at
+ * one of them. It is a resource of its own rather than a field on the texture
+ * because a sampler is bound separately in WGSL and two shaders may read one
+ * texture through different ones. */
+export interface SamplerResource {
+  kind: 'sampler';
+  name: string;
+  filter: 'nearest' | 'linear';
+  wrap: 'clamp' | 'repeat' | 'mirror';
+}
+
+/** Geometry the build generated, because a buffer's contents are numbers and no
+ * source file holds them. The layout travels with the bytes rather than being
+ * declared beside the pipeline, since a vertex written as four floats and read as
+ * three is every vertex after the first read out of the middle of the last one.
+ *
+ * The topology is here for the same reason: which vertices make one triangle is a
+ * fact about the order the indices were written in, so the generator that wrote
+ * them is what answers it. */
+export interface VertexResource {
+  kind: 'vertices';
+  name: string;
+  /** Bytes from the start of one vertex to the start of the next. */
+  stride: number;
+  /** Each field of one vertex, at the location the source reads it at. */
+  attributes: { location: number; offset: number; format: GPUVertexFormat }[];
+  topology: GPUPrimitiveTopology;
+  count: number;
+  /** The indices that put these vertices in order, absent for geometry drawn
+   * straight through in the order it was written. One name rather than a copy of
+   * the index resource, so the two cannot come apart. */
+  indices?: string;
+  /** Where the bytes come from, and those bytes once fetched, which is the split
+   * every generated resource carries: the build writes an address and the runtime
+   * fills in what came back from it. */
+  source?: string;
+  data?: Uint8Array<ArrayBuffer>;
+}
+
+/** Which vertex each corner of each triangle is, as the numbers the card reads
+ * them out of the vertex buffer by. It is a resource of its own rather than a
+ * field on the geometry because it is a buffer of its own on the card, and the
+ * vertex resource names it so the pair cannot be declared apart. */
+export interface IndexResource {
+  kind: 'indices';
+  name: string;
+  format: 'uint16' | 'uint32';
+  count: number;
+  source?: string;
+  data?: Uint8Array<ArrayBuffer>;
+}
+
+/** A block of bytes a shader reads or writes, which is where a number the card
+ * worked out for itself has to live. A texture holds a picture and a uniform
+ * block holds what a page fed in, so neither can hold a count a compute pass
+ * arrived at and a later pass has to act on.
+ *
+ * How big it is comes from the entry, because the type a source declares may be
+ * an array with no length at all, and bytes is the number the card takes.
+ *
+ * Whether the shader may write into it is the declaration's own access, and it
+ * decides which kind of layout entry the binding is: a card refuses a pipeline
+ * whose layout says a buffer is written where the source only reads it. */
+export interface BufferResource {
+  kind: 'buffer';
+  name: string;
+  bytes: number;
+  access: 'read' | 'read-write';
+  /** Where its first contents come from, absent for a buffer that starts empty.
+   * A buffer a pass fills or a query resolves into needs none, and one the shader
+   * only reads carries the numbers a copy of a pipeline is handed, which no source
+   * file holds. The whole address is written rather than a rung's file name for
+   * the reason a texture's is: the bytes are the same at every rung. */
+  source?: string;
+  /** Those contents once fetched, laid out the way the shader reads them, which is
+   * the same split every generated resource carries: the build writes an address
+   * and the runtime fills in what came back from it. */
+  data?: Uint8Array<ArrayBuffer>;
+}
+
+export type ResourceSpec =
+  | UniformResource
+  | TextureResource
+  | SamplerResource
+  | BufferResource
+  | VertexResource
+  | IndexResource;
+
+/** Where a pipeline finds one of the resources it reads, written down rather than
+ * asked of the driver. The numbers come off the source's own attributes, and the
+ * stages are what a layout needs: a visibility narrower than the stage that reads
+ * the resource is a pipeline the driver refuses, and a wider one is accepted
+ * while claiming a stage reads something it does not. */
+export interface BindingSpec {
+  group: number;
+  binding: number;
+  /** The resource by the name it carries on the frame. */
+  resource: string;
+  visibility: ('vertex' | 'fragment' | 'compute')[];
+  /** How this binding reads its texture, where the resource alone cannot say.
+   * Both halves of a swapping pair are written by one pass and sampled by
+   * another, so the resource is used both ways and the layout kind is the
+   * binding's rather than the resource's. Absent for a texture used one way and
+   * for everything that is not a texture. */
+  reads?: 'storage' | 'sample';
+}
+
+/** Which document runs at which stage, the entry point inside it, and where its
+ * resources are. `fullscreen` is the backend's own three corners covering the
+ * frame, which is what a WGSL source has no second document for. Naming a module
+ * instead is the vertex program being the shader's own. */
+export interface RenderPipelineSpec {
+  kind: 'render';
+  name: string;
+  vertex: { module: string; entry: string } | 'fullscreen';
+  fragment: { module: string; entry: string };
+  /** The geometry this pipeline reads one vertex at a time, absent where the
+   * vertex stage reads no buffer at all. The pipeline names it rather than the
+   * pass, because what a pipeline needs from it is the layout it was written
+   * under and a layout is spent when the pipeline is made. */
+  geometry?: string;
+  /** Empty where the compiled program reports its own, which is every GLSL pair:
+   * GLSL ES 3.0 declares no binding number for a uniform block and the linked
+   * program answers with a block index instead. */
+  bindings: BindingSpec[];
+  /** How this pipeline treats the depth of what it draws, absent where nothing it
+   * draws can be behind anything else. `compare` is the test a fragment has to
+   * pass against what is already there, and `write` is whether passing it leaves
+   * the new depth behind: a surface drawn in front of another with the write off
+   * lets the far one show through it rather than hiding it.
+   *
+   * It is the pipeline's rather than the pass's because the card takes it when
+   * the pipeline is made, so two surfaces tested differently are two pipelines
+   * over one attachment. */
+  /** The depth and stencil state, which is one thing on the card however many
+   * halves the format has. `compare` and `write` are the depth half and are
+   * absent for a format that keeps no depth, and `stencil` is what this pipeline
+   * does to the mask.
+   *
+   * It is spent here rather than on the pass for the same reason the vertex
+   * layout is: the card compiles the comparison into the pipeline, so two
+   * surfaces tested differently over one attachment are two pipelines rather than
+   * one pipeline told twice. */
+  depth?: {
+    format: GPUTextureFormat;
+    compare?: GPUCompareFunction;
+    write?: boolean;
+    stencil?: StencilMode;
+  };
+  /** What each colour the fragment stage returns is written into, absent where it
+   * returns one and that one is the frame the reader sees.
+   *
+   * `blend` is how a colour is mixed with what the attachment already holds, so a
+   * surface with an alpha below one lets what was drawn before it show through
+   * rather than replacing it. Absent, a colour replaces.
+   *
+   * Naming these is all or nothing: a pipeline naming them writes only the
+   * textures its pass attaches, and the frame's own attachment is not among
+   * them, so the format of the frame is the backend's answer alone and is never
+   * written into a description that could disagree with it. Which of the
+   * textures the reader ends up seeing is what the frame's `present` says. */
+  targets?: { format: GPUTextureFormat; blend?: GPUBlendState }[];
+  /** How many samples of each pixel the attachments of this pipeline's pass keep,
+   * absent where they keep one. It is the pipeline's as well as the texture's for
+   * the same reason a format is both: the card takes the count when the pipeline
+   * is made and again when the pass is opened, and it reports a disagreement
+   * against whichever of the two arrived second. Written in both places and
+   * compared where the pass is read, so the description is refused by name.
+   *
+   * A pipeline drawing the frame the reader sees never carries one, because the
+   * frame's own target keeps a single sample. */
+  samples?: 4;
+}
+
+/** How much compute work one pass runs. `frame` covers the picture in blocks of
+ * the pipeline's workgroup size. Naming a resource covers that resource instead,
+ * which is what a pass writing a texture of its own wants: the count is worked out
+ * from the texture's size and the workgroup size, so neither number is written
+ * down a second time where it could disagree.
+ *
+ * Naming a buffer runs however much the three words at the start of it say, which
+ * is the same arrangement a drawn pass has: the count arrives from a pass rather
+ * than from the description. */
+export type Dispatch = [number, number, number] | 'frame' | { over: string } | { indirect: string };
+
+/** A program run over a grid of work items rather than over the frame's corners.
+ * The block size is read off the source's own `@workgroup_size`, because the
+ * dispatch count is computed from it and a number written down twice can disagree
+ * with the source while everything still compiles. */
+export interface ComputePipelineSpec {
+  kind: 'compute';
+  name: string;
+  compute: { module: string; entry: string };
+  bindings: BindingSpec[];
+  workgroup: [number, number, number];
+}
+
+export type PipelineSpec = RenderPipelineSpec | ComputePipelineSpec;
+
+/** How much drawing one pass does. Counting vertices is the backend's own corners
+ * covering the frame, and counting instances alone is the geometry its pipeline
+ * names, as many times over as it says: the count of vertices is the resource's
+ * and repeating it here is a number that could disagree with the buffer.
+ *
+ * Naming a buffer draws whatever the words at the start of that buffer say, which
+ * is a count nothing on this side ever sees: it is what an earlier pass of the
+ * same frame worked out and wrote there. */
+export type DrawSpec = { vertices: number; instances?: number } | { instances: number } | { indirect: string };
+
+/**
+ * What a pipeline does to the mask a stencil keeps.
+ *
+ * Named rather than written out as the card's own fields, which are a comparison,
+ * three operations and two masks for each face of a triangle. Nothing on the card
+ * checks that a combination of those means anything, so a name is what can be
+ * held to meaning something: `mark` leaves the reference behind everywhere it
+ * draws, and `inside` draws only where the reference is already there and leaves
+ * the mask as it found it.
+ *
+ * The reference value belongs to the modes rather than being declared beside
+ * them, so nothing can carry a number that disagrees with the mode it sits next
+ * to, and a mask has no front and back a picture could tell apart, so both faces
+ * are given the same operations.
+ */
+export type StencilMode = 'mark' | 'inside';
+
+/** One run of work inside a frame, drawing into the frame's own colour target. */
+export interface RenderPassSpec {
+  pipeline: string;
+  draw: DrawSpec;
+  /** The buffer the two times this pass took land in, absent for a pass nobody
+   * timed. The card writes one time as the pass opens and one as it closes, so
+   * what a caller reads is a period rather than a clock reading, and the two
+   * words of each are what a difference is worked out from.
+   *
+   * A device without the optional feature for it draws this pass anyway and
+   * leaves the buffer as it found it, since a picture that arrives untimed is
+   * still the picture. */
+  timed?: string;
+  /** The buffer the count of samples this pass's draw got through lands in,
+   * absent for a pass nobody counted. It is the answer to how much of what was
+   * drawn came out in front of everything else, so it falls as a nearer surface
+   * covers it and it is the one reading here that no picture shows.
+   *
+   * It sits on the drawn pass rather than beside the times, because the card
+   * counts what one draw got through and takes the times over a whole pass. */
+  visible?: string;
+  /** The texture this pass keeps the depth of what it drew in, and tests what it
+   * draws against. `clear` is what that texture is emptied to first, and 1 is the
+   * far end of the range the card normalises depth into, so a first surface at
+   * any distance is nearer than an empty attachment and passes. Naming no value
+   * keeps what is in it, which is what a second pass tested against the surface
+   * the first one drew needs.
+   *
+   * It is the pass's rather than the pipeline's because a pass is where a texture
+   * is attached, which is what lets one surface be tested against a surface a
+   * different pipeline drew. */
+  depth?: { resource: string; clear?: number; stencilClear?: number };
+  /** The textures this pass writes its colours into, in the order the fragment
+   * stage returns them, absent where it writes the frame the reader sees.
+   *
+   * They are the pass's rather than the pipeline's because an attachment is what
+   * a pass is opened with, so two passes writing one set of textures is how a
+   * surface comes to be drawn over another one. `clear` is what an attachment is
+   * emptied to first, and naming no value keeps what the pass before it drew. */
+  colour?: { resource: string; clear?: [number, number, number, number]; resolve?: string }[];
+}
+
+/** One run of compute work, over as much of it as the dispatch asks for. */
+export interface ComputePassSpec {
+  pipeline: string;
+  dispatch: Dispatch;
+  /** The buffer the two times this pass took land in, the same as a drawn pass.
+   * There is no count of samples here, since nothing in a compute pass is drawn
+   * for something else to cover. */
+  timed?: string;
+}
+
+/** A pass says which pipeline runs and how much of it. Which kind of pass it is
+ * comes off that pipeline rather than being said again here, since a pass
+ * claiming one kind while naming a pipeline of the other is a disagreement
+ * nothing could resolve. */
+export type PassSpec = RenderPassSpec | ComputePassSpec;
+
+/** Which of a rung's file names holds one document of a description. A rung
+ * names its files by the role the language gives them, so a document says which
+ * of those names is its address rather than carrying the address itself: the
+ * addresses differ per rung and the description does not. */
+export type DocumentAddress = 'fragment' | 'vertex' | 'wgsl';
+
+/** One document of a frame before it has been fetched, which is the name a
+ * pipeline calls it by and where the rung says it lives. */
+export interface DocumentSpec {
+  name: string;
+  address: DocumentAddress;
+}
+
+/**
+ * A frame with its documents named rather than fetched, which is what the build
+ * writes and the manifest carries.
+ *
+ * It is per target rather than per shader, because the two targets of one shader
+ * are different descriptions: a GLSL description carries two documents and a
+ * pipeline whose vertex stage is the shader's own, a WGSL description carries one
+ * document and a pipeline asking for the backend's three corners, and only the
+ * resources and the passes coincide.
+ *
+ * A uniform resource here carries no positions. The block is what the shader's
+ * own struct lays out, so it is the same on every target that has one and it is
+ * asked of the linked program on the one target that has none, which makes it the
+ * shader's rather than the description's.
+ */
+export interface FrameDescription {
+  target: ShaderTarget;
+  resources: ResourceSpec[];
+  documents: DocumentSpec[];
+  pipelines: PipelineSpec[];
+  passes: PassSpec[];
+  present?: string;
+  /** Pairs of resources that trade places every frame, which is what a field
+   * growing out of its own last state needs: a shader cannot read the texture it
+   * is writing, so one of the pair is read this frame and written the next. */
+  swap?: [string, string][];
+}
+
+/**
+ * One shader at one rung, as the build wrote it and the manifest named it.
+ *
+ * It is a description of a frame rather than a source, so a capability arrives as
+ * another resource, another pipeline or another pass rather than as a method one
+ * backend would have to throw from. Today every shader on the site is this
+ * description with one resource, one pipeline and one pass in it, which is why
+ * the reshape adds nothing to what either backend does.
+ */
+export interface ShaderFrame {
+  id: string;
+  target: ShaderTarget;
+  /** The names and types a caller may feed. A page draws its controls from the
+   * manifest and hands the values back by name, and none of that cares how many
+   * passes read them. */
+  uniforms: { name: string; type: string }[];
+  resources: ResourceSpec[];
+  modules: ModuleSpec[];
+  pipelines: PipelineSpec[];
+  /** Run in this order on one command encoder, every frame. */
+  passes: PassSpec[];
+  /** Which resource holds the picture once every pass has run, absent where a
+   * pass drew into the frame's own colour target. A compute pass writes a
+   * texture rather than an attachment, so the frame names the one that is the
+   * picture and the backend copies it out. Saying so is what keeps the copy off
+   * a guess about usage flags. */
+  present?: string;
+  /** Pairs of resources that trade places every frame. A shader cannot read the
+   * texture it is writing, so a field that grows out of its own last state needs
+   * two of them: one is read this frame and written the next. The trade is the
+   * backend's rather than the shader's, so the source binds one name to read and
+   * one to write and never learns which of the two textures it was handed. */
+  swap?: [string, string][];
+}
+
+/** The one uniform block of a frame, or undefined where it describes none. */
+export function uniformResourceOf(frame: ShaderFrame): UniformResource | undefined {
+  return frame.resources.find((resource): resource is UniformResource => resource.kind === 'uniform');
+}
+
+/** One resource of a frame by the name a binding gave it, or undefined where the
+ * frame declares none by that name, which is a description the renderer refuses
+ * before it reaches the device. */
+export function resourceOf(frame: ShaderFrame, name: string): ResourceSpec | undefined {
+  return frame.resources.find((resource) => resource.name === name);
+}
+
+/** Whether a pass is the drawing kind, read off the pass rather than off the
+ * pipeline it names, so the two are compared where the pipeline is looked up. */
+export function isRenderPass(pass: PassSpec): pass is RenderPassSpec {
+  return 'draw' in pass;
+}
+
+/** Whether a draw covers the frame with the backend's own corners rather than
+ * with geometry of the shader's own. */
+export function drawsCorners(draw: DrawSpec): draw is { vertices: number; instances?: number } {
+  return 'vertices' in draw;
+}
+
+/** Whether a draw reads its own counts out of a buffer. Every number a card needs
+ * is in there rather than in the description, so a frame drawing this way says how
+ * much work it does only after the pass that decided it has run. */
+export function drawsIndirectly(draw: DrawSpec): draw is { indirect: string } {
+  return 'indirect' in draw;
+}
+
+/** Whether a dispatch reads its count out of a buffer, which is the same question
+ * asked of the other kind of pass. */
+export function dispatchesIndirectly(dispatch: Dispatch): dispatch is { indirect: string } {
+  return typeof dispatch === 'object' && !Array.isArray(dispatch) && 'indirect' in dispatch;
+}
+
+/** One document of a frame by the name a pipeline gave it. */
+export function moduleOf(frame: ShaderFrame, name: string): ModuleSpec | undefined {
+  return frame.modules.find((module) => module.name === name);
+}
+
+export interface ShaderProgram {
+  /** Values by the names the shader declares. Where they land is the backend's
+   * business: loose uniforms in one dialect, one block of bytes in the other,
+   * and the caller writes the same call either way. */
+  setUniforms(values: Record<string, UniformValue>): void;
+  /** Which of these names the compiled program has nowhere to put. A GLSL
+   * compiler removes a uniform no line reads, so a name the source declares can
+   * be missing from the program built out of it, and a value written to it goes
+   * nowhere while every call still succeeds. Only the compiled program can
+   * answer this, which is why it is asked here rather than worked out from the
+   * source. */
+  unreached(names: string[]): string[];
+  draw(): void;
+  /**
+   * Replaces the contents of one buffer this frame declares, between one frame
+   * and the next.
+   *
+   * The uniform block is fed this way every draw, and this is the same thing for
+   * a buffer that is not the block: the description says the buffer exists and the
+   * running page hands it later numbers, the way `setUniforms` hands the block
+   * later numbers. Bytes rather than words, because a buffer the page fills holds
+   * whatever the shader reads out of it, floats as often as counts, and the build
+   * writes its first contents as bytes for the same reason.
+   *
+   * Only a buffer the build gave first contents can be replaced. A buffer the card
+   * fills for itself, one a compute pass writes or a query resolves into, is the
+   * card's own and is refused here by name, because it was never made able to take
+   * bytes from this side.
+   */
+  writeBuffer(name: string, data: Uint8Array<ArrayBuffer>): void;
+  /**
+   * The words of one buffer this frame declares, as they stand after the last
+   * frame that was drawn.
+   *
+   * Words rather than bytes because everything a card writes into a buffer of its
+   * own accord is a count: how many blocks to run, how many vertices to draw, how
+   * long a pass took. A caller that wants the bytes reads the words' own memory.
+   *
+   * It is a promise for the reason reading pixels is: the words have to be copied
+   * out to a buffer nothing else is using and that buffer has to be mapped before
+   * anything can look at it, so a caller waits either way. The copy is why the
+   * buffer a frame writes is never the buffer a caller maps: a buffer a shader
+   * writes into cannot also be one the CPU has mapped.
+   *
+   * A backend with no buffers to declare answers with no words, which is the true
+   * answer rather than a refusal.
+   */
+  readBuffer(name: string): Promise<Uint32Array>;
+  /**
+   * Replaces which passes this program runs, between one frame and the next,
+   * without remaking anything the program owns.
+   *
+   * A description changes over time by its passes changing: a frame runs one pass
+   * this second and two the next, so a page turns a pass on or off the way it
+   * feeds the block later numbers with `setUniforms` or a buffer later bytes with
+   * `writeBuffer`. The modules, the pipelines and the resources are the frame's
+   * for its whole life and are not touched here, so a pass may only name a
+   * pipeline the program was built with. Naming one it was not is refused here by
+   * name, the same as writing a buffer the card fills for itself.
+   *
+   * This changes which passes run, not what a pass is made of and not which
+   * resources exist. Adding a resource is a rebuild, since a texture's usage and a
+   * buffer's layout are decided when the program is made, so a description that
+   * grows a resource is a new program rather than a call here.
+   */
+  setPasses(passes: PassSpec[]): void;
+  dispose(): void;
+}
+
+/**
+ * What a device says about itself: the ceilings it will not go past, and the
+ * optional pieces of its API it has.
+ *
+ * The names are each API's own rather than translated into one vocabulary, and
+ * the numbers are the card's. Nothing here is written down against a list of
+ * expected values, because a ceiling that differs between two machines is the
+ * machine rather than a defect, and a report compared against a written table
+ * would fail on every card but the one the table was taken off.
+ */
+export interface DeviceReport {
+  /** Every ceiling this device reports, by the name its own API gives it. */
+  limits: Record<string, number>;
+  /** The optional parts of the API this device has, sorted so two runs of one
+   * machine print the same order. */
+  features: string[];
+}
+
+export interface Backend {
+  readonly name: BackendName;
+  /** The language this backend's documents are written in. A caller reads it to
+   * know which target to fetch, which is the one thing about a backend a caller
+   * does have to know: sending a reader both targets is a third more bytes than
+   * the site sends today. */
+  readonly target: ShaderTarget;
+  /** The frame has to be the one this backend's target names. That is a mistake
+   * in the caller rather than a difference between the backends, so it is not
+   * the forbidden method that throws on one and works on the other: the renderer
+   * fetches by the target it asked for, so the pairing cannot come apart without
+   * something else having gone wrong first.
+   *
+   * What a backend cannot build it never receives, because the manifest is the
+   * only thing deciding which backend a shader can be drawn by. That is what
+   * keeps a capability out of this interface instead of putting it here as a
+   * method one of the two would answer by throwing. */
+  /** What this device will and will not do, read out of whichever API this
+   * backend speaks. Both answer it, which is what keeps a caller from having to
+   * know which backend it holds, and neither throws: a device with nothing
+   * optional reports no features rather than refusing the question. */
+  report(): DeviceReport;
+  createProgram(frame: ShaderFrame): ShaderProgram;
+  resize(width: number, height: number): void;
+  /** Reads the frame back as RGBA, top row first on both backends. WebGL hands
+   * it back bottom row first and that is corrected here, because a caller
+   * comparing two backends would otherwise be comparing a mirror.
+   *
+   * It is a promise because one of the two cannot answer any sooner: WebGPU
+   * copies the frame into a buffer and waits for that buffer to be mapped,
+   * where WebGL blocks the thread until the card is done. Both waits are the
+   * same wait, so nothing has to be synchronised afterwards on either. */
+  readPixels(): Promise<Uint8Array>;
+  dispose(): void;
+}
+
+/** How many floats a uniform of this type occupies, which is what a caller needs
+ * to know to hand one over and all it needs to know. */
+export function componentsOf(type: string): number {
+  if (type === 'vec2') return 2;
+  if (type === 'vec3') return 3;
+  if (type === 'vec4') return 4;
+  return 1;
+}
