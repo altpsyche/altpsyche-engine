@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Installs this library somewhere outside its own repository and asks the installed
+# copy two questions. What is installed is either the working tree, packed here, or
+# a version off the registry, named as the second argument.
+#
+# Installing rather than importing the sources is the whole point. It reads `dist`
+# and the `exports` field the way a consumer's tooling will, so a file missing from
+# `files` or an entry pointing at nothing fails here and nowhere else. It runs
+# outside the repository so nothing resolves through it by accident.
+#
+# The first question is what a consumer can build with it, which is the check beside
+# the tests, run through tsx. The second question exists because the first one cannot
+# fail the way that matters: tsx resolves a relative import with no extension, so a
+# `dist` only a bundler could load passed this check for every version published.
+# Plain node is stricter, and asking it to import the package by name is what
+# catches a directory import node will not follow.
+#
+# A published version is worth running through the same pair as a packed one,
+# because the two can differ: what a workflow built is not what is on this disk, and
+# the thing a consumer installs is the registry's copy rather than either.
+#
+#   gates/pack.sh                              # the working tree
+#   gates/pack.sh '' @altpsyche/engine@0.2.0   # what is published
+set -euo pipefail
+
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+work="${1:-}"
+work="${work:-$(mktemp -d)}"
+spec="${2:-}"
+
+if [ -z "$spec" ]; then
+  cd "$repo"
+  tarball="$(npm pack --silent | tail -1)"
+  trap 'rm -f "$repo/$tarball"' EXIT
+fi
+
+rm -rf "$work" && mkdir -p "$work"
+[ -z "$spec" ] && cp "$repo/$tarball" "$work/"
+cp "$repo/tests/support/fake-gpu.ts" "$work/fake-gpu.ts"
+sed "s#'./support/fake-gpu'#'./fake-gpu'#" "$repo/tests/consumer-check.ts" > "$work/draw.ts"
+
+cd "$work"
+cat > package.json <<'JSON'
+{
+  "name": "engine-consumer-check",
+  "private": true,
+  "type": "module",
+  "devDependencies": { "tsx": "^4.20.3", "@webgpu/types": "^0.1.71" }
+}
+JSON
+npm install --no-audit --no-fund --silent "${spec:-./$tarball}" >/dev/null
+npm install --no-audit --no-fund --silent >/dev/null
+
+installed="$(node -e "const p=require('./node_modules/@altpsyche/engine/package.json');console.log(p.name+'@'+p.version)")"
+echo "installed $installed from ${spec:-the working tree}"
+echo "it carries: $(ls node_modules/@altpsyche/engine | tr '\n' ' ')"
+
+# Node's own resolution against the installed copy, before anything that resolves
+# more loosely gets a turn. A refusal names the specifier node would not follow,
+# which is the whole reading: the package is either loadable by anything or loadable
+# by a bundler alone, and nothing else here can tell those two apart.
+node --input-type=module -e "
+  import('@altpsyche/engine')
+    .then((m) => console.log('plain node imports it: ' + Object.keys(m).length + ' names on the door'))
+    .catch((error) => {
+      console.error('plain node refuses it: ' + String(error.message).split('\n')[0]);
+      process.exit(1);
+    });
+"
+
+npx --yes tsx draw.ts

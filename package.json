@@ -40,7 +40,8 @@
     "type-check": "tsc --noEmit -p tsconfig.json",
     "prepublishOnly": "npm run build",
     "gate:browser": "node gates/all.mjs",
-    "gate:card": "node gates/card.mjs"
+    "gate:card": "node gates/card.mjs",
+    "gate:pack": "bash gates/pack.sh"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

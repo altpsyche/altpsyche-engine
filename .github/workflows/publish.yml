@@ -49,17 +49,25 @@ jobs:
       - run: npm ci
 
       # The library is held by everything that can hold it before a version of
-      # it exists. The tests need nothing; the gates need a browser, and a
+      # it exists. The tests need nothing; the browser gates need a browser, and a
       # published version that has not been drawn with is a version nobody
-      # checked. The one gate that needs a real graphics card cannot run on a
-      # runner at all, so a release is short of that reading and says so here
-      # rather than pretending the set is complete.
+      # checked; the packing gate needs an install, which is the only thing here
+      # that reads what a consumer actually receives. The one gate that needs a
+      # real graphics card cannot run on a runner at all, so a release is short of
+      # that reading and says so here rather than pretending the set is complete.
       - run: npm test
 
       # The browser the dependency pins, rather than whatever the runner carries.
       - run: npx playwright install --with-deps chromium
 
       - run: npm run gate:browser
+
+      # What a consumer gets, asked of an install rather than of these sources.
+      # It packs this commit, installs the tarball outside the repository and asks
+      # plain node to import it before asking a looser loader to build with it.
+      # Every version published before this step existed could be loaded by a
+      # bundler and by nothing else, and nothing in the set above could see that.
+      - run: npm run gate:pack
 
       - name: Publish
         # --access public because the name is scoped, and a scoped package is

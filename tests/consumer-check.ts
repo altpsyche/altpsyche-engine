@@ -2,11 +2,16 @@
  * What a consumer of the published package can do with it, run against the tarball
  * rather than against these sources.
  *
- * `scripts/engine/pack-and-check.sh` packs the package, installs the tarball into a
- * directory outside this repository, copies this file and the device double in, and
- * runs it. Installing is what makes the check mean something: it reads `dist` and the
- * `exports` field the way anybody's bundler will, so a file left out of `files` or an
- * entry pointing at nothing fails here and nowhere else.
+ * `gates/pack.sh` packs the package, installs the tarball into a directory outside
+ * this repository, copies this file and the device double in, and runs it.
+ * Installing is what makes the check mean something: it reads `dist` and the
+ * `exports` field the way a consumer's tooling will, so a file left out of `files`
+ * or an entry pointing at nothing fails here and nowhere else.
+ *
+ * What this file cannot fail on is how the specifiers inside `dist` are written,
+ * because it runs through tsx and tsx resolves a relative import with no extension.
+ * The gate asks plain node to import the package before it runs this, which is the
+ * question that separates a package anything can load from one only a bundler can.
  *
  * The device is the double beside it, copied in as the consumer's own file, and the
  * one import line is rewritten as it is copied. That double imports nothing but the
