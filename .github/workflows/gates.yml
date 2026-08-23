@@ -1,0 +1,41 @@
+# What this library is held to on every push.
+#
+# The node tests run anywhere and need nothing. The browser gates need a browser,
+# and they are here rather than on one machine because a claim about a graphics API
+# that only its author can check is a claim nobody can check. What runs here is the
+# software renderer, which is deterministic and is what makes a reading comparable
+# between one run and the next.
+#
+# One gate is deliberately absent. Measuring a real graphics card needs a desktop
+# session, and every headless launch reaches the software renderer whatever the
+# flags say, so that gate names itself unrunnable here and is run by hand.
+
+name: gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - run: npm ci
+
+      # The tests a consumer can run, which is all of them that need no browser.
+      - run: npm test
+
+      # The browser Playwright pins, rather than whatever the runner happens to
+      # carry. Installing a browser deletes the build it replaces, so the version
+      # that matters is the one the dependency asks for.
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run gate:browser
