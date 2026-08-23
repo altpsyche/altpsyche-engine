@@ -57,14 +57,8 @@ jobs:
         # --access public because the name is scoped, and a scoped package is
         # private by default, which would refuse the publish on a free account
         # rather than publish something nobody can install. --provenance is what
-        # the id-token permission above is for. prepublishOnly builds, so what
-        # ships is compiled from the commit being published rather than from
-        # whatever dist happened to be lying about.
+        # the id-token permission above is for, and it is also what signs in, so
+        # nothing here reads a secret. prepublishOnly builds, so what ships is
+        # compiled from the commit being published rather than from whatever dist
+        # happened to be lying about.
         run: npm publish --provenance --access public
-        env:
-          # Only the first version needs this, and it is here because a publisher
-          # is registered against a package that exists: with nothing published
-          # there is no settings page to register on. Once one version is out, the
-          # identity token below signs the publish in on its own and this line
-          # goes, along with the secret it reads.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
