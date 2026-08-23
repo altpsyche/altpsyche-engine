@@ -211,7 +211,9 @@ export interface CapabilityFixture {
    * reader of an entry can see which file it draws without knowing a rule. */
   source: string;
   uniforms: { name: string; type: string; value: number | number[] }[];
-  frame?: DeclaredFrame;
+  /** Required rather than optional, because a shader with nothing to declare is
+   * one pass over the whole frame and there is no capability in that to draw. */
+  frame: DeclaredFrame;
 }
 
 export const CAPABILITY_FIXTURES: CapabilityFixture[] = [

@@ -27,7 +27,7 @@ import {
   storageTexturesOf,
   vertexInputsOf,
 } from './wgsl-pipelines';
-import { TEXTURE_CONTENT } from './shader-content';
+import { BUFFER_CONTENT, TEXTURE_CONTENT } from './shader-content';
 import { GEOMETRY_PRIMITIVE } from '@altpsyche/engine';
 import { BLEND_MODE } from './shader-blend';
 import type {
@@ -77,6 +77,40 @@ export const geometryFileName = (id: string, name: string, role: 'vertices' | 'i
  * per shader and buffer, for the reason a texture's is: the numbers a copy is
  * handed do not change with the depth a phone marches to. */
 export const bufferFileName = (id: string, name: string): string => `${id}-${name}.buffer.bin`;
+
+/**
+ * Every picture and every run of numbers a frame's declaration asks for, keyed by
+ * the address the description sends a reader to.
+ *
+ * It is here rather than beside the loader so one module owns both the name and
+ * the bytes. The size is the declaration's and the layout and the format are the
+ * generator's, which is the split `declaredFrame` reads them under, so a file and
+ * the description it is fetched by cannot disagree about either.
+ */
+export function generatedBytes(id: string, declared: DeclaredFrame | undefined): Map<string, Uint8Array<ArrayBuffer>> {
+  const made = new Map<string, Uint8Array<ArrayBuffer>>();
+
+  for (const texture of declared?.textures ?? []) {
+    if (!texture.content) continue;
+    made.set(
+      textureFileName(id, texture.name),
+      TEXTURE_CONTENT[texture.content].bytes(texture.size[0] as number, texture.size[1] as number)
+    );
+  }
+
+  for (const one of declared?.geometry ?? []) {
+    const bytes = GEOMETRY_PRIMITIVE[one.primitive].bytes(one.size[0], one.size[1]);
+    made.set(geometryFileName(id, one.name, 'vertices'), bytes.vertices);
+    made.set(geometryFileName(id, one.name, 'indices'), bytes.indices);
+  }
+
+  for (const buffer of declared?.buffers ?? []) {
+    if (!buffer.content) continue;
+    made.set(bufferFileName(id, buffer.name), BUFFER_CONTENT[buffer.content].bytes(buffer.bytes));
+  }
+
+  return made;
+}
 
 /** The name the index buffer of one primitive carries on the description. It
  * comes off the primitive's own name rather than being declared, because the
