@@ -1,0 +1,23 @@
+{
+  // Everything in the repository, which is wider than what publishes. The build
+  // config names the library alone, so before this file existed the fixtures, the
+  // tests and the gates were checked by nothing: vitest strips types without
+  // reading them, and a gate is plain JavaScript. Code that arrives here from
+  // somewhere it was checked would quietly stop being checked.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["@webgpu/types", "node"],
+    // The door by its published name, which is how the tests and the fixtures
+    // reach it, matching the alias vitest resolves them through.
+    "paths": { "@altpsyche/engine": ["./index.ts"] },
+    "baseUrl": "."
+  },
+  "include": ["index.ts", "renderer/**/*.ts", "engine/**/*.ts", "*.ts", "fixtures/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}

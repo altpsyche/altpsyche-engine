@@ -37,10 +37,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
+    "type-check": "tsc --noEmit -p tsconfig.json",
     "prepublishOnly": "npm run build",
     "gate:browser": "node gates/browser-pin.mjs"
   },
   "devDependencies": {
+    "@types/node": "^20.19.43",
     "@webgpu/types": "^0.1.71",
     "esbuild": "^0.27.2",
     "jsdom": "^27.4.0",
