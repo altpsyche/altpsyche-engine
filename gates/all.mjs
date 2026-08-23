@@ -29,7 +29,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The pin comes first because every gate under it compares a reading against one
 // taken earlier, and a browser that moved without a commit makes every one of
 // those comparisons mean something else.
-const GATES = ['browser-pin.mjs', 'trace-contract.mjs'];
+const GATES = ['browser-pin.mjs', 'trace-contract.mjs', 'surface.mjs'];
 
 const results = [];
 for (const gate of GATES) {

@@ -1,0 +1,603 @@
+// Exercise the live surface: does it run, pause, resize and survive the card
+// being taken away.
+//
+//   node gates/surface.mjs
+//
+// Every one of these is a thing a page depends on and none of them shows up in
+// a screenshot. A paused canvas and a running one look the same in a still, and
+// a lost context looks like a black rectangle, which is exactly what the
+// recovery path exists to prevent.
+import http from 'node:http';
+import { rmSync } from 'node:fs';
+import { chromium } from 'playwright';
+import { CHROME, bundleForPage, loadFromRoot } from './lib.mjs';
+
+const PORT = Number(process.env.PORT ?? 3161);
+
+// The descriptions are built by the library's own builders, so a probe of the live
+// surface cannot pass against a shape only it makes.
+const { frameOf, glslFrame, wgslFrame } = await loadFromRoot('renderer/frame.ts');
+const { uniformBlockOf } = await loadFromRoot('wgsl-layout.ts');
+const { loadFixture } = await loadFromRoot('tests/support/fixture.ts');
+const { CAPABILITY_FIXTURES } = await loadFromRoot('fixtures/capability-fixtures.ts');
+
+/** A fixture as a frame, derived from its source and its declaration the way any
+ * consumer's build would derive one. The bytes arrive keyed by the address a
+ * description sends a reader to and a frame wants them keyed by the resource that
+ * reads them, which is the remapping a loader does after fetching those files. */
+function fixtureFrame(id) {
+  const entry = CAPABILITY_FIXTURES.find((one) => one.id === id);
+  const { description, code, generated } = loadFixture(id);
+  const bytes = {};
+  for (const resource of description.resources) {
+    if (resource.source) bytes[resource.name] = [...generated.get(resource.source)];
+  }
+  return { description, code, entry, bytes, block: uniformBlockOf(code) };
+}
+
+const VERTEX = 'attribute vec3 position;void main(){gl_Position=vec4(position.xy,0.0,1.0);}';
+
+const ARTEFACT = glslFrame(
+  'surface-probe',
+  VERTEX,
+  'precision highp float;uniform float u_time;uniform vec2 u_resolution;' +
+    'void main(){vec2 uv=gl_FragCoord.xy/u_resolution;gl_FragColor=vec4(uv,abs(sin(u_time)),1.0);}',
+  []
+);
+
+// A swap is what a reader does by moving a control or pressing compile, and
+// every one of them arrives as a new source over a canvas that stays put.
+const SECOND = glslFrame(
+  'surface-probe-second',
+  VERTEX,
+  'precision highp float;void main(){gl_FragColor=vec4(1.0,0.0,0.0,1.0);}',
+  []
+);
+
+// The same shader, the same length, a different colour. A reader editing a
+// constant produces exactly this, and a program cache that cannot tell the two
+// apart hands back the one being replaced.
+const SAME_LENGTH = glslFrame(
+  'surface-probe-second',
+  VERTEX,
+  'precision highp float;void main(){gl_FragColor=vec4(0.0,0.0,1.0,1.0);}',
+  []
+);
+
+const BROKEN = glslFrame(
+  'surface-probe-broken',
+  VERTEX,
+  'precision highp float;void main(){gl_FragColor=notAFunction(1.0);}',
+  []
+);
+
+// The other backend, and the reason it is a second phase rather than four more
+// checks in the first: a canvas hands out one kind of graphics context for as
+// long as it exists, and `navigator.gpu` is missing altogether on a document
+// written in with `setContent`, because that origin is not secure. So this half
+// needs its own canvas and a page served over HTTP.
+//
+// Its canvas is also left out of the document, and that is not tidiness. On the
+// software renderer this runs against, a canvas configured for WebGPU takes the
+// device down with it: measured at 3 frames in a second and then
+// `device.lost` resolving with the reason `destroyed`, against 54 frames a
+// second on a canvas nobody composites. On the real card an on-screen canvas
+// draws for as long as the page is open.
+const WGSL_BLOCK = [
+  { name: 'u_time', offset: 0, size: 4 },
+  { name: 'u_resolution', offset: 8, size: 8 },
+];
+
+const WGSL_CODE = `struct Frame { u_time : f32, u_resolution : vec2<f32> };
+@binding(0) @group(0) var<uniform> frame : Frame;
+
+@fragment
+fn fragMain(@builtin(position) at : vec4f) -> @location(0) vec4f {
+  let uv = at.xy / frame.u_resolution;
+  return vec4f(uv, abs(sin(frame.u_time)), 1.0);
+}`;
+
+const WGSL = wgslFrame('surface-probe-wgsl', WGSL_CODE, WGSL_BLOCK, []);
+
+/** A name WGSL does not have, so the module fails to compile and the card says
+ * where. WebGPU answers that after the fact rather than at the call that made
+ * the program, which is why this is worth a check of its own. */
+const WGSL_BROKEN = wgslFrame(
+  'surface-probe-wgsl-broken',
+  WGSL_CODE.replace('abs(sin(frame.u_time))', 'notAFunction(frame.u_time)'),
+  WGSL_BLOCK,
+  []
+);
+
+// The one fixture whose picture is made out of its own last frame, derived rather
+// than written here. Pausing it is the only way to ask whether state survives a
+// surface stopping, and a description written in this file would be a probe
+// measuring its own idea of a pair.
+const state = fixtureFrame('core-state');
+const STATE = frameOf('core-state', state.description, { wgsl: state.code }, state.entry.uniforms, state.block);
+
+// The per-draw fixture, derived the same way, because rewriting a buffer while the
+// surface runs is what one of these checks is and this fixture already carries a
+// buffer with contents. Its document and its generated bytes are rebuilt into a
+// frame inside the page, since a Uint8Array does not survive the trip through
+// `page.evaluate`.
+const perdraw = fixtureFrame('core-perdraw');
+const perdrawDescription = perdraw.description;
+const perdrawTexts = { wgsl: perdraw.code };
+const perdrawBytes = perdraw.bytes;
+
+const { bundle, staging } = bundleForPage({
+  'renderer/surface': ['createSurface'],
+  'renderer/webgpu-device': ['requestWebGPUDevice'],
+  'renderer/webgpu': ['createWebGPUBackend'],
+  'renderer/frame': ['frameOf'],
+  // The same counting the thumbnail capture is refused by, so a frame with a
+  // band of it missing is one reading here rather than two definitions of
+  // painted that can drift apart.
+  'renderer/frame-coverage': ['readFrameCoverage'],
+});
+const browser = await chromium.launch({
+  executablePath: CHROME,
+  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+});
+const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+await page.setContent('<body><canvas id="c" style="width:200px;height:100px"></canvas></body>');
+await page.addScriptTag({ path: bundle });
+
+const results = await page.evaluate(
+  async ({ artefact, second, sameLength, broken }) => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const canvas = document.getElementById('c');
+    const checks = [];
+    let frames = 0;
+    let lostFired = 0;
+    let restoredFired = 0;
+
+    // The colour has to be read inside the same frame as the draw. Nothing here
+    // asks the browser to keep finished frames, so a canvas read afterwards comes
+    // back empty however it is asked.
+    let centre = null;
+    // The whole buffer costs a read of every pixel, so it is taken on the one
+    // frame that is asked for rather than on all of them.
+    let sampleWhole = false;
+    let whole = null;
+    const originalDraw = WebGL2RenderingContext.prototype.drawArrays;
+    WebGL2RenderingContext.prototype.drawArrays = function (...args) {
+      originalDraw.apply(this, args);
+      const px = new Uint8Array(4);
+      this.readPixels(
+        Math.floor(this.drawingBufferWidth / 2),
+        Math.floor(this.drawingBufferHeight / 2),
+        1,
+        1,
+        this.RGBA,
+        this.UNSIGNED_BYTE,
+        px
+      );
+      centre = `${px[0]},${px[1]},${px[2]}`;
+      if (sampleWhole) {
+        sampleWhole = false;
+        const w = this.drawingBufferWidth;
+        const h = this.drawingBufferHeight;
+        const raw = new Uint8Array(w * h * 4);
+        this.readPixels(0, 0, w, h, this.RGBA, this.UNSIGNED_BYTE, raw);
+        whole = window.readFrameCoverage(raw, { width: w, height: h, channels: 4 });
+      }
+    };
+
+    const surface = await window.createSurface(canvas, artefact, {
+      uniforms: (elapsed) => {
+        frames++;
+        return { u_time: elapsed, u_resolution: [canvas.width, canvas.height] };
+      },
+      dpr: [1, 2],
+      onContextLost: () => lostFired++,
+      onContextRestored: () => restoredFired++,
+    });
+    if (!surface) return [{ name: 'a surface exists', ok: false, detail: 'no context' }];
+
+    surface.resize(200, 100);
+    const density = Math.min(Math.max(window.devicePixelRatio, 1), 2);
+    checks.push({
+      name: 'the drawing buffer is the size times the density',
+      ok: canvas.width === Math.round(200 * density) && canvas.height === Math.round(100 * density),
+      detail: `${canvas.width}x${canvas.height} at density ${density}`,
+    });
+
+    surface.start();
+    await sleep(300);
+    const whileRunning = frames;
+    checks.push({
+      name: 'frames advance while it runs',
+      ok: whileRunning > 3,
+      detail: `${whileRunning} frames in 300ms`,
+    });
+
+    surface.stop();
+    const atStop = frames;
+    await sleep(200);
+    checks.push({
+      name: 'frames stop when it stops',
+      ok: frames === atStop,
+      detail: `${frames - atStop} frames after stopping`,
+    });
+
+    surface.start();
+    await sleep(150);
+    const restarted = frames;
+    surface.stop();
+
+    checks.push({
+      name: 'it starts again after stopping',
+      ok: restarted > atStop,
+      detail: `${restarted - atStop} frames in the second run`,
+    });
+
+    surface.start();
+    await sleep(150);
+    const refusedSwap = surface.setArtefact(second);
+    await sleep(200);
+    const afterSwap = frames;
+    await sleep(200);
+    checks.push({
+      name: 'the shader swaps and the canvas keeps drawing',
+      ok: !refusedSwap && frames > afterSwap && centre === '255,0,0',
+      detail: `centre ${centre}, ${frames - afterSwap} frames after the swap${refusedSwap ? `, refused: ${refusedSwap}` : ''}`,
+    });
+
+    surface.setArtefact(sameLength);
+    await sleep(200);
+    checks.push({
+      name: 'an edit that leaves the source the same length still reaches the card',
+      ok: centre === '0,0,255',
+      detail: `centre ${centre}, both sources ${second.modules.find((m) => m.name === 'fragment').code.length} characters`,
+    });
+
+    const refusedBroken = surface.setArtefact(broken);
+    await sleep(250);
+    const afterBroken = frames;
+    await sleep(200);
+    checks.push({
+      name: 'a source that will not compile is refused and the last one keeps drawing',
+      ok: !!refusedBroken && frames > afterBroken && centre === '0,0,255',
+      detail: `centre ${centre}, ${frames - afterBroken} frames after, said: ${(refusedBroken || 'nothing').split('\n')[0].slice(0, 60)}`,
+    });
+    surface.stop();
+
+    // A resize to a size the canvas never had, which is the shape a capture
+    // takes: a container pinned to the viewport after the surface was built
+    // changes the box, and the buffer, the viewport and whatever the backend
+    // keeps have to move together or part of the frame is never drawn into.
+    // Every other resize here is to the size the canvas already had, which asks
+    // none of that.
+    surface.setArtefact(artefact);
+    surface.resize(320, 180);
+    sampleWhole = true;
+    surface.start();
+    await sleep(200);
+    surface.stop();
+    checks.push({
+      name: 'a resized surface has a drawing buffer of the new size',
+      ok: canvas.width === Math.round(320 * density) && canvas.height === Math.round(180 * density),
+      detail: `${canvas.width}x${canvas.height} at density ${density}`,
+    });
+    checks.push({
+      name: 'a resized surface paints every row and column of its buffer',
+      ok: !!whole && whole.paintedRows === whole.height && whole.paintedColumns === whole.width,
+      detail: whole
+        ? `${whole.paintedRows} of ${whole.height} rows and ${whole.paintedColumns} of ${whole.width} columns painted, ` +
+          `ground ${whole.ground.join(',')} over ${(whole.groundShare * 100).toFixed(1)}%`
+        : 'no frame was sampled',
+    });
+
+    // The card taken back, simulated. A real one comes from sleep or a driver
+    // update, and neither can be arranged in a test.
+    const gl = canvas.getContext('webgl2');
+    const lose = gl && gl.getExtension('WEBGL_lose_context');
+    if (lose) {
+      surface.start();
+      await sleep(100);
+      lose.loseContext();
+      await sleep(200);
+      checks.push({ name: 'a lost card is noticed', ok: lostFired === 1, detail: `${lostFired} lost` });
+      lose.restoreContext();
+      await sleep(400);
+      checks.push({
+        name: 'a returned card is picked up',
+        ok: restoredFired === 1,
+        detail: `${restoredFired} restored`,
+      });
+      const afterRestore = frames;
+      await sleep(200);
+      checks.push({
+        name: 'it draws again after the card returns',
+        ok: frames > afterRestore,
+        detail: `${frames - afterRestore} frames after`,
+      });
+    } else {
+      checks.push({ name: 'a lost card is noticed', ok: false, detail: 'WEBGL_lose_context missing' });
+    }
+
+    surface.dispose();
+    return checks;
+  },
+  { artefact: ARTEFACT, second: SECOND, sameLength: SAME_LENGTH, broken: BROKEN }
+);
+
+await browser.close();
+
+// The WebGPU half, on a browser of its own so the WebGL numbers above stay on
+// the browser that recorded them, and on a page served over HTTP so the origin
+// is secure enough to report a graphics API at all.
+const server = http.createServer((_request, response) => {
+  response.writeHead(200, { 'Content-Type': 'text/html' });
+  response.end('<!doctype html><html><body style="margin:0"><canvas id="c" style="width:200px;height:100px"></canvas></body></html>');
+});
+await new Promise((ready) => server.listen(PORT, '127.0.0.1', ready));
+
+const card = await chromium.launch({
+  executablePath: CHROME,
+  args: [
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--enable-unsafe-webgpu',
+  ],
+});
+const gpuPage = await card.newPage({ viewport: { width: 400, height: 300 } });
+await gpuPage.goto(`http://127.0.0.1:${PORT}/`);
+await gpuPage.addScriptTag({ path: bundle });
+
+const gpuResults = await gpuPage.evaluate(
+  async ({ artefact, broken, state, perdraw }) => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const canvas = document.createElement('canvas');
+    const checks = [];
+    let frames = 0;
+    const said = [];
+
+    const device = await window.requestWebGPUDevice();
+    if (!device) {
+      return [{ name: 'a WGSL module draws', ok: false, detail: 'no WebGPU adapter, the browser needs a flag' }];
+    }
+
+    // A WebGPU frame calls nothing this file can patch the way it patches
+    // `drawArrays`, and the canvas cannot be read back either: it is left out of
+    // the document on purpose, and a canvas configured for WebGPU here loses the
+    // device inside a second. What the backend draws into is a texture of its
+    // own carrying `COPY_SRC`, so remembering the last one made is what gives a
+    // frame to read.
+    let target = null;
+    const originalCreateTexture = device.createTexture.bind(device);
+    device.createTexture = (spec) => {
+      const texture = originalCreateTexture(spec);
+      if (spec.usage & GPUTextureUsage.COPY_SRC) target = texture;
+      return texture;
+    };
+
+    // A texture copies out a row at a time on a 256 byte stride, so the rows
+    // come back padded and the padding has to come off before anything counts
+    // pixels.
+    const readTexture = async (texture) => {
+      const stride = Math.ceil((texture.width * 4) / 256) * 256;
+      const buffer = device.createBuffer({
+        size: stride * texture.height,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+      });
+      const encoder = device.createCommandEncoder();
+      encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow: stride }, [texture.width, texture.height]);
+      device.queue.submit([encoder.finish()]);
+      await buffer.mapAsync(GPUMapMode.READ);
+      const padded = new Uint8Array(buffer.getMappedRange());
+      const rows = new Uint8Array(texture.width * texture.height * 4);
+      for (let y = 0; y < texture.height; y++) {
+        rows.set(padded.subarray(y * stride, y * stride + texture.width * 4), y * texture.width * 4);
+      }
+      buffer.unmap();
+      buffer.destroy();
+      return rows;
+    };
+
+    const surface = await window.createSurface(canvas, artefact, {
+      backend: 'webgpu',
+      device,
+      uniforms: (elapsed) => {
+        frames++;
+        return { u_time: elapsed, u_resolution: [canvas.width, canvas.height] };
+      },
+      dpr: [1, 2],
+      onError: (message) => said.push(message),
+    });
+    if (!surface) return [{ name: 'a WGSL module draws', ok: false, detail: 'no webgpu context' }];
+
+    surface.resize(200, 100);
+    surface.start();
+    await sleep(500);
+    checks.push({
+      name: 'a hand-typed WGSL module draws',
+      ok: frames > 5 && surface.backend === 'webgpu' && said.length === 0,
+      detail: `${frames} frames in 500ms on ${surface.backend}${said.length ? `, said: ${said[0]}` : ''}`,
+    });
+
+    surface.setArtefact(broken);
+    await sleep(500);
+    const afterBroken = frames;
+    await sleep(300);
+    checks.push({
+      name: 'a WGSL module that will not compile is refused in the compiler’s own words',
+      ok: said.length > 0 && said[0].includes('notAFunction') && frames > afterBroken,
+      detail: `${frames - afterBroken} frames after, said: ${(said[0] ?? 'nothing').split('\n')[0].slice(0, 80)}`,
+    });
+
+    // The same resize the other backend is held to, and the one this backend has
+    // more ways to get wrong: it keeps a texture of its own, and the copy that
+    // reaches a canvas names the size it last recorded, so three sizes have to
+    // move together where the other backend has one.
+    surface.setArtefact(artefact);
+    surface.resize(320, 180);
+    surface.start();
+    await sleep(300);
+    surface.stop();
+    const density = Math.min(Math.max(window.devicePixelRatio, 1), 2);
+    checks.push({
+      name: 'a resized WebGPU surface has a drawing buffer of the new size',
+      ok: canvas.width === Math.round(320 * density) && canvas.height === Math.round(180 * density),
+      detail: `${canvas.width}x${canvas.height} at density ${density}`,
+    });
+    checks.push({
+      name: 'the WebGPU backend draws at the size the surface was resized to',
+      ok: !!target && target.width === canvas.width && target.height === canvas.height,
+      detail: target ? `${target.width}x${target.height} against a canvas of ${canvas.width}x${canvas.height}` : 'no frame texture',
+    });
+    const coverage = target
+      ? window.readFrameCoverage(await readTexture(target), {
+          width: target.width,
+          height: target.height,
+          channels: 4,
+        })
+      : null;
+    checks.push({
+      name: 'a resized WebGPU surface paints every row and column of its frame',
+      ok: !!coverage && coverage.paintedRows === coverage.height && coverage.paintedColumns === coverage.width,
+      detail: coverage
+        ? `${coverage.paintedRows} of ${coverage.height} rows and ${coverage.paintedColumns} of ${coverage.width} columns painted, ` +
+          `ground ${coverage.ground.join(',')} over ${(coverage.groundShare * 100).toFixed(1)}%`
+        : 'no frame was read',
+    });
+
+    // A field made out of its own last frame is the one case where stopping the
+    // loop could lose something. The textures belong to the program and the
+    // program outlives a stop, so what is asked here is whether that holds: a
+    // paused surface reads the same twice, and a resumed one carries on rather
+    // than starting from an empty grid.
+    surface.setArtefact(state);
+    surface.resize(200, 100);
+    surface.start();
+    await sleep(700);
+    surface.stop();
+    await sleep(120);
+    const paused = target ? await readTexture(target) : null;
+    const levelsOf = (rows) => {
+      const seen = new Set();
+      for (let i = 0; i < rows.length; i += 4) seen.add(rows[i]);
+      return seen.size;
+    };
+    await sleep(400);
+    const stillPaused = target ? await readTexture(target) : null;
+    const same =
+      !!paused && !!stillPaused && paused.length === stillPaused.length && paused.every((v, i) => v === stillPaused[i]);
+    checks.push({
+      name: 'a paused surface holds the field it had rather than clearing it',
+      ok: same && levelsOf(paused) > 1,
+      detail: paused
+        ? `${levelsOf(paused)} levels, ${same ? 'byte-identical' : 'different'} after 400ms stopped`
+        : 'no frame was read',
+    });
+
+    surface.start();
+    await sleep(700);
+    surface.stop();
+    await sleep(120);
+    const resumed = target ? await readTexture(target) : null;
+    const moved = !!paused && !!resumed && resumed.some((v, i) => v !== paused[i]);
+    checks.push({
+      name: 'a resumed surface carries the field on rather than starting it again',
+      // A field that had been thrown away would come back at the one level an
+      // empty grid paints, which is what the same shader reads with its pair not
+      // swapping at all.
+      ok: moved && !!resumed && levelsOf(resumed) >= levelsOf(paused),
+      detail: resumed
+        ? `${levelsOf(paused)} levels before the pause and ${levelsOf(resumed)} after it, ${moved ? 'the picture moved' : 'the picture is unchanged'}`
+        : 'no frame was read',
+    });
+
+    surface.dispose();
+
+    // A buffer's contents replaced while the page runs, which is a runtime write
+    // the way feeding the uniform block is, done here on a backend of its own so
+    // the surface checks above keep the numbers they recorded. The per-draw preset
+    // carries four copies' colours the declaration generated; the page writes four new ones
+    // over the top of them between one draw and the next and reads them back off
+    // the card, and the picture is read either side to prove the write reached it.
+    const rewriteCanvas = document.createElement('canvas');
+    rewriteCanvas.width = 200;
+    rewriteCanvas.height = 100;
+    const rewriteBackend = window.createWebGPUBackend(rewriteCanvas, device);
+    if (!rewriteBackend) {
+      checks.push({ name: 'a buffer is rewritten while the surface runs', ok: false, detail: 'no webgpu context' });
+    } else {
+      rewriteBackend.resize(200, 100);
+      const generated = new Map(Object.entries(perdraw.bytes).map(([name, bytes]) => [name, new Uint8Array(bytes)]));
+      const frame = window.frameOf(
+        'core-perdraw',
+        perdraw.description,
+        perdraw.texts,
+        perdraw.uniforms,
+        perdraw.block,
+        undefined,
+        generated
+      );
+      const program = rewriteBackend.createProgram(frame);
+      program.setUniforms({ u_time: 1, u_resolution: [200, 100] });
+      program.draw();
+      const before = [...(await program.readBuffer('copies'))];
+      const pxBefore = await rewriteBackend.readPixels();
+
+      // Four fresh copies, a colour and a height each, laid out the way std430 lays
+      // a vec3 followed by an f32: four floats a copy, sixteen bytes, which is the
+      // sixty-four the buffer holds. Deliberately unlike the generated palette so the
+      // words that read back and the picture that repaints both move.
+      const fresh = new Float32Array(16);
+      for (let copy = 0; copy < 4; copy++) {
+        fresh[copy * 4] = 0.15 * (copy + 1);
+        fresh[copy * 4 + 1] = 0.85;
+        fresh[copy * 4 + 2] = 0.2;
+        fresh[copy * 4 + 3] = 0.35;
+      }
+      program.writeBuffer('copies', new Uint8Array(fresh.buffer));
+      program.draw();
+      const after = [...(await program.readBuffer('copies'))];
+      const pxAfter = await rewriteBackend.readPixels();
+
+      const wrote = [...new Uint32Array(fresh.buffer)];
+      const readBack = after.length === wrote.length && after.every((word, i) => word === wrote[i]);
+      const changed = before.length === after.length && before.some((word, i) => word !== after[i]);
+      let moved = 0;
+      for (let i = 0; i < pxBefore.length; i++) if (pxBefore[i] !== pxAfter[i]) moved++;
+
+      checks.push({
+        name: 'a buffer is rewritten while the surface runs and the card reads the new words back',
+        ok: readBack && changed,
+        detail: `${before.length} words, ${changed ? 'changed after the write' : 'unchanged'}, the new words ${readBack ? 'read back' : 'did not read back'}`,
+      });
+      checks.push({
+        name: 'rewriting the per-draw buffer repaints the picture',
+        ok: moved > 0,
+        detail: `${moved} of ${pxBefore.length} bytes moved`,
+      });
+      program.dispose();
+      rewriteBackend.dispose();
+    }
+
+    return checks;
+  },
+  {
+    artefact: WGSL,
+    broken: WGSL_BROKEN,
+    state: STATE,
+    perdraw: { description: perdrawDescription, texts: perdrawTexts, block: perdraw.block, uniforms: perdraw.entry.uniforms, bytes: perdrawBytes },
+  }
+);
+
+await card.close();
+server.close();
+rmSync(staging, { recursive: true, force: true });
+
+let failed = 0;
+for (const check of [...results, ...gpuResults]) {
+  console.log(`${check.ok ? 'PASS' : 'FAIL'} ${check.name}  ${check.detail}`);
+  if (!check.ok) failed++;
+}
+const total = results.length + gpuResults.length;
+console.log(`\n${total - failed} of ${total} checks pass`);
+process.exit(failed ? 1 : 0);
