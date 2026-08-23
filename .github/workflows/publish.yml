@@ -48,10 +48,18 @@ jobs:
 
       - run: npm ci
 
-      # The library is held by its own tests before a version of it exists. The
-      # two gates that need a shader corpus, a harness and a browser are not the
-      # package's, so they are not run here and are not missing here either.
+      # The library is held by everything that can hold it before a version of
+      # it exists. The tests need nothing; the gates need a browser, and a
+      # published version that has not been drawn with is a version nobody
+      # checked. The one gate that needs a real graphics card cannot run on a
+      # runner at all, so a release is short of that reading and says so here
+      # rather than pretending the set is complete.
       - run: npm test
+
+      # The browser the dependency pins, rather than whatever the runner carries.
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run gate:browser
 
       - name: Publish
         # --access public because the name is scoped, and a scoped package is

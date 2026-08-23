@@ -39,7 +39,7 @@
     "test": "vitest run",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "prepublishOnly": "npm run build",
-    "gate:browser": "node gates/browser-pin.mjs"
+    "gate:browser": "node gates/all.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
