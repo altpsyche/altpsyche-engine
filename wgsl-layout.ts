@@ -15,7 +15,7 @@
  * sixteen. They are held to the block Slang emits for the same fields, which is
  * the only thing that separates a correct layout from a plausible one.
  */
-import type { UniformSlot } from './renderer/types';
+import type { UniformSlot } from './renderer/types.js';
 
 /**
  * The fields of the one uniform struct a WGSL source declares, in the order the

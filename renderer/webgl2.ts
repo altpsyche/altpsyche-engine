@@ -12,8 +12,8 @@
  * frame on every reader's device so that a build script can screenshot after the
  * fact. A caller that wants pixels draws and reads in the same step instead.
  */
-import type { Backend, DeviceReport, ShaderFrame, ShaderProgram, UniformValue } from './types';
-import { componentsOf, drawsCorners, isRenderPass, moduleOf } from './types';
+import type { Backend, DeviceReport, ShaderFrame, ShaderProgram, UniformValue } from './types.js';
+import { componentsOf, drawsCorners, isRenderPass, moduleOf } from './types.js';
 
 /** A single triangle covering the frame. Two triangles would draw the diagonal
  * twice, and there is no geometry here beyond filling the screen. */

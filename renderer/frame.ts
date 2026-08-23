@@ -13,7 +13,7 @@
  * carries it; a frame is that description with every document's text in it, which
  * is what a backend takes.
  */
-import { uniformBindingOf } from '../wgsl-binding';
+import { uniformBindingOf } from '../wgsl-binding.js';
 import type {
   DocumentAddress,
   FrameDescription,
@@ -21,7 +21,7 @@ import type {
   ShaderFrame,
   UniformResource,
   UniformSlot,
-} from './types';
+} from './types.js';
 
 /** The name every one-pass shader's pipeline carries. Nothing reads it but the
  * pass that names it, and a description with two pipelines needs two names. */

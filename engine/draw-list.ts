@@ -10,8 +10,8 @@
  * nothing shipping in the library reaches the site.
  */
 
-import type { Mat4 } from './maths';
-import { type Scene, worldMatrix } from './scene';
+import type { Mat4 } from './maths.js';
+import { type Scene, worldMatrix } from './scene.js';
 
 /**
  * One object a frame draws: which entity it is, and where the engine placed it in

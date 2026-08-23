@@ -12,8 +12,8 @@
  * that nothing shipping in the library reaches the site.
  */
 
-import type { Scene } from './scene';
-import { type Draw, drawList } from './draw-list';
+import type { Scene } from './scene.js';
+import { type Draw, drawList } from './draw-list.js';
 
 /**
  * A material: the pipeline that draws an object and the values that one object

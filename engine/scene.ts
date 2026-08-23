@@ -12,7 +12,7 @@
  * It imports nothing from the site, only the maths module beside it.
  */
 
-import { type Mat4, type Vec3, mat4 } from './maths';
+import { type Mat4, type Vec3, mat4 } from './maths.js';
 
 /**
  * Where an entity sits, how it is turned, and how big it is, all relative to its

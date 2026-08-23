@@ -1,8 +1,15 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    // Node's own resolution rather than a bundler's, because what this emits is
+    // installed and imported rather than bundled. Under a bundler's rules a
+    // relative import may leave its extension off, and `tsc` copies the specifier
+    // into the output verbatim, so `dist/index.js` asked node for a directory and
+    // node refused it: a published package only a bundler could load. The cost is
+    // that every relative import in the sources below writes `.js` even though the
+    // file beside it is `.ts`, which is what node will look for once it is emitted.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "declaration": true,
     "outDir": "./dist",

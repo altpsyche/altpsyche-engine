@@ -15,7 +15,7 @@
  * outside React had to build its own, which is why one of them never injected
  * the values the others did: they were written separately and drifted.
  */
-import type { BackendName, DeviceReport, ShaderFrame, UniformValue } from './types';
+import type { BackendName, DeviceReport, ShaderFrame, UniformValue } from './types.js';
 
 /** How many compiled programs one renderer keeps warm at once. A program owns
  * a set of card resources, so a renderer that never lets one go grows its card
@@ -92,10 +92,10 @@ export async function createFrameRenderer(
   let backend;
   if (options.backend === 'webgpu') {
     if (!options.device) return null;
-    const { createWebGPUBackend } = await import('./webgpu');
+    const { createWebGPUBackend } = await import('./webgpu.js');
     backend = createWebGPUBackend(canvas, options.device, options.onRefused);
   } else {
-    const { createWebGL2Backend } = await import('./webgl2');
+    const { createWebGL2Backend } = await import('./webgl2.js');
     backend = createWebGL2Backend(canvas);
   }
   if (!backend) return null;

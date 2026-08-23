@@ -31,7 +31,7 @@ import type {
   TextureResource,
   UniformValue,
   VertexResource,
-} from './types';
+} from './types.js';
 import {
   dispatchesIndirectly,
   drawsCorners,
@@ -40,8 +40,8 @@ import {
   moduleOf,
   resourceOf,
   uniformResourceOf,
-} from './types';
-import { assertWholeWords, TIMED_QUERY_BYTES, VISIBLE_QUERY_BYTES } from './frame-rules';
+} from './types.js';
+import { assertWholeWords, TIMED_QUERY_BYTES, VISIBLE_QUERY_BYTES } from './frame-rules.js';
 
 /** The three corners that cover the frame in one triangle, drawn whenever a
  * pipeline asks for `fullscreen` rather than naming a vertex document of its
