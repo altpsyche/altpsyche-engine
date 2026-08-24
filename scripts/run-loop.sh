@@ -223,6 +223,12 @@ item and do not ask questions: nobody is at the keyboard.$SCOPE
 - Read CLAUDE.md first, then the whole of docs/ROADMAP.md's queue, then §17 of
   docs/RoadToPureEngine.md. Reading the whole queue is not optional: the lowest-numbered
   reachable item is often in a phase you were not in.
+- CHOOSE BY NUMBER, NOT BY WHERE IT SITS. Scan the whole queue and take the lowest number that
+  qualifies; do not take the first qualifying item you read. The two came apart once — four
+  review items numbered 59 to 62 were filed inside Phase 0, a run met 59 before 10 and worked
+  it, and the document rather than the rule was at fault. It is ascending order now, with item 1
+  in Phase 2 as the only exception, and it is unreachable anyway. If you ever meet a queue that
+  is out of order again, the number decides and the deviation is worth a JOURNAL row.
 - CHOOSE: the lowest-numbered item whose \`Status\` is \`open\` and every item named in its
   \`Needs\` is \`done\`. \`lifted\` never satisfies a \`Needs\`. If an item's own text says it
   goes alone, it is the whole of this step.

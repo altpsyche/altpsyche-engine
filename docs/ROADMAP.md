@@ -16,7 +16,9 @@ The library ships from `main` as `@altpsyche/engine`. The site that consumes it 
 
 **A phase here is a stage there.** Phase N is Stage N of [RoadToPureEngine.md](RoadToPureEngine.md) §15, with the same number and the same exit criterion. There is deliberately no second numbering scheme: a plan with two sets of numbers for one thing is a plan whose two halves drift.
 
-**An item number is an address, not an order.** Numbers are assigned once and never reused or renumbered, because they are cited from outside this repository — item 1 is cited as this repository's item 1 in the consuming log's D118. So item 1 sits in Phase 2, where its dependency puts it, rather than first.
+**An item number is an address, and the queue reads in ascending numeric order.** Numbers are assigned once and never reused or renumbered, because they are cited from outside this repository — item 1 is cited as this repository's item 1 in the consuming log's D118.
+
+**Item 1 is the one place those two disagree**, and it is worth knowing why the exception is safe: it sits in Phase 2 because that is where its dependency puts it, so a reader going top to bottom meets item 2 first. It is unreachable until item 21 lands, so the disagreement can never change which item is chosen. **No new item may be filed out of numeric order** — see "Found by review" at the end, which is where an item added later goes.
 
 **Done when is the only definition of done.** Every item below carries one, and it is written so a person who did not do the work can check it. An item with no observable finish is an item that is never finished.
 
@@ -132,78 +134,6 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 **Needs.** Nothing. `report()` already gathers most of it and has never had a caller.
 
 **Note.** Three states, not two: an adapter that came back and then died in under a second is a success by any two-state reading. See decision 11 and the measured case beside it.
-
-### 59. A duplicate document name is refused
-
-**Status.** done
-
-**Asks for.** `frameOf` refuses a description whose documents do not carry distinct names, by name, the way it already refuses a document with no text and a picture with no bytes.
-
-**Done when.** A description with two documents sharing one name is refused with both the id and the repeated name in the message, and a test asserts it. A description with two distinctly-named documents still assembles.
-
-**Needs.** item 3.
-
-**Why it exists.** Found reviewing item 3, which is otherwise correct. Item 3 moved document keying from `address` to `name`, which is what lets two WGSL documents coexist — but nothing checks that the names differ, and the old failure mode survives one step to the left:
-
-- `documentNames` collapses the pair through a `Set`, so a loader fetches one text for two documents.
-- `assembleFrame`'s `Object.fromEntries` maps both to one key, so the second text wins.
-- `frameOf`'s missing-text check passes, because the name does have text.
-- The frame carries two modules with one name and one body, and `moduleOf` hands a pipeline whichever it finds first.
-
-So two documents meant to differ still silently become one. Before item 3 that happened whenever two WGSL documents met, because the address was fixed at `'wgsl'`; after it, only when an author repeats a name. That is a real improvement and not a closed hole. **The refusal site already exists**, which is the argument for one line rather than waiting for item 19's `validate(graph)`: `frameOf` is already where a malformed description is stopped, and a rule enforced in two places later is the thing item 19 exists to prevent.
-
-### 60. The diagram loses the files that left with the website
-
-**Status.** open
-
-**Asks for.** `ABSTRACTION.md`'s Mermaid diagram stops naming files that do not exist here, and the path gate stops being blind to fenced blocks.
-
-**Done when.** No node label in that diagram names a path absent from this tree, and `tests/docs-paths.test.ts` reads Mermaid node labels as well as backtick and link spans — negative-tested on an injected stale path inside a fence, the way item 5 negative-tested the two shapes it already covers.
-
-**Needs.** item 5.
-
-**Why it exists.** Item 5 met its own wording exactly: it checks backtick-quoted and link-quoted paths, and its own blind-gate row in [JOURNAL.md](JOURNAL.md) says the diagram sits in a stripped fenced block, neither checked nor changed. That row is honest and it was not tracked, and JOURNAL.md's own rule is that a row needing work nobody is tracking needs a roadmap item in the same commit. This is that item.
-
-Seven website paths are still in that fence today, named here without backticks so that item 5's own gate does not read this item as a claim that they exist: content/shaders, hooks/useShaderSurface.ts, lib/renderer/artefacts.ts, lib/renderer/choose.ts, lib/shader-base.ts, public/shaders/build/manifest.json, public/shaders/source/*.wgsl. Writing them plainly is deliberate rather than a workaround — the alternative was seven more entries on `ALLOWED_ABSENT`, and that list is a widened bar whose value comes from being short. **This item's first draft did quote them, and the gate failed the commit**, which is the gate doing exactly what item 5 built it for. The diagram is the most-read part of that document, so this is where §3 row 12 of [RoadToPureEngine.md](RoadToPureEngine.md) is least closed rather than most.
-
-### 61. The WebGL 2 backend feeds an integer uniform as an integer
-
-**Status.** open
-
-**Asks for.** A loose scalar uniform declared `int` in the source is fed with `gl.uniform1i` rather than `gl.uniform1f`.
-
-**Done when.** A source declaring `uniform int` receives the value it was handed, asserted against the fake WebGL 2 context by the call made rather than by the picture, and a source declaring one alongside floats gets both.
-
-**Needs.** Nothing.
-
-**Why it exists.** [renderer/webgl2.ts](../renderer/webgl2.ts) sends every non-array scalar through `gl.uniform1f`. Feeding an `int` uniform that way is `GL_INVALID_OPERATION` in WebGL 2, so the uniform keeps its default of 0 and the shader animates off a number nobody delivered.
-
-**It is a general defect, not a leftover.** It was found through item 6's producer, which has since been reverted, and it survives that removal untouched: decision 6 says a consumer may hand this library a GLSL document, and `uniform int` is ordinary GLSL. Any consumer writing one hits this today, silently, and no gate here can see it — the node suite reads calls rather than values, and the browser corpus has no GLSL source declaring an integer.
-
-**It is not a one-line fix, and that is the useful part of this entry.** `setUniforms` receives only `values: Record<string, UniformValue>` and infers the call from the JavaScript shape of each value — non-array becomes `uniform1f`, and an array's length picks `uniform2fv`, `uniform3fv` or `uniform4fv`. There is no declared type in scope. The type does exist on the frame, as `ShaderFrame.uniforms`, and `createProgram` receives the whole frame, so a name-to-type map captured when the program is built is the obvious route.
-
-**One thing to decide while landing it.** [RoadToPureEngine.md](RoadToPureEngine.md) §14 retires `ShaderFrame.uniforms` from the graph, because what a control panel shows is not a render fact. So the obvious route leans on a field that is scheduled to leave. If it is taken anyway, the type has to move to the binding or the pipeline when that field goes, and this entry is where that follow-on is recorded.
-
-**Also worth checking when landing it.** The uniform-block path above the loose path writes members into a byte buffer as floats too, so an `int` member of a block has the same problem by a different route. No corpus source has one today, so both paths want a test rather than only the loose one.
-
-### 62. Decision 6's promise is confirmed on a machine that has WebGPU
-
-**Status.** open
-
-**Asks for.** One reading, on a device that actually returns a WebGPU adapter, showing that a GLSL-authored frame is drawn by WebGL 2 there and that the picture comes out.
-
-**Done when.** A dated row in [DEVICES.md](DEVICES.md) records a machine whose `probe()` reports WebGPU returned and survived, on which `examples/glsl-fragment` selected `webgl2` and drew. Not a node assertion: the point is the machine.
-
-**Needs.** item 9.
-
-**Why it exists.** §17 decision 6's whole promise is that a consumer arriving with a GLSL shader **gets a picture rather than a lecture**, because GLSL selects WebGL 2 even where WebGPU exists. Items 6, 8 and 9 each built a piece of that and each disclosed, accurately, the half it could not prove:
-
-- item 8's row: the offering in its tests is a written fixture rather than a probe, because this machine never returns a real WebGPU adapter, and nothing feeds the chosen backend name to a renderer on a real card.
-- item 9's row: only the pure `readingOf` is exercised; the browser half never ran, so `device-report` has not been run here at all.
-
-Each row is honest and neither is wrong. What nobody owned is the join: **on a machine that has WebGPU, nothing has yet shown a GLSL paste drawing through WebGL 2.** Three green halves are not a verified whole, and this is the item that says so.
-
-**It cannot be settled on the machine the loop runs on**, per §17's three harness notes: every headless launch there reaches SwiftShader whatever the flags say, and a real adapter needs a visible window with `--enable-features=Vulkan` and `--ozone-platform=x11` together. So an unattended run should **lift this item rather than work it**, and the reading belongs to whoever has the hardware — the same standing job as item 57.
 
 ---
 
@@ -785,3 +715,83 @@ Not phase-bound. Each can land whenever its dependency has.
 **Needs.** Every item above.
 
 **The consequence, said out loud because otherwise it gets dropped.** That last gate cannot be graded from inside this repository, so **1.0 depends on something outside this repository's control.** The package can be finished by every other measure and still be 0.x. The useful effect is that the examples suite and the README's first screen stop being documentation chores and become the mechanism that produces the last checkbox.
+
+---
+
+## Found by review
+
+Items that came out of reading landed work rather than from the plan. They are numbered after 58 because a number is an address that is never reused, and they sit here, last, because **the queue reads in ascending numeric order and a reader must be able to trust that.**
+
+An earlier draft put these four inside Phase 0, where their subject is. An unattended run then read the queue top to bottom, met item 59 before item 10, and worked it — correctly, by the only reading the document supported, and not the one the selection rule intended. The rule was never ambiguous; the document was.
+
+### 59. A duplicate document name is refused
+
+**Status.** done
+
+**Asks for.** `frameOf` refuses a description whose documents do not carry distinct names, by name, the way it already refuses a document with no text and a picture with no bytes.
+
+**Done when.** A description with two documents sharing one name is refused with both the id and the repeated name in the message, and a test asserts it. A description with two distinctly-named documents still assembles.
+
+**Needs.** item 3.
+
+**Why it exists.** Found reviewing item 3, which is otherwise correct. Item 3 moved document keying from `address` to `name`, which is what lets two WGSL documents coexist — but nothing checks that the names differ, and the old failure mode survives one step to the left:
+
+- `documentNames` collapses the pair through a `Set`, so a loader fetches one text for two documents.
+- `assembleFrame`'s `Object.fromEntries` maps both to one key, so the second text wins.
+- `frameOf`'s missing-text check passes, because the name does have text.
+- The frame carries two modules with one name and one body, and `moduleOf` hands a pipeline whichever it finds first.
+
+So two documents meant to differ still silently become one. Before item 3 that happened whenever two WGSL documents met, because the address was fixed at `'wgsl'`; after it, only when an author repeats a name. That is a real improvement and not a closed hole. **The refusal site already exists**, which is the argument for one line rather than waiting for item 19's `validate(graph)`: `frameOf` is already where a malformed description is stopped, and a rule enforced in two places later is the thing item 19 exists to prevent.
+
+### 60. The diagram loses the files that left with the website
+
+**Status.** open
+
+**Asks for.** `ABSTRACTION.md`'s Mermaid diagram stops naming files that do not exist here, and the path gate stops being blind to fenced blocks.
+
+**Done when.** No node label in that diagram names a path absent from this tree, and `tests/docs-paths.test.ts` reads Mermaid node labels as well as backtick and link spans — negative-tested on an injected stale path inside a fence, the way item 5 negative-tested the two shapes it already covers.
+
+**Needs.** item 5.
+
+**Why it exists.** Item 5 met its own wording exactly: it checks backtick-quoted and link-quoted paths, and its own blind-gate row in [JOURNAL.md](JOURNAL.md) says the diagram sits in a stripped fenced block, neither checked nor changed. That row is honest and it was not tracked, and JOURNAL.md's own rule is that a row needing work nobody is tracking needs a roadmap item in the same commit. This is that item.
+
+Seven website paths are still in that fence today, named here without backticks so that item 5's own gate does not read this item as a claim that they exist: content/shaders, hooks/useShaderSurface.ts, lib/renderer/artefacts.ts, lib/renderer/choose.ts, lib/shader-base.ts, public/shaders/build/manifest.json, public/shaders/source/*.wgsl. Writing them plainly is deliberate rather than a workaround — the alternative was seven more entries on `ALLOWED_ABSENT`, and that list is a widened bar whose value comes from being short. **This item's first draft did quote them, and the gate failed the commit**, which is the gate doing exactly what item 5 built it for. The diagram is the most-read part of that document, so this is where §3 row 12 of [RoadToPureEngine.md](RoadToPureEngine.md) is least closed rather than most.
+
+### 61. The WebGL 2 backend feeds an integer uniform as an integer
+
+**Status.** open
+
+**Asks for.** A loose scalar uniform declared `int` in the source is fed with `gl.uniform1i` rather than `gl.uniform1f`.
+
+**Done when.** A source declaring `uniform int` receives the value it was handed, asserted against the fake WebGL 2 context by the call made rather than by the picture, and a source declaring one alongside floats gets both.
+
+**Needs.** Nothing.
+
+**Why it exists.** [renderer/webgl2.ts](../renderer/webgl2.ts) sends every non-array scalar through `gl.uniform1f`. Feeding an `int` uniform that way is `GL_INVALID_OPERATION` in WebGL 2, so the uniform keeps its default of 0 and the shader animates off a number nobody delivered.
+
+**It is a general defect, not a leftover.** It was found through item 6's producer, which has since been reverted, and it survives that removal untouched: decision 6 says a consumer may hand this library a GLSL document, and `uniform int` is ordinary GLSL. Any consumer writing one hits this today, silently, and no gate here can see it — the node suite reads calls rather than values, and the browser corpus has no GLSL source declaring an integer.
+
+**It is not a one-line fix, and that is the useful part of this entry.** `setUniforms` receives only `values: Record<string, UniformValue>` and infers the call from the JavaScript shape of each value — non-array becomes `uniform1f`, and an array's length picks `uniform2fv`, `uniform3fv` or `uniform4fv`. There is no declared type in scope. The type does exist on the frame, as `ShaderFrame.uniforms`, and `createProgram` receives the whole frame, so a name-to-type map captured when the program is built is the obvious route.
+
+**One thing to decide while landing it.** [RoadToPureEngine.md](RoadToPureEngine.md) §14 retires `ShaderFrame.uniforms` from the graph, because what a control panel shows is not a render fact. So the obvious route leans on a field that is scheduled to leave. If it is taken anyway, the type has to move to the binding or the pipeline when that field goes, and this entry is where that follow-on is recorded.
+
+**Also worth checking when landing it.** The uniform-block path above the loose path writes members into a byte buffer as floats too, so an `int` member of a block has the same problem by a different route. No corpus source has one today, so both paths want a test rather than only the loose one.
+
+### 62. Decision 6's promise is confirmed on a machine that has WebGPU
+
+**Status.** open
+
+**Asks for.** One reading, on a device that actually returns a WebGPU adapter, showing that a GLSL-authored frame is drawn by WebGL 2 there and that the picture comes out.
+
+**Done when.** A dated row in [DEVICES.md](DEVICES.md) records a machine whose `probe()` reports WebGPU returned and survived, on which `examples/glsl-fragment` selected `webgl2` and drew. Not a node assertion: the point is the machine.
+
+**Needs.** item 9.
+
+**Why it exists.** §17 decision 6's whole promise is that a consumer arriving with a GLSL shader **gets a picture rather than a lecture**, because GLSL selects WebGL 2 even where WebGPU exists. Items 6, 8 and 9 each built a piece of that and each disclosed, accurately, the half it could not prove:
+
+- item 8's row: the offering in its tests is a written fixture rather than a probe, because this machine never returns a real WebGPU adapter, and nothing feeds the chosen backend name to a renderer on a real card.
+- item 9's row: only the pure `readingOf` is exercised; the browser half never ran, so `device-report` has not been run here at all.
+
+Each row is honest and neither is wrong. What nobody owned is the join: **on a machine that has WebGPU, nothing has yet shown a GLSL paste drawing through WebGL 2.** Three green halves are not a verified whole, and this is the item that says so.
+
+**It cannot be settled on the machine the loop runs on**, per §17's three harness notes: every headless launch there reaches SwiftShader whatever the flags say, and a real adapter needs a visible window with `--enable-features=Vulkan` and `--ozone-platform=x11` together. So an unattended run should **lift this item rather than work it**, and the reading belongs to whoever has the hardware — the same standing job as item 57.
