@@ -165,7 +165,7 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 
 ### 12. The pipeline cache, keyed on structure
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `pipeline/` owning module compilation and a cache keyed on the whole structure a pipeline depends on — source, entry points, formats, blend, depth, vertex layout.
 

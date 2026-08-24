@@ -27,6 +27,7 @@
     "index.ts",
     "renderer/**/*.ts",
     "resource/**/*.ts",
+    "pipeline/**/*.ts",
     "engine/**/*.ts",
     "shader-geometry.ts",
     "wgsl-binding.ts",
