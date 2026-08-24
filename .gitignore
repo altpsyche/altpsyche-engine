@@ -7,3 +7,8 @@ dist/
 # What `npm pack` leaves behind, which is the thing that gets published rather
 # than something to commit.
 *.tgz
+
+# What an unattended run keeps while it is going. The lock names the process
+# holding this tree, so it is worthless to a checkout and dangerous to commit:
+# a stale lock in the history refuses every run until somebody deletes it.
+.loop/

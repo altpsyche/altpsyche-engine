@@ -24,6 +24,18 @@ The library ships from `main` as `@altpsyche/engine`. The site that consumes it 
 
 **Ordering inside a phase is a suggestion; the dependency graph is not.** Two items in one phase with no dependency between them may land in either order or at once.
 
+**Status is one of three words**, and whoever lands an item maintains it in the same commit:
+
+| status | means |
+| --- | --- |
+| `open` | not landed |
+| `done` | landed |
+| `lifted <where>` | it cannot be finished on this machine, and this says where it went |
+
+**An item is reachable when every item its `Needs` names is `done`.** That is the only rule for choosing what to work, and the lowest-numbered reachable item wins. `lifted` never satisfies a `Needs`: an item waiting on lifted work is not reachable, and saying otherwise is how a run builds on something that was never landed.
+
+**A commit that lands an item begins `item N: `.** That is what makes the history the index — `git log --oneline --grep '^item 27'` finds what landed item 27 — so the status line stays three words instead of carrying a hash that a rebase would falsify.
+
 ---
 
 ## Phase 0 — stop the bleeding, and give the phase an outward face
@@ -34,6 +46,8 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 2. The program cache key
 
+**Status.** open
+
 **Asks for.** A key that contains everything the cached program depends on — resources, pipelines and passes as well as id and module text — or a key the caller supplies outright.
 
 **Done when.** A test builds two frames carrying equal `id` and equal module text but different resources, asks for a program for each, and gets two distinct programs. The commit contains this and nothing else.
@@ -41,6 +55,8 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 **Needs.** Nothing. **This is the first commit of the whole road and it goes alone.** It is a silent wrong picture, per [RoadToPureEngine.md](RoadToPureEngine.md) §3 row 2, and bundling it with anything makes it unreviewable and delays it behind whatever it was bundled with.
 
 ### 3. `DocumentAddress` becomes a string
+
+**Status.** open
 
 **Asks for.** The three-value union goes; fetched text is keyed by the name a description gives a document rather than by its address.
 
@@ -50,6 +66,8 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 4. The README says what is true
 
+**Status.** open
+
 **Asks for.** Three corrections. WebGL 2 covers one fullscreen pass today, not the scene tier. 0.x is unstable. §14 of the road document is the shape the surface is moving toward.
 
 **Done when.** All three sentences are in the README, and `tests/readme-names.test.ts` is still green.
@@ -58,6 +76,8 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 5. The design documents stop naming files that left
 
+**Status.** open
+
 **Asks for.** `ABSTRACTION.md` and `RENDERER-DESIGN.md` lose every path that does not exist here, each `Dnnn` reference gains a sentence saying what it settled, and the stale audit rows are marked solved.
 
 **Done when.** A script walks every backtick-quoted and link-quoted path in `docs/` and finds no missing file, and it runs in the gate suite so the next stale path is caught rather than noticed.
@@ -65,6 +85,8 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 **Needs.** Nothing.
 
 ### 6. The `shadertoy()` producer
+
+**Status.** open
 
 **Asks for.** A producer taking an unmodified Shadertoy fragment source and the uniform-only subset — `iTime`, `iTimeDelta`, `iFrame`, `iResolution`, `iMouse` — and returning something drawable.
 
@@ -76,6 +98,8 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 7. `examples/` begins
 
+**Status.** open
+
 **Asks for.** The directory, a way to run one, and the first two: `fullscreen` and `shadertoy-paste`.
 
 **Done when.** `npm run example <name>` opens either one, and each imports the package door and nothing else — no relative reach into a folder.
@@ -83,6 +107,8 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 **Needs.** item 6 for the second one.
 
 ### 8. `selectBackend`
+
+**Status.** open
 
 **Asks for.** Backend choice moves inside the library: which backend draws a given frame is answered from what the frame is authored in and what it declares it needs, across whatever the device offers.
 
@@ -93,6 +119,8 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 **Note.** Selection before refusal, per §10. A consumer arriving with a GLSL shader gets a picture, not a lecture.
 
 ### 9. `probe()`, and readings rather than a matrix
+
+**Status.** open
 
 **Asks for.** A public one-shot reading — which backend was selected, whether WebGPU was reported, whether an adapter was returned, **whether the device then survived a few frames of on-screen compositing**, the renderer string, an assertion that the adapter architecture is not `swiftshader`, features, limits, tier run. Plus `docs/DEVICES.md` and `npm run device-report`.
 
@@ -112,6 +140,8 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 
 ### 10. The arena, and branded handles
 
+**Status.** open
+
 **Asks for.** `resource/` with allocation, upload, resize and free, addressing everything by branded integer handle, and a free list that bumps a generation so a stale handle is detectable rather than silently valid.
 
 **Done when.** Every resource the current backend allocates is allocated through the arena, and a handle freed and reallocated does not compare equal to its predecessor.
@@ -119,6 +149,8 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 **Needs.** Nothing.
 
 ### 11. Uploads are queued, not immediate
+
+**Status.** open
 
 **Asks for.** An upload path ordered against the frame that reads it, replacing the current unsequenced destroy-and-recreate on resize.
 
@@ -128,6 +160,8 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 
 ### 12. The pipeline cache, keyed on structure
 
+**Status.** open
+
 **Asks for.** `pipeline/` owning module compilation and a cache keyed on the whole structure a pipeline depends on — source, entry points, formats, blend, depth, vertex layout.
 
 **Done when.** Two requests with identical structure return one handle, two with any difference return two, and item 2's narrower fix is deleted as superseded rather than left beside it.
@@ -135,6 +169,8 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 **Needs.** item 2, item 10.
 
 ### 13. `submit/`
+
+**Status.** open
 
 **Asks for.** The executor: a graph plus the arena plus the pipeline cache become commands on a device.
 
@@ -144,6 +180,8 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 
 ### 14. The seam for today's descriptions
 
+**Status.** open
+
 **Asks for.** A `FrameDescription` translated to the new path at one place, so nothing above has to move in this phase.
 
 **Done when.** Every existing test and gate passes **unedited**. An edited gate in this phase is the signal that the phase is doing two things.
@@ -151,6 +189,8 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 **Needs.** item 13.
 
 ### 15. `createProgram` is deleted
+
+**Status.** open
 
 **Asks for.** The function that fused three lifetimes goes.
 
@@ -168,11 +208,15 @@ Implements decision 9 and unblocks item 1.
 
 ### 16. Strings become handles at every call site
 
+**Status.** open
+
 **Done when.** No resource is looked up by string in a map at draw time anywhere in the backend, and misuse is a type error rather than a map miss.
 
 **Needs.** item 10, item 13.
 
 ### 17. `Ref` gains its two arms
+
+**Status.** open
 
 **Asks for.** Resident and transient, per §8: a resident resource is arena-allocated and lives across frames, a transient is declared in the graph by descriptor.
 
@@ -182,11 +226,15 @@ Implements decision 9 and unblocks item 1.
 
 ### 18. Transient pooling and aliasing
 
+**Status.** open
+
 **Done when.** Two graphs asking for the same transient shape reuse one allocation, and a test shows the second frame allocates nothing new.
 
 **Needs.** item 17.
 
 ### 19. `validate(graph)`
+
+**Status.** open
 
 **Asks for.** One pure function holding every rule currently written in two wordings, [renderer/frame-rules.ts](../renderer/frame-rules.ts) included.
 
@@ -196,6 +244,8 @@ Implements decision 9 and unblocks item 1.
 
 ### 20. The double tracks handle liveness
 
+**Status.** open
+
 **Asks for.** The recording double models lifetimes as well as calls, which ABSTRACTION.md's audit named as a gap.
 
 **Done when.** A use-after-free and a leak each fail a test in the fast suite.
@@ -203,6 +253,8 @@ Implements decision 9 and unblocks item 1.
 **Needs.** item 10.
 
 ### 21. `cost(graph, size)`
+
+**Status.** open
 
 **Asks for.** Passes, draws, dispatches, pipeline switches, bind switches, attachment loads and stores, transient bytes. Pure, deterministic, no GPU.
 
@@ -212,6 +264,8 @@ Implements decision 9 and unblocks item 1.
 
 ### 22. `arena.traffic()`
 
+**Status.** open
+
 **Asks for.** Bytes written and uploaded, read from the arena, because that is a resident-lifetime fact the graph does not carry.
 
 **Done when.** It reports since-last-reset totals, and the benchmark reports it **beside** `cost()` and never summed with it.
@@ -220,11 +274,15 @@ Implements decision 9 and unblocks item 1.
 
 ### 23. Every preset asserts an exact cost
 
+**Status.** open
+
 **Done when.** Each corpus preset carries an asserted `cost()`, and a change that adds a pass or a pipeline switch fails until the number is updated deliberately.
 
 **Needs.** item 21.
 
 ### 1. Discarding an attachment nothing reads, and merging two passes over one
+
+**Status.** open
 
 **Where it came from.** It was item 40's step 1.4 in the site's roadmap, lifted out of that item on 2026-08-22 because a blocked step in the middle of an ordered list halts every reachable step behind it, and it did: an unattended run stopped on it with seven reachable steps still in front of it. It became item 42 there and moved here on 2026-08-24, as D118 in that repository's log, because the renderer left that tree and an item filed where nobody can work it reads as available.
 
@@ -253,7 +311,11 @@ Implements decision 9 and unblocks item 1.
 
 **Not blocked. Waiting on Stage 2's `cost()` metric, which is in this repository's hands.** The phone reading remains a row of the site repository's `docs/TESTING.md`, wanted once, for the premise rather than for the change.
 
+**Needs.** item 21. Stated as a `Needs` line like every other item's, because an unattended run reads dependencies from that line and would otherwise take this item first on the strength of its number.
+
 ### 24. `refusal(graph, device)` and the `Capability` type
+
+**Status.** open
 
 **Asks for.** The third of the pure functions, and the `Capability` enum it reads: `compute`, `storage-buffer`, `storage-texture`, `indirect`, `timestamp`, `occlusion`, `msaa`, `float-blend`, `depth-clamp`, `bgra-storage`. A graph declares `requires`; a device reports `capabilities`.
 
@@ -264,6 +326,8 @@ Implements decision 9 and unblocks item 1.
 **Note.** It answers the second question, not the first. Selection (item 8) asks which backend should draw this and is answered across everything on offer; refusal is what a caller reads only when selection came back empty.
 
 ### 25. `examples/compute-field`
+
+**Status.** open
 
 **Asks for.** A compute shader writing a storage texture that a blit shows, which is the compute toy tier.
 
@@ -281,11 +345,15 @@ Implements decision 7's target argument. **Gated by an example.**
 
 ### 26. `RenderPass.draws` becomes a list
 
+**Status.** open
+
 **Done when.** One pass carries many draws, and the one-draw-per-pass shape is gone from the types rather than merely unused.
 
 **Needs.** item 17.
 
 ### 27. `Draw.perDraw`
+
+**Status.** open
 
 **Asks for.** One slice of a per-draw buffer per draw: a dynamic offset on WebGPU, `bindBufferRange` on WebGL 2, one field either way.
 
@@ -295,11 +363,15 @@ Implements decision 7's target argument. **Gated by an example.**
 
 ### 28. Instancing
 
+**Status.** open
+
 **Done when.** One draw covers many instances and `cost()` counts it as one draw rather than many.
 
 **Needs.** item 26.
 
 ### 29. `submit(graph, { into })`
+
+**Status.** open
 
 **Asks for.** A frame lands where the caller says — the canvas, a texture, or an XR layer's target.
 
@@ -311,6 +383,8 @@ Implements decision 7's target argument. **Gated by an example.**
 
 ### 30. `examples/instanced-cubes`
 
+**Status.** open
+
 **Asks for.** A thousand objects, one pipeline, each with its own transform.
 
 **Done when.** It draws on both backends and its `cost()` is inside the budget of item 31. **This item is Phase 3's exit criterion, not an illustration of it:** if writing it is painful, the API is wrong, and this is the cheap moment to find out.
@@ -318,6 +392,8 @@ Implements decision 7's target argument. **Gated by an example.**
 **Needs.** item 27, item 28.
 
 ### 31. A published budget for a thousand objects
+
+**Status.** open
 
 **Asks for.** The first row of the frame budget: counters that are enforced, milliseconds that are tracked.
 
@@ -335,6 +411,8 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 
 ### 32. `sceneView`
 
+**Status.** open
+
 **Asks for.** `sceneView(arena, options).graph(world, views) → FrameGraph`. A producer, importing `graph/` and receiving an arena, reaching no device.
 
 **Done when.** It takes **`views: Camera[]`** rather than one camera; it is unit-tested with no GPU present at all; and a test asserts it imports nothing from `gpu/` or `submit/`.
@@ -345,6 +423,8 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 
 ### 33. `batchOnePipeline` loses its restriction
 
+**Status.** open
+
 **Asks for.** The one-pipeline rule goes, because the reason for it — no per-draw data — is gone.
 
 **Done when.** A scene spanning two pipelines produces one graph, and the ordering is the producer's to decide rather than a thrown error.
@@ -352,6 +432,8 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 **Needs.** item 32.
 
 ### 34. Golden graph snapshots
+
+**Status.** open
 
 **Asks for.** A producer's output graph, snapshotted as JSON.
 
@@ -361,6 +443,8 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 
 ### 35. `examples/orbit-shadow`
 
+**Status.** open
+
 **Asks for.** An orbit camera, one shadow-casting light, around fifty objects.
 
 **Done when.** It runs on both backends. **This is Phase 4's exit criterion.**
@@ -368,6 +452,8 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 **Needs.** item 32, item 34.
 
 ### 36. `examples/gltf-cube`
+
+**Status.** open
 
 **Asks for.** An asset arriving after the page opened, loaded by the example rather than by the library, which is where decision 5 puts it.
 
@@ -377,6 +463,8 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 
 ### 37. The folders move
 
+**Status.** open
+
 **Asks for.** The layout of §7: `graph/`, `gpu/`, `resource/`, `pipeline/`, `submit/`, `toy/`, `scene/`, `host/`, `trace/`.
 
 **Done when.** No file sits in `renderer/` or `engine/`, and the move commit changes no logic.
@@ -385,6 +473,8 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 
 ### 38. The §14 renames
 
+**Status.** open
+
 **Asks for.** `ShaderFrame` becomes `FrameGraph`, `setArtefact` becomes `setFrame`, `ShaderProgram` is gone, `report()` becomes `probe()` and the capability accessors, and the rest of the table.
 
 **Done when.** No name in the table survives, and the README and both design documents use the new ones.
@@ -392,6 +482,8 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 **Needs.** item 37. **Deadline:** before 1.0, per decision 8, after which renames are forbidden.
 
 ### 39. The layer rules become tests
+
+**Status.** open
 
 **Asks for.** [tests/import-graph.test.ts](../tests/import-graph.test.ts) enforces §7: `graph/` imports nothing, no producer imports `gpu/` or `submit/`, nothing below `host/` requires a DOM object, and **`host/loop.ts` imports only the package's own public exports.**
 
@@ -411,6 +503,8 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 ### 40. Choose the translator
 
+**Status.** open
+
 **Asks for.** Naga against Tint, evaluated on this corpus rather than on reputation.
 
 **Done when.** Every corpus preset is run through both, the failures of each are listed, and the choice is recorded with the readings behind it.
@@ -421,6 +515,8 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 ### 41. The build-time translation path
 
+**Status.** open
+
 **Asks for.** Every shipped material and every corpus preset translated once by a build step, the result carried in `ShaderSource.glsl`.
 
 **Done when.** A scene-tier consumer on WebGL 2 downloads no translator, and a shader that will not translate **fails the build** rather than the page.
@@ -428,6 +524,8 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 **Needs.** item 40.
 
 ### 42. The on-demand translator chunk
+
+**Status.** open
 
 **Asks for.** The editing path: someone typing WGSL on a WebGL 2 device gets translation while the page runs, fetched by `await import()` in its own chunk.
 
@@ -437,11 +535,15 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 ### 43. Refusal by named construct
 
+**Status.** open
+
 **Done when.** A WGSL source using something the translator cannot carry is refused with the construct named, at build time where a build can see it.
 
 **Needs.** item 41.
 
 ### 44. The three-number cross-backend comparison
+
+**Status.** open
 
 **Asks for.** Hard jumps per frame, counted independently per frame and compared as counts rather than as a diff of the two frames; maximum per-channel delta; channels differing at all.
 
@@ -450,6 +552,8 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 **Needs.** item 41.
 
 ### 45. The widened list
+
+**Status.** open
 
 **Asks for.** One file naming any preset that cannot be byte-exact, with its cause, its date and its readings. Four rules: absence means exact; it is not settable at the preset; **its length is asserted and is currently zero**; the gate prints it every run.
 
@@ -461,11 +565,15 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 ### 46. WebGL 2: multiple passes
 
+**Status.** open
+
 **Done when.** A two-pass graph draws, and the pass count in `cost()` matches what the backend issued.
 
 **Needs.** item 41.
 
 ### 47. WebGL 2: multiple render targets
+
+**Status.** open
 
 **Done when.** A graph writing three attachments draws, and a fourth beyond the device's limit is refused by name.
 
@@ -473,11 +581,15 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 ### 48. WebGL 2: depth and stencil
 
+**Status.** open
+
 **Done when.** The depth and stencil presets that WebGPU passes today pass here, and the pixels agree per item 44.
 
 **Needs.** item 46.
 
 ### 49. WebGL 2: instancing and per-draw UBO ranges
+
+**Status.** open
 
 **Done when.** `instanced-cubes` draws here, at the same object count, with alignment respected.
 
@@ -485,11 +597,15 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 ### 50. WebGL 2: mip generation
 
+**Status.** open
+
 **Done when.** The mips preset passes and the sampled result agrees per item 44.
 
 **Needs.** item 46.
 
 ### 51. Capability declaration wired end to end
+
+**Status.** open
 
 **Asks for.** `graph.requires` against `device.capabilities`, feeding selection first and refusal second, per §10.
 
@@ -498,6 +614,8 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 **Needs.** item 8, item 46.
 
 ### 52. The same scene graph on both backends
+
+**Status.** open
 
 **Done when.** `orbit-shadow` draws on WebGL 2 as well as WebGPU, and the difference between the two is reported by item 44's three numbers.
 
@@ -512,6 +630,8 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 *Exit:* whatever the first outside consumer needs, and nothing beyond it.
 
 ### 53. Wait for a consumer who did not write this
+
+**Status.** open
 
 **Asks for.** Nothing yet, on purpose.
 
@@ -529,6 +649,8 @@ Not phase-bound. Each can land whenever its dependency has.
 
 ### 54. GPU timestamps get a consumer
 
+**Status.** open
+
 **Asks for.** The timestamp queries that already work and are read by nothing become per-pass times in the benchmark output.
 
 **Done when.** A run prints per-pass times where the device supports them. **Reported, never asserted.**
@@ -536,6 +658,8 @@ Not phase-bound. Each can land whenever its dependency has.
 **Needs.** item 21.
 
 ### 55. The wall-clock harness
+
+**Status.** open
 
 **Asks for.** p50, p95 and p99 over N frames on real hardware, with the device named.
 
@@ -545,6 +669,8 @@ Not phase-bound. Each can land whenever its dependency has.
 
 ### 56. The deprecation mechanism
 
+**Status.** open
+
 **Asks for.** `@deprecated` JSDoc, which surfaces at the call site where it works, plus a one-shot dev-mode warning per symbol.
 
 **Done when.** A deprecated export warns once per session and appears struck through in an editor.
@@ -552,6 +678,8 @@ Not phase-bound. Each can land whenever its dependency has.
 **Needs.** item 38. Required by 1.0, not before.
 
 ### 57. Device readings accumulate
+
+**Status.** open
 
 **Asks for.** Rows added to `docs/DEVICES.md` as hardware is read, including one iPhone, which nobody has read.
 
@@ -566,6 +694,8 @@ Not phase-bound. Each can land whenever its dependency has.
 ## 1.0
 
 ### 58. Declare 1.0
+
+**Status.** open
 
 **Done when.** All five, and it is a checklist rather than a judgement:
 
