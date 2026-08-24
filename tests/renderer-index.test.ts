@@ -105,6 +105,30 @@ describe('the programs it keeps', () => {
     expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
   });
 
+  it('keeps a program per resource set, not just per id and source', async () => {
+    const { gpu, renderer } = await rendererOver();
+    // Same id, same module text; the resources differ — the two lay their uniform
+    // block out at different offsets, so a program built for one draws the other
+    // with the wrong buffer under it. A key stopping at id and text would hand the
+    // second frame the first's program, which is a silent wrong picture.
+    const otherBlock = [
+      { name: 'u_time', offset: 0, size: 4 },
+      { name: 'u_resolution', offset: 16, size: 8 },
+    ];
+    const one = wgslFrame('same', CODE, BLOCK, UNIFORMS);
+    const other = wgslFrame('same', CODE, otherBlock, UNIFORMS);
+    expect(one.id).toBe(other.id);
+    expect(one.modules).toEqual(other.modules);
+    expect(one.resources).not.toEqual(other.resources);
+
+    renderer.draw(one, {});
+    renderer.draw(other, {});
+
+    // Two compiled programs, one per resource set, rather than one shared across
+    // both because their id and source happened to match.
+    expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
+  });
+
   it('builds the program to answer what the shader declares and nothing reads', async () => {
     const { gpu, renderer } = await rendererOver();
 

@@ -46,7 +46,7 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 2. The program cache key
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A key that contains everything the cached program depends on — resources, pipelines and passes as well as id and module text — or a key the caller supplies outright.
 

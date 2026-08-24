@@ -109,20 +109,37 @@ export async function createFrameRenderer(
   // key at the front where eviction takes it. So the current shader, drawn every
   // frame, can never be the one thrown out.
   const programs = new Map<string, ReturnType<typeof backend.createProgram>>();
-  // Keyed on the whole text of every document rather than on its length: two
-  // edits of one shader are very often the same length, and a key that cannot
-  // tell them apart hands back the program the reader has just replaced, so the
-  // edit appears to do nothing.
+  // Keyed on everything the compiled program is built from, not on id and module
+  // text alone. A program bakes in the frame's resources, pipelines and passes —
+  // the uniform block it lays a buffer out for, the geometry bytes it fills a
+  // vertex buffer with, the pipeline state it compiles, the passes it records —
+  // so two frames equal in id and module text but differing in any of those are
+  // two distinct programs, and a key that stopped at id and text would hand the
+  // second frame the first frame's program and draw the wrong picture in silence.
+  // The module text is joined document by document rather than by its length: two
+  // edits of one shader are very often the same length, and a key that cannot tell
+  // them apart hands back the program the reader has just replaced. The rest is
+  // JSON, which is deterministic for the plain data these specs are: a false miss
+  // only recompiles, and it is a false *hit* — two different frames sharing a key —
+  // that this key exists to make impossible.
   //
   // Held against the frame object so the live loop, which redraws one unchanged
-  // frame every tick, joins that text once rather than every frame: a frame is a
-  // fresh object per edit and its documents never change after it is made, so its
+  // frame every tick, builds this string once rather than every frame: a frame is a
+  // fresh object per edit and its fields never change after it is made, so its
   // identity is enough to key the string by.
   const keys = new WeakMap<ShaderFrame, string>();
   const key = (shader: ShaderFrame) => {
     const held = keys.get(shader);
     if (held !== undefined) return held;
-    const built = [shader.id, ...shader.modules.map((document) => `${document.name}\0${document.code}`)].join('\0');
+    const built = [
+      shader.id,
+      ...shader.modules.map((document) => `${document.name}\0${document.code}`),
+      JSON.stringify(shader.resources),
+      JSON.stringify(shader.pipelines),
+      JSON.stringify(shader.passes),
+      JSON.stringify(shader.present ?? null),
+      JSON.stringify(shader.swap ?? null),
+    ].join('\0');
     keys.set(shader, built);
     return built;
   };
