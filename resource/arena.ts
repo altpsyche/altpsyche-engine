@@ -53,6 +53,10 @@ export class Arena<T> {
   /** The slots a free returned, reused before a fresh one is grown so the table
    * stays as small as the live set rather than as large as every allocation. */
   private readonly freeList: number[] = [];
+  /** Uploads queued against a live handle, waiting for the frame that reads them
+   * to be flushed. Ordered: the frame plays them back in the order they were
+   * queued, so an upload a later pass reads cannot land after the pass. */
+  private readonly pending: { handle: Handle; run: (resource: T) => void }[] = [];
 
   constructor(private readonly disposeOf: (resource: T) => void) {}
 
@@ -99,12 +103,25 @@ export class Arena<T> {
     return this.resources[index] !== undefined && this.generations[index] === generation;
   }
 
-  /** Runs an upload against the resource a live handle names. It is the arena's
-   * verb rather than a caller reaching past it to the device, so the ordering
-   * item 11 adds against the frame that reads it has one place to sit. Today it
-   * runs the upload at once. */
+  /** Queues an upload against a handle rather than running it at once, so the
+   * write is ordered against the frame that reads it instead of landing whenever
+   * a caller happened to reach the device. The handle is resolved at `flush`, not
+   * here, so an upload queued against a resource a resize then frees is refused
+   * when the frame plays it back rather than run against the slot's new occupant.
+   * `flush` is what turns the queue into device work, in order. */
   upload(handle: Handle, run: (resource: T) => void): void {
-    run(this.resolve(handle));
+    this.pending.push({ handle, run });
+  }
+
+  /** Plays every queued upload against the resource its handle names now, in the
+   * order they were queued, then empties the queue. This is the point the frame
+   * puts its writes in against the draw that reads them: a backend flushes before
+   * it records the passes, so every queued write has landed before the first read
+   * of it. A handle freed since it was queued is refused here — `resolve` throws —
+   * rather than resolving to whatever now sits in the slot. */
+  flush(): void {
+    const queued = this.pending.splice(0);
+    for (const { handle, run } of queued) run(this.resolve(handle));
   }
 
   /** Frees a handle and allocates its replacement in one call, which is what a

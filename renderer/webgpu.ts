@@ -352,6 +352,7 @@ export function createWebGPUBackend(
       const {
         values,
         buffer,
+        bufferHandle,
         buffers,
         textures,
         times,
@@ -394,12 +395,18 @@ export function createWebGPUBackend(
         const end = block.reduce((most, slot) => Math.max(most, slot.offset + slot.size), 0);
         const bytes = Math.ceil(end / BLOCK_ALIGNMENT) * BLOCK_ALIGNMENT;
         const values = new Float32Array(bytes / 4);
-        const buffer = own(() =>
+        // The uniform block's handle is kept, not just the resolved buffer, so
+        // `setUniforms` can queue its write against the arena and the draw can
+        // play it back in order rather than the write landing whenever the page
+        // happened to hand the values in. It is `own`ed like any resident buffer.
+        const bufferHandle = arena.allocate(() =>
           device.createBuffer({
             size: Math.max(bytes, BLOCK_ALIGNMENT),
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
           })
         );
+        owned.push(bufferHandle);
+        const buffer = arena.resolve(bufferHandle) as GPUBuffer;
 
         // Every buffer of geometry the description names, filled once from the bytes
         // that came with it. Neither buffer follows the frame, since geometry is the
@@ -879,6 +886,7 @@ export function createWebGPUBackend(
         return {
           values,
           buffer,
+          bufferHandle,
           buffers,
           textures,
           times,
@@ -910,7 +918,11 @@ export function createWebGPUBackend(
             if (Array.isArray(value)) value.forEach((component, index) => (values[start + index] = component));
             else values[start] = value;
           }
-          device.queue.writeBuffer(buffer, 0, values);
+          // Queued rather than written here, so the draw plays it back against the
+          // frame it feeds — the write lands before the pass that reads it because
+          // the draw flushes before it records, not because the page happened to
+          // call this before drawing.
+          arena.upload(bufferHandle, (target) => device.queue.writeBuffer(target as GPUBuffer, 0, values));
         },
 
         // A field is in the block or it is not, and a WGSL compiler does not
@@ -936,6 +948,12 @@ export function createWebGPUBackend(
           const bound = groups[turn] as Map<string, GPUBindGroup[]>;
           const recorded = bundles[turn] as Map<number, GPURenderBundle>;
           if (partner.size > 0) turn = turn === 0 ? 1 : 0;
+          // Every upload the frame queued lands here, before a pass is recorded and
+          // so before any draw reads it. A resize that rebuilt the textures above
+          // has already run; the queued writes go in against the frame the encoder
+          // is about to record, which is the ordering item 11 replaced the
+          // unsequenced write-on-resize with.
+          arena.flush();
           const encoder = device.createCommandEncoder();
           // Every pass of the description runs in order on this one encoder and
           // the whole frame is submitted once, so a frame with one pass in it

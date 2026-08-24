@@ -253,6 +253,9 @@ describe('the uniform block it fills', () => {
     const { gpu, backend } = backendOver();
     const program = backend.createProgram(artefact());
     program.setUniforms({ u_time: 3, u_resolution: [7, 9] });
+    // The write is queued against the frame, so the draw is what flushes it to
+    // the device — it lands there in order rather than the moment it was handed in.
+    program.draw();
 
     // Offsets are bytes and the block is floats, so u_resolution at byte 8
     // starts at float 2, and float 1 is the padding a vec2's alignment leaves.
@@ -263,6 +266,7 @@ describe('the uniform block it fills', () => {
     const { gpu, backend } = backendOver();
     const program = backend.createProgram(artefact());
     program.setUniforms({ u_time: 1, u_nothing: 5 });
+    program.draw();
     expect([...gpu.written()!]).toEqual([1, 0, 0, 0]);
   });
 

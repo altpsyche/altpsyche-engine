@@ -155,7 +155,7 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 
 ### 11. Uploads are queued, not immediate
 
-**Status.** open
+**Status.** done
 
 **Asks for.** An upload path ordered against the frame that reads it, replacing the current unsequenced destroy-and-recreate on resize.
 

@@ -218,6 +218,30 @@ describe('drawing against reading', () => {
 
     expect([...gpu.written()!]).toEqual([3, 0, 7, 9]);
   });
+
+  it('lands the resize’s write before the draw that reads it, in the one tick', async () => {
+    const { gpu, renderer } = await rendererOver();
+    // Resize and draw with nothing between them, handing the frame the new size as
+    // the resolution it reads. The write is queued against the frame and the draw
+    // is what flushes it, so the double sees it land before the draw — the order
+    // the executor guarantees rather than one setUniforms happened to leave.
+    renderer.resize(320, 180);
+    renderer.draw(artefact(), { u_time: 1, u_resolution: [320, 180] });
+
+    // u_resolution sits at byte 8, which is float 2 in the block, so the write
+    // carrying the resized width is the one whose third float is 320. The read is
+    // `beginRenderPass`: the recorded bundle that samples the block executes inside
+    // it, so a write landing after the pass opened would be the frame reading the
+    // old size. (The `draw` in the trace is the bundle being *recorded* once at
+    // build time, not the frame's read of it.)
+    const write = gpu.trace.findIndex(
+      (entry) => entry.call === 'writeBuffer' && (entry.data as Float32Array | undefined)?.[2] === 320
+    );
+    const read = gpu.trace.findIndex((entry) => entry.call === 'beginRenderPass');
+    expect(write).toBeGreaterThanOrEqual(0);
+    expect(read).toBeGreaterThanOrEqual(0);
+    expect(write).toBeLessThan(read);
+  });
 });
 
 describe('what it gives back when it is done', () => {

@@ -83,18 +83,47 @@ describe('the resize and upload verbs', () => {
     expect(() => arena.resolve(before)).toThrow(/no live resource/);
   });
 
-  it('upload runs against the live resource a handle names', () => {
+  it('upload queues rather than running at once, and flush plays it against the live resource', () => {
     const { arena } = arenaOfTokens();
     const handle = arena.allocate(() => 'target');
     let seen: string | null = null;
     arena.upload(handle, (resource) => (seen = resource));
+    // Queued, not run: nothing has touched the resource until the frame flushes.
+    expect(seen).toBe(null);
+    arena.flush();
     expect(seen).toBe('target');
   });
 
-  it('upload refuses a stale handle', () => {
+  it('flush plays queued uploads in the order they were queued', () => {
+    const { arena } = arenaOfTokens();
+    const first = arena.allocate(() => 'first');
+    const second = arena.allocate(() => 'second');
+    const order: string[] = [];
+    arena.upload(first, (resource) => order.push(resource));
+    arena.upload(second, (resource) => order.push(resource));
+    arena.flush();
+    expect(order).toEqual(['first', 'second']);
+  });
+
+  it('flush empties the queue, so a second flush replays nothing', () => {
     const { arena } = arenaOfTokens();
     const handle = arena.allocate(() => 'target');
+    let runs = 0;
+    arena.upload(handle, () => (runs += 1));
+    arena.flush();
+    arena.flush();
+    expect(runs).toBe(1);
+  });
+
+  it('flush refuses an upload whose handle was freed after it was queued, rather than running it against the slot’s new occupant', () => {
+    const { arena } = arenaOfTokens();
+    const handle = arena.allocate(() => 'target');
+    // Queued against the live handle, then the resource is freed and the slot
+    // reused before the frame flushes — the classic resize race the ordering
+    // exists to catch.
+    arena.upload(handle, () => undefined);
     arena.free(handle);
-    expect(() => arena.upload(handle, () => undefined)).toThrow(/no live resource/);
+    arena.allocate(() => 'newcomer');
+    expect(() => arena.flush()).toThrow(/no live resource/);
   });
 });
