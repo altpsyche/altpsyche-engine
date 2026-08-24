@@ -258,13 +258,34 @@ found, not *which* object or *what call* is made), see [JOURNAL.md](JOURNAL.md).
 
 ### 17. `Ref` gains its two arms
 
-**Status.** open
+**Status.** done
 
 **Asks for.** Resident and transient, per §8: a resident resource is arena-allocated and lives across frames, a transient is declared in the graph by descriptor.
 
 **Done when.** A graph can declare a transient depth target and a resident mesh buffer in one frame, and each resolves correctly.
 
 **Needs.** item 16.
+
+**How it landed.** `graph/` begins, holding the pure authoring contract of §8:
+`graph/handles.ts` mints the kind-branded `Handle<K>` and the arms `Ref` needs
+(`BufferHandle`, `TextureHandle`, `TransientId`), and `graph/refs.ts` holds
+`Ref<H> = { resident: H } | { transient: TransientId }`, the `Transient`
+descriptor (a texture or buffer the graph declares by descriptor rather than by
+arena handle), and the `isResident`/`isTransient` guards. Both import nothing but
+each other (§7 rule 1) and neither is re-exported through the door, so the export
+surface did not move. Resolution lives in `submit/frame-resources.ts`'s
+`FrameResources`, because a resident ref resolves through the arena (`resource/`)
+and a transient ref is allocated by the executor (`submit/`): a resident ref
+reaches `arena.resolve`, a transient ref allocates from the descriptor the graph
+declared it under, once per frame and cached against its id. `make` is injected
+rather than reaching a device, so a graph declaring a transient depth target and
+a resident mesh buffer resolves each with no card present, which
+`tests/graph-refs.test.ts` exercises. **Scope:** the backends do not yet consume
+`Ref` — they still resolve names, per item 16's seam — and cross-frame transient
+pooling is item 18; this item is the two arms and their resolution, nothing above
+adopting them. The authoring handle and the arena's runtime handle are the same
+integer under two brands and meet at one documented cast in `FrameResources`,
+which unifies in Stage 2 (item 16's [JOURNAL.md](JOURNAL.md) row); see that file.
 
 ### 18. Transient pooling and aliasing
 

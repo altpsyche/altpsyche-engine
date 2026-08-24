@@ -25,6 +25,7 @@
   // library instead means a new file is published because somebody said so.
   "include": [
     "index.ts",
+    "graph/**/*.ts",
     "renderer/**/*.ts",
     "resource/**/*.ts",
     "pipeline/**/*.ts",

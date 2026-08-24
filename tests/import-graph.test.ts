@@ -29,6 +29,8 @@ const ROOT = resolve(__dirname, '..');
  * here because it is walked separately as the eager root, and it is added back
  * where this list is compared with the build's own. */
 const SHIPPING = [
+  'graph/handles.ts',
+  'graph/refs.ts',
   'renderer/types.ts',
   'renderer/frame.ts',
   'renderer/frame-rules.ts',
@@ -46,6 +48,7 @@ const SHIPPING = [
   'submit/plan.ts',
   'submit/execute.ts',
   'submit/gl2.ts',
+  'submit/frame-resources.ts',
   'engine/draw-list.ts',
   'engine/material.ts',
   'engine/maths.ts',
