@@ -832,13 +832,35 @@ and cannot publish a budget before the frame it measures exists. See [JOURNAL.md
 
 ### 31. A published budget for a thousand objects
 
-**Status.** open
+**Status.** lifted to a machine with a real graphics card (the standing job of items 55, 57, 62)
 
 **Asks for.** The first row of the frame budget: counters that are enforced, milliseconds that are tracked.
 
 **Done when.** The counters are asserted in CI and the milliseconds are recorded from real hardware with the device named, and neither is confused for the other.
 
 **Needs.** item 21, item 30.
+
+**Why it is lifted, and how that was established.** The `Done when` is a conjunction, and its
+second half — *the milliseconds are recorded from real hardware with the device named* — cannot be
+produced on the machine an unattended run has. §17's three harness notes and decision 11's measured
+case say why: every headless launch on this Linux machine reaches SwiftShader whatever the flags say,
+so any millisecond it printed would be a software renderer's, not a card's, and [CLAUDE.md](../CLAUDE.md)'s
+first rule is that a number a gate did not produce may not be quoted. Decision 9 settles this shape
+deliberately — *hardware only reports* the milliseconds and *wall-clock p50/p95/p99 is measured on
+real hardware and never gated in CI* — so the millisecond half is by design a reading, not an
+assertion, and belongs to whoever has the hardware. This is the same standing job as item 55's
+wall-clock harness, item 57's device rows, and item 62's GLSL-selects-WebGL-2 reading.
+**Unlike item 1** — whose phone-only premise sat in the *consuming* repository's `docs/TESTING.md`
+rather than in item 1's own `Done when`, leaving a desktop-checkable clause this repository could
+land — item 31 puts the hardware clause **inside** its own `Done when`, so no honest reading marks it
+done here. The enforceable-counter half is real, landable CI work and stays tracked under this item:
+whoever works it on a card lands both halves in one commit — the counter ceiling for `instanced-cubes`
+(item 30's `cost()` is `passes: 1, draws: 1`, already asserted exactly by
+`tests/instanced-cubes-cost.test.ts`, so the budget is a ceiling published beside it) and the measured
+milliseconds — so that the two are published together and *neither is confused for the other*, which
+is the clause a split into two commits would put at risk. **What would change the answer:** a session
+on a machine whose `probe()` reports WebGPU returned and survived (item 9), where `instanced-cubes`
+(item 30) draws and its per-frame milliseconds can be read with the device named.
 
 ---
 
