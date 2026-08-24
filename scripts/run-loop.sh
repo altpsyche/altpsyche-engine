@@ -243,6 +243,13 @@ item and do not ask questions: nobody is at the keyboard.$SCOPE
 - Any call you take on your own goes into docs/JOURNAL.md in the same commit, with how to
   reverse it and what would change the answer. An entry with no reversal recipe has not been
   written. Mark it \`carry\` if the consuming repository's decision log needs it too.
+- A JOURNAL.md ROW IS NOT A PLACE TO PARK WORK. If a row names something that still needs doing
+  and no item tracks it, add the roadmap item in the same commit and have the row name it. This
+  is JOURNAL.md's own rule and it has been missed twice in eight items: item 5's row said the
+  Mermaid fence is unchecked, item 6's row said integer uniforms are "unqueued", and both were
+  true, well written, and tracked by nothing until a reviewer queued them afterwards. A recorded
+  doubt nobody queued is a doubt nobody will act on, which is the failure the register exists to
+  prevent rather than a smaller version of it.
 - Also write a JOURNAL.md row whenever: something could not be verified on this machine; you
   accepted a risk, widened a bar, or left a number nobody has looked at; a gate passed for a
   reason that does not prove what the item claims; you changed something the cheap gates are

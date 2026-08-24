@@ -8,7 +8,7 @@ The library ships from `main` as `@altpsyche/engine`. The site that consumes it 
 
 **Direction for this repository is [RoadToPureEngine.md](RoadToPureEngine.md).** That document decides nothing this file queues, and this file queues nothing that document decides; where an item below names a stage, the stage is defined there.
 
-**Filled out on 2026-08-24** with the whole of that document's road, as fifty-eight items in seven phases. **Items 59 and 60 were added on 2026-08-24** by the review of the first unattended run, which is where an item found by reading landed work belongs.
+**Filled out on 2026-08-24** with the whole of that document's road, as fifty-eight items in seven phases. **Items 59, 60 and 61 were added on 2026-08-24** by the reviews of the first two unattended runs, which is where an item found by reading landed work belongs.
 
 ---
 
@@ -162,6 +162,26 @@ So two documents meant to differ still silently become one. Before item 3 that h
 **Why it exists.** Item 5 met its own wording exactly: it checks backtick-quoted and link-quoted paths, and its own blind-gate row in [JOURNAL.md](JOURNAL.md) says the diagram sits in a stripped fenced block, neither checked nor changed. That row is honest and it was not tracked, and JOURNAL.md's own rule is that a row needing work nobody is tracking needs a roadmap item in the same commit. This is that item.
 
 Seven website paths are still in that fence today, named here without backticks so that item 5's own gate does not read this item as a claim that they exist: content/shaders, hooks/useShaderSurface.ts, lib/renderer/artefacts.ts, lib/renderer/choose.ts, lib/shader-base.ts, public/shaders/build/manifest.json, public/shaders/source/*.wgsl. Writing them plainly is deliberate rather than a workaround — the alternative was seven more entries on `ALLOWED_ABSENT`, and that list is a widened bar whose value comes from being short. **This item's first draft did quote them, and the gate failed the commit**, which is the gate doing exactly what item 5 built it for. The diagram is the most-read part of that document, so this is where §3 row 12 of [RoadToPureEngine.md](RoadToPureEngine.md) is least closed rather than most.
+
+### 61. The WebGL 2 backend feeds an integer uniform as an integer
+
+**Status.** open
+
+**Asks for.** A loose scalar uniform declared `int` in the source is fed with `gl.uniform1i` rather than `gl.uniform1f`.
+
+**Done when.** A source declaring `uniform int` receives the value it was handed, asserted against the fake WebGL 2 context by the call made rather than by the picture; and `examples/shadertoy-paste` animating off `iFrame` moves.
+
+**Needs.** item 6.
+
+**Why it exists.** Found reviewing item 6, which recorded it honestly as a risk and left it, in its own words, "unqueued". This is the queueing.
+
+[renderer/webgl2.ts](../renderer/webgl2.ts) sends every non-array scalar through `gl.uniform1f`. Feeding an `int` uniform that way is `GL_INVALID_OPERATION` in WebGL 2, so the uniform keeps its default of 0. Item 6's producer declares `uniform int iFrame;` — deliberately, so an integer-using paste compiles unmodified — which means **a Shadertoy paste that animates off `iFrame` draws a still picture**. It draws, so item 6's `Done when` is met to the letter; the frame counter it drew from was never delivered.
+
+**It is not a one-line fix, and that is the useful part of this entry.** `setUniforms` receives only `values: Record<string, UniformValue>` and infers the call from the JavaScript shape of each value — non-array becomes `uniform1f`, and an array's length picks `uniform2fv`, `uniform3fv` or `uniform4fv`. There is no declared type in scope. The type does exist on the frame, as `ShaderFrame.uniforms`, and `createProgram` receives the whole frame, so a name-to-type map captured when the program is built is the obvious route.
+
+**One thing to decide while landing it.** [RoadToPureEngine.md](RoadToPureEngine.md) §14 retires `ShaderFrame.uniforms` from the graph, because what a control panel shows is not a render fact. So the obvious route leans on a field that is scheduled to leave. If it is taken anyway, the type has to move to the binding or the pipeline when that field goes, and this entry is where that follow-on is recorded.
+
+**Also worth checking when landing it.** The uniform-block path above the loose path writes members into a byte buffer as floats too, so an `int` member of a block has the same problem by a different route. No corpus source has one today, and a Shadertoy paste uses loose uniforms rather than a block, so the loose path is the one item 6 made reachable.
 
 ---
 
