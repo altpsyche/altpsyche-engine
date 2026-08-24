@@ -43,7 +43,7 @@ The library ships from `main` as `@altpsyche/engine`. The site that consumes it 
 
 Days, no architecture. Implements decisions 6, 8 and 11.
 
-*Exit:* no known silent-wrong-output path; no document naming a file outside this repository; an unmodified Shadertoy fragment source in the uniform-only subset draws.
+*Exit:* no known silent-wrong-output path; no document naming a file outside this repository; a consumer's own GLSL fragment document draws, and it reaches WebGL 2 by selection rather than by being named.
 
 ### 2. The program cache key
 
@@ -192,7 +192,7 @@ Seven website paths are still in that fence today, named here without backticks 
 
 **Asks for.** One reading, on a device that actually returns a WebGPU adapter, showing that a GLSL-authored frame is drawn by WebGL 2 there and that the picture comes out.
 
-**Done when.** A dated row in [DEVICES.md](DEVICES.md) records a machine whose `probe()` reports WebGPU returned and survived, on which `examples/shadertoy-paste` selected `webgl2` and drew. Not a node assertion: the point is the machine.
+**Done when.** A dated row in [DEVICES.md](DEVICES.md) records a machine whose `probe()` reports WebGPU returned and survived, on which `examples/glsl-fragment` selected `webgl2` and drew. Not a node assertion: the point is the machine.
 
 **Needs.** item 9.
 
