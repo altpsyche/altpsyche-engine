@@ -66,7 +66,7 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 4. The README says what is true
 
-**Status.** open
+**Status.** done
 
 **Asks for.** Three corrections. WebGL 2 covers one fullscreen pass today, not the scene tier. 0.x is unstable. §14 of the road document is the shape the surface is moving toward.
 

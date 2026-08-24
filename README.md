@@ -12,6 +12,11 @@ import { createSurface, wgslFrame, vec3, mat4 } from '@altpsyche/engine';
 There is no second path. Everything public comes from the package name, so nothing
 you import can move when the files inside are rearranged.
 
+This is 0.x, and 0.x is unstable: names and shapes change between releases without a
+major bump. §14 of [docs/RoadToPureEngine.md](docs/RoadToPureEngine.md) is the shape
+the surface is moving toward, and where today's names differ from it, today's names
+are the ones that move.
+
 ## The one thing that will surprise you
 
 `createFrameRenderer` is asynchronous, and so is `createSurface`, which is built on
@@ -140,7 +145,9 @@ check a change to a shader did not quietly change what the device was asked to d
 ## What it needs
 
 A browser with WebGL 2, which is everything current, and WebGPU where you want the
-WebGPU path. It has no runtime dependencies at all.
+WebGPU path. On WebGL 2 the backend covers one fullscreen pass today, not the scene
+tier, so a scene with objects, cameras and passes needs the WebGPU path for now. It
+has no runtime dependencies at all.
 
 ## Licence
 
