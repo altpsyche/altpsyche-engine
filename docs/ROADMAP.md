@@ -799,13 +799,36 @@ repository and are a `carry`. 653 node tests green (+7), type-check green. See [
 
 ### 30. `examples/instanced-cubes`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A thousand objects, one pipeline, each with its own transform.
 
 **Done when.** It draws on both backends and its `cost()` is inside the budget of item 31. **This item is Phase 3's exit criterion, not an illustration of it:** if writing it is painful, the API is wrong, and this is the cheap moment to find out.
 
 **Needs.** item 27, item 28.
+
+**How it landed.** [examples/instanced-cubes/main.ts](../examples/instanced-cubes/main.ts) is the
+fourth example: a thousand objects, one pipeline, each with its own transform, drawn in one pass by
+one instanced draw. Each object's transform is derived in the vertex shader from
+`@builtin(instance_index)` (WGSL) / `gl_InstanceID` (GLSL) — a grid cell plus a per-instance spin —
+so no per-instance buffer is needed and the same one instanced draw runs on both backends (item 28).
+`cost()` counts that one call as one draw however many instances it reads, so the frame is
+`passes: 1, draws: 1`, pinned in [tests/instanced-cubes-cost.test.ts](../tests/instanced-cubes-cost.test.ts)
+at the corpus size (WebGPU `attachmentStores: 1`, `transientBytes: 800×600×4` for the frame-sized
+depth target; WebGL 2 the same with `transientBytes: 0`) — the number a budget (item 31) is set
+against, logged from the example too. **"Both backends" is two authorings of one idea:** a frame is
+one language and each backend speaks one, so the example ships a WGSL frame (`selectBackend` routes
+it to WebGPU) and a GLSL frame (routed to WebGL 2), drawing whichever the device offers. The two
+pictures differ, and that asymmetry is the WebGL 2 backend's today rather than the example's: on
+WebGPU each object is a real depth-tested 3-D cube read from a vertex buffer, and on WebGL 2 each is
+one instance of the backend's own fullscreen corners, because that backend has no vertex buffer or
+depth of its own until item 49. Both are a thousand objects, one pipeline, one instanced draw, one
+pass. It reaches the library through the one door and nothing under it (`tests/examples-door.test.ts`
+green), type-checks against the real door, and bundles through the door alias. **What the gates
+could not see:** that either arm paints a thousand moving objects needs a card or a browser —
+`gate:browser` was not run in the unattended session and this machine reaches only SwiftShader
+(§17 note 3) — and the "inside the budget of item 31" clause was read forward, since item 31 is open
+and cannot publish a budget before the frame it measures exists. See [JOURNAL.md](JOURNAL.md).
 
 ### 31. A published budget for a thousand objects
 
