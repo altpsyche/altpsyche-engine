@@ -57,7 +57,7 @@ describe('every example reaches only the package door', () => {
 
   it('finds the examples, so a rename cannot empty this silently', () => {
     const names = entries.map((entry) => path.basename(path.dirname(entry)));
-    expect(names).toEqual(expect.arrayContaining(['fullscreen', 'shadertoy-paste']));
+    expect(names).toEqual(expect.arrayContaining(['fullscreen', 'glsl-fragment']));
   });
 
   it('imports the door and nothing else, with no relative reach into a folder', () => {

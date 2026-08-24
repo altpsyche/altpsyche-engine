@@ -31,6 +31,7 @@ The library ships from `main` as `@altpsyche/engine`. The site that consumes it 
 | `open` | not landed |
 | `done` | landed |
 | `lifted <where>` | it cannot be finished on this machine, and this says where it went |
+| `reverted` | it landed and was then taken back out, and the item says why. Kept rather than deleted, because an item that was a mistake is worth more as a record than as a gap in the numbering |
 
 **An item is reachable when every item its `Needs` names is `done`.** That is the only rule for choosing what to work, and the lowest-numbered reachable item wins. `lifted` never satisfies a `Needs`: an item waiting on lifted work is not reachable, and saying otherwise is how a run builds on something that was never landed.
 
@@ -84,23 +85,25 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 **Needs.** Nothing.
 
-### 6. The `shadertoy()` producer
+### 6. A Shadertoy producer, which was a mistake
 
-**Status.** done
+**Status.** reverted
 
-**Asks for.** A producer taking an unmodified Shadertoy fragment source and the uniform-only subset — `iTime`, `iTimeDelta`, `iFrame`, `iResolution`, `iMouse` — and returning something drawable.
+**What it asked for, and what landed.** A producer that took an unmodified Shadertoy fragment source, wrapped it in that site's own uniform declarations — `iTime`, `iTimeDelta`, `iFrame`, `iResolution`, `iMouse` — and the `main` that calls `mainImage`. It landed, drew, and was removed the same day.
 
-**Done when.** An unmodified Shadertoy source using only those uniforms draws, and a source sampling `iChannel0` is refused by a message naming `iChannel0` and saying textures are not in this path yet.
+**Why it was removed.** It froze another product's naming conventions into this package's public door. That is the same defect as being shaped around the website this library was extracted from, with a different owner, and it is the defect the goal in [CLAUDE.md](../CLAUDE.md) exists to prevent: *where an argument for a design amounts to "some consumer needs it", throw the argument out and look for a reason that stands on the package's own merits.* There is no such reason here. A general engine takes a GLSL fragment document; a consumer who wants a particular set of uniform names writes eight lines to supply them, which is what `examples/glsl-fragment` now shows.
 
-**Needs.** Nothing. It sits on machinery that ships today: the WebGL 2 backend already takes GLSL and already draws one fullscreen pass.
+**How it got in, recorded because the mechanism matters more than the item.** It was volunteered rather than asked for — the question on the table was whether a consumer may hand the library GLSL, which is decision 6 and is a real capability that stands on its own. The producer was added on top of that answer as an adoption argument, then justified a second time on the grounds that Phase 0 otherwise had no outward-facing deliverable. That second reason is demo-driven design, which is exactly what decision 10's guardrail forbids, and it was written two items after that guardrail.
 
-**Note.** Phase 0 owns a producer deliberately, per [RoadToPureEngine.md](RoadToPureEngine.md) §15 Stage 0. Everything else in this phase benefits only the people who wrote it, and a phase with no outward face is a phase that slips.
+**What stays.** GLSL-in stays, and so does item 8's `selectBackend`, which routes a GLSL-authored frame to WebGL 2 even where WebGPU exists. That is the general mechanism and it is untouched by this removal. Item 61 also stays: it was found through this producer but it is a real limitation of the WebGL 2 backend that any consumer's GLSL can hit.
+
+**Reverse it, if it should come back.** `git show 1d04410` carries the producer, its test, and its door export whole; `git show 2f791a9` carries the example that used it. Bringing it back means answering the question above, which is why it stands on the package's merits rather than on any consumer's.
 
 ### 7. `examples/` begins
 
 **Status.** done
 
-**Asks for.** The directory, a way to run one, and the first two: `fullscreen` and `shadertoy-paste`.
+**Asks for.** The directory, a way to run one, and the first two: `fullscreen` and a consumer-authored GLSL fragment.
 
 **Done when.** `npm run example <name>` opens either one, and each imports the package door and nothing else — no relative reach into a folder.
 
@@ -169,19 +172,19 @@ Seven website paths are still in that fence today, named here without backticks 
 
 **Asks for.** A loose scalar uniform declared `int` in the source is fed with `gl.uniform1i` rather than `gl.uniform1f`.
 
-**Done when.** A source declaring `uniform int` receives the value it was handed, asserted against the fake WebGL 2 context by the call made rather than by the picture; and `examples/shadertoy-paste` animating off `iFrame` moves.
+**Done when.** A source declaring `uniform int` receives the value it was handed, asserted against the fake WebGL 2 context by the call made rather than by the picture, and a source declaring one alongside floats gets both.
 
-**Needs.** item 6.
+**Needs.** Nothing.
 
-**Why it exists.** Found reviewing item 6, which recorded it honestly as a risk and left it, in its own words, "unqueued". This is the queueing.
+**Why it exists.** [renderer/webgl2.ts](../renderer/webgl2.ts) sends every non-array scalar through `gl.uniform1f`. Feeding an `int` uniform that way is `GL_INVALID_OPERATION` in WebGL 2, so the uniform keeps its default of 0 and the shader animates off a number nobody delivered.
 
-[renderer/webgl2.ts](../renderer/webgl2.ts) sends every non-array scalar through `gl.uniform1f`. Feeding an `int` uniform that way is `GL_INVALID_OPERATION` in WebGL 2, so the uniform keeps its default of 0. Item 6's producer declares `uniform int iFrame;` — deliberately, so an integer-using paste compiles unmodified — which means **a Shadertoy paste that animates off `iFrame` draws a still picture**. It draws, so item 6's `Done when` is met to the letter; the frame counter it drew from was never delivered.
+**It is a general defect, not a leftover.** It was found through item 6's producer, which has since been reverted, and it survives that removal untouched: decision 6 says a consumer may hand this library a GLSL document, and `uniform int` is ordinary GLSL. Any consumer writing one hits this today, silently, and no gate here can see it — the node suite reads calls rather than values, and the browser corpus has no GLSL source declaring an integer.
 
 **It is not a one-line fix, and that is the useful part of this entry.** `setUniforms` receives only `values: Record<string, UniformValue>` and infers the call from the JavaScript shape of each value — non-array becomes `uniform1f`, and an array's length picks `uniform2fv`, `uniform3fv` or `uniform4fv`. There is no declared type in scope. The type does exist on the frame, as `ShaderFrame.uniforms`, and `createProgram` receives the whole frame, so a name-to-type map captured when the program is built is the obvious route.
 
 **One thing to decide while landing it.** [RoadToPureEngine.md](RoadToPureEngine.md) §14 retires `ShaderFrame.uniforms` from the graph, because what a control panel shows is not a render fact. So the obvious route leans on a field that is scheduled to leave. If it is taken anyway, the type has to move to the binding or the pipeline when that field goes, and this entry is where that follow-on is recorded.
 
-**Also worth checking when landing it.** The uniform-block path above the loose path writes members into a byte buffer as floats too, so an `int` member of a block has the same problem by a different route. No corpus source has one today, and a Shadertoy paste uses loose uniforms rather than a block, so the loose path is the one item 6 made reachable.
+**Also worth checking when landing it.** The uniform-block path above the loose path writes members into a byte buffer as floats too, so an `int` member of a block has the same problem by a different route. No corpus source has one today, so both paths want a test rather than only the loose one.
 
 ### 62. Decision 6's promise is confirmed on a machine that has WebGPU
 

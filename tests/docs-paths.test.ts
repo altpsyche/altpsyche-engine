@@ -34,6 +34,11 @@ const endsInSourceExt = new RegExp(`\\.(${SOURCE_EXT.join('|')})$`);
  * Paths that do not resolve on purpose, each with why. A file a roadmap item is
  * yet to create, or a website path named here only to say it is absent.
  */
+/** The one document this gate does not read, and why is above where it is skipped:
+ * a register of dated rows is a record rather than a signpost, so a path it names is
+ * a claim about the past. */
+const EXCLUDED_HISTORY = 'JOURNAL.md';
+
 const ALLOWED_ABSENT: Record<string, string> = {
   'docs/TESTING.md': "the consuming site's file, cited by ROADMAP item 1's phone row",
   'host/loop.ts': 'the host loop, a folder RoadToPureEngine §7 and ROADMAP item 39 will build',
@@ -97,6 +102,14 @@ function pathRefs(): Ref[] {
   const refs: Ref[] = [];
   for (const name of readdirSync(docsDir)) {
     if (!name.endsWith('.md')) continue;
+    // JOURNAL.md is a dated record of what was true when each row was written, not a
+    // document teaching a reader where anything lives. A row that named a real file
+    // correctly must not become a gate failure because a later commit deleted that
+    // file: the row is still an accurate account of the day it describes, and editing
+    // history to keep a gate green is the one repair that costs more than the gate is
+    // worth. Item 6 was reverted and its rows still name the producer it removed,
+    // which is exactly the case this skip exists for.
+    if (name === EXCLUDED_HISTORY) continue;
     const full = path.join(docsDir, name);
     const dir = path.dirname(full);
     const text = stripFences(readFileSync(full, 'utf-8'));

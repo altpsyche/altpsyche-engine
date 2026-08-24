@@ -42,11 +42,6 @@ export type { BackendFacts, DeviceReading, ProbeFacts, ProbeHost, ProbeTier } fr
 export * from './renderer/frame.js';
 export * from './renderer/types.js';
 
-// The toy-tier producer: an unmodified Shadertoy fragment paste becomes a
-// drawable frame. It sits behind the one door like every other producer, and it
-// reaches no device — the backend that draws its result is chosen elsewhere.
-export { shadertoy } from './renderer/shadertoy.js';
-
 // The uniform block a WGSL source lays out, computed off its struct because
 // nothing here compiles WGSL.
 export { uniformBlockOf } from './wgsl-layout.js';

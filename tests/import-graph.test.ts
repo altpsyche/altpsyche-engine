@@ -36,7 +36,6 @@ const SHIPPING = [
   'renderer/index.ts',
   'renderer/probe.ts',
   'renderer/select.ts',
-  'renderer/shadertoy.ts',
   'renderer/surface.ts',
   'renderer/trace.ts',
   'renderer/webgl2.ts',
