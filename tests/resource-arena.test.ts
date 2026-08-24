@@ -87,7 +87,7 @@ describe('the resize and upload verbs', () => {
     const { arena } = arenaOfTokens();
     const handle = arena.allocate(() => 'target');
     let seen: string | null = null;
-    arena.upload(handle, (resource) => (seen = resource));
+    arena.upload(handle, 0, (resource) => (seen = resource));
     // Queued, not run: nothing has touched the resource until the frame flushes.
     expect(seen).toBe(null);
     arena.flush();
@@ -99,8 +99,8 @@ describe('the resize and upload verbs', () => {
     const first = arena.allocate(() => 'first');
     const second = arena.allocate(() => 'second');
     const order: string[] = [];
-    arena.upload(first, (resource) => order.push(resource));
-    arena.upload(second, (resource) => order.push(resource));
+    arena.upload(first, 0, (resource) => order.push(resource));
+    arena.upload(second, 0, (resource) => order.push(resource));
     arena.flush();
     expect(order).toEqual(['first', 'second']);
   });
@@ -109,7 +109,7 @@ describe('the resize and upload verbs', () => {
     const { arena } = arenaOfTokens();
     const handle = arena.allocate(() => 'target');
     let runs = 0;
-    arena.upload(handle, () => (runs += 1));
+    arena.upload(handle, 0, () => (runs += 1));
     arena.flush();
     arena.flush();
     expect(runs).toBe(1);
@@ -121,9 +121,59 @@ describe('the resize and upload verbs', () => {
     // Queued against the live handle, then the resource is freed and the slot
     // reused before the frame flushes — the classic resize race the ordering
     // exists to catch.
-    arena.upload(handle, () => undefined);
+    arena.upload(handle, 8, () => undefined);
     arena.free(handle);
     arena.allocate(() => 'newcomer');
     expect(() => arena.flush()).toThrow(/no live resource/);
+  });
+});
+
+describe('the arena tallies the bytes that cross into resident resources', () => {
+  it('reports zero on a fresh arena, in both categories', () => {
+    const { arena } = arenaOfTokens();
+    expect(arena.traffic()).toEqual({ written: 0, uploaded: 0 });
+  });
+
+  it('adds a write to `written` and an upload to `uploaded`, kept apart and never summed', () => {
+    const { arena } = arenaOfTokens();
+    const handle = arena.allocate(() => 'target');
+    arena.wrote(64);
+    arena.upload(handle, 16, () => undefined);
+    // Queued but not yet flushed: the upload has not landed, so it is not counted.
+    expect(arena.traffic()).toEqual({ written: 64, uploaded: 0 });
+    arena.flush();
+    expect(arena.traffic()).toEqual({ written: 64, uploaded: 16 });
+  });
+
+  it('counts a direct upload through `sent`, for a backend whose upload does not queue', () => {
+    const { arena } = arenaOfTokens();
+    arena.sent(32);
+    arena.sent(8);
+    expect(arena.traffic()).toEqual({ written: 0, uploaded: 40 });
+  });
+
+  it('does not count an upload whose handle was freed before flush, since the write never lands', () => {
+    const { arena } = arenaOfTokens();
+    const handle = arena.allocate(() => 'target');
+    arena.upload(handle, 128, () => undefined);
+    arena.free(handle);
+    arena.allocate(() => 'newcomer');
+    expect(() => arena.flush()).toThrow(/no live resource/);
+    expect(arena.traffic()).toEqual({ written: 0, uploaded: 0 });
+  });
+
+  it('reports since-last-reset totals: resetTraffic zeroes both', () => {
+    const { arena } = arenaOfTokens();
+    const handle = arena.allocate(() => 'target');
+    arena.wrote(64);
+    arena.upload(handle, 16, () => undefined);
+    arena.flush();
+    expect(arena.traffic()).toEqual({ written: 64, uploaded: 16 });
+    arena.resetTraffic();
+    expect(arena.traffic()).toEqual({ written: 0, uploaded: 0 });
+    // A write after the reset accrues from zero, so a caller reads the window it
+    // reset rather than everything since the arena was made.
+    arena.wrote(4);
+    expect(arena.traffic()).toEqual({ written: 4, uploaded: 0 });
   });
 });

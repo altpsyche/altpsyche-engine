@@ -10,6 +10,8 @@
  * is the wrong method.**
  */
 
+import type { FrameTraffic } from '../resource/arena.js';
+
 export type BackendName = 'webgl2' | 'webgpu';
 
 /** Which language a backend takes its shaders in. It is not the same thing as
@@ -620,6 +622,18 @@ export interface Backend {
    * know which backend it holds, and neither throws: a device with nothing
    * optional reports no features rather than refusing the question. */
   report(): DeviceReport;
+  /** The bytes that have crossed into this backend's resident resources since the
+   * last reset — written once into first contents, uploaded per frame into one
+   * already made — read from the arena and reported apart, per §17 decision 9
+   * (item 22). Both backends answer it from their own arena and neither throws:
+   * the resident lifetime is the arena's on either, so this is not a capability
+   * one has and the other lacks. A benchmark prints it beside `cost()` and never
+   * summed with it, because a resident traffic problem and a per-frame structural
+   * one are different problems one merged number would hide. */
+  traffic(): FrameTraffic;
+  /** Zeroes both traffic totals, so a caller measures the window it cares about.
+   * `traffic()` reports since-last-reset for this reason. */
+  resetTraffic(): void;
   /**
    * A frame's three lifetimes composed into one drawable: the resident resources
    * it names allocated through the arena, the pipelines it draws with taken from

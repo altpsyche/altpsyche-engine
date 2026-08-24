@@ -15,6 +15,7 @@
 import type { Backend, DeviceReport, ShaderFrame, ShaderProgram, UniformValue } from './types.js';
 import { componentsOf, drawsCorners, isRenderPass, moduleOf } from './types.js';
 import { Arena } from '../resource/arena.js';
+import type { FrameTraffic } from '../resource/arena.js';
 import { drawGL2Frame } from '../submit/gl2.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
 import { validate } from './validate.js';
@@ -105,6 +106,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
   const quad = arena.resolve(quadHandle);
   gl.bindBuffer(gl.ARRAY_BUFFER, quad);
   gl.bufferData(gl.ARRAY_BUFFER, FULLSCREEN_TRIANGLE, gl.STATIC_DRAW);
+  arena.wrote(FULLSCREEN_TRIANGLE.byteLength);
 
   let width = canvas.width;
   let height = canvas.height;
@@ -126,6 +128,17 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // extension list is what stands where WebGPU's features are. A context
       // that supports none answers with nothing rather than throwing.
       return { limits, features: [...(gl.getSupportedExtensions() ?? [])].sort() };
+    },
+
+    // The resident traffic this backend's arena has seen since the last reset,
+    // bytes written and uploaded reported apart (item 22). Answered from the
+    // arena on this backend exactly as on WebGPU, so a caller reads it without
+    // knowing which backend it holds.
+    traffic(): FrameTraffic {
+      return arena.traffic();
+    },
+    resetTraffic(): void {
+      arena.resetTraffic();
     },
 
     program(frame: ShaderFrame): ShaderProgram {
@@ -261,6 +274,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             }
             gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
             gl.bufferData(gl.UNIFORM_BUFFER, bytes, gl.DYNAMIC_DRAW);
+            // Respecified every frame rather than queued, so it is counted here
+            // where it lands rather than through `upload`/`flush`: this backend's
+            // uniform block is uploaded, not written once (item 22).
+            arena.sent(bytes.byteLength);
             gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo);
             gl.uniformBlockBinding(program, 0, 0);
             return;

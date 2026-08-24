@@ -427,13 +427,45 @@ item 23's, not asserted here.
 
 ### 22. `arena.traffic()`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** Bytes written and uploaded, read from the arena, because that is a resident-lifetime fact the graph does not carry.
 
 **Done when.** It reports since-last-reset totals, and the benchmark reports it **beside** `cost()` and never summed with it.
 
 **Needs.** item 10, item 21.
+
+**How it landed.** [resource/arena.ts](../resource/arena.ts) gains a two-part ledger —
+`FrameTraffic { written, uploaded }` — with `traffic()` reading it and `resetTraffic()`
+zeroing it, so a caller reads the window it reset rather than everything since the arena was
+made. The two categories decision 9 keeps apart accrue at the arena's own funnels: the queued
+`upload(handle, bytes, run)` path (item 11) now carries a byte count and adds it to `uploaded`
+**at `flush`**, after `resolve` succeeds — so an upload against a handle a resize freed is
+refused and never counted; `wrote(bytes)` records the one-time first contents; `sent(bytes)`
+records an upload that does not pass through the queue. The backends record at the writeBuffer
+and bufferData calls they already make: WebGPU's geometry and storage-buffer initial data →
+`wrote`, its per-frame uniform block → the funnel; WebGL 2's fullscreen quad → `wrote`, its
+per-frame uniform block (respecified with `bufferData` rather than queued) → `sent`. Both
+backends expose `traffic()`/`resetTraffic()` on the shared `Backend` interface, answered from
+each backend's own arena — symmetric, neither throws, so it is not a method one has and the
+other refuses. `FrameTraffic` is imported by `renderer/types.ts` for the interface but **not
+re-exported through the door**, so the export surface did not move (`gate:pack` green at 49
+names). The benchmark is `npm run bench:traffic` ([gates/traffic.mjs](../gates/traffic.mjs)):
+it draws a geometry frame and a compute frame through the recording double — no card — and
+prints `cost()` and `traffic()` as separate column groups, never summed, with
+`cost().transientBytes` a third figure apart from both (a transient scratch target the frame
+allocates versus the resident bytes a page fed in). Measured this run at 800×600: `grid`
+written 192 B / uploaded 16 B, `compute` written 256 B / uploaded 16 B, both transientBytes 0.
+
+**What the gates could not see.** The recording double is what the benchmark and the fast suite
+drive, so the byte counts are the ones the shipped backend tallies — but on the fake device,
+not a card, and `gate:browser` was not run. The counting is arithmetic the node suite reads
+directly ([tests/resource-arena.test.ts](../tests/resource-arena.test.ts),
+[tests/renderer-traffic.test.ts](../tests/renderer-traffic.test.ts) assert each category, the
+freed-before-flush no-count, and reset), so a card would confirm the *picture* is unchanged
+rather than the *numbers*, which are device-independent by construction. The benchmark draws
+two hand-built frames rather than the corpus because the node corpus loader is broken
+independently of this work — see item 64. See [JOURNAL.md](JOURNAL.md).
 
 ### 23. Every preset asserts an exact cost
 
@@ -1001,3 +1033,15 @@ Each row is honest and neither is wrong. What nobody owned is the join: **on a m
 **Needs.** item 15, item 21.
 
 **Why it exists.** Item 12 built `PipelineCache` content-addressed for exactly this reuse, and item 15 wired the backends to compile through it — but **per program**, not per backend, so the cache never dedupes across two programs. That scope was deliberate and is recorded in item 15's [JOURNAL.md](JOURNAL.md) row: a per-backend `PipelineCache` has no eviction, so the editing path — a source recompiled on every keystroke, each a new structure — would accumulate pipelines the renderer's LRU can no longer reach, which is the unbounded card-memory growth that LRU exists to prevent. The renderer's LRU already reuses a whole **program** when a frame repeats exactly (via `frameKey`), so the reuse still missing is the scene-tier one: many programs sharing one material's pipeline over different meshes, each compiling that pipeline again today. That is why this `Needs` item 21 as well as item 15 — the `cost()` metric is where a "compiled nothing new" claim becomes assertable without a browser, and the scene tier is where the reuse pays. **Reverse:** none needed until it lands; item 15's per-program scope stands on its own.
+
+### 64. The node corpus loader assembles a frame again
+
+**Status.** open
+
+**Asks for.** `gates/lib.mjs`'s `loadCorpus()` loads every capability fixture into a frame again, rather than throwing on the first.
+
+**Done when.** `node -e "import('./gates/lib.mjs').then(m => m.loadCorpus())"` returns a frame per `CAPABILITY_FIXTURES` entry, and the two browser gates that consume it — `gates/corpus.mjs` and `gates/trace-contract.mjs` — reach a page rather than dying at load.
+
+**Needs.** Nothing.
+
+**Why it exists.** Found working item 22, which wanted to print `arena.traffic()` beside `cost()` for every corpus preset and could not: `loadCorpus()` throws on the first capability fixture, `core-compute`, with *"the description for core-compute names a document undefined with no text"*. Reproduced on a clean tree (`git stash` then the one-liner above), so it predates item 22 and is not that work's doing. The cause is a `WGSL_DOCUMENT` that resolves to `undefined` inside the esbuild bundle `loadFromRoot` builds — a document named `undefined` reaches `frameOf`, whose missing-text check refuses it correctly. Because `loadCorpus` is what `gate:browser`'s corpus and trace-contract gates call at their first step, **both are currently dead at load**, which the repeated "gate:browser not run in the unattended session" JOURNAL rows have been hiding: a gate nobody runs is a gate whose own loader can rot unnoticed. Item 22's benchmark works around it by building two frames by hand; this item is the fix, and until it lands `gate:browser` cannot confirm anything, including the twelve trace presets several recent items defer to it.

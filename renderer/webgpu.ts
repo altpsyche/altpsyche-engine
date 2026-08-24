@@ -43,7 +43,7 @@ import {
   uniformResourceOf,
 } from './types.js';
 import { Arena } from '../resource/arena.js';
-import type { Handle } from '../resource/arena.js';
+import type { FrameTraffic, Handle } from '../resource/arena.js';
 import { planFramePasses } from '../submit/plan.js';
 import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
 import { runFrame, issueDraw } from '../submit/execute.js';
@@ -340,6 +340,18 @@ export function createWebGPUBackend(
       return { limits, features: [...device.features].sort() };
     },
 
+    // The resident traffic this backend's arena has seen since the last reset,
+    // bytes written and uploaded reported apart (item 22). It reads the arena
+    // rather than the graph because per-frame uploads are a resident-lifetime
+    // fact the graph does not carry, per §17 decision 9; a benchmark prints it
+    // beside `cost()` and never summed with it.
+    traffic(): FrameTraffic {
+      return arena.traffic();
+    },
+    resetTraffic(): void {
+      arena.resetTraffic();
+    },
+
     program(frame: ShaderFrame): ShaderProgram {
       if (frame.target !== 'wgsl') throw new Error(`WebGPU was handed a ${frame.target} frame to draw`);
 
@@ -472,6 +484,7 @@ export function createWebGPUBackend(
             })
           );
           device.queue.writeBuffer(built, 0, bytes);
+          arena.wrote(bytes.byteLength);
           buffers.set(resource.name, built);
         }
 
@@ -584,6 +597,7 @@ export function createWebGPUBackend(
           // a scratch buffer the card fills does not.
           if (resource.data) {
             device.queue.writeBuffer(built, 0, resource.data);
+            arena.wrote(resource.data.byteLength);
             writable.add(resource.name);
           }
         }
@@ -1061,7 +1075,9 @@ export function createWebGPUBackend(
           // frame it feeds — the write lands before the pass that reads it because
           // the draw flushes before it records, not because the page happened to
           // call this before drawing.
-          arena.upload(bufferHandle, (target) => device.queue.writeBuffer(target as GPUBuffer, 0, values));
+          arena.upload(bufferHandle, values.byteLength, (target) =>
+            device.queue.writeBuffer(target as GPUBuffer, 0, values)
+          );
         },
 
         // A field is in the block or it is not, and a WGSL compiler does not

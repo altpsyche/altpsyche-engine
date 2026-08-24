@@ -34,6 +34,27 @@ declare const HANDLE: unique symbol;
 /** A branded integer naming one live resource in an arena. */
 export type Handle = number & { readonly [HANDLE]: true };
 
+/** How many bytes have crossed into resident resources since the last reset, in
+ * the two categories decision 9 keeps apart: `written` once into a resource's
+ * first contents, `uploaded` per frame or on demand into one already made. They
+ * are reported side by side and never summed — a frame uploading 40 MB and
+ * drawing three things has a resident problem, not a per-frame one, and one
+ * merged number would hide which. This is the resident-lifetime reading the graph
+ * does not carry, so it lives here rather than in `cost()`, per
+ * [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §12 point 6 and §17
+ * decision 9 (item 22). */
+export interface FrameTraffic {
+  /** Bytes written once into a resident resource's first contents: geometry a
+   * frame carries, a buffer's initial data, the fullscreen quad. Counted where
+   * the write is made, once per resource rather than per frame. */
+  written: number;
+  /** Bytes uploaded into a resident resource already made: a uniform block a page
+   * feeds every frame, replacing what was there. Counted where the upload lands,
+   * so a queued upload against a handle a resize then frees is refused and never
+   * counted. */
+  uploaded: number;
+}
+
 /** How many slots a handle's index addresses, which is also the multiplier the
  * generation sits above. Index below, generation above, packed by multiplication
  * rather than by bit-shifting so both halves stay inside a safe integer: a
@@ -55,8 +76,14 @@ export class Arena<T> {
   private readonly freeList: number[] = [];
   /** Uploads queued against a live handle, waiting for the frame that reads them
    * to be flushed. Ordered: the frame plays them back in the order they were
-   * queued, so an upload a later pass reads cannot land after the pass. */
-  private readonly pending: { handle: Handle; run: (resource: T) => void }[] = [];
+   * queued, so an upload a later pass reads cannot land after the pass. Each
+   * carries the byte count it moves, so `flush` can add it to the traffic ledger
+   * only where the write actually runs. */
+  private readonly pending: { handle: Handle; bytes: number; run: (resource: T) => void }[] = [];
+  /** Bytes written once into a resource's first contents since the last reset. */
+  private writtenBytes = 0;
+  /** Bytes uploaded into a resource already made since the last reset. */
+  private uploadedBytes = 0;
 
   constructor(private readonly disposeOf: (resource: T) => void) {}
 
@@ -109,8 +136,8 @@ export class Arena<T> {
    * here, so an upload queued against a resource a resize then frees is refused
    * when the frame plays it back rather than run against the slot's new occupant.
    * `flush` is what turns the queue into device work, in order. */
-  upload(handle: Handle, run: (resource: T) => void): void {
-    this.pending.push({ handle, run });
+  upload(handle: Handle, bytes: number, run: (resource: T) => void): void {
+    this.pending.push({ handle, bytes, run });
   }
 
   /** Plays every queued upload against the resource its handle names now, in the
@@ -121,7 +148,44 @@ export class Arena<T> {
    * rather than resolving to whatever now sits in the slot. */
   flush(): void {
     const queued = this.pending.splice(0);
-    for (const { handle, run } of queued) run(this.resolve(handle));
+    for (const { handle, bytes, run } of queued) {
+      // `resolve` throws for a handle freed since it was queued, before the byte
+      // count is added, so a write that never lands is never counted.
+      run(this.resolve(handle));
+      this.uploadedBytes += bytes;
+    }
+  }
+
+  /** Records bytes written once into a resident resource's first contents, at the
+   * site the write is made. It counts rather than performs the write: the byte
+   * count is a resident-lifetime fact the graph does not carry, and this is where
+   * it accrues so `traffic()` can report it (item 22). */
+  wrote(bytes: number): void {
+    this.writtenBytes += bytes;
+  }
+
+  /** Records bytes uploaded into a resident resource already made, for a backend
+   * whose upload does not pass through `upload`/`flush` — the WebGL 2 uniform
+   * block, respecified every frame. The queued path counts itself at `flush`; this
+   * is the same ledger reached from the direct path. */
+  sent(bytes: number): void {
+    this.uploadedBytes += bytes;
+  }
+
+  /** The bytes that have crossed into resident resources since the last reset, in
+   * the two categories decision 9 keeps apart. Reported side by side by the
+   * benchmark and never summed with `cost()`'s transient bytes or with each
+   * other. */
+  traffic(): FrameTraffic {
+    return { written: this.writtenBytes, uploaded: this.uploadedBytes };
+  }
+
+  /** Zeroes both totals, so a caller reads the traffic of the window it cares
+   * about — a frame, a run of frames — rather than everything since the arena was
+   * made. `traffic()` reports since-last-reset for exactly this reason. */
+  resetTraffic(): void {
+    this.writtenBytes = 0;
+    this.uploadedBytes = 0;
   }
 
   /** Frees a handle and allocates its replacement in one call, which is what a
