@@ -14,14 +14,17 @@
  * trace presets still agree call for call.
  */
 import type {
+  FrameDescription,
   IndexResource,
   RenderPassSpec,
   RenderPipelineSpec,
   ShaderFrame,
   TextureResource,
+  UniformSlot,
   VertexResource,
 } from '../renderer/types.js';
 import { drawsCorners, drawsIndirectly, isRenderPass, resourceOf } from '../renderer/types.js';
+import { frameOf } from '../renderer/frame.js';
 
 /** The geometry one pipeline reads and the indices that order it, looked up where
  * a pipeline is made and where a pass is planned so the two agree on which
@@ -273,4 +276,51 @@ export function planFramePasses(frame: ShaderFrame, geometryOf: (name: string) =
     }
     return read(pass, spec, undefined);
   });
+}
+
+/**
+ * The seam: today's `FrameDescription` translated onto the new path in one place.
+ *
+ * A `FrameDescription` is the build-time shape a producer hands over — it names
+ * its documents rather than carrying their text, and says nothing about a device.
+ * The new path of Stage 1 ([RoadToPureEngine.md](../docs/RoadToPureEngine.md) §15)
+ * is `submit/`: a graph becomes a plan here and then commands in
+ * [execute.ts](execute.ts). Between the two sits exactly one translation —
+ * `frameOf`, which fills a description's documents with the text a loader fetched
+ * and its generated resources with their bytes, producing the `ShaderFrame` graph
+ * `planFramePasses` reads. This function is that translation named as the seam, so
+ * a caller holding a description reaches the new path with one call and nothing
+ * above the seam has to know how a graph is shaped or how a plan is built.
+ *
+ * It composes the two existing pure steps rather than restating either: `frameOf`
+ * owns the description-to-graph refusals (a document with no text, a repeated
+ * name, a generated picture with no bytes) and `planFramePasses` owns the
+ * graph-to-plan ones. Keeping it a composition is the whole point of a seam — the
+ * translation lives once, and the passes are planned once, and this only says
+ * where a description enters.
+ *
+ * `geometryOf` stays the caller's, resolved against the resident lifetime the
+ * backend owns, because a plan reads which vertices a draw walks and the arena is
+ * what holds them. A fullscreen frame draws its backend's own corners and never
+ * asks for it, so the corpus reaches the new path through here touching no device.
+ *
+ * It is the entry [ROADMAP.md](../docs/ROADMAP.md) item 15 dismantles
+ * `createProgram` around: the fused builder goes, and a description reaches the
+ * planned frame through this one call rather than through a method that also
+ * allocated resources and compiled pipelines.
+ */
+export function planFromDescription(
+  id: string,
+  description: FrameDescription,
+  texts: Record<string, string>,
+  uniforms: { name: string; type: string }[],
+  geometryOf: (name: string) => DrawnGeometry,
+  extras: {
+    block?: UniformSlot[];
+    overrides?: Record<string, number>;
+    generated?: Map<string, Uint8Array<ArrayBuffer>>;
+  } = {}
+): FramePlan {
+  const frame = frameOf(id, description, texts, uniforms, extras.block, extras.overrides, extras.generated);
+  return planFramePasses(frame, geometryOf);
 }

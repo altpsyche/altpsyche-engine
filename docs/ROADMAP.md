@@ -185,7 +185,7 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 
 ### 14. The seam for today's descriptions
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A `FrameDescription` translated to the new path at one place, so nothing above has to move in this phase.
 
