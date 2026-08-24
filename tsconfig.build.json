@@ -26,6 +26,7 @@
   "include": [
     "index.ts",
     "renderer/**/*.ts",
+    "resource/**/*.ts",
     "engine/**/*.ts",
     "shader-geometry.ts",
     "wgsl-binding.ts",

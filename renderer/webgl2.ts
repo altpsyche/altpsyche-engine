@@ -14,6 +14,7 @@
  */
 import type { Backend, DeviceReport, ShaderFrame, ShaderProgram, UniformValue } from './types.js';
 import { componentsOf, drawsCorners, isRenderPass, moduleOf } from './types.js';
+import { Arena } from '../resource/arena.js';
 
 /** A single triangle covering the frame. Two triangles would draw the diagonal
  * twice, and there is no geometry here beyond filling the screen. */
@@ -91,7 +92,14 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
   const gl = canvas.getContext('webgl2', { antialias: false, alpha: false }) as WebGL2RenderingContext | null;
   if (!gl) return null;
 
-  const quad = gl.createBuffer();
+  // One arena for the backend's whole life. Every buffer this backend allocates —
+  // the quad it shares across programs and the uniform block each program owns —
+  // is allocated and freed through here, so a handle to a deleted buffer is caught
+  // rather than naming whatever the context hands back next.
+  const arena = new Arena<WebGLBuffer>((buffer) => gl.deleteBuffer(buffer));
+
+  const quadHandle = arena.allocate(() => gl.createBuffer() as WebGLBuffer);
+  const quad = arena.resolve(quadHandle);
   gl.bindBuffer(gl.ARRAY_BUFFER, quad);
   gl.bufferData(gl.ARRAY_BUFFER, FULLSCREEN_TRIANGLE, gl.STATIC_DRAW);
 
@@ -195,7 +203,8 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       const size =
         blocks > 0 ? (gl.getActiveUniformBlockParameter(program, 0, gl.UNIFORM_BLOCK_DATA_SIZE) as number) : 0;
       const bytes = layout ? new Float32Array(size / 4) : null;
-      const ubo = layout ? gl.createBuffer() : null;
+      const uboHandle = layout ? arena.allocate(() => gl.createBuffer() as WebGLBuffer) : null;
+      const ubo = uboHandle === null ? null : arena.resolve(uboHandle);
 
       const attribute = gl.getAttribLocation(program, 'position');
       const locations = new Map<string, WebGLUniformLocation | null>();
@@ -272,7 +281,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         setPasses() {},
 
         dispose() {
-          if (ubo) gl.deleteBuffer(ubo);
+          if (uboHandle !== null) arena.free(uboHandle);
           gl.deleteProgram(program);
         },
       };
@@ -297,7 +306,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
     },
 
     dispose() {
-      gl.deleteBuffer(quad);
+      arena.free(quadHandle);
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     },
   };

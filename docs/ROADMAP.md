@@ -145,7 +145,7 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 
 ### 10. The arena, and branded handles
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `resource/` with allocation, upload, resize and free, addressing everything by branded integer handle, and a free list that bumps a generation so a stale handle is detectable rather than silently valid.
 

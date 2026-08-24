@@ -41,6 +41,7 @@ const SHIPPING = [
   'renderer/webgl2.ts',
   'renderer/webgpu.ts',
   'renderer/webgpu-device.ts',
+  'resource/arena.ts',
   'engine/draw-list.ts',
   'engine/material.ts',
   'engine/maths.ts',

@@ -42,6 +42,18 @@ import {
   uniformResourceOf,
 } from './types.js';
 import { assertWholeWords, TIMED_QUERY_BYTES, VISIBLE_QUERY_BYTES } from './frame-rules.js';
+import { Arena } from '../resource/arena.js';
+import type { Handle } from '../resource/arena.js';
+
+/** What this backend allocates through the arena: the resident resources of §5,
+ * which is everything with a lifetime longer than a compilation and shorter than
+ * the program is not — a pipeline is the static lifetime and stays with the
+ * pipeline cache. A sampler alone has no `destroy`, so the disposer skips it and
+ * frees the rest through the object the way the backend used to. */
+type GpuResource = GPUBuffer | GPUTexture | GPUSampler | GPUQuerySet;
+const disposeGpuResource = (resource: GpuResource): void => {
+  if ('destroy' in resource) (resource as GPUBuffer | GPUTexture | GPUQuerySet).destroy();
+};
 
 /** The three corners that cover the frame in one triangle, drawn whenever a
  * pipeline asks for `fullscreen` rather than naming a vertex document of its
@@ -138,6 +150,14 @@ export function createWebGPUBackend(
   const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
   if (!context) return null;
 
+  // One arena for the backend's whole life. Every buffer, texture, sampler and
+  // query set it allocates is allocated through here and freed through here, so a
+  // handle to a freed slot is caught rather than resolving to the slot's next
+  // occupant. A program allocates into it and frees its own handles on dispose;
+  // the backend's own target and averaging sampler outlive every program and are
+  // freed when the backend is.
+  const arena = new Arena<GpuResource>(disposeGpuResource);
+
   const fullscreen = device.createShaderModule({ code: FULLSCREEN_TRIANGLE });
 
   /** How many levels a texture of this size has, which is a halving at a time
@@ -161,7 +181,9 @@ export function createWebGPUBackend(
     });
     ladder = {
       layout,
-      sampler: device.createSampler({ label: 'averaging', magFilter: 'linear', minFilter: 'linear' }),
+      sampler: arena.resolve(
+        arena.allocate(() => device.createSampler({ label: 'averaging', magFilter: 'linear', minFilter: 'linear' }))
+      ) as GPUSampler,
       pipeline: device.createRenderPipeline({
         layout: device.createPipelineLayout({ label: 'ladder-layout', bindGroupLayouts: [layout] }),
         vertex: { module: fullscreen, entryPoint: 'main' },
@@ -225,6 +247,7 @@ export function createWebGPUBackend(
   // frame was drawn into the canvas or merely copied there afterwards. A run
   // collecting pixels therefore must not configure one.
   let target: GPUTexture | null = null;
+  let targetHandle: Handle | null = null;
   let configured = false;
 
   // A view is a handle onto a texture and it outlives nothing behind it, so one
@@ -247,18 +270,22 @@ export function createWebGPUBackend(
 
   const surface = () => {
     if (!target || target.width !== width || target.height !== height) {
-      target?.destroy();
-      target = device.createTexture({
-        label: 'frame',
-        size: [width, height],
-        format: FORMAT,
-        // Copied out of by a read and by the canvas, and copied into by a frame
-        // whose picture ended up in a texture of its own, which is what a compute
-        // pass writing a storage texture is. A target without that last flag is
-        // refused at the copy rather than where it was made, so the frame draws
-        // and the picture never arrives.
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
-      });
+      const make = () =>
+        device.createTexture({
+          label: 'frame',
+          size: [width, height],
+          format: FORMAT,
+          // Copied out of by a read and by the canvas, and copied into by a frame
+          // whose picture ended up in a texture of its own, which is what a compute
+          // pass writing a storage texture is. A target without that last flag is
+          // refused at the copy rather than where it was made, so the frame draws
+          // and the picture never arrives.
+          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
+        });
+      // A resize frees the old frame and allocates the new through the arena, so
+      // the target follows the arena's lifetime as every other texture does.
+      targetHandle = targetHandle === null ? arena.allocate(make) : arena.resize(targetHandle, make);
+      target = arena.resolve(targetHandle) as GPUTexture;
     }
     return target;
   };
@@ -301,6 +328,20 @@ export function createWebGPUBackend(
       // without the program being remade. It is filled by the builder that plans
       // the frame's passes and re-planned by `setPasses`.
       let runs: FramePlan;
+
+      // Every resident resource this program allocates goes through the arena and
+      // is freed through it on dispose. `own` covers the ones freed only then —
+      // the uniform block, the geometry and storage buffers, the samplers and the
+      // query sets — by collecting their handles here. A texture is freed on a
+      // resize as well as on dispose, so its handle is kept by name instead and
+      // the resize frees the old before allocating the new.
+      const owned: Handle[] = [];
+      const own = <R extends GpuResource>(make: () => R): R => {
+        const handle = arena.allocate(make);
+        owned.push(handle);
+        return arena.resolve(handle) as R;
+      };
+      const textureHandles = new Map<string, Handle>();
 
       // Everything a program owns is made once, here, and handed to the per-frame
       // methods below rather than built alongside them. A resize is the one thing
@@ -353,10 +394,12 @@ export function createWebGPUBackend(
         const end = block.reduce((most, slot) => Math.max(most, slot.offset + slot.size), 0);
         const bytes = Math.ceil(end / BLOCK_ALIGNMENT) * BLOCK_ALIGNMENT;
         const values = new Float32Array(bytes / 4);
-        const buffer = device.createBuffer({
-          size: Math.max(bytes, BLOCK_ALIGNMENT),
-          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        });
+        const buffer = own(() =>
+          device.createBuffer({
+            size: Math.max(bytes, BLOCK_ALIGNMENT),
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+          })
+        );
 
         // Every buffer of geometry the description names, filled once from the bytes
         // that came with it. Neither buffer follows the frame, since geometry is the
@@ -367,13 +410,16 @@ export function createWebGPUBackend(
           if (!resource.data) {
             throw new Error(`the frame for "${frame.id}" draws "${resource.name}" and carries no bytes for it`);
           }
-          const built = device.createBuffer({
-            label: resource.name,
-            size: resource.data.byteLength,
-            usage:
-              (resource.kind === 'vertices' ? GPUBufferUsage.VERTEX : GPUBufferUsage.INDEX) | GPUBufferUsage.COPY_DST,
-          });
-          device.queue.writeBuffer(built, 0, resource.data);
+          const bytes = resource.data;
+          const built = own(() =>
+            device.createBuffer({
+              label: resource.name,
+              size: bytes.byteLength,
+              usage:
+                (resource.kind === 'vertices' ? GPUBufferUsage.VERTEX : GPUBufferUsage.INDEX) | GPUBufferUsage.COPY_DST,
+            })
+          );
+          device.queue.writeBuffer(built, 0, bytes);
           buffers.set(resource.name, built);
         }
 
@@ -409,12 +455,17 @@ export function createWebGPUBackend(
         const counting = new Map<string, GPUQuerySet>();
         for (const pass of frame.passes) {
           if (pass.timed && timing) {
-            times.set(pass.timed, device.createQuerySet({ label: `${pass.timed}-times`, type: 'timestamp', count: 2 }));
+            const timed = pass.timed;
+            times.set(
+              timed,
+              own(() => device.createQuerySet({ label: `${timed}-times`, type: 'timestamp', count: 2 }))
+            );
           }
           if (isRenderPass(pass) && pass.visible) {
+            const visible = pass.visible;
             counting.set(
-              pass.visible,
-              device.createQuerySet({ label: `${pass.visible}-samples`, type: 'occlusion', count: 1 })
+              visible,
+              own(() => device.createQuerySet({ label: `${visible}-samples`, type: 'occlusion', count: 1 }))
             );
           }
         }
@@ -470,9 +521,11 @@ export function createWebGPUBackend(
               `the frame for "${frame.id}" resolves ${resolved} bytes of query into "${resource.name}", which holds ${resource.bytes}`
             );
           }
-          const built = device.createBuffer({
-            label: resource.name,
-            size: resource.bytes,
+          const spec = resource;
+          const built = own(() =>
+            device.createBuffer({
+            label: spec.name,
+            size: spec.bytes,
             // A buffer a pass reads its counts out of carries the flag for that as
             // well as the one for the shader writing it, and a flag nothing asked
             // for is a call the card refuses over a usage rather than over the name
@@ -484,10 +537,11 @@ export function createWebGPUBackend(
             usage:
               GPUBufferUsage.STORAGE |
               GPUBufferUsage.COPY_SRC |
-              (arguments_.has(resource.name) ? GPUBufferUsage.INDIRECT : 0) |
+              (arguments_.has(spec.name) ? GPUBufferUsage.INDIRECT : 0) |
               (resolved === undefined ? 0 : GPUBufferUsage.QUERY_RESOLVE) |
-              (resource.data ? GPUBufferUsage.COPY_DST : 0),
-          });
+              (spec.data ? GPUBufferUsage.COPY_DST : 0),
+            })
+          );
           buffers.set(resource.name, built);
           // The contents the build wrote, uploaded once before anything reads them,
           // which is what a copy of a pipeline carrying its own numbers is handed.
@@ -577,29 +631,37 @@ export function createWebGPUBackend(
         const build = (which: (resource: TextureResource) => boolean) => {
           for (const resource of declared) {
             if (!which(resource)) continue;
-            textures.get(resource.name)?.destroy();
             const across = span(resource.size[0], width);
             const down = span(resource.size[1], height);
             const levels = resource.mips ? levelsOf(across, down) : 1;
-            const built = device.createTexture({
-              label: resource.name,
-              size: [across, down],
-              format: resource.format,
-              ...(levels > 1 ? { mipLevelCount: levels } : {}),
-              ...(resource.samples ? { sampleCount: resource.samples } : {}),
-              // The picture is copied out of whichever texture holds it at the
-              // end of the frame, so that one is readable on top of whatever the
-              // passes do with it, and a texture arriving with contents is copied
-              // into once before anything reads it.
-              usage: resource.use.reduce(
-                (mask, use) => mask | USES[use],
-                (resource.name === shown ? GPUTextureUsage.COPY_SRC : 0) |
-                  (resource.data ? GPUTextureUsage.COPY_DST : 0) |
-                  // Every level below the first is drawn rather than uploaded, so a
-                  // texture carrying a ladder is an attachment as well as a picture.
-                  (levels > 1 ? GPUTextureUsage.RENDER_ATTACHMENT : 0)
-              ),
-            });
+            const make = () =>
+              device.createTexture({
+                label: resource.name,
+                size: [across, down],
+                format: resource.format,
+                ...(levels > 1 ? { mipLevelCount: levels } : {}),
+                ...(resource.samples ? { sampleCount: resource.samples } : {}),
+                // The picture is copied out of whichever texture holds it at the
+                // end of the frame, so that one is readable on top of whatever the
+                // passes do with it, and a texture arriving with contents is copied
+                // into once before anything reads it.
+                usage: resource.use.reduce(
+                  (mask, use) => mask | USES[use],
+                  (resource.name === shown ? GPUTextureUsage.COPY_SRC : 0) |
+                    (resource.data ? GPUTextureUsage.COPY_DST : 0) |
+                    // Every level below the first is drawn rather than uploaded, so a
+                    // texture carrying a ladder is an attachment as well as a picture.
+                    (levels > 1 ? GPUTextureUsage.RENDER_ATTACHMENT : 0)
+                ),
+              });
+            // A texture that follows the frame is freed and remade on every resize,
+            // which is the arena's `resize`: the old slot's contents go with it and
+            // the new handle is what the maps below read. The first build has no
+            // prior handle for the name and allocates outright.
+            const prior = textureHandles.get(resource.name);
+            const handle = prior === undefined ? arena.allocate(make) : arena.resize(prior, make);
+            textureHandles.set(resource.name, handle);
+            const built = arena.resolve(handle) as GPUTexture;
             textures.set(resource.name, built);
 
             if (resource.data) {
@@ -620,15 +682,18 @@ export function createWebGPUBackend(
         const samplers = new Map<string, GPUSampler>();
         for (const resource of frame.resources) {
           if (resource.kind !== 'sampler') continue;
+          const spec = resource;
           samplers.set(
-            resource.name,
-            device.createSampler({
-              label: resource.name,
-              magFilter: resource.filter,
-              minFilter: resource.filter,
-              addressModeU: WRAPS[resource.wrap],
-              addressModeV: WRAPS[resource.wrap],
-            })
+            spec.name,
+            own(() =>
+              device.createSampler({
+                label: spec.name,
+                magFilter: spec.filter,
+                minFilter: spec.filter,
+                addressModeU: WRAPS[spec.wrap],
+                addressModeV: WRAPS[spec.wrap],
+              })
+            )
           );
         }
 
@@ -1083,12 +1148,17 @@ export function createWebGPUBackend(
 
           // Copied into a buffer of its own rather than mapped where it is: a
           // buffer the shader writes cannot be mapped, and mapping the one the
-          // frame uses would take it away from the next frame.
-          const staging = device.createBuffer({
-            label: `${name}-read`,
-            size: held.size,
-            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-          });
+          // frame uses would take it away from the next frame. It is allocated and
+          // freed through the arena within this call, so the slot it took is
+          // returned the moment the read is done.
+          const stagingHandle = arena.allocate(() =>
+            device.createBuffer({
+              label: `${name}-read`,
+              size: held.size,
+              usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            })
+          );
+          const staging = arena.resolve(stagingHandle) as GPUBuffer;
           const encoder = device.createCommandEncoder();
           encoder.copyBufferToBuffer(held, 0, staging, 0, held.size);
           device.queue.submit([encoder.finish()]);
@@ -1099,19 +1169,22 @@ export function createWebGPUBackend(
           // and a caller reading it afterwards reads nothing.
           const words = new Uint32Array(staging.getMappedRange().slice(0));
           staging.unmap();
-          staging.destroy();
+          arena.free(stagingHandle);
           return words;
         },
 
         dispose() {
-          buffer.destroy();
-          for (const set of times.values()) set.destroy();
+          // Everything this program allocated is freed through the arena: the
+          // handles `own` collected — the uniform block, the buffers, the samplers
+          // and the query sets — and the textures kept by name. The object maps are
+          // cleared after, since the objects behind them are gone with their slots.
+          for (const handle of owned) arena.free(handle);
+          owned.length = 0;
+          for (const handle of textureHandles.values()) arena.free(handle);
+          textureHandles.clear();
           times.clear();
-          for (const set of counting.values()) set.destroy();
           counting.clear();
-          for (const texture of textures.values()) texture.destroy();
           textures.clear();
-          for (const held of buffers.values()) held.destroy();
           buffers.clear();
         },
       };
@@ -1129,10 +1202,13 @@ export function createWebGPUBackend(
       if (!source) return new Uint8Array(width * height * 4);
 
       const stride = Math.ceil((width * 4) / ROW_ALIGNMENT) * ROW_ALIGNMENT;
-      const staging = device.createBuffer({
-        size: stride * height,
-        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-      });
+      const stagingHandle = arena.allocate(() =>
+        device.createBuffer({
+          size: stride * height,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        })
+      );
+      const staging = arena.resolve(stagingHandle) as GPUBuffer;
       const encoder = device.createCommandEncoder();
       encoder.copyTextureToBuffer({ texture: source }, { buffer: staging, bytesPerRow: stride }, [width, height]);
       device.queue.submit([encoder.finish()]);
@@ -1144,13 +1220,14 @@ export function createWebGPUBackend(
         rows.set(padded.subarray(y * stride, y * stride + width * 4), y * width * 4);
       }
       staging.unmap();
-      staging.destroy();
+      arena.free(stagingHandle);
       return rows;
     },
 
     dispose() {
-      target?.destroy();
+      if (targetHandle !== null) arena.free(targetHandle);
       target = null;
+      targetHandle = null;
       if (configured) context.unconfigure();
     },
   };
