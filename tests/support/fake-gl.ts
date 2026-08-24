@@ -141,7 +141,15 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     deleteBuffer: () => record('deleteBuffer'),
     bindBuffer: (target: number) => record('bindBuffer', { target }),
     bufferData: (target: number, data: unknown, usage: number) =>
-      record('bufferData', { target, usage, floats: data instanceof Float32Array ? [...data] : undefined }),
+      record('bufferData', {
+        target,
+        usage,
+        floats: data instanceof Float32Array ? [...data] : undefined,
+        // The same bytes read as signed 32-bit words, so a test can see an `int`
+        // block member land as its integer value rather than the float bit
+        // pattern the `floats` view reads it back as (item 61).
+        words: data instanceof Float32Array ? [...new Int32Array(data.buffer)] : undefined,
+      }),
     bindBufferBase: (target: number, index: number) => record('bindBufferBase', { target, index }),
     bindBufferRange: (target: number, index: number, _buffer: unknown, offset: number, size: number) =>
       record('bindBufferRange', { target, index, offset, size }),
@@ -178,6 +186,7 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     getAttribLocation: () => 0,
     getUniformLocation: (_program: unknown, name: string) => (state.missing.includes(name) ? null : { name }),
     uniform1f: (location: { name: string }, value: number) => record('uniform1f', { name: location.name, value }),
+    uniform1i: (location: { name: string }, value: number) => record('uniform1i', { name: location.name, value }),
     uniform2fv: (location: { name: string }, value: number[]) =>
       record('uniform2fv', { name: location.name, value: [...value] }),
     uniform3fv: (location: { name: string }, value: number[]) =>

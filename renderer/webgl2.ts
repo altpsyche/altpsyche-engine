@@ -252,12 +252,30 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         })
       );
 
+      // What the source declared each uniform as, by name. WebGL 2 takes a
+      // scalar `int` through `gl.uniform1i` and a block's `int` member as raw
+      // signed words, not through the float door either takes a `float` through:
+      // feeding an `int` uniform with `gl.uniform1f` is `GL_INVALID_OPERATION`
+      // and the uniform keeps its default of 0, so the shader animates off a
+      // number nobody delivered (item 61). The value's JavaScript shape cannot
+      // say this — 3 is 3 whether the source wants a float or an int — so the
+      // declared type is captured here, off the field §14 retires from the graph;
+      // when `ShaderFrame.uniforms` goes (item 38), this type moves to the
+      // binding or the pipeline with it.
+      const declaredType = new Map(frame.uniforms.map((uniform) => [uniform.name, uniform.type]));
+      const isInt = (name: string) => declaredType.get(name) === 'int';
+
       // The resident lifetime: one uniform buffer this program writes its values
       // into, allocated through the arena and freed on this program's dispose. The
       // scratch it is filled from is the program's own too, so a frame drawing the
       // same shader as another shares that other's linked program and neither its
       // buffer nor its scratch.
       const bytes = layout ? new Float32Array(size / 4) : null;
+      // The same block seen as signed 32-bit words, for a member declared `int`.
+      // std140 lays an int in the four bytes a float takes, but writing 3 as a
+      // float leaves a bit pattern the driver reads back as ~4e-45 rather than 3,
+      // so an int member is written through this view of the same buffer instead.
+      const words = bytes ? new Int32Array(bytes.buffer) : null;
       const uboHandle = layout ? arena.allocate(() => gl.createBuffer() as WebGLBuffer) : null;
       const ubo = uboHandle === null ? null : arena.resolve(uboHandle);
 
@@ -274,11 +292,12 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       return {
         setUniforms(values: Record<string, UniformValue>) {
           gl.useProgram(program);
-          if (layout && bytes && ubo) {
+          if (layout && bytes && words && ubo) {
             for (const [name, value] of Object.entries(values)) {
               const at = layout.get(name);
               if (at === undefined) continue;
               if (Array.isArray(value)) value.forEach((v, i) => (bytes[at + i] = v));
+              else if (isInt(name)) words[at] = value;
               else bytes[at] = value;
             }
             gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
@@ -296,7 +315,8 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             const location = locations.get(name);
             if (!location) continue;
             if (!Array.isArray(value)) {
-              gl.uniform1f(location, value);
+              if (isInt(name)) gl.uniform1i(location, value);
+              else gl.uniform1f(location, value);
               continue;
             }
             if (componentsOf('vec2') === value.length) gl.uniform2fv(location, value);

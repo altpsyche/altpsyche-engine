@@ -942,6 +942,12 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 
 **Needs.** item 37. **Deadline:** before 1.0, per decision 8, after which renames are forbidden.
 
+**Carries item 61's follow-on.** The WebGL 2 backend now reads each uniform's declared type off
+`ShaderFrame.uniforms` to feed an `int` through `gl.uniform1i` rather than `gl.uniform1f` (item
+61). §14 retires that field, so whoever retires it here must move the declared type to the
+binding or the pipeline in the same change, or the loose-`int` and block-`int` paths silently
+regress to `GL_INVALID_OPERATION` and a uniform stuck at 0.
+
 ### 39. The layer rules become tests
 
 **Status.** open
@@ -1244,7 +1250,7 @@ Seven website paths are still in that fence today, named here without backticks 
 
 ### 61. The WebGL 2 backend feeds an integer uniform as an integer
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A loose scalar uniform declared `int` in the source is fed with `gl.uniform1i` rather than `gl.uniform1f`.
 
@@ -1261,6 +1267,29 @@ Seven website paths are still in that fence today, named here without backticks 
 **One thing to decide while landing it.** [RoadToPureEngine.md](RoadToPureEngine.md) §14 retires `ShaderFrame.uniforms` from the graph, because what a control panel shows is not a render fact. So the obvious route leans on a field that is scheduled to leave. If it is taken anyway, the type has to move to the binding or the pipeline when that field goes, and this entry is where that follow-on is recorded.
 
 **Also worth checking when landing it.** The uniform-block path above the loose path writes members into a byte buffer as floats too, so an `int` member of a block has the same problem by a different route. No corpus source has one today, so both paths want a test rather than only the loose one.
+
+**How it landed.** [renderer/webgl2.ts](../renderer/webgl2.ts)'s `program` captures a
+name-to-type map off `frame.uniforms` when the program is built — `declaredType`, with an
+`isInt(name)` guard reading it — the obvious route the entry named, off the field §14 retires
+from the graph. **Both paths** the entry names now route an `int` away from the float door:
+the loose path calls `gl.uniform1i` rather than `gl.uniform1f` for a scalar declared `int`, and
+the block path writes an `int` member through an `Int32Array` view of the same buffer the float
+members go into by `Float32Array` (`words` beside `bytes`), because std140 lays an int in the
+four bytes a float takes but the bit pattern of `3` written as a float reads back as ~4e-45,
+not `3`. **The follow-on the entry flags is tracked at item 38**, where `ShaderFrame.uniforms`
+retires: a note there carries the requirement that this declared type move to the binding or
+the pipeline when the field it reads goes, so the fix does not silently regress. Coverage is
+three new cases in [tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts): a loose
+`int` fed through `uniform1i` with no `uniform1f`, an `int` alongside a `float` each through its
+own loose call, and a block `int` member landing as the integer `4` through the word view while
+a `float` beside it reads `3` through the float view. The fake WebGL 2 context gained `uniform1i`
+and a `words` capture on `bufferData` so a test asserts the integer landed rather than the
+picture. **What the gates could not see:** that the delivered `int` produces the right picture
+on a real driver needs a browser or a card, and `gate:browser` has no GLSL corpus source
+declaring an integer (item 61's own "no gate here can see it" — the node suite reads the call
+made, not the value the shader receives). The export surface did not move — no door name added
+or removed, the type map is internal to the backend — so `gate:pack` was not required. 661 node
+tests green (+3), `type-check` green. See [JOURNAL.md](JOURNAL.md).
 
 ### 62. Decision 6's promise is confirmed on a machine that has WebGPU
 

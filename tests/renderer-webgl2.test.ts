@@ -269,6 +269,57 @@ describe('where the values go', () => {
     expect(gl.of('uniform4fv')).toHaveLength(1);
   });
 
+  it('feeds a loose uniform declared int through uniform1i, not uniform1f', () => {
+    // Feeding an `int` uniform with gl.uniform1f is GL_INVALID_OPERATION, so it
+    // keeps its default of 0 and the shader runs off a number nobody handed it.
+    // The declared type is what decides the call; the value 4 alone cannot say
+    // whether the source wants a float or an int (item 61).
+    const intUniform = glslFrame('fixture', VERTEX, FRAGMENT, [{ name: 'u_frame', type: 'int' }]);
+    const { gl, backend } = backendOver();
+    backend.program(intUniform).setUniforms({ u_frame: 4 });
+
+    expect(gl.of('uniform1i').at(-1)).toMatchObject({ name: 'u_frame', value: 4 });
+    expect(gl.of('uniform1f')).toHaveLength(0);
+  });
+
+  it('feeds an int alongside a float, each through its own loose call', () => {
+    const mixed = glslFrame('fixture', VERTEX, FRAGMENT, [
+      { name: 'u_frame', type: 'int' },
+      { name: 'u_time', type: 'float' },
+    ]);
+    const { gl, backend } = backendOver();
+    backend.program(mixed).setUniforms({ u_frame: 4, u_time: 3 });
+
+    expect(gl.of('uniform1i').at(-1)).toMatchObject({ name: 'u_frame', value: 4 });
+    expect(gl.of('uniform1f').at(-1)).toMatchObject({ name: 'u_time', value: 3 });
+  });
+
+  it('writes a block member declared int as an integer word, not a float bit pattern', () => {
+    // The block path writes members into a Float32Array too, so an int member
+    // has the same defect by a different route: 4 written as a float is a bit
+    // pattern the driver reads back as ~5.6e-45. The int lands through the
+    // block's Int32Array view instead, while a float member beside it does not.
+    const mixed = glslFrame('fixture', VERTEX, FRAGMENT, [
+      { name: 'u_frame', type: 'int' },
+      { name: 'u_time', type: 'float' },
+    ]);
+    const { gl, backend } = backendOver((fake) => {
+      fake.block = [
+        { name: 'u_frame', offset: 0 },
+        { name: 'u_time', offset: 4 },
+      ];
+      fake.blockBytes = 8;
+    });
+
+    backend.program(mixed).setUniforms({ u_frame: 4, u_time: 3 });
+
+    const upload = gl.of('bufferData').at(-1)!;
+    // The int member reads back as the integer 4 through the word view, and the
+    // float member reads back as 3 through the float view.
+    expect((upload.words as number[])[0]).toBe(4);
+    expect((upload.floats as number[])[1]).toBe(3);
+  });
+
   it('writes nothing for a name the program has nowhere to put', () => {
     const { gl, backend } = backendOver((fake) => {
       fake.missing = ['u_dropped'];
