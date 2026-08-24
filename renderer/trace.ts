@@ -63,7 +63,7 @@ export const COMPARED: Record<string, readonly string[]> = {
   beginRenderPass: ['colour', 'depth', 'times', 'counts'],
   beginComputePass: ['times'],
   dispatchWorkgroups: ['x', 'y', 'z'],
-  setBindGroup: ['index', 'group'],
+  setBindGroup: ['index', 'group', 'dynamicOffsets'],
   setVertexBuffer: ['slot', 'buffer'],
   setIndexBuffer: ['buffer', 'format'],
   draw: ['count', 'instances'],
@@ -336,9 +336,9 @@ export function wrapDevice(device: GPUDevice, trace: TraceEntry[], lifetimes?: L
       record({ call: 'setPipeline' });
       pass.setPipeline(unwrap(pipeline) as GPURenderPipeline);
     },
-    setBindGroup(index: number, group: unknown) {
-      record({ call: 'setBindGroup', index, group: flat(group) });
-      pass.setBindGroup(index, unwrap(group) as GPUBindGroup);
+    setBindGroup(index: number, group: unknown, dynamicOffsets?: number[]) {
+      record({ call: 'setBindGroup', index, group: flat(group), dynamicOffsets: flat(dynamicOffsets) });
+      pass.setBindGroup(index, unwrap(group) as GPUBindGroup, dynamicOffsets);
     },
     setVertexBuffer(slot: number, buffer: unknown) {
       record({ call: 'setVertexBuffer', slot, buffer: flat(buffer) });
@@ -409,9 +409,9 @@ export function wrapDevice(device: GPUDevice, trace: TraceEntry[], lifetimes?: L
       record({ call: 'setPipeline' });
       encoder.setPipeline(unwrap(pipeline) as GPURenderPipeline);
     },
-    setBindGroup(index: number, group: unknown) {
-      record({ call: 'setBindGroup', index, group: flat(group) });
-      encoder.setBindGroup(index, unwrap(group) as GPUBindGroup);
+    setBindGroup(index: number, group: unknown, dynamicOffsets?: number[]) {
+      record({ call: 'setBindGroup', index, group: flat(group), dynamicOffsets: flat(dynamicOffsets) });
+      encoder.setBindGroup(index, unwrap(group) as GPUBindGroup, dynamicOffsets);
     },
     setVertexBuffer(slot: number, buffer: unknown) {
       record({ call: 'setVertexBuffer', slot, buffer: flat(buffer) });

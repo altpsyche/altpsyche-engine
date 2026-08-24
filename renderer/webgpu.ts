@@ -39,6 +39,7 @@ import {
   drawsIndirectly,
   isRenderPass,
   moduleOf,
+  perDrawBinding,
   resourceOf,
   uniformResourceOf,
 } from './types.js';
@@ -558,6 +559,18 @@ export function createWebGPUBackend(
         // among them, so a write aimed at one is refused before it reaches the card.
         const writable = new Set<string>();
 
+        // Which buffers a pipeline reaches one per-draw slice of, so each is built
+        // as a uniform bound with a dynamic offset rather than as a storage buffer
+        // the shader writes (item 27). A per-draw buffer holds a record per draw and
+        // the draw names which — a `hasDynamicOffset` uniform binding on WebGPU — so
+        // its usage is UNIFORM rather than STORAGE, and it is not a query or indirect
+        // target either.
+        const perDrawBuffers = new Set<string>();
+        for (const spec of frame.pipelines) {
+          const slice = perDrawBinding(spec);
+          if (slice) perDrawBuffers.add(slice.resource);
+        }
+
         // Every block of bytes the description names, handed out empty. WebGPU zeroes
         // a new buffer, so a pass reading one before anything has written it reads
         // zeros rather than whatever the memory held, which is what lets a frame
@@ -581,12 +594,17 @@ export function createWebGPUBackend(
             // has no other way of seeing, and the copy is refused over a usage as
             // well. A buffer the build filled is written into once here, so it
             // carries the flag for that as the shader-written textures do.
-            usage:
-              GPUBufferUsage.STORAGE |
-              GPUBufferUsage.COPY_SRC |
-              (arguments_.has(spec.name) ? GPUBufferUsage.INDIRECT : 0) |
-              (queryTargets.has(spec.name) ? GPUBufferUsage.QUERY_RESOLVE : 0) |
-              (spec.data ? GPUBufferUsage.COPY_DST : 0),
+            usage: perDrawBuffers.has(spec.name)
+              ? // A per-draw buffer is bound as a uniform and read one slice at a
+                // time by a dynamic offset, so it carries UNIFORM rather than the
+                // storage flags, and COPY_DST because its records arrive from this
+                // side (its first contents, and any the page replaces later).
+                GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+              : GPUBufferUsage.STORAGE |
+                GPUBufferUsage.COPY_SRC |
+                (arguments_.has(spec.name) ? GPUBufferUsage.INDIRECT : 0) |
+                (queryTargets.has(spec.name) ? GPUBufferUsage.QUERY_RESOLVE : 0) |
+                (spec.data ? GPUBufferUsage.COPY_DST : 0),
             })
           );
           buffers.set(resource.name, built);
@@ -810,6 +828,13 @@ export function createWebGPUBackend(
                       // what is left: a binding pointing at geometry never reaches
                       // here, since the lookup above refuses one by name.
                       const stored = buffers.get(name);
+                      // A per-draw binding names one record's width, not the whole
+                      // buffer, so the card reads exactly one slice and the offset
+                      // to it arrives per draw (item 27). Every other binding reads
+                      // its resource whole.
+                      if (at.perDraw && stored) {
+                        return { binding: at.binding, resource: { buffer: stored, offset: 0, size: at.perDraw.size } };
+                      }
                       return { binding: at.binding, resource: bound ?? { buffer: stored ?? buffer } };
                     }),
                   })
@@ -911,7 +936,18 @@ export function createWebGPUBackend(
                 ...(spec.samples ? { sampleCount: spec.samples } : {}),
               });
               const draws = (run.pass as RenderPassSpec).draws;
-              issueDraws(encoder, pipeline, bands, drawGeometry(run.drawn), draws.map(drawIndirect), draws);
+              // The per-draw group is set inside the bundle too, once per draw with
+              // its offset, so a bundled pass slices its per-draw buffer the same
+              // way an inline one does (item 27).
+              issueDraws(
+                encoder,
+                pipeline,
+                bands,
+                drawGeometry(run.drawn),
+                draws.map(drawIndirect),
+                draws,
+                perDrawBinding(spec)?.group
+              );
               made.set(index, encoder.finish({ label: `${spec.name}-bundle-${turnIndex}` }));
             });
             return made;
@@ -1006,6 +1042,10 @@ export function createWebGPUBackend(
                 geometry: render ? drawGeometry(drawn) : undefined,
                 indirects: draws !== undefined ? draws.map(drawIndirect) : undefined,
                 draws,
+                // Which group the executor re-sets per draw with the draw's offset,
+                // resolved from the pipeline once here rather than found again in
+                // the loop (item 27). Absent where the pipeline binds no slice.
+                perDrawBand: render ? perDrawBinding(spec)?.group : undefined,
                 stencil: isRenderPass(pass) && spec.kind === 'render' && spec.depth?.stencil !== undefined,
               };
             });
@@ -1334,6 +1374,13 @@ function buildPipelines(
     const resource = pointsAt(at);
     if (resource.kind === 'uniform') return { binding: at.binding, visibility, buffer: { type: 'uniform' } };
     if (resource.kind === 'sampler') return { binding: at.binding, visibility, sampler: { type: 'filtering' } };
+    // A per-draw binding reads one slice of its buffer chosen by a dynamic
+    // offset, which is a uniform binding the card is told to expect an offset for
+    // rather than a storage binding it reads whole (item 27). The offset arrives
+    // per draw at `setBindGroup`; the layout only has to declare that one comes.
+    if (resource.kind === 'buffer' && at.perDraw) {
+      return { binding: at.binding, visibility, buffer: { type: 'uniform', hasDynamicOffset: true } };
+    }
     // A buffer the source only reads is a different entry from one it writes,
     // and a layout claiming the writable kind over a source that declared the
     // read-only one is a pipeline the card refuses by binding number.

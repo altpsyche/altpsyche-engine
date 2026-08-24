@@ -220,6 +220,15 @@ export interface BindingSpec {
    * binding's rather than the resource's. Absent for a texture used one way and
    * for everything that is not a texture. */
   reads?: 'storage' | 'sample';
+  /** That this binding reads one `size`-byte slice of its buffer chosen per
+   * draw rather than the whole buffer, absent for a binding every draw reads the
+   * same. The buffer it names is bound as a uniform with a dynamic offset the
+   * draw supplies (`DrawSpec.perDraw`): a `hasDynamicOffset` uniform binding on
+   * WebGPU, a `bindBufferRange` on WebGL 2 — the same slice either way, per
+   * §8. `size` is the width of one record, fixed for the binding, so the draw
+   * carries the offset alone (one field either way). A thousand draws reading a
+   * thousand transforms out of one buffer is what this is for. */
+  perDraw?: { size: number };
 }
 
 /** Which document runs at which stage, the entry point inside it, and where its
@@ -321,8 +330,18 @@ export type PipelineSpec = RenderPipelineSpec | ComputePipelineSpec;
  *
  * Naming a buffer draws whatever the words at the start of that buffer say, which
  * is a count nothing on this side ever sees: it is what an earlier pass of the
- * same frame worked out and wrote there. */
-export type DrawSpec = { vertices: number; instances?: number } | { instances: number } | { indirect: string };
+ * same frame worked out and wrote there.
+ *
+ * `perDraw` is the byte offset this draw reads its slice of the pass's per-draw
+ * binding from — the one field the draw carries, the size being the binding's
+ * (`BindingSpec.perDraw`). Absent for a pass whose draws read the same records,
+ * and meaningless where the pipeline binds no per-draw slice. The offset is a
+ * whole number of 256-byte alignments, which `validate` refuses by name where it
+ * is not, because the card takes a dynamic offset only at that alignment. */
+export type DrawSpec =
+  | { vertices: number; instances?: number; perDraw?: number }
+  | { instances: number; perDraw?: number }
+  | { indirect: string; perDraw?: number };
 
 /**
  * What a pipeline does to the mask a stencil keeps.
@@ -502,15 +521,26 @@ export function isRenderPass(pass: PassSpec): pass is RenderPassSpec {
 
 /** Whether a draw covers the frame with the backend's own corners rather than
  * with geometry of the shader's own. */
-export function drawsCorners(draw: DrawSpec): draw is { vertices: number; instances?: number } {
+export function drawsCorners(draw: DrawSpec): draw is { vertices: number; instances?: number; perDraw?: number } {
   return 'vertices' in draw;
 }
 
 /** Whether a draw reads its own counts out of a buffer. Every number a card needs
  * is in there rather than in the description, so a frame drawing this way says how
  * much work it does only after the pass that decided it has run. */
-export function drawsIndirectly(draw: DrawSpec): draw is { indirect: string } {
+export function drawsIndirectly(draw: DrawSpec): draw is { indirect: string; perDraw?: number } {
   return 'indirect' in draw;
+}
+
+/** The per-draw uniform slice a pipeline binds, or undefined where it binds none.
+ * One binding at most may carry it — the buffer a draw reaches a `size`-byte
+ * record of by the offset it names — so this reads the first, and where two
+ * carried it the card would take one dynamic offset per binding rather than the
+ * one field a draw carries. Read here in the one shape both backends and
+ * `validate` resolve it from, so which group takes the draw's offset is not
+ * worked out three times over. */
+export function perDrawBinding(spec: PipelineSpec): BindingSpec | undefined {
+  return spec.bindings.find((binding) => binding.perDraw !== undefined);
 }
 
 /** Whether a dispatch reads its count out of a buffer, which is the same question

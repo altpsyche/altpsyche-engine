@@ -19,7 +19,14 @@
  * the build, because a graph carries no source to check them against.
  */
 import type { ShaderFrame } from './types.js';
-import { isRenderPass } from './types.js';
+import { isRenderPass, perDrawBinding, resourceOf } from './types.js';
+
+/** A dynamic offset into a uniform buffer is taken at this alignment on both
+ * backends — WebGPU's default `minUniformBufferOffsetAlignment` and WebGL 2's
+ * `UNIFORM_BUFFER_OFFSET_ALIGNMENT` — so a per-draw offset that is not a whole
+ * number of these is refused here rather than at a card call that names a byte
+ * count and neither the draw nor the buffer. */
+const PER_DRAW_ALIGNMENT = 256;
 
 /** How many bytes one query answer takes in the buffer a pass resolves it into.
  * A timestamp and an occlusion count are each this wide. */
@@ -107,6 +114,45 @@ export function validate(graph: ShaderFrame): void {
       throw new Error(
         `the frame for "${id}" resolves ${resolved} bytes of query into "${resource.name}", which holds ${resource.bytes}`
       );
+    }
+  }
+
+  // A draw reaching one slice of a per-draw buffer names the byte offset of its
+  // record, and the card takes that offset only at a fixed alignment. So every
+  // per-draw offset is checked here — a build and a backend refuse it in the same
+  // words — rather than reaching a `setBindGroup` or `bindBufferRange` that names
+  // the byte count alone. Which binding a pass's draws slice, and how wide one
+  // record is, is the pipeline's; the offset is the draw's.
+  for (const pass of graph.passes) {
+    if (!isRenderPass(pass)) continue;
+    const spec = graph.pipelines.find((candidate) => candidate.name === pass.pipeline);
+    if (!spec) continue; // A pass naming no pipeline is caught where the plan is read.
+    const slice = perDrawBinding(spec);
+    for (const draw of pass.draws) {
+      if (draw.perDraw === undefined) continue;
+      // An offset with no per-draw binding to land in is a draw slicing a buffer
+      // the pipeline binds whole, which draws every record the same and is wrong.
+      if (!slice) {
+        throw new Error(
+          `the pass on "${spec.name}" gives a draw a per-draw offset of ${draw.perDraw} and its pipeline binds no per-draw slice`
+        );
+      }
+      if (draw.perDraw % PER_DRAW_ALIGNMENT !== 0) {
+        throw new Error(
+          `the pass on "${spec.name}" reads a per-draw slice at offset ${draw.perDraw}, which is no whole number of ${PER_DRAW_ALIGNMENT} bytes`
+        );
+      }
+      const resource = resourceOf(graph, slice.resource);
+      if (!resource || resource.kind !== 'buffer') {
+        throw new Error(
+          `the pass on "${spec.name}" reads a per-draw slice from "${slice.resource}", which is no buffer it declares`
+        );
+      }
+      if (draw.perDraw + slice.perDraw!.size > resource.bytes) {
+        throw new Error(
+          `the pass on "${spec.name}" reads ${slice.perDraw!.size} bytes of per-draw slice at offset ${draw.perDraw} from "${slice.resource}", which holds ${resource.bytes}`
+        );
+      }
     }
   }
 }

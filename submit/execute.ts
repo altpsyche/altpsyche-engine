@@ -106,6 +106,12 @@ export interface ResolvedRun {
    * (corners, geometry or indirect) and its instance count. A list because one
    * pass carries many draws (item 26); `undefined` for a compute pass. */
   draws: DrawSpec[] | undefined;
+  /** The bind group index that carries the per-draw dynamic offset, or
+   * `undefined` where the pass binds no per-draw slice (item 27). That group is
+   * set once per draw with the draw's offset rather than once for the pass, so a
+   * thousand draws read a thousand records from one buffer; every other group is
+   * set once. */
+  perDrawBand: number | undefined;
   /** Whether the pass sets a stencil reference before its draws, which a bundle
    * cannot hold. */
   stencil: boolean;
@@ -286,7 +292,8 @@ export function runFrame(exec: FrameExecution): void {
         run.bands,
         run.geometry,
         run.indirects ?? [],
-        run.draws as DrawSpec[]
+        run.draws as DrawSpec[],
+        run.perDrawBand
       );
       if (run.countingSet) run_pass.endOcclusionQuery();
     }
@@ -321,6 +328,14 @@ export function runFrame(exec: FrameExecution): void {
  * follows against them, which is one pass carrying many draws (item 26). The
  * `indirects` buffers are aligned to `draws`: the entry for a draw reading its
  * counts out of a buffer is that buffer, and every other entry is `undefined`.
+ *
+ * `perDrawBand` is the one group set per draw rather than once (item 27): a
+ * binding declared `hasDynamicOffset` reads a slice chosen by the offset the
+ * draw names, so its group is re-set before each draw with that offset while
+ * every other group is set once. A group carrying a dynamic offset has to be set
+ * with the offsets array on every set, which is why it is never in the set-once
+ * pass. Where a pass binds no per-draw slice this is `undefined` and every group
+ * is set once, exactly as one draw per pass did before this existed.
  */
 export function issueDraws(
   into: GPURenderPassEncoder | GPURenderBundleEncoder,
@@ -328,11 +343,15 @@ export function issueDraws(
   bands: GPUBindGroup[],
   geometry: ResolvedGeometry | undefined,
   indirects: (GPUBuffer | undefined)[],
-  draws: DrawSpec[]
+  draws: DrawSpec[],
+  perDrawBand?: number
 ): void {
   into.setPipeline(pipeline);
-  bands.forEach((band, at) => into.setBindGroup(at, band));
+  bands.forEach((band, at) => {
+    if (at !== perDrawBand) into.setBindGroup(at, band);
+  });
   draws.forEach((draw, at) => {
+    if (perDrawBand !== undefined) into.setBindGroup(perDrawBand, bands[perDrawBand] as GPUBindGroup, [draw.perDraw ?? 0]);
     if (drawsIndirectly(draw)) {
       const counts = indirects[at] as GPUBuffer;
       if (geometry) {

@@ -675,13 +675,56 @@ added or removed), so `gate:pack` was not required.
 
 ### 27. `Draw.perDraw`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** One slice of a per-draw buffer per draw: a dynamic offset on WebGPU, `bindBufferRange` on WebGL 2, one field either way.
 
 **Done when.** A thousand draws read a thousand distinct records from one buffer on both backends, with the 256-byte alignment respected and a refusal by name when an offset breaks it.
 
 **Needs.** item 26.
+
+**How it landed.** One field on the draw, one on the binding, and one home for the
+rule. `DrawSpec` gains `perDraw?: number` — the byte offset the draw reads its
+record from — and `BindingSpec` gains `perDraw?: { size: number }` — that this
+binding reads one `size`-byte slice per draw, the buffer it names bound as a
+uniform with a dynamic offset ([renderer/types.ts](../renderer/types.ts)); the size
+is the binding's and the offset is the draw's, which is the "one field either way"
+of §8. `perDrawBinding(spec)` reads the sliced binding in the one shape both
+backends and `validate` resolve it from. The 256-byte alignment is
+[renderer/validate.ts](../renderer/validate.ts)'s: every per-draw offset is a whole
+number of `PER_DRAW_ALIGNMENT` (256) — WebGPU's default
+`minUniformBufferOffsetAlignment` and WebGL 2's `UNIFORM_BUFFER_OFFSET_ALIGNMENT` —
+refused by name where it is not (`the pass on "cube" reads a per-draw slice at
+offset 128, which is no whole number of 256 bytes`), along with an offset that
+runs past the buffer and an offset whose pipeline binds no slice.
+
+**WebGPU, end to end.** A per-draw buffer is built with `UNIFORM | COPY_DST`
+rather than the storage flags ([renderer/webgpu.ts](../renderer/webgpu.ts)), its
+layout entry is `buffer: { type: 'uniform', hasDynamicOffset: true }`, and its
+bind group entry is one record wide (`offset: 0, size`). The group carrying the
+dynamic offset is set once **per draw** with `[draw.perDraw]` rather than once for
+the pass — [submit/execute.ts](../submit/execute.ts)'s `issueDraws` takes a
+`perDrawBand`, sets every other group once and that group per draw — so a bundled
+pass and an inline one slice the buffer the same way. `resolveTurns` reads the band
+off the pipeline once. [tests/renderer-perdraw.test.ts](../tests/renderer-perdraw.test.ts)
+draws a thousand fullscreen corner draws, each naming its own 256-byte slot, and
+asserts a thousand distinct dynamic offsets reach the recording double, plus the
+uniform usage, the `buffer:uniform` layout, and each refusal by name.
+
+**WebGL 2, the executor arm.** [submit/gl2.ts](../submit/gl2.ts)'s `drawGL2Frame`
+takes an optional `perDraw` and issues a `bindBufferRange(UNIFORM_BUFFER, binding,
+buffer, offset, size)` before each draw — the same slice a dynamic offset reaches
+on WebGPU — proven at the `submit/` layer by
+[tests/submit-executor.test.ts](../tests/submit-executor.test.ts): a thousand
+corner draws, a thousand distinct ranges, one record wide. **What is not here:**
+the WebGL 2 *backend* assembling such a frame from a description end to end — letting
+the per-draw buffer through its uniform-only wall and reflecting a second uniform
+block — is item 49's declared scope (`WebGL 2: instancing and per-draw UBO ranges`,
+which needs item 46's multiple passes as well), so it is tracked there rather than
+parked. **What the gates could not see:** that the thousand records draw the
+thousand transforms they hold needs a browser gate or a card, and `gate:browser`
+was not run in the unattended session; the node suite reads calls off the doubles.
+See [JOURNAL.md](JOURNAL.md).
 
 ### 28. Instancing
 

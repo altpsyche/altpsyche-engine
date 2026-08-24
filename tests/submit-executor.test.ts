@@ -99,4 +99,39 @@ describe('every WebGL 2 draw goes through submit/gl2', () => {
     ]);
     expect(gl.of('viewport').at(-1)).toMatchObject({ x: 0, y: 0, width: 320, height: 180 });
   });
+
+  it('reads a thousand distinct records from one buffer, a bindBufferRange before each draw', () => {
+    const gl = createFakeGL();
+    const context = gl.canvas.getContext('webgl2', {}) as unknown as WebGL2RenderingContext;
+    const program = {} as WebGLProgram;
+    const quad = {} as WebGLBuffer;
+    const buffer = {} as WebGLBuffer;
+
+    // WebGL 2's arm of `Draw.perDraw` (item 27): one uniform buffer, a thousand
+    // records at 256-byte slots, and a `bindBufferRange` pointing the block at each
+    // draw's record before the draw — the same slice a dynamic offset reaches on
+    // WebGPU. A thousand fullscreen corner draws, each reading its own transform.
+    const offsets = Array.from({ length: 1000 }, (_, at) => at * 256);
+    drawGL2Frame({
+      gl: context,
+      program,
+      quad,
+      attribute: 0,
+      vertices: offsets.map(() => 3),
+      width: 320,
+      height: 180,
+      perDraw: { buffer, binding: 0, size: 64, offsets },
+    });
+
+    // A thousand draws, a thousand ranges, and every offset distinct — the
+    // thousand records a thousand draws read.
+    const ranges = gl.of('bindBufferRange');
+    expect(gl.of('drawArrays')).toHaveLength(1000);
+    expect(ranges).toHaveLength(1000);
+    expect(ranges.map((call) => call.offset)).toEqual(offsets);
+    expect(new Set(ranges.map((call) => call.offset)).size).toBe(1000);
+    // Each range is one record wide, at the uniform target, on the binding the
+    // block was bound to — the offset alone is the draw's.
+    expect(ranges.every((call) => call.size === 64 && call.target === 0x8a11 && call.index === 0)).toBe(true);
+  });
 });

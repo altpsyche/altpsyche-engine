@@ -143,6 +143,8 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     bufferData: (target: number, data: unknown, usage: number) =>
       record('bufferData', { target, usage, floats: data instanceof Float32Array ? [...data] : undefined }),
     bindBufferBase: (target: number, index: number) => record('bindBufferBase', { target, index }),
+    bindBufferRange: (target: number, index: number, _buffer: unknown, offset: number, size: number) =>
+      record('bindBufferRange', { target, index, offset, size }),
     uniformBlockBinding: (_program: unknown, block: number, binding: number) =>
       record('uniformBlockBinding', { block, binding }),
 
