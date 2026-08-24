@@ -1293,7 +1293,7 @@ tests green (+3), `type-check` green. See [JOURNAL.md](JOURNAL.md).
 
 ### 62. Decision 6's promise is confirmed on a machine that has WebGPU
 
-**Status.** open
+**Status.** lifted to a machine with a real graphics card (the standing job of items 55, 57)
 
 **Asks for.** One reading, on a device that actually returns a WebGPU adapter, showing that a GLSL-authored frame is drawn by WebGL 2 there and that the picture comes out.
 
