@@ -75,5 +75,9 @@ export * from './renderer/frame-coverage.js';
 // The tables the comparison reads, which calls touch a canvas and which fields
 // each call is compared on, are how it decides rather than anything to call, so
 // they are named out here instead of starred in.
-export { compareTraces, projectTrace, wrapDevice } from './renderer/trace.js';
+// `Lifetimes` is the ledger `wrapDevice` writes resource births and deaths into:
+// a use of a freed resource is refused and a resource never freed is named, so a
+// use-after-free and a leak are visible to the fast suite rather than only to a
+// driver (item 20).
+export { compareTraces, Lifetimes, projectTrace, wrapDevice } from './renderer/trace.js';
 export type { TraceEntry } from './renderer/trace.js';

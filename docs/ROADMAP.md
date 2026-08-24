@@ -358,13 +358,36 @@ rule is now checked. See [JOURNAL.md](JOURNAL.md).
 
 ### 20. The double tracks handle liveness
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The recording double models lifetimes as well as calls, which ABSTRACTION.md's audit named as a gap.
 
 **Done when.** A use-after-free and a leak each fail a test in the fast suite.
 
 **Needs.** item 10.
+
+**How it landed.** [renderer/trace.ts](../renderer/trace.ts) gains `Lifetimes`, a
+ledger `wrapDevice` writes resource births and deaths into. Every buffer, texture
+and query set the recorder hands back is registered (`born`) at creation and marked
+freed (`died`) when its `destroy` wrapper runs. The liveness check sits in the one
+funnel every wrapper passes through on its way back to the device — `unwrap` — plus
+`createView`, the one path a texture is reached by that skips `unwrap`; so a freed
+resource bound to a pass, written to, copied from or viewed is refused by name as it
+happens, which is the use-after-free the fast suite was blind to. `leaked()` names
+every resource born and not yet freed, so a resource allocated and never given back
+is a leak read at a teardown. It is the arena's liveness (item 10) carried into the
+device double: the arena refuses a stale handle, this refuses a stale wrapper. The
+ledger is **opt-in** — `wrapDevice`'s third argument — so `lifeOf` stays empty and
+`assertLive` is one `WeakMap` miss for any caller that passes none; the fast suite's
+`tests/support/fake-gpu.ts` passes one (exposed as `gpu.lifetimes`), the browser
+gate's `wrapDevice` does not, so it neither gains the checks nor changes a recorded
+trace. No `record()` call moved, so the trace contract compares the same calls it
+did. Coverage is [tests/renderer-lifetime.test.ts](../tests/renderer-lifetime.test.ts):
+a buffer used and bound after destroy, a texture viewed after destroy, a leak named,
+a drained ledger empty, a double free harmless. The export surface moved (`Lifetimes`
+is exported through the door, 48 names now where there were 47); `gate:pack` green.
+`gate:browser` was not run in the unattended session — but the ledger it would
+exercise is off on that path by construction, see [JOURNAL.md](JOURNAL.md).
 
 ### 21. `cost(graph, size)`
 

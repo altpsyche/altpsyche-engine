@@ -13,7 +13,7 @@
  * order and only a real frame says a picture came out, which is why every
  * capability also has a preset a browser gate draws.
  */
-import { wrapDevice, type TraceEntry } from '@altpsyche/engine';
+import { Lifetimes, wrapDevice, type TraceEntry } from '@altpsyche/engine';
 
 export type { TraceEntry };
 
@@ -39,6 +39,10 @@ export interface FakeGPU {
   /** The optional parts of the API this device has. Empty stands for a device
    * with nothing optional, which is a real device rather than a broken one. */
   features: Set<string>;
+  /** The liveness of the resources the backend allocated through this device: a
+   * use of one after its `destroy` ran is refused, and `leaked()` names any born
+   * and never freed. Empty at a teardown means the frame gave everything back. */
+  lifetimes: Lifetimes;
 }
 
 /**
@@ -131,8 +135,10 @@ export function createFakeGPU({
   installGPUConstants();
 
   const trace: TraceEntry[] = [];
+  const lifetimes = new Lifetimes();
   const state = {
     trace,
+    lifetimes,
     context: { configured: 0, unconfigured: 0 },
     mapped: new Uint8Array(0),
     compilation: [] as GPUCompilationMessage[],
@@ -296,7 +302,7 @@ export function createFakeGPU({
     },
   };
 
-  state.device = wrapDevice(bare as unknown as GPUDevice, trace);
+  state.device = wrapDevice(bare as unknown as GPUDevice, trace, lifetimes);
   state.canvas = fakeCanvas(state, connected, over);
   state.calls = (name: string) => trace.filter((entry) => entry.call === name);
   state.written = () => {

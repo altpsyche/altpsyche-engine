@@ -116,8 +116,78 @@ export const CANVAS_CALLS = new Set([
  * fabricated one. */
 const behind = new WeakMap<object, unknown>();
 
-const unwrap = (value: unknown): unknown =>
-  typeof value === 'object' && value !== null && behind.has(value) ? behind.get(value) : value;
+/** The liveness of one resource a `Lifetimes` ledger is watching. The record is
+ * shared between the ledger, which enumerates it for `leaked`, and `lifeOf`
+ * below, which the recorder reaches through the wrapper to refuse a stale use. */
+interface ResourceLife {
+  label: string;
+  alive: boolean;
+}
+
+/** The liveness of every resource a ledger registered, keyed by the wrapper the
+ * recorder handed back. A wrapper no ledger registered is absent here, so the
+ * check below is a no-op for a `wrapDevice` given no ledger — the browser gate
+ * wraps a real device without one and is unaffected. */
+const lifeOf = new WeakMap<object, ResourceLife>();
+
+/** Throws if `value` is a wrapper naming a resource its ledger has already freed.
+ * This is the mistake the fast suite could not see before: a buffer bound to a
+ * pass, or a texture copied from, after its `destroy` ran. A value no ledger
+ * registered passes untouched, so this costs a `wrapDevice` given no ledger one
+ * `WeakMap` miss. */
+function assertLive(value: unknown): void {
+  if (typeof value !== 'object' || value === null) return;
+  const life = lifeOf.get(value);
+  if (life && !life.alive) throw new Error(`the ${life.label} was used after it was destroyed`);
+}
+
+const unwrap = (value: unknown): unknown => {
+  assertLive(value);
+  return typeof value === 'object' && value !== null && behind.has(value) ? behind.get(value) : value;
+};
+
+/**
+ * The lifetimes of a device's resources, tracked beside its calls.
+ *
+ * The recording double models what the backend asked a device to do; on its own
+ * it says nothing about whether a resource was still alive when it was asked. A
+ * ledger closes that gap, which [ABSTRACTION.md](../docs/ABSTRACTION.md)'s audit
+ * named: a `wrapDevice` handed one registers every buffer, texture and query set
+ * it creates, marks each dead when its `destroy` runs, and refuses a later use of
+ * a dead one — the use-after-free the fast suite was blind to. A resource born
+ * and never freed is a leak, and `leaked` names the ones still alive at a
+ * teardown.
+ *
+ * It is the arena's liveness (item 10) carried into the double: the arena refuses
+ * a stale handle, this refuses a stale wrapper, so the same class of mistake is
+ * caught whether a backend still holds the handle or the device object it named.
+ */
+export class Lifetimes {
+  /** Every resource born through the recorder, held so `leaked` can walk the ones
+   * still alive; the `WeakMap` above cannot be enumerated. */
+  private readonly records = new Set<ResourceLife>();
+
+  /** Registers a wrapper as a live resource. The recorder calls this the moment
+   * it hands the wrapper back, so the first use of it is already watched. */
+  born(wrapper: object, label: string): void {
+    const record: ResourceLife = { label, alive: true };
+    this.records.add(record);
+    lifeOf.set(wrapper, record);
+  }
+
+  /** Marks a wrapper's resource freed. A wrapper already freed is left alone, so a
+   * double free is as harmless here as it is in the arena. */
+  died(wrapper: object): void {
+    const record = lifeOf.get(wrapper);
+    if (record) record.alive = false;
+  }
+
+  /** The label of every resource born and not yet freed. A non-empty list read at
+   * a teardown is a leak: a resource the backend allocated and never gave back. */
+  leaked(): string[] {
+    return [...this.records].filter((record) => record.alive).map((record) => record.label);
+  }
+}
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
@@ -148,7 +218,7 @@ function flat(value: unknown): unknown {
  * nothing by default and the contract compares them: a module the backend made
  * second is `module2` on both sides or the trace says nothing about order.
  */
-export function wrapDevice(device: GPUDevice, trace: TraceEntry[]): GPUDevice {
+export function wrapDevice(device: GPUDevice, trace: TraceEntry[], lifetimes?: Lifetimes): GPUDevice {
   let modules = 0;
   let buffers = 0;
   let textures = 0;
@@ -198,10 +268,12 @@ export function wrapDevice(device: GPUDevice, trace: TraceEntry[]): GPUDevice {
       },
       destroy() {
         record({ call: 'buffer.destroy', label });
+        lifetimes?.died(wrapper);
         buffer.destroy();
       },
     };
     behind.set(wrapper, buffer);
+    lifetimes?.born(wrapper, label);
     return wrapper;
   };
 
@@ -215,6 +287,10 @@ export function wrapDevice(device: GPUDevice, trace: TraceEntry[]): GPUDevice {
         return texture.height;
       },
       createView(descriptor?: GPUTextureViewDescriptor) {
+        // A view is how a destroyed texture is most often reached, and it never
+        // passes through `unwrap`, so the liveness check the funnel does is done
+        // here too rather than leaving this one path blind.
+        assertLive(wrapper);
         // Which levels of the ladder a view covers, read here because a view of
         // one level is how a level is both drawn into and read from, and a trace
         // that says only which texture cannot tell the two apart.
@@ -231,10 +307,12 @@ export function wrapDevice(device: GPUDevice, trace: TraceEntry[]): GPUDevice {
       },
       destroy() {
         record({ call: 'texture.destroy', label });
+        lifetimes?.died(wrapper);
         texture.destroy();
       },
     };
     behind.set(wrapper, texture);
+    lifetimes?.born(wrapper, label);
     return wrapper;
   };
 
@@ -638,10 +716,12 @@ export function wrapDevice(device: GPUDevice, trace: TraceEntry[]): GPUDevice {
         label,
         destroy() {
           record({ call: 'querySet.destroy', label });
+          lifetimes?.died(wrapper);
           made.destroy();
         },
       };
       behind.set(wrapper, made);
+      lifetimes?.born(wrapper, label);
       return wrapper as unknown as GPUQuerySet;
     },
 
