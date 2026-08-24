@@ -91,21 +91,21 @@ const made = (gpu: ReturnType<typeof createFakeGPU>, label: string) =>
 describe('the textures a multisampled pass is given', () => {
   it('keeps four samples of every pixel in the attachment it draws into', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(averaged());
+    backend.program(averaged());
 
     expect(made(gpu, 'edges')?.samples).toBe(4);
   });
 
   it('keeps one in the picture those samples are averaged into, which is what a count of none means', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(averaged());
+    backend.program(averaged());
 
     expect(made(gpu, 'flat')?.samples).toBeUndefined();
   });
 
   it('asks only to be drawn into, since nothing may copy out of it or read it', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(averaged());
+    backend.program(averaged());
 
     expect(made(gpu, 'edges')?.usage).toBe(GPUTextureUsage.RENDER_ATTACHMENT);
     // The average is what the reader ends up seeing, so that one is copied out.
@@ -114,7 +114,7 @@ describe('the textures a multisampled pass is given', () => {
 
   it('leaves a frame that keeps one sample everywhere asking for no count at all', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(
+    backend.program(
       averaged({
         resources: [averaged().resources[0] as TextureResource, picture('edges'), picture('flat')],
         pipelines: [shade({ samples: undefined })],
@@ -130,14 +130,14 @@ describe('the textures a multisampled pass is given', () => {
 describe('the pipeline and the pass a multisampled attachment is drawn by', () => {
   it('builds the pipeline under the count its pass writes into', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(averaged());
+    backend.program(averaged());
 
     expect(gpu.calls('createRenderPipeline').map((call) => call.samples)).toEqual([4]);
   });
 
   it('names where the samples are averaged on the attachment they come from', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(averaged());
+    const program = backend.program(averaged());
     program.draw();
 
     const opened = gpu.calls('beginRenderPass');
@@ -155,7 +155,7 @@ describe('the pipeline and the pass a multisampled attachment is drawn by', () =
 
   it('averages into nothing where the attachment keeps one sample', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(
+    const program = backend.program(
       averaged({
         resources: [averaged().resources[0] as TextureResource, picture('edges'), picture('flat')],
         pipelines: [shade({ samples: undefined })],
@@ -180,7 +180,7 @@ describe('the pipeline and the pass a multisampled attachment is drawn by', () =
 describe('what a description keeping several samples a pixel is refused for', () => {
   const refused = (frame: ShaderFrame, message: string) => {
     const { backend } = backendOver();
-    expect(() => backend.createProgram(frame)).toThrow(message);
+    expect(() => backend.program(frame)).toThrow(message);
   };
 
   it('averaging the samples nowhere, since nothing else can read them', () => {

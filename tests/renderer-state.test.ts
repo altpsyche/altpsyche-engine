@@ -95,7 +95,7 @@ function backendOver() {
 describe('the textures a swapping frame owns', () => {
   it('makes both halves of the pair once and neither of them again on a later frame', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(stateFrame());
+    const program = backend.program(stateFrame());
     program.draw();
     program.draw();
     program.draw();
@@ -107,7 +107,7 @@ describe('the textures a swapping frame owns', () => {
 
   it('gives both halves the flags for being written and read, since either may be either', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(stateFrame());
+    backend.program(stateFrame());
 
     const pair = gpu.calls('createTexture').filter((call) => JSON.stringify(call.size) === '[256,256]');
     for (const call of pair) {
@@ -120,7 +120,7 @@ describe('the textures a swapping frame owns', () => {
     const frame = stateFrame();
 
     expect(() =>
-      backend.createProgram({
+      backend.program({
         ...frame,
         resources: [frame.resources[0]!, PAIR('previous'), { ...PAIR('next'), size: [128, 128] }, frame.resources[3]!],
       })
@@ -130,7 +130,7 @@ describe('the textures a swapping frame owns', () => {
   it('refuses a pair naming a texture the frame never declares', () => {
     const { backend } = backendOver();
 
-    expect(() => backend.createProgram(stateFrame({ swap: [['previous', 'absent']] }))).toThrow(
+    expect(() => backend.program(stateFrame({ swap: [['previous', 'absent']] }))).toThrow(
       /swaps "absent", which is no texture it declares/
     );
   });
@@ -139,7 +139,7 @@ describe('the textures a swapping frame owns', () => {
 describe('the two sets of bind groups', () => {
   it('are made once each, so nothing is rebuilt per frame however long the shader runs', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(stateFrame());
+    const program = backend.program(stateFrame());
     program.draw();
     program.draw();
     program.draw();
@@ -152,7 +152,7 @@ describe('the two sets of bind groups', () => {
 
   it('bind the pair one way round and then the other, never the same texture twice', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(stateFrame());
+    backend.program(stateFrame());
 
     // A turn's groups are made together, so the four are the compute pass and
     // the render pass on the first turn and then the same two on the second.
@@ -165,7 +165,7 @@ describe('the two sets of bind groups', () => {
 
   it('give the pass that draws the half the other pass is not writing', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(stateFrame());
+    backend.program(stateFrame());
 
     const made = gpu
       .calls('createBindGroup')
@@ -178,7 +178,7 @@ describe('the two sets of bind groups', () => {
     const { gpu, backend } = backendOver();
     // The picture is read out of whichever half the frame ended on, so the copy
     // out of it is what says which way round the pair was bound.
-    const program = backend.createProgram(stateFrame({ present: 'next' }));
+    const program = backend.program(stateFrame({ present: 'next' }));
     program.draw();
     program.draw();
     program.draw();
@@ -194,7 +194,7 @@ describe('the two sets of bind groups', () => {
 
   it('are named for the pipeline and the turn, so a trace says which way round the pair was bound', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(stateFrame());
+    const program = backend.program(stateFrame());
     program.draw();
     program.draw();
     program.draw();
@@ -218,7 +218,7 @@ describe('the two sets of bind groups', () => {
   it('stay at one set for a frame with no pair, which is every shader that had none', () => {
     const { gpu, backend } = backendOver();
     const frame = stateFrame();
-    const program = backend.createProgram({
+    const program = backend.program({
       ...frame,
       passes: [frame.passes[1]!],
       pipelines: [frame.pipelines[1]!],
@@ -234,7 +234,7 @@ describe('the two sets of bind groups', () => {
 describe('the dispatch a pass takes over a resource', () => {
   it('covers that texture in whole blocks of the pipeline’s own workgroup size', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(stateFrame()).draw();
+    backend.program(stateFrame()).draw();
 
     // Two hundred and fifty-six over eight, on both axes, and not the frame's
     // own eight hundred by six hundred.
@@ -246,7 +246,7 @@ describe('the dispatch a pass takes over a resource', () => {
     const { gpu, backend } = backendOver();
     const frame = stateFrame();
     backend
-      .createProgram({
+      .program({
         ...frame,
         resources: [
           frame.resources[0]!,
@@ -267,7 +267,7 @@ describe('the dispatch a pass takes over a resource', () => {
 
     expect(() =>
       backend
-        .createProgram({
+        .program({
           ...frame,
           passes: [{ pipeline: 'step', dispatch: { over: 'stateSampler' } }, frame.passes[1]!],
         })

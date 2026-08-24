@@ -75,7 +75,7 @@ const made = (gpu: ReturnType<typeof createFakeGPU>) =>
 describe('the buffer a description names', () => {
   it('is made at the size the description gives, and asks to be a storage binding a caller can copy out of', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(holding());
+    backend.program(holding());
 
     expect(made(gpu)?.size).toBe(16);
     expect(made(gpu)?.usage).toBe(GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC);
@@ -83,21 +83,21 @@ describe('the buffer a description names', () => {
 
   it('is made at whatever size the description gives, since only the entry knows how many words a source needs', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(holding({ resources: [holding().resources[0] as BufferResource, counts({ bytes: 32 })] }));
+    backend.program(holding({ resources: [holding().resources[0] as BufferResource, counts({ bytes: 32 })] }));
 
     expect(made(gpu)?.size).toBe(32);
   });
 
   it('is handed out empty rather than filled, since WebGPU zeroes a new buffer', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(holding());
+    backend.program(holding());
 
     expect(gpu.calls('writeBuffer')).toEqual([]);
   });
 
   it('is bound as itself rather than as the uniform block behind it', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(holding());
+    backend.program(holding());
 
     expect(gpu.calls('createBindGroup')[0]?.bindings).toEqual([
       { binding: 0, resource: 'buffer1' },
@@ -107,7 +107,7 @@ describe('the buffer a description names', () => {
 
   it('reaches the layout as a written block where the source may write it', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(holding());
+    backend.program(holding());
 
     expect(gpu.calls('createBindGroupLayout')[0]?.entries).toEqual([
       { binding: 0, visibility: GPUShaderStage.COMPUTE, kind: 'buffer:uniform' },
@@ -117,7 +117,7 @@ describe('the buffer a description names', () => {
 
   it('reaches it as a read-only block where the source only reads it', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(
+    backend.program(
       holding({ resources: [holding().resources[0] as BufferResource, counts({ access: 'read' })] })
     );
 
@@ -129,7 +129,7 @@ describe('the buffer a description names', () => {
 
   it('is given back when the program is disposed, along with everything else it owns', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(holding());
+    const program = backend.program(holding());
     program.dispose();
 
     expect(gpu.calls('buffer.destroy').map((call) => call.label)).toContain('counts');
@@ -139,7 +139,7 @@ describe('the buffer a description names', () => {
     const { backend } = backendOver();
 
     expect(() =>
-      backend.createProgram(holding({ resources: [holding().resources[0] as BufferResource, counts({ bytes: 6 })] }))
+      backend.program(holding({ resources: [holding().resources[0] as BufferResource, counts({ bytes: 6 })] }))
     ).toThrow('the frame for "fixture-buffer" gives "counts" 6 bytes, which is no whole number of four-byte words');
   });
 
@@ -147,7 +147,7 @@ describe('the buffer a description names', () => {
     const { backend } = backendOver();
 
     expect(() =>
-      backend.createProgram(holding({ resources: [holding().resources[0] as BufferResource, counts({ bytes: 0 })] }))
+      backend.program(holding({ resources: [holding().resources[0] as BufferResource, counts({ bytes: 0 })] }))
     ).toThrow('the frame for "fixture-buffer" gives "counts" 0 bytes, which is no whole number of four-byte words');
   });
 });
@@ -168,7 +168,7 @@ const withDial = (over: Partial<BufferResource> = {}): ShaderFrame =>
 describe('the contents a caller writes in', () => {
   it('hands the bytes to the buffer the build filled, over the top of the ones it started with', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(withDial());
+    const program = backend.program(withDial());
     const next = new Uint8Array(new Uint32Array([10, 20, 30, 40]).buffer);
 
     program.writeBuffer('dial', next);
@@ -184,7 +184,7 @@ describe('the contents a caller writes in', () => {
 
   it('refuses a buffer the card fills for itself, since the page put no contents there', () => {
     const { backend } = backendOver();
-    const program = backend.createProgram(withDial());
+    const program = backend.program(withDial());
 
     expect(() => program.writeBuffer('counts', new Uint8Array(16))).toThrow(
       'the frame for "fixture-buffer" fills "counts" on the card, so the page has no contents there to replace'
@@ -193,7 +193,7 @@ describe('the contents a caller writes in', () => {
 
   it('refuses a name the frame declares no buffer for, by that name', () => {
     const { backend } = backendOver();
-    const program = backend.createProgram(withDial());
+    const program = backend.program(withDial());
 
     expect(() => program.writeBuffer('totals', new Uint8Array(16))).toThrow(
       'the frame for "fixture-buffer" declares no buffer called "totals"'
@@ -202,7 +202,7 @@ describe('the contents a caller writes in', () => {
 
   it('refuses more bytes than the buffer holds', () => {
     const { backend } = backendOver();
-    const program = backend.createProgram(withDial());
+    const program = backend.program(withDial());
 
     expect(() => program.writeBuffer('dial', new Uint8Array(32))).toThrow(
       'the frame for "fixture-buffer" writes 32 bytes into "dial", which holds 16'
@@ -211,7 +211,7 @@ describe('the contents a caller writes in', () => {
 
   it('refuses a byte count that is no whole number of four-byte words', () => {
     const { backend } = backendOver();
-    const program = backend.createProgram(withDial());
+    const program = backend.program(withDial());
 
     expect(() => program.writeBuffer('dial', new Uint8Array(6))).toThrow(
       'the frame for "fixture-buffer" writes 6 bytes into "dial", which is no whole number of four-byte words'
@@ -222,7 +222,7 @@ describe('the contents a caller writes in', () => {
 describe('the words a caller reads back', () => {
   it('copies the buffer out to one of its own rather than mapping the one the frame writes', async () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(holding());
+    const program = backend.program(holding());
     gpu.mapped = new Uint8Array(new Uint32Array([7, 0, 0, 0]).buffer);
 
     await program.readBuffer('counts');
@@ -238,7 +238,7 @@ describe('the words a caller reads back', () => {
 
   it('hands back the words that were in it, as words rather than bytes', async () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(holding());
+    const program = backend.program(holding());
     gpu.mapped = new Uint8Array(new Uint32Array([1, 256, 65_536, 4_294_967_295]).buffer);
 
     expect([...(await program.readBuffer('counts'))]).toEqual([1, 256, 65_536, 4_294_967_295]);
@@ -246,7 +246,7 @@ describe('the words a caller reads back', () => {
 
   it('keeps the words after the mapping is given up, since the memory behind one is gone', async () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(holding());
+    const program = backend.program(holding());
     gpu.mapped = new Uint8Array(new Uint32Array([42, 0, 0, 0]).buffer);
 
     const words = await program.readBuffer('counts');
@@ -256,7 +256,7 @@ describe('the words a caller reads back', () => {
 
   it('gives the buffer it read from back to the frame rather than holding it', async () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(holding());
+    const program = backend.program(holding());
     gpu.mapped = new Uint8Array(16);
 
     await program.readBuffer('counts');
@@ -270,7 +270,7 @@ describe('the words a caller reads back', () => {
 
   it('refuses a name the frame declares no buffer for, by that name', async () => {
     const { backend } = backendOver();
-    const program = backend.createProgram(holding());
+    const program = backend.program(holding());
 
     await expect(program.readBuffer('totals')).rejects.toThrow(/declares no buffer called "totals"/);
   });

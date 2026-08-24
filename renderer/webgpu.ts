@@ -47,6 +47,18 @@ import type { Handle } from '../resource/arena.js';
 import { planFramePasses } from '../submit/plan.js';
 import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
 import { runFrame } from '../submit/execute.js';
+import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
+
+/** What the pipeline cache holds for one structure: the compiled pipeline and the
+ * group-0 layouts its bindings ask for, plus the bands those layouts were built
+ * from. All three are the static lifetime — they depend on the pipeline's
+ * structure and nothing a program allocates — so they are cached together and a
+ * program builds its own bind groups against the layouts. */
+type CachedPipeline = {
+  pipeline: GPURenderPipeline | GPUComputePipeline;
+  layouts: GPUBindGroupLayout[];
+  bands: BindingSpec[][];
+};
 
 /** What this backend allocates through the arena: the resident resources of §5,
  * which is everything with a lifetime longer than a compilation and shorter than
@@ -326,8 +338,19 @@ export function createWebGPUBackend(
       return { limits, features: [...device.features].sort() };
     },
 
-    createProgram(frame: ShaderFrame): ShaderProgram {
+    program(frame: ShaderFrame): ShaderProgram {
       if (frame.target !== 'wgsl') throw new Error(`WebGPU was handed a ${frame.target} frame to draw`);
+
+      // The static lifetime of §5, owned by the pipeline cache rather than compiled
+      // inline the way the fused `createProgram` did: a pipeline depends on nothing
+      // but its own structure, and two pipelines of one frame keyed alike return one
+      // handle. It is scoped to this program so its pipelines are released when the
+      // renderer's LRU lets the program go, which is what keeps the editing path —
+      // a source recompiled on every edit — from growing card memory without bound.
+      // A cache shared across programs would need an eviction the cache does not yet
+      // have; cross-frame pipeline reuse waits on [ROADMAP.md](../docs/ROADMAP.md)
+      // item 63.
+      const pipelineCache = new PipelineCache<CachedPipeline>();
 
       const compiled = compileModules(device, frame, onRefused);
 
@@ -721,7 +744,7 @@ export function createWebGPUBackend(
           );
         }
 
-        const { pipelines, wired } = buildPipelines(device, frame, compiled, geometryOf, fullscreen);
+        const { pipelines, wired } = buildPipelines(device, frame, compiled, geometryOf, fullscreen, pipelineCache);
 
         // Which resource each name trades places with, if any. A pair is written by
         // one pass and read by the next frame's, so the two textures swap between
@@ -1152,7 +1175,8 @@ function buildPipelines(
   frame: ShaderFrame,
   compiled: Map<string, GPUShaderModule>,
   geometryOf: (name: string) => DrawnGeometry,
-  fullscreen: GPUShaderModule
+  fullscreen: GPUShaderModule,
+  cache: PipelineCache<CachedPipeline>
 ): {
   pipelines: Map<string, GPURenderPipeline | GPUComputePipeline>;
   wired: { name: string; layouts: GPUBindGroupLayout[]; bands: BindingSpec[][] }[];
@@ -1224,130 +1248,142 @@ function buildPipelines(
   const pipelines = new Map<string, GPURenderPipeline | GPUComputePipeline>();
 
   for (const spec of frame.pipelines) {
-    // The layout is built from what the description says rather than
-    // inferred from the pipeline. A layout the driver infers belongs to the
-    // pipeline it was inferred from, so two pipelines cannot share one and a
-    // compute pass and a render pass reading the same resource would each
-    // need their own group over the same buffer.
-    //
-    // One layout per bind group the source binds at, so a resource every copy of
-    // a pipeline reads can sit in a group of its own that the draw sets once
-    // rather than once per copy. The groups have to run from zero with no gap,
-    // since a pipeline layout is a list the card reads by position.
-    const grouped: BindingSpec[][] = [];
-    for (const at of spec.bindings) (grouped[at.group] ??= []).push(at);
-    const gap = [...grouped.keys()].find((index) => grouped[index] === undefined);
-    if (gap !== undefined) {
-      throw new Error(`the frame for "${frame.id}" binds "${spec.name}" past group ${gap} with no group ${gap}`);
-    }
-    const bands = grouped.length === 0 ? [[]] : grouped;
-    const layouts = bands.map((entries, band) =>
-      device.createBindGroupLayout({
-        // The band is left off the label of a pipeline that binds only group
-        // zero, so a shader with one group makes the calls it made before groups
-        // past the first existed.
-        label: bands.length > 1 ? `${spec.name}-bindings-${band}` : `${spec.name}-bindings`,
-        entries: entries.map((at) =>
-          layoutEntry(
-            at,
-            at.visibility.reduce((mask, reader) => mask | STAGES[reader], 0)
-          )
-        ),
-      })
-    );
-    wired.push({ name: spec.name, layouts, bands });
-    const pipelineLayout = device.createPipelineLayout({
-      label: `${spec.name}-layout`,
-      bindGroupLayouts: layouts,
-    });
-
-    // The rung's numbers land here rather than in the text, because that is
-    // where WGSL takes one: an `override` carries the source's own value
-    // until a pipeline is created with another. Only the document the stage
-    // names is given its own, since a constant naming nothing in the module
-    // it is handed to is refused.
-    if (spec.kind === 'compute') {
-      const constants = moduleOf(frame, spec.compute.module)?.overrides;
-      pipelines.set(
-        spec.name,
-        device.createComputePipeline({
-          layout: pipelineLayout,
-          compute: { ...stage(spec.compute), ...(constants ? { constants } : {}) },
+    // A pipeline is compiled from its structure and nothing else, so the whole
+    // build below runs once per distinct structure through the cache and a repeat
+    // request — another frame drawing the same shader — returns the pipeline and
+    // layouts already made rather than compiling a second. The `name` a frame gave
+    // the pipeline is a per-frame fact and stays out here; the pipeline, its
+    // layouts and the bands they were built from are the static lifetime the cache
+    // owns. This is where item 15 moves compilation off `createProgram` and onto
+    // the module that owns pipeline structure.
+    const { pipeline, layouts, bands } = cache.resolve(cache.request(pipelineStructureOf(frame, spec), () => {
+      // The layout is built from what the description says rather than
+      // inferred from the pipeline. A layout the driver infers belongs to the
+      // pipeline it was inferred from, so two pipelines cannot share one and a
+      // compute pass and a render pass reading the same resource would each
+      // need their own group over the same buffer.
+      //
+      // One layout per bind group the source binds at, so a resource every copy of
+      // a pipeline reads can sit in a group of its own that the draw sets once
+      // rather than once per copy. The groups have to run from zero with no gap,
+      // since a pipeline layout is a list the card reads by position.
+      const grouped: BindingSpec[][] = [];
+      for (const at of spec.bindings) (grouped[at.group] ??= []).push(at);
+      const gap = [...grouped.keys()].find((index) => grouped[index] === undefined);
+      if (gap !== undefined) {
+        throw new Error(`the frame for "${frame.id}" binds "${spec.name}" past group ${gap} with no group ${gap}`);
+      }
+      const bands = grouped.length === 0 ? [[]] : grouped;
+      const layouts = bands.map((entries, band) =>
+        device.createBindGroupLayout({
+          // The band is left off the label of a pipeline that binds only group
+          // zero, so a shader with one group makes the calls it made before groups
+          // past the first existed.
+          label: bands.length > 1 ? `${spec.name}-bindings-${band}` : `${spec.name}-bindings`,
+          entries: entries.map((at) =>
+            layoutEntry(
+              at,
+              at.visibility.reduce((mask, reader) => mask | STAGES[reader], 0)
+            )
+          ),
         })
       );
-      continue;
-    }
+      const pipelineLayout = device.createPipelineLayout({
+        label: `${spec.name}-layout`,
+        bindGroupLayouts: layouts,
+      });
 
-    const constants = moduleOf(frame, spec.fragment.module)?.overrides;
-    // How one vertex is read out of the buffer, which is spent when the
-    // pipeline is made and cannot be given at the draw. A pipeline naming no
-    // geometry reads no buffer at all, which is the frame's own corners.
-    const drawn = spec.geometry === undefined ? undefined : geometryOf(spec.geometry);
-    const reads: GPUVertexBufferLayout[] = drawn
-      ? [
-          {
-            arrayStride: drawn.vertices.stride,
-            attributes: drawn.vertices.attributes.map((field) => ({
-              shaderLocation: field.location,
-              offset: field.offset,
-              format: field.format,
-            })),
+      // The rung's numbers land here rather than in the text, because that is
+      // where WGSL takes one: an `override` carries the source's own value
+      // until a pipeline is created with another. Only the document the stage
+      // names is given its own, since a constant naming nothing in the module
+      // it is handed to is refused.
+      if (spec.kind === 'compute') {
+        const constants = moduleOf(frame, spec.compute.module)?.overrides;
+        return {
+          pipeline: device.createComputePipeline({
+            layout: pipelineLayout,
+            compute: { ...stage(spec.compute), ...(constants ? { constants } : {}) },
+          }),
+          layouts,
+          bands,
+        };
+      }
+
+      const constants = moduleOf(frame, spec.fragment.module)?.overrides;
+      // How one vertex is read out of the buffer, which is spent when the
+      // pipeline is made and cannot be given at the draw. A pipeline naming no
+      // geometry reads no buffer at all, which is the frame's own corners.
+      const drawn = spec.geometry === undefined ? undefined : geometryOf(spec.geometry);
+      const reads: GPUVertexBufferLayout[] = drawn
+        ? [
+            {
+              arrayStride: drawn.vertices.stride,
+              attributes: drawn.vertices.attributes.map((field) => ({
+                shaderLocation: field.location,
+                offset: field.offset,
+                format: field.format,
+              })),
+            },
+          ]
+        : [];
+      return {
+        pipeline: device.createRenderPipeline({
+          layout: pipelineLayout,
+          vertex:
+            spec.vertex === 'fullscreen'
+              ? { module: fullscreen, entryPoint: 'main' }
+              : { ...stage(spec.vertex), ...(drawn ? { buffers: reads } : {}) },
+          fragment: {
+            ...stage(spec.fragment),
+            // A pipeline naming its own targets writes textures rather than the
+            // frame, so the frame's format is the backend's answer alone and a
+            // description never carries a copy of it that could disagree.
+            targets: spec.targets
+              ? spec.targets.map((target) => ({
+                  format: target.format,
+                  ...(target.blend ? { blend: target.blend } : {}),
+                }))
+              : [{ format: FORMAT }],
+            ...(constants ? { constants } : {}),
           },
-        ]
-      : [];
-    pipelines.set(
-      spec.name,
-      device.createRenderPipeline({
-        layout: pipelineLayout,
-        vertex:
-          spec.vertex === 'fullscreen'
-            ? { module: fullscreen, entryPoint: 'main' }
-            : { ...stage(spec.vertex), ...(drawn ? { buffers: reads } : {}) },
-        fragment: {
-          ...stage(spec.fragment),
-          // A pipeline naming its own targets writes textures rather than the
-          // frame, so the frame's format is the backend's answer alone and a
-          // description never carries a copy of it that could disagree.
-          targets: spec.targets
-            ? spec.targets.map((target) => ({
-                format: target.format,
-                ...(target.blend ? { blend: target.blend } : {}),
-              }))
-            : [{ format: FORMAT }],
-          ...(constants ? { constants } : {}),
-        },
-        // The depth test is spent here for the same reason the vertex layout
-        // is: the card compiles the comparison into the pipeline, so two
-        // surfaces tested differently over one attachment are two pipelines
-        // rather than one pipeline told twice.
-        ...(spec.depth
-          ? {
-              depthStencil: {
-                format: spec.depth.format,
-                // The depth half is left out for a format that keeps none,
-                // where the card refuses a comparison rather than ignoring it.
-                ...(spec.depth.compare !== undefined
-                  ? { depthCompare: spec.depth.compare, depthWriteEnabled: spec.depth.write ?? false }
-                  : {}),
-                ...(spec.depth.stencil
-                  ? {
-                      stencilFront: STENCIL_MODES[spec.depth.stencil].face,
-                      stencilBack: STENCIL_MODES[spec.depth.stencil].face,
-                      stencilReadMask: STENCIL_BITS,
-                      stencilWriteMask: STENCIL_MODES[spec.depth.stencil].writes,
-                    }
-                  : {}),
-              },
-            }
-          : {}),
-        primitive: { topology: drawn ? drawn.vertices.topology : 'triangle-list' },
-        // The count is spent here as well as on the attachment, because the
-        // card takes it twice and reports a disagreement against whichever
-        // call arrived second. Which count it is comes off the attachments
-        // the pass writes, and the two are compared where the pass is read.
-        ...(spec.samples ? { multisample: { count: spec.samples } } : {}),
-      })
-    );
+          // The depth test is spent here for the same reason the vertex layout
+          // is: the card compiles the comparison into the pipeline, so two
+          // surfaces tested differently over one attachment are two pipelines
+          // rather than one pipeline told twice.
+          ...(spec.depth
+            ? {
+                depthStencil: {
+                  format: spec.depth.format,
+                  // The depth half is left out for a format that keeps none,
+                  // where the card refuses a comparison rather than ignoring it.
+                  ...(spec.depth.compare !== undefined
+                    ? { depthCompare: spec.depth.compare, depthWriteEnabled: spec.depth.write ?? false }
+                    : {}),
+                  ...(spec.depth.stencil
+                    ? {
+                        stencilFront: STENCIL_MODES[spec.depth.stencil].face,
+                        stencilBack: STENCIL_MODES[spec.depth.stencil].face,
+                        stencilReadMask: STENCIL_BITS,
+                        stencilWriteMask: STENCIL_MODES[spec.depth.stencil].writes,
+                      }
+                    : {}),
+                },
+              }
+            : {}),
+          primitive: { topology: drawn ? drawn.vertices.topology : 'triangle-list' },
+          // The count is spent here as well as on the attachment, because the
+          // card takes it twice and reports a disagreement against whichever
+          // call arrived second. Which count it is comes off the attachments
+          // the pass writes, and the two are compared where the pass is read.
+          ...(spec.samples ? { multisample: { count: spec.samples } } : {}),
+        }),
+        layouts,
+        bands,
+      };
+    }));
+    pipelines.set(spec.name, pipeline);
+    wired.push({ name: spec.name, layouts, bands });
   }
 
   return { pipelines, wired };

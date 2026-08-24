@@ -16,6 +16,7 @@ import type { Backend, DeviceReport, ShaderFrame, ShaderProgram, UniformValue } 
 import { componentsOf, drawsCorners, isRenderPass, moduleOf } from './types.js';
 import { Arena } from '../resource/arena.js';
 import { drawGL2Frame } from '../submit/gl2.js';
+import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
 
 /** A single triangle covering the frame. Two triangles would draw the diagonal
  * twice, and there is no geometry here beyond filling the screen. */
@@ -126,8 +127,22 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       return { limits, features: [...(gl.getSupportedExtensions() ?? [])].sort() };
     },
 
-    createProgram(frame: ShaderFrame): ShaderProgram {
+    program(frame: ShaderFrame): ShaderProgram {
       if (frame.target !== 'glsl') throw new Error(`WebGL 2 was handed a ${frame.target} frame to draw`);
+
+      // The static lifetime of §5: the linked program a shader compiles to, keyed
+      // on the structure of its two documents. Scoped to this program so the linked
+      // program is freed when this one is disposed, the same bound the backend held
+      // before the split. A cache shared across programs, for a frame that draws the
+      // same GLSL as another, needs an eviction the cache does not yet have and
+      // waits on [ROADMAP.md](../docs/ROADMAP.md) item 63. What it caches is the
+      // compilation alone; the uniform buffer a program feeds is resident.
+      const programCache = new PipelineCache<{
+        program: WebGLProgram;
+        layout: Map<string, number> | null;
+        size: number;
+        attribute: number;
+      }>();
 
       // One pass drawing the frame's own colour target through one pipeline is
       // the whole of what this backend implements, and it is the description a
@@ -181,33 +196,50 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       if (!vertexSource || !fragmentSource)
         throw new Error(`the frame for "${frame.id}" names a document it does not carry`);
 
-      const program = gl.createProgram();
-      if (!program) throw new Error('the context refused to make a program');
-      const vertex = compile(gl, gl.VERTEX_SHADER, vertexSource.code);
-      const fragment = compile(gl, gl.FRAGMENT_SHADER, fragmentSource.code);
-      gl.attachShader(program, vertex);
-      gl.attachShader(program, fragment);
-      gl.linkProgram(program);
-      gl.deleteShader(vertex);
-      gl.deleteShader(fragment);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        const log = gl.getProgramInfoLog(program);
-        gl.deleteProgram(program);
-        throw new Error(log ?? 'the program failed to link and the driver said nothing');
-      }
+      // The static lifetime: the linked program, the block layout the driver
+      // reported and the attribute slot the corners are read from. Cached by the
+      // structure of the two documents, so a second frame carrying the same GLSL
+      // links no second program and reads no layout twice. The link is what throws
+      // on a source the driver refuses; a repeat request over a structure that
+      // linked once never runs it again.
+      const { program, layout, size, attribute } = programCache.resolve(
+        programCache.request(pipelineStructureOf(frame, spec), () => {
+        const linked = gl.createProgram();
+        if (!linked) throw new Error('the context refused to make a program');
+        const vertex = compile(gl, gl.VERTEX_SHADER, vertexSource.code);
+        const fragment = compile(gl, gl.FRAGMENT_SHADER, fragmentSource.code);
+        gl.attachShader(linked, vertex);
+        gl.attachShader(linked, fragment);
+        gl.linkProgram(linked);
+        gl.deleteShader(vertex);
+        gl.deleteShader(fragment);
+        if (!gl.getProgramParameter(linked, gl.LINK_STATUS)) {
+          const log = gl.getProgramInfoLog(linked);
+          gl.deleteProgram(linked);
+          throw new Error(log ?? 'the program failed to link and the driver said nothing');
+        }
+        // Which door the values go through is decided by what the program has,
+        // not by what the frame claims, so a compiler that changes its mind
+        // about emitting a block cannot leave a shader silently unfed.
+        const blocks = gl.getProgramParameter(linked, gl.ACTIVE_UNIFORM_BLOCKS) as number;
+        return {
+          program: linked,
+          layout: blocks > 0 ? blockLayout(gl, linked) : null,
+          size: blocks > 0 ? (gl.getActiveUniformBlockParameter(linked, 0, gl.UNIFORM_BLOCK_DATA_SIZE) as number) : 0,
+          attribute: gl.getAttribLocation(linked, 'position'),
+        };
+        })
+      );
 
-      // Which door the values go through is decided by what the program has,
-      // not by what the frame claims, so a compiler that changes its mind
-      // about emitting a block cannot leave a shader silently unfed.
-      const blocks = gl.getProgramParameter(program, gl.ACTIVE_UNIFORM_BLOCKS) as number;
-      const layout = blocks > 0 ? blockLayout(gl, program) : null;
-      const size =
-        blocks > 0 ? (gl.getActiveUniformBlockParameter(program, 0, gl.UNIFORM_BLOCK_DATA_SIZE) as number) : 0;
+      // The resident lifetime: one uniform buffer this program writes its values
+      // into, allocated through the arena and freed on this program's dispose. The
+      // scratch it is filled from is the program's own too, so a frame drawing the
+      // same shader as another shares that other's linked program and neither its
+      // buffer nor its scratch.
       const bytes = layout ? new Float32Array(size / 4) : null;
       const uboHandle = layout ? arena.allocate(() => gl.createBuffer() as WebGLBuffer) : null;
       const ubo = uboHandle === null ? null : arena.resolve(uboHandle);
 
-      const attribute = gl.getAttribLocation(program, 'position');
       const locations = new Map<string, WebGLUniformLocation | null>();
       const vertices = pass.draw.vertices;
 
@@ -277,6 +309,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         setPasses() {},
 
         dispose() {
+          // Both the uniform buffer and the linked program are this program's own —
+          // the cache that holds the program is this program's, scoped to it — so
+          // both are freed here, the buffer through the arena and the program through
+          // the context, exactly as before the compilation moved behind the cache.
           if (uboHandle !== null) arena.free(uboHandle);
           gl.deleteProgram(program);
         },

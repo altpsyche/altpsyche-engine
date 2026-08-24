@@ -64,7 +64,7 @@ async function traceOffTheDouble(engine, backends, fake, frame, values) {
   if (!backend) throw new Error('the double gave no backend');
 
   backend.resize(W, H);
-  const program = backend.createProgram(frame);
+  const program = backend.program(frame);
   program.setUniforms(values);
   program.draw();
   await backend.readPixels();
@@ -126,7 +126,7 @@ async function main() {
 
         backend.resize(W, H);
         try {
-          const program = backend.createProgram(frame);
+          const program = backend.program(frame);
           program.setUniforms(values);
           program.draw();
           await backend.readPixels();

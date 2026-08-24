@@ -521,7 +521,7 @@ const gpuResults = await gpuPage.evaluate(
         undefined,
         generated
       );
-      const program = rewriteBackend.createProgram(frame);
+      const program = rewriteBackend.program(frame);
       program.setUniforms({ u_time: 1, u_resolution: [200, 100] });
       program.draw();
       const before = [...(await program.readBuffer('copies'))];

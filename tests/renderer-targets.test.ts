@@ -104,7 +104,7 @@ const attachments = (gpu: ReturnType<typeof createFakeGPU>, pass = 0) =>
 describe('a fragment stage writing more than one colour', () => {
   it('is given one target per colour, in the order the stage returns them', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(pairFrame());
+    backend.program(pairFrame());
 
     const descriptor = gpu.calls('createRenderPipeline')[0]?.descriptor as GPURenderPipelineDescriptor;
     expect([...(descriptor.fragment?.targets ?? [])]).toEqual([{ format: 'rgba8unorm' }, { format: 'rgba8unorm' }]);
@@ -112,7 +112,7 @@ describe('a fragment stage writing more than one colour', () => {
 
   it('writes the textures the pass attaches rather than the frame the backend holds', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(pairFrame()).draw();
+    backend.program(pairFrame()).draw();
 
     expect(attachments(gpu).map((attachment) => attachment.view)).toEqual(['picture.view', 'distance.view']);
     // The frame is copied from whichever texture the description shows, so the
@@ -123,7 +123,7 @@ describe('a fragment stage writing more than one colour', () => {
 
   it('empties each attachment to the value it names', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(pairFrame()).draw();
+    backend.program(pairFrame()).draw();
 
     expect(attachments(gpu).map((attachment) => [attachment.loadOp, attachment.clearValue])).toEqual([
       ['clear', { r: 0, g: 0, b: 0, a: 1 }],
@@ -139,7 +139,7 @@ describe('a fragment stage writing more than one colour', () => {
       draw: { vertices: 3 },
       colour: [{ resource: 'picture' }, { resource: 'distance' }],
     };
-    backend.createProgram(pairFrame({ passes: [...frame.passes, second] })).draw();
+    backend.program(pairFrame({ passes: [...frame.passes, second] })).draw();
 
     expect(attachments(gpu, 1).map((attachment) => [attachment.loadOp, attachment.clearValue])).toEqual([
       ['load', undefined],
@@ -152,7 +152,7 @@ describe('a fragment stage writing more than one colour', () => {
     const frame = pairFrame();
     const single = { ...(frame.pipelines[0] as RenderPipelineSpec), targets: undefined };
     backend
-      .createProgram(
+      .program(
         pairFrame({ pipelines: [single], passes: [{ pipeline: 'both', draw: { vertices: 3 } }], present: undefined })
       )
       .draw();
@@ -167,7 +167,7 @@ describe('a fragment stage writing more than one colour', () => {
   it('turns with the swap, so a pass never writes the half its pipeline is reading', () => {
     const { gpu, backend } = backendOver();
     const frame = pairFrame();
-    const program = backend.createProgram(
+    const program = backend.program(
       pairFrame({
         // The pair is declared both ways round for the same reason a binding is:
         // one half is read this frame and written the next, and which is which is
@@ -202,7 +202,7 @@ describe('a colour mixed with what the attachment held', () => {
 
   it('reaches the card on the target it was named on and on no other', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(blended());
+    backend.program(blended());
 
     const descriptor = gpu.calls('createRenderPipeline')[0]?.descriptor as GPURenderPipelineDescriptor;
     expect([...(descriptor.fragment?.targets ?? [])]).toEqual([
@@ -213,7 +213,7 @@ describe('a colour mixed with what the attachment held', () => {
 
   it('is written into the trace beside the format, since both are the pipeline rather than the pass', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(blended());
+    backend.program(blended());
 
     expect(gpu.calls('createRenderPipeline')[0]?.targets).toEqual([
       { format: 'rgba8unorm', blend: OVER },
@@ -225,7 +225,7 @@ describe('a colour mixed with what the attachment held', () => {
 describe('what a description disagreeing with itself about its colours is refused with', () => {
   const refuses = (over: Partial<ShaderFrame>, said: string) => {
     const { backend } = backendOver();
-    expect(() => backend.createProgram(pairFrame(over))).toThrow(said);
+    expect(() => backend.program(pairFrame(over))).toThrow(said);
   };
 
   it('refuses a pipeline writing colours the pass attaches nothing for', () => {

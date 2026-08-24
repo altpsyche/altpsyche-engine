@@ -66,7 +66,7 @@ describe('a description naming two distinct WGSL documents', () => {
     const backend = createWebGPUBackend(gpu.canvas, gpu.device);
     if (!backend) throw new Error('the fake canvas gave no WebGPU context');
     backend.resize(800, 600);
-    backend.createProgram(assembled()).draw();
+    backend.program(assembled()).draw();
     expect(gpu.calls('beginRenderPass')).toHaveLength(1);
     expect(gpu.calls('draw')[0]).toMatchObject({ count: 3 });
   });

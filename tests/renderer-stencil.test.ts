@@ -99,13 +99,13 @@ function backendOver() {
  * disagreement rather than whichever call the card took second. */
 function refuses(over: Partial<ShaderFrame>, said: string) {
   const { backend } = backendOver();
-  expect(() => backend.createProgram(masked(over)).draw()).toThrow(said);
+  expect(() => backend.program(masked(over)).draw()).toThrow(said);
 }
 
 describe('what each mode becomes on the card', () => {
   it('marks by passing always and leaving the value behind, writing every bit', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(masked());
+    backend.program(masked());
 
     expect(gpu.calls('createRenderPipeline')[0]?.depth).toMatchObject({
       format: 'stencil8',
@@ -116,7 +116,7 @@ describe('what each mode becomes on the card', () => {
 
   it('draws inside the mark by comparing for equality and leaving the mask alone', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(masked());
+    backend.program(masked());
 
     // Writing nothing is what lets a third pass be cut by the same shape, and a
     // mode that wrote here would leave the mask holding wherever this pass drew.
@@ -128,7 +128,7 @@ describe('what each mode becomes on the card', () => {
 
   it('leaves the depth half out for a format that keeps none', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(masked());
+    backend.program(masked());
 
     const depth = gpu.calls('createRenderPipeline')[0]?.depth as { compare?: string; write?: boolean };
     expect(depth.compare).toBeUndefined();
@@ -137,7 +137,7 @@ describe('what each mode becomes on the card', () => {
 
   it('sets the value on every pass that masks, since the card takes it there', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(masked()).draw();
+    backend.program(masked()).draw();
 
     // A pass that never sets it masks against whatever the pass before it left,
     // and it is not compiled into the pipeline, so this is the only place it can
@@ -149,7 +149,7 @@ describe('what each mode becomes on the card', () => {
     const { gpu, backend } = backendOver();
     const frame = masked();
     const pipelines = [{ ...(frame.pipelines[0] as RenderPipelineSpec), depth: undefined }];
-    backend.createProgram(masked({ pipelines, passes: [{ pipeline: 'marking', draw: { vertices: 3 } }] })).draw();
+    backend.program(masked({ pipelines, passes: [{ pipeline: 'marking', draw: { vertices: 3 } }] })).draw();
 
     expect(gpu.calls('setStencilReference')).toEqual([]);
   });
@@ -158,7 +158,7 @@ describe('what each mode becomes on the card', () => {
 describe('the texture the mask is kept in', () => {
   it('is attached beside the colour, emptied where the pass names a value', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(masked()).draw();
+    backend.program(masked()).draw();
 
     expect(gpu.calls('beginRenderPass')[0]?.depth).toMatchObject({
       view: 'mask.view',
@@ -170,7 +170,7 @@ describe('the texture the mask is kept in', () => {
 
   it('keeps what the marking pass left where the pass after it names no value', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(masked()).draw();
+    backend.program(masked()).draw();
 
     // Emptying it between the two passes is the mask lost: the second pass would
     // find nothing marked and draw nowhere at all.
@@ -182,7 +182,7 @@ describe('the texture the mask is kept in', () => {
 
   it('gets no depth operations at all, since the format keeps no depth to empty', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(masked()).draw();
+    backend.program(masked()).draw();
 
     const depth = gpu.calls('beginRenderPass')[0]?.depth as { loadOp?: string; storeOp?: string };
     expect(depth.loadOp).toBeUndefined();
@@ -207,7 +207,7 @@ describe('the texture the mask is kept in', () => {
       frame.passes[1] as RenderPassSpec,
     ];
     backend
-      .createProgram(masked({ resources: [frame.resources[0] as never, mask({ format: both })], pipelines, passes }))
+      .program(masked({ resources: [frame.resources[0] as never, mask({ format: both })], pipelines, passes }))
       .draw();
 
     expect(gpu.calls('beginRenderPass')[0]?.depth).toMatchObject({

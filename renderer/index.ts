@@ -109,7 +109,7 @@ export async function createFrameRenderer(
   // deleted and re-inserted so it moves to the back, which leaves the stalest
   // key at the front where eviction takes it. So the current shader, drawn every
   // frame, can never be the one thrown out.
-  const programs = new Map<string, ReturnType<typeof backend.createProgram>>();
+  const programs = new Map<string, ReturnType<typeof backend.program>>();
   // Keyed on everything the compiled program is built from, which is `frameKey`'s
   // to decide: a program bakes in the frame's pipelines, resources and passes —
   // the pipeline state it compiles, the uniform block it lays a buffer out for, the
@@ -144,7 +144,7 @@ export async function createFrameRenderer(
       programs.set(k, cached);
       return cached;
     }
-    const program = backend.createProgram(shader);
+    const program = backend.program(shader);
     programs.set(k, program);
     // Over the limit means the one just added pushed past it, so the front of
     // the map is the least recently used and its card resources are handed back

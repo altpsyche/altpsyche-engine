@@ -144,7 +144,7 @@ function backendOver() {
 describe('a pass whose count comes out of a buffer', () => {
   it('hands the card the buffer and nothing else for a dispatch', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(planned());
+    const program = backend.program(planned());
     program.draw();
 
     expect(gpu.calls('dispatchWorkgroupsIndirect').map((call) => [call.buffer, call.offset])).toEqual([['counts', 0]]);
@@ -155,7 +155,7 @@ describe('a pass whose count comes out of a buffer', () => {
 
   it('hands it the buffer for a draw covering the frame with the backend’s own corners', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(planned());
+    const program = backend.program(planned());
     program.draw();
 
     expect(gpu.calls('drawIndirect').map((call) => [call.buffer, call.offset])).toEqual([['counts', 0]]);
@@ -164,7 +164,7 @@ describe('a pass whose count comes out of a buffer', () => {
 
   it('reads five words instead of four where the geometry carries indices, and binds it first', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(ordered());
+    const program = backend.program(ordered());
     program.draw();
 
     expect(gpu.calls('drawIndexedIndirect').map((call) => [call.buffer, call.offset])).toEqual([['counts', 0]]);
@@ -177,7 +177,7 @@ describe('a pass whose count comes out of a buffer', () => {
 
   it('asks for the buffer to be readable as counts as well as writable by the shader', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(planned());
+    backend.program(planned());
 
     expect(gpu.calls('createBuffer').find((call) => call.label === 'counts')?.usage).toBe(
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.INDIRECT
@@ -186,7 +186,7 @@ describe('a pass whose count comes out of a buffer', () => {
 
   it('leaves a buffer no pass reads counts from without that flag', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(
+    backend.program(
       planned({
         passes: [
           { pipeline: 'plan', dispatch: [1, 1, 1] },
@@ -205,7 +205,7 @@ describe('a pass whose count comes out of a buffer', () => {
 describe('what a count read out of a buffer is refused for', () => {
   const refused = (frame: ShaderFrame, message: string) => {
     const { backend } = backendOver();
-    expect(() => backend.createProgram(frame)).toThrow(message);
+    expect(() => backend.program(frame)).toThrow(message);
   };
 
   it('naming something that is not a buffer at all', () => {

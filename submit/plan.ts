@@ -304,10 +304,14 @@ export function planFramePasses(frame: ShaderFrame, geometryOf: (name: string) =
  * what holds them. A fullscreen frame draws its backend's own corners and never
  * asks for it, so the corpus reaches the new path through here touching no device.
  *
- * It is the entry [ROADMAP.md](../docs/ROADMAP.md) item 15 dismantles
- * `createProgram` around: the fused builder goes, and a description reaches the
- * planned frame through this one call rather than through a method that also
- * allocated resources and compiled pipelines.
+ * [ROADMAP.md](../docs/ROADMAP.md) item 15 has since removed the fused
+ * `createProgram` — each lifetime now reaches its own module and no method both
+ * allocates resources and compiles pipelines — but it did so without routing a
+ * runtime draw through this seam: a backend receives an already-assembled
+ * `ShaderFrame` and plans it with `planFramePasses` directly, never holding a
+ * `FrameDescription` to feed here. This composition waits for the caller that does
+ * hold one, the `submit(graph)` model of items 26 to 29; see item 15's
+ * [JOURNAL.md](../docs/JOURNAL.md) row.
  */
 export function planFromDescription(
   id: string,

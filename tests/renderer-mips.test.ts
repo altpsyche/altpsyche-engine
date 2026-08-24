@@ -87,14 +87,14 @@ const made = (gpu: ReturnType<typeof createFakeGPU>) =>
 describe('the levels a laddered texture is made with', () => {
   it('is as many as halving the longest side reaches, which is 7 for a 64 pixel picture', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(laddered());
+    backend.program(laddered());
 
     expect(made(gpu)?.levels).toBe(7);
   });
 
   it('counts off the longer side, so a picture wider than it is tall gets the wider one’s ladder', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(
+    backend.program(
       laddered({
         resources: [...laddered().resources.slice(0, 1), grain({ size: [256, 64] }), ...laddered().resources.slice(2)],
       })
@@ -106,14 +106,14 @@ describe('the levels a laddered texture is made with', () => {
   it('leaves a texture read at its own size with no ladder at all', () => {
     const { gpu, backend } = backendOver();
     const plain = laddered().resources.map((one) => (one.name === 'grain' ? grain({ mips: undefined }) : one));
-    backend.createProgram(laddered({ resources: plain }));
+    backend.program(laddered({ resources: plain }));
 
     expect(made(gpu)?.levels).toBeUndefined();
   });
 
   it('asks to be drawn into as well as read, since every level below the first is drawn', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(laddered());
+    backend.program(laddered());
 
     expect(made(gpu)?.usage).toBe(
       GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
@@ -124,7 +124,7 @@ describe('the levels a laddered texture is made with', () => {
 describe('the passes that fill the ladder', () => {
   it('is one per level below the first, each drawing three corners', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(laddered());
+    backend.program(laddered());
 
     // Six passes for seven levels: the first level is the contents that arrived.
     expect(gpu.calls('beginRenderPass')).toHaveLength(6);
@@ -136,7 +136,7 @@ describe('the passes that fill the ladder', () => {
 
   it('draws each level from the level above it, one level at a time', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(laddered());
+    backend.program(laddered());
 
     // Two views a pass, the level being drawn into and the level being read, and
     // one more with no level at all, which is the shader's own binding of the
@@ -161,7 +161,7 @@ describe('the passes that fill the ladder', () => {
 
   it('happens after the contents arrive, since a level is an average of the one above it', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(laddered());
+    backend.program(laddered());
 
     const written = gpu.trace.findIndex((entry) => entry.call === 'writeTexture');
     const drawn = gpu.trace.findIndex((entry) => entry.call === 'beginRenderPass');
@@ -171,7 +171,7 @@ describe('the passes that fill the ladder', () => {
 
   it('happens once rather than every frame, because the contents it averages arrive once', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(laddered());
+    const program = backend.program(laddered());
     program.draw();
     program.draw();
 
@@ -181,7 +181,7 @@ describe('the passes that fill the ladder', () => {
 
   it('builds one pipeline and one sampler for every ladder rather than one per texture', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(laddered());
+    backend.program(laddered());
 
     expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
     expect(gpu.calls('createSampler').map((call) => call.label)).toEqual(['grainSampler', 'averaging']);
@@ -193,7 +193,7 @@ describe('the passes that fill the ladder', () => {
       one.name === 'grain' ? grain({ use: ['storage'], data: undefined }) : one
     );
 
-    expect(() => backend.createProgram(laddered({ resources: written }))).toThrow(
+    expect(() => backend.program(laddered({ resources: written }))).toThrow(
       'the frame for "fixture-mips" gives "grain" a ladder and writes it every frame'
     );
   });

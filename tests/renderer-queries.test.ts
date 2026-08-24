@@ -93,7 +93,7 @@ function backendOver({ timing = true } = {}) {
 describe('a pass that is timed', () => {
   it('is opened with a set of two, one time written at each end of it', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
 
     expect(gpu.calls('createQuerySet')[0]).toMatchObject({ label: 'readings-times', type: 'timestamp', count: 2 });
     expect(gpu.calls('beginRenderPass')[0]?.times).toBe('readings-times');
@@ -101,7 +101,7 @@ describe('a pass that is timed', () => {
 
   it('resolves the pair into the buffer the description named, after the pass has ended', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
 
     const order = gpu.trace.map((entry) => entry.call);
     expect(order.indexOf('resolveQuerySet')).toBeGreaterThan(order.indexOf('endPass'));
@@ -116,7 +116,7 @@ describe('a pass that is timed', () => {
 
   it('asks the buffer for the flag a resolve needs, on top of the ones it already had', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(frameOf({ passes: [drawing({ timed: 'readings' })] }));
+    backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] }));
 
     expect(gpu.calls('createBuffer').find((call) => call.label === 'readings')?.usage).toBe(
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE
@@ -125,7 +125,7 @@ describe('a pass that is timed', () => {
 
   it('times a compute pass the same way, since a dispatch has two ends as well', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(frameOf({ passes: [{ pipeline: 'plan', dispatch: [1, 1, 1], timed: 'readings' }] })).draw();
+    backend.program(frameOf({ passes: [{ pipeline: 'plan', dispatch: [1, 1, 1], timed: 'readings' }] })).draw();
 
     expect(gpu.calls('beginComputePass')[0]?.times).toBe('readings-times');
     expect(gpu.calls('resolveQuerySet')[0]?.count).toBe(2);
@@ -134,7 +134,7 @@ describe('a pass that is timed', () => {
   it('is refused where the buffer is shorter than the pair of answers', () => {
     const { backend } = backendOver();
     expect(() =>
-      backend.createProgram(
+      backend.program(
         frameOf({
           resources: [frameOf().resources[0] as BufferResource, held({ bytes: 8 })],
           passes: [drawing({ timed: 'readings' })],
@@ -147,7 +147,7 @@ describe('a pass that is timed', () => {
 describe('a device that cannot time anything', () => {
   it('draws the pass with no set at all rather than refusing the frame', () => {
     const { gpu, backend } = backendOver({ timing: false });
-    backend.createProgram(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
 
     expect(gpu.calls('createQuerySet')).toEqual([]);
     expect(gpu.calls('beginRenderPass')[0]?.times).toBeUndefined();
@@ -156,14 +156,14 @@ describe('a device that cannot time anything', () => {
 
   it('leaves the buffer as it found it, so a caller reads what was there', () => {
     const { gpu, backend } = backendOver({ timing: false });
-    backend.createProgram(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
 
     expect(gpu.calls('resolveQuerySet')).toEqual([]);
   });
 
   it('still counts samples, which is a reading that needs nothing optional', () => {
     const { gpu, backend } = backendOver({ timing: false });
-    backend.createProgram(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
 
     expect(gpu.calls('createQuerySet')[0]).toMatchObject({ type: 'occlusion', count: 1 });
     expect(gpu.calls('resolveQuerySet')[0]?.count).toBe(1);
@@ -173,14 +173,14 @@ describe('a device that cannot time anything', () => {
 describe('a pass whose samples are counted', () => {
   it('names the set when the pass is opened, since the card is told before anything is drawn', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
 
     expect(gpu.calls('beginRenderPass')[0]?.counts).toBe('readings-samples');
   });
 
   it('takes the count around the draw rather than around the pass', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
 
     const order = gpu.trace.map((entry) => entry.call);
     expect(order.indexOf('beginOcclusionQuery')).toBeLessThan(order.indexOf('draw'));
@@ -190,14 +190,14 @@ describe('a pass whose samples are counted', () => {
 
   it('resolves one answer rather than two', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
 
     expect(gpu.calls('resolveQuerySet')[0]).toMatchObject({ set: 'readings-samples', count: 1, into: 'readings' });
   });
 
   it('leaves a pass nobody counted without a set, so nothing is counted by accident', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(frameOf()).draw();
+    backend.program(frameOf()).draw();
 
     expect(gpu.calls('createQuerySet')).toEqual([]);
     expect(gpu.calls('beginOcclusionQuery')).toEqual([]);
@@ -211,7 +211,7 @@ describe('two answers in one buffer', () => {
     // first, which is a number that looks like an answer and is not one.
     const { backend } = backendOver();
     expect(() =>
-      backend.createProgram(frameOf({ passes: [drawing({ timed: 'readings', visible: 'readings' })] }))
+      backend.program(frameOf({ passes: [drawing({ timed: 'readings', visible: 'readings' })] }))
     ).toThrow(/resolves more than one query into "readings"/);
   });
 });
@@ -219,7 +219,7 @@ describe('two answers in one buffer', () => {
 describe('what the sets belong to', () => {
   it('are given back when the program is, since a program is what worked out how many it needed', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(frameOf({ passes: [drawing({ timed: 'readings' })] }));
+    const program = backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] }));
     program.draw();
     program.dispose();
 

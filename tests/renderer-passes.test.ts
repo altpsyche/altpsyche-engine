@@ -81,7 +81,7 @@ const played = (gpu: ReturnType<typeof createFakeGPU>) => gpu.calls('executeBund
 describe('a description whose pass list changes between frames', () => {
   it('runs every pass the frame declares before anything changes it', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(holding()).draw();
+    backend.program(holding()).draw();
 
     expect(gpu.calls('beginRenderPass')).toHaveLength(2);
     expect(played(gpu)).toEqual([['under-bundle-0'], ['over-bundle-0']]);
@@ -89,7 +89,7 @@ describe('a description whose pass list changes between frames', () => {
 
   it('turns a pass off, and the draw after runs one fewer without the program being remade', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(holding());
+    const program = backend.program(holding());
     const built = gpu.calls('createShaderModule').length;
 
     program.setPasses([{ pipeline: 'over', draw: { vertices: 3 } }]);
@@ -106,7 +106,7 @@ describe('a description whose pass list changes between frames', () => {
   it('turns a pass on for a pipeline the program built but no pass had used', () => {
     const { gpu, backend } = backendOver();
     // Both pipelines are built, only one is drawn to start with.
-    const program = backend.createProgram(holding({ passes: [{ pipeline: 'under', draw: { vertices: 3 } }] }));
+    const program = backend.program(holding({ passes: [{ pipeline: 'under', draw: { vertices: 3 } }] }));
     program.draw();
     expect(gpu.calls('beginRenderPass')).toHaveLength(1);
 
@@ -122,7 +122,7 @@ describe('a description whose pass list changes between frames', () => {
 
   it('records the trace either side of a change, off one program', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(holding());
+    const program = backend.program(holding());
 
     program.draw();
     program.setPasses([{ pipeline: 'over', draw: { vertices: 3 } }]);
@@ -142,7 +142,7 @@ describe('a description whose pass list changes between frames', () => {
 
   it('refuses a pass naming a pipeline the frame does not carry, by that name', () => {
     const { backend } = backendOver();
-    const program = backend.createProgram(holding());
+    const program = backend.program(holding());
 
     expect(() => program.setPasses([{ pipeline: 'ghost', draw: { vertices: 3 } }])).toThrow(
       'the frame names a pipeline "ghost" it does not carry'

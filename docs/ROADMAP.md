@@ -195,13 +195,28 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 
 ### 15. `createProgram` is deleted
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The function that fused three lifetimes goes.
 
 **Done when.** It is absent from the tree, and the twelve trace presets still agree.
 
 **Needs.** item 14.
+
+**How it landed.** The backend method `createProgram(frame)` is gone; both backends
+expose `program(frame)` instead, a composer that reaches each lifetime through its
+own module rather than building all three inline. The static lifetime now flows
+through `pipeline/`'s `PipelineCache` — `renderer/webgpu.ts`'s `buildPipelines` and
+`renderer/webgl2.ts`'s link both request their pipeline through it, keyed by
+`pipelineStructureOf`, so no method both compiles a pipeline and allocates a buffer.
+Resident stays the arena's (item 10) and per-frame the executor's (item 13). The
+cache is scoped to one program so its pipelines are released when the renderer's LRU
+lets the program go, which keeps the editing path from growing card memory without
+bound; cross-program pipeline reuse waits on item 63. The only tokens named
+`createProgram` left in the tree are the WebGL API's own `gl.createProgram` and its
+fake. The twelve trace presets are `gate:browser`'s to confirm and were not run in
+the unattended session; behaviour is preserved by construction (the cache is a
+per-program pass-through, every device call unchanged), see [JOURNAL.md](JOURNAL.md).
 
 ---
 
@@ -795,3 +810,15 @@ Seven website paths are still in that fence today, named here without backticks 
 Each row is honest and neither is wrong. What nobody owned is the join: **on a machine that has WebGPU, nothing has yet shown a GLSL paste drawing through WebGL 2.** Three green halves are not a verified whole, and this is the item that says so.
 
 **It cannot be settled on the machine the loop runs on**, per §17's three harness notes: every headless launch there reaches SwiftShader whatever the flags say, and a real adapter needs a visible window with `--enable-features=Vulkan` and `--ozone-platform=x11` together. So an unattended run should **lift this item rather than work it**, and the reading belongs to whoever has the hardware — the same standing job as item 57.
+
+### 63. The pipeline cache dedupes across programs
+
+**Status.** open
+
+**Asks for.** A pipeline compiled once and shared by every program whose frame carries its structure, bounded so the sharing cannot grow card memory without end.
+
+**Done when.** Two programs on one backend whose frames differ in resident data but share a pipeline structure compile one pipeline between them, a test asserts the second builds none, and a bound is asserted so a backend that compiles more distinct structures than the bound frees the stalest rather than keeping every one alive.
+
+**Needs.** item 15, item 21.
+
+**Why it exists.** Item 12 built `PipelineCache` content-addressed for exactly this reuse, and item 15 wired the backends to compile through it — but **per program**, not per backend, so the cache never dedupes across two programs. That scope was deliberate and is recorded in item 15's [JOURNAL.md](JOURNAL.md) row: a per-backend `PipelineCache` has no eviction, so the editing path — a source recompiled on every keystroke, each a new structure — would accumulate pipelines the renderer's LRU can no longer reach, which is the unbounded card-memory growth that LRU exists to prevent. The renderer's LRU already reuses a whole **program** when a frame repeats exactly (via `frameKey`), so the reuse still missing is the scene-tier one: many programs sharing one material's pipeline over different meshes, each compiling that pipeline again today. That is why this `Needs` item 21 as well as item 15 — the `cost()` metric is where a "compiled nothing new" claim becomes assertable without a browser, and the scene tier is where the reuse pays. **Reverse:** none needed until it lands; item 15's per-program scope stands on its own.

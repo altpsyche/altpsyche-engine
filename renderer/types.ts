@@ -620,7 +620,16 @@ export interface Backend {
    * know which backend it holds, and neither throws: a device with nothing
    * optional reports no features rather than refusing the question. */
   report(): DeviceReport;
-  createProgram(frame: ShaderFrame): ShaderProgram;
+  /**
+   * A frame's three lifetimes composed into one drawable: the resident resources
+   * it names allocated through the arena, the pipelines it draws with taken from
+   * the pipeline cache, and the passes it runs planned for the executor. It
+   * replaces `createProgram`, which built all three inside one method; each
+   * lifetime now lives in its own module (`resource/`, `pipeline/`, `submit/`) and
+   * this only composes them, per [RoadToPureEngine.md](../docs/RoadToPureEngine.md)
+   * §5 and [ROADMAP.md](../docs/ROADMAP.md) item 15.
+   */
+  program(frame: ShaderFrame): ShaderProgram;
   resize(width: number, height: number): void;
   /** Reads the frame back as RGBA, top row first on both backends. WebGL hands
    * it back bottom row first and that is corrected here, because a caller

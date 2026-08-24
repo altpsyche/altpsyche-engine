@@ -86,7 +86,7 @@ function backendOver() {
 describe('the buffers a drawn frame owns', () => {
   it('makes one buffer per set of bytes, each as long as the bytes and filled once', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(gridFrame());
+    const program = backend.program(gridFrame());
     program.draw();
     program.draw();
 
@@ -100,7 +100,7 @@ describe('the buffers a drawn frame owns', () => {
 
   it('asks for the usage each buffer is read through and for being written into once', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(gridFrame());
+    backend.program(gridFrame());
 
     const usage = (label: string) => gpu.calls('createBuffer').find((call) => call.label === label)?.usage;
     expect(usage('grid')).toBe(GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST);
@@ -109,7 +109,7 @@ describe('the buffers a drawn frame owns', () => {
 
   it('destroys both of them when the program goes', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(gridFrame());
+    const program = backend.program(gridFrame());
     program.dispose();
 
     const gone = gpu.calls('buffer.destroy').map((call) => call.label);
@@ -121,7 +121,7 @@ describe('the buffers a drawn frame owns', () => {
 describe('the pipeline that reads one vertex at a time', () => {
   it('is given the stride and the attributes the bytes were written under', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(gridFrame());
+    backend.program(gridFrame());
 
     const descriptor = gpu.calls('createRenderPipeline')[0]?.descriptor as GPURenderPipelineDescriptor;
     expect(descriptor.vertex.buffers).toEqual([
@@ -138,7 +138,7 @@ describe('the pipeline that reads one vertex at a time', () => {
   it('takes its topology off the geometry rather than assuming a list of triangles', () => {
     const { gpu, backend } = backendOver();
     const frame = gridFrame();
-    backend.createProgram({
+    backend.program({
       ...frame,
       resources: [frame.resources[0]!, geometry({ topology: 'triangle-strip' }), frame.resources[2]!],
     });
@@ -149,7 +149,7 @@ describe('the pipeline that reads one vertex at a time', () => {
   it('reads no buffer at all for a pipeline drawing the frame’s own corners', () => {
     const { gpu, backend } = backendOver();
     const frame = gridFrame();
-    backend.createProgram({
+    backend.program({
       ...frame,
       resources: [frame.resources[0]!],
       pipelines: [
@@ -172,7 +172,7 @@ describe('the pipeline that reads one vertex at a time', () => {
 describe('the draw itself', () => {
   it('binds both buffers and walks every index, as many instances over as the pass says', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(gridFrame()).draw();
+    backend.program(gridFrame()).draw();
 
     expect(gpu.calls('setVertexBuffer')[0]).toMatchObject({ slot: 0, buffer: 'grid' });
     expect(gpu.calls('setIndexBuffer')[0]).toMatchObject({ buffer: 'gridIndices', format: 'uint16' });
@@ -184,7 +184,7 @@ describe('the draw itself', () => {
     const { gpu, backend } = backendOver();
     const frame = gridFrame();
     backend
-      .createProgram({
+      .program({
         ...frame,
         resources: [frame.resources[0]!, geometry({ indices: undefined }), frame.resources[2]!],
       })
@@ -199,7 +199,7 @@ describe('the draw itself', () => {
     const { gpu, backend } = backendOver();
     const frame = gridFrame();
     backend
-      .createProgram({
+      .program({
         ...frame,
         resources: [frame.resources[0]!],
         pipelines: [
@@ -225,7 +225,7 @@ describe('what a drawn frame is refused for', () => {
     const frame = gridFrame();
 
     expect(() =>
-      backend.createProgram({
+      backend.program({
         ...frame,
         resources: [frame.resources[0]!, geometry({ data: undefined }), frame.resources[2]!],
       })
@@ -237,7 +237,7 @@ describe('what a drawn frame is refused for', () => {
     const frame = gridFrame();
 
     expect(() =>
-      backend.createProgram({
+      backend.program({
         ...frame,
         pipelines: [{ ...(frame.pipelines[0] as { kind: 'render' } & object), geometry: 'uniforms' }],
       } as ShaderFrame)
@@ -249,7 +249,7 @@ describe('what a drawn frame is refused for', () => {
     const frame = gridFrame();
 
     expect(() =>
-      backend.createProgram({
+      backend.program({
         ...frame,
         resources: [frame.resources[0]!, geometry({ indices: 'absent' }), frame.resources[2]!],
       })
@@ -261,7 +261,7 @@ describe('what a drawn frame is refused for', () => {
     const frame = gridFrame();
 
     expect(() =>
-      backend.createProgram({
+      backend.program({
         ...frame,
         pipelines: [
           {
@@ -281,7 +281,7 @@ describe('what a drawn frame is refused for', () => {
     const frame = gridFrame();
 
     expect(() =>
-      backend.createProgram({
+      backend.program({
         ...frame,
         pipelines: [
           {

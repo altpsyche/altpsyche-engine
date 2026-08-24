@@ -43,7 +43,7 @@ function drawn(): { gpu: ReturnType<typeof createFakeGPU>; frame: ShaderFrame } 
     ]
   );
   backend.resize(WIDTH, HEIGHT);
-  const program = backend.createProgram(frame);
+  const program = backend.program(frame);
   program.draw();
   return { gpu, frame };
 }

@@ -232,7 +232,7 @@ for (const { id, frame, values, entry } of corpus) {
 
       let program;
       try {
-        program = backend.createProgram(frame);
+        program = backend.program(frame);
       } catch (e) {
         return { error: String(e.message || e).slice(0, 300) };
       }

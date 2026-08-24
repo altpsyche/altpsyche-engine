@@ -36,7 +36,7 @@ function drawn(): ReturnType<typeof createFakeGPU> {
     new Map([['grain', bytes]])
   );
   backend.resize(WIDTH, HEIGHT);
-  backend.createProgram(frame).draw();
+  backend.program(frame).draw();
   return gpu;
 }
 

@@ -110,7 +110,7 @@ const madeDepth = (gpu: ReturnType<typeof createFakeGPU>) =>
 describe('the texture a frame keeps its depth in', () => {
   it('is made at the frame size in the format the pipeline tests, asking to be an attachment', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(tiltedFrame());
+    backend.program(tiltedFrame());
 
     expect(madeDepth(gpu).map((call) => [call.size, call.format, call.usage])).toEqual([
       [[800, 600], 'depth24plus', GPUTextureUsage.RENDER_ATTACHMENT],
@@ -123,7 +123,7 @@ describe('the texture a frame keeps its depth in', () => {
     const passes = [
       { ...(frame.passes[0] as object), depth: { resource: 'depth', clear: 0.25 } },
     ] as ShaderFrame['passes'];
-    backend.createProgram(tiltedFrame({ passes })).draw();
+    backend.program(tiltedFrame({ passes })).draw();
 
     expect(gpu.calls('beginRenderPass')[0]?.depth).toEqual({
       view: 'depth.view',
@@ -135,7 +135,7 @@ describe('the texture a frame keeps its depth in', () => {
 
   it('is emptied to the far end of the range, so a first surface at any distance is drawn', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(tiltedFrame()).draw();
+    backend.program(tiltedFrame()).draw();
 
     // Depth reaches the card as 0 at the near plane and 1 at the far one, so a
     // first surface passes against an attachment emptied to 1 and none passes
@@ -145,7 +145,7 @@ describe('the texture a frame keeps its depth in', () => {
 
   it('keeps what the pass before it wrote where the description names no value', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(crossingFrame()).draw();
+    backend.program(crossingFrame()).draw();
 
     // The second surface is tested against the first, so emptying the attachment
     // between the two passes is the whole picture lost: every surface would pass
@@ -161,14 +161,14 @@ describe('the texture a frame keeps its depth in', () => {
     const { gpu, backend } = backendOver();
     const frame = tiltedFrame();
     const pipelines = [{ ...(frame.pipelines[0] as RenderPipelineSpec), depth: undefined }];
-    backend.createProgram(tiltedFrame({ pipelines, passes: [{ pipeline: 'far', draw: { vertices: 3 } }] })).draw();
+    backend.program(tiltedFrame({ pipelines, passes: [{ pipeline: 'far', draw: { vertices: 3 } }] })).draw();
 
     expect(gpu.calls('beginRenderPass')[0]?.depth).toBeUndefined();
   });
 
   it('is rebuilt at the new size on a resize, and the pass is given a view of the new one', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.createProgram(tiltedFrame());
+    const program = backend.program(tiltedFrame());
     program.draw();
     backend.resize(400, 300);
     program.draw();
@@ -185,7 +185,7 @@ describe('the texture a frame keeps its depth in', () => {
 
   it('goes when the program does, the same as every other texture it owns', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(tiltedFrame()).dispose();
+    backend.program(tiltedFrame()).dispose();
 
     expect(gpu.calls('texture.destroy').map((call) => call.label)).toContain('depth');
   });
@@ -194,7 +194,7 @@ describe('the texture a frame keeps its depth in', () => {
 describe('the depth state a pipeline draws under', () => {
   it('is given the format, the comparison and whether a fragment that passes writes', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(tiltedFrame());
+    backend.program(tiltedFrame());
 
     const descriptor = gpu.calls('createRenderPipeline')[0]?.descriptor as GPURenderPipelineDescriptor;
     expect(descriptor.depthStencil).toEqual({
@@ -208,7 +208,7 @@ describe('the depth state a pipeline draws under', () => {
     const { gpu, backend } = backendOver();
     const frame = tiltedFrame();
     const pipelines = [{ ...(frame.pipelines[0] as RenderPipelineSpec), depth: undefined }];
-    backend.createProgram(tiltedFrame({ pipelines, passes: [{ pipeline: 'far', draw: { vertices: 3 } }] }));
+    backend.program(tiltedFrame({ pipelines, passes: [{ pipeline: 'far', draw: { vertices: 3 } }] }));
 
     const descriptor = gpu.calls('createRenderPipeline')[0]?.descriptor as GPURenderPipelineDescriptor;
     expect(descriptor.depthStencil).toBeUndefined();
@@ -216,7 +216,7 @@ describe('the depth state a pipeline draws under', () => {
 
   it('is one state per pipeline over one attachment, so two surfaces are tested differently', () => {
     const { gpu, backend } = backendOver();
-    backend.createProgram(crossingFrame()).draw();
+    backend.program(crossingFrame()).draw();
 
     expect(
       gpu.calls('createRenderPipeline').map((call) => [call.fragmentEntry, (call.depth as { write: boolean }).write])
@@ -236,7 +236,7 @@ describe('the depth state a pipeline draws under', () => {
 describe('what a description disagreeing with itself about depth is refused with', () => {
   const refuses = (over: Partial<ShaderFrame>, said: string) => {
     const { backend } = backendOver();
-    expect(() => backend.createProgram(tiltedFrame(over))).toThrow(said);
+    expect(() => backend.program(tiltedFrame(over))).toThrow(said);
   };
 
   it('refuses a pipeline testing depth over a pass that attaches nothing to keep it in', () => {

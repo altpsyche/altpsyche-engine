@@ -53,7 +53,7 @@ describe('every WebGPU draw goes through submit/execute', () => {
     const backend = createWebGPUBackend(gpu.canvas, gpu.device);
     if (!backend) throw new Error('the fake canvas gave no WebGPU context');
 
-    backend.createProgram(wgsl()).draw();
+    backend.program(wgsl()).draw();
 
     // One render pass recorded and one command buffer submitted is the executor
     // having run the whole frame on one encoder. Nothing else in the backend does
@@ -69,7 +69,7 @@ describe('every WebGL 2 draw goes through submit/gl2', () => {
     const backend = createWebGL2Backend(gl.canvas);
     if (!backend) throw new Error('the fake canvas gave no WebGL 2 context');
 
-    backend.createProgram(glsl()).draw();
+    backend.program(glsl()).draw();
 
     // The frame's three corners, drawn by the executor and by nothing else in the
     // backend.
