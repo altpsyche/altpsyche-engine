@@ -86,7 +86,7 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 6. The `shadertoy()` producer
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A producer taking an unmodified Shadertoy fragment source and the uniform-only subset — `iTime`, `iTimeDelta`, `iFrame`, `iResolution`, `iMouse` — and returning something drawable.
 
