@@ -563,7 +563,7 @@ double and a real device compute the same descriptor. See [JOURNAL.md](JOURNAL.m
 
 ### 24. `refusal(graph, device)` and the `Capability` type
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The third of the pure functions, and the `Capability` enum it reads: `compute`, `storage-buffer`, `storage-texture`, `indirect`, `timestamp`, `occlusion`, `msaa`, `float-blend`, `depth-clamp`, `bgra-storage`. A graph declares `requires`; a device reports `capabilities`.
 
@@ -572,6 +572,29 @@ double and a real device compute the same descriptor. See [JOURNAL.md](JOURNAL.m
 **Needs.** item 17.
 
 **Note.** It answers the second question, not the first. Selection (item 8) asks which backend should draw this and is answered across everything on offer; refusal is what a caller reads only when selection came back empty.
+
+**How it landed.** [graph/capability.ts](../graph/capability.ts) holds the `Capability`
+type — the ten names §10 lists — importing nothing, per §7 rule 1. `ShaderFrame` gains
+`requires?: readonly Capability[]`, the graph's declaration, absent for a frame that
+needs only what every backend shares. [renderer/refusal.ts](../renderer/refusal.ts) holds
+`refusal(graph, device): string | null`, the third pure function beside `validate` and
+`cost`: it takes `Pick<ShaderFrame, 'id' | 'requires'>` and a `{ backend, capabilities }`
+record — `capabilities` a `ReadonlySet<Capability>` — and nothing else, touches no device,
+and returns a message naming every capability the graph requires and the device lacks, or
+null where the device has them all. The message names the capabilities before the backend —
+`the graph "particles" needs compute and storage-buffer; webgl2 has neither` — because the
+capability is the fact a caller can act on; the number-agreeing tail is "does not have it"
+/ "has neither" / "has none of them" for one/two/more.
+**No backend grew a method it throws from:** capability lives in `graph.requires` and the
+device record as data (§10, §17 decision 2), so `refusal` reads two records and the
+`Backend` interface is untouched. Selection before refusal is preserved — this is item 8's
+sibling, read only when `selectBackend` came back empty. [tests/refusal.test.ts](../tests/refusal.test.ts)
+asserts the message names the capability rather than the backend (only missing ones named,
+present ones not), the null cases (nothing required, all had), and each grammar arm. The
+export surface moved — `refusal`, `Capability`, `DeviceCapabilities` through the door, 50
+runtime names now where there were 49; `gate:pack` green. Wiring `device.capabilities` from
+a live backend end to end is item 51's, not this item's; `gate:browser` was not run and is
+irrelevant, since `refusal` touches no device. See [JOURNAL.md](JOURNAL.md).
 
 ### 25. `examples/compute-field`
 

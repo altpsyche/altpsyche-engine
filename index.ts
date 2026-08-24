@@ -71,6 +71,16 @@ export * from './engine/draw-list.js';
 export { cost } from './renderer/cost.js';
 export type { FrameCost } from './renderer/cost.js';
 
+// Whether a graph may run on a device, answered by naming every capability it
+// needs and the device lacks, or null where the device has them all. The third
+// pure function beside `cost` and the renderer's `validate`, read after selection
+// came back empty rather than as a gate every graph passes, per §10 (item 24). A
+// capability lives in `graph.requires` and `device.capabilities` as data, never
+// as a method a backend throws from.
+export { refusal } from './renderer/refusal.js';
+export type { DeviceCapabilities } from './renderer/refusal.js';
+export type { Capability } from './graph/capability.js';
+
 // How much of a frame carries a picture, which is one reading rather than one per
 // caller: a run refusing a capture and a gate passing a resized surface are the
 // same claim about the same kind of buffer, and two versions of the arithmetic

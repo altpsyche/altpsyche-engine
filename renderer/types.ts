@@ -11,6 +11,7 @@
  */
 
 import type { FrameTraffic } from '../resource/arena.js';
+import type { Capability } from '../graph/capability.js';
 
 export type BackendName = 'webgl2' | 'webgpu';
 
@@ -452,6 +453,12 @@ export interface ShaderFrame {
    * manifest and hands the values back by name, and none of that cares how many
    * passes read them. */
   uniforms: { name: string; type: string }[];
+  /** The optional device capabilities this frame depends on, absent for a frame
+   * that needs only what every backend shares. It is what `refusal(graph, device)`
+   * reads a graph against a device's `capabilities` for (item 24), and where it
+   * names none it can be refused for none. A capability lives here as data rather
+   * than as a method a backend would throw from, per §17 decision 2. */
+  requires?: readonly Capability[];
   resources: ResourceSpec[];
   modules: ModuleSpec[];
   pipelines: PipelineSpec[];

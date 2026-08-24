@@ -31,11 +31,13 @@ const ROOT = resolve(__dirname, '..');
 const SHIPPING = [
   'graph/handles.ts',
   'graph/refs.ts',
+  'graph/capability.ts',
   'renderer/types.ts',
   'renderer/frame.ts',
   'renderer/frame-coverage.ts',
   'renderer/validate.ts',
   'renderer/cost.ts',
+  'renderer/refusal.ts',
   'renderer/attachments.ts',
   'renderer/index.ts',
   'renderer/probe.ts',
