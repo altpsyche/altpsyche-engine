@@ -266,6 +266,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // (item 26). Every draw is corners — refused above otherwise — so each has a
       // vertex count to read.
       const vertices = pass.draws.map((draw) => (draw as { vertices: number }).vertices);
+      // The instance count of each draw, aligned to `vertices` (item 28): a draw
+      // covering many instances is one `drawArraysInstanced` reading that count,
+      // and a draw covering one leaves it `undefined` and is a plain `drawArrays`.
+      const instances = pass.draws.map((draw) => (draw as { instances?: number }).instances);
 
       return {
         setUniforms(values: Record<string, UniformValue>) {
@@ -310,7 +314,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         },
 
         draw() {
-          drawGL2Frame({ gl, program, quad, attribute, vertices, width, height });
+          drawGL2Frame({ gl, program, quad, attribute, vertices, instances, width, height });
         },
 
         // A frame this backend takes declares nothing but its uniform block, since

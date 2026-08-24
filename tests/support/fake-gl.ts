@@ -189,6 +189,8 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     vertexAttribPointer: (index: number, size: number) => record('vertexAttribPointer', { index, size }),
     viewport: (x: number, y: number, width: number, height: number) => record('viewport', { x, y, width, height }),
     drawArrays: (mode: number, first: number, count: number) => record('drawArrays', { mode, first, count }),
+    drawArraysInstanced: (mode: number, first: number, count: number, instances: number) =>
+      record('drawArraysInstanced', { mode, first, count, instances }),
 
     readPixels: (
       _x: number,

@@ -56,6 +56,23 @@ describe('cost', () => {
     });
   });
 
+  it('counts an instanced draw as one draw, not as many (item 28)', () => {
+    // One draw covering a thousand instances is one draw call the card makes,
+    // however many copies it reads, so the cost of instancing a thousand objects
+    // through one pass is one draw rather than a thousand — the whole reason the
+    // budget of item 31 can hold `instanced-cubes` inside a small draw count.
+    const c = cost(frame({ passes: [{ pipeline: 'frame', draws: [{ vertices: 3, instances: 1000 }] }] }), SIZE);
+    expect(c.draws).toBe(1);
+    // A pass carrying two instanced draws is two draws, since the count is per
+    // draw call rather than per instance: the instances of one call are free, a
+    // second call is not.
+    const two = cost(
+      frame({ passes: [{ pipeline: 'frame', draws: [{ vertices: 3, instances: 500 }, { vertices: 3, instances: 500 }] }] }),
+      SIZE
+    );
+    expect(two.draws).toBe(2);
+  });
+
   it('counts a pipeline switch on each change but not on a repeat', () => {
     const pipelines: PipelineSpec[] = [
       { kind: 'render', name: 'a', vertex: 'fullscreen', fragment: { module: 'wgsl', entry: 'a' }, bindings: [] },

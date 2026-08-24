@@ -32,13 +32,21 @@ export interface GL2PerDraw {
  * positions arrive on, the corner count of each draw the pass carries, and the
  * size to draw at. `vertices` is a list because one pass carries many draws
  * (item 26); a fullscreen frame is the list of one. `perDraw` is present where the
- * pass reads a per-draw buffer, absent where its draws read the same records. */
+ * pass reads a per-draw buffer, absent where its draws read the same records.
+ *
+ * `instances` is aligned to `vertices`: where a draw covers many instances it is
+ * that count, drawn as one `drawArraysInstanced` (item 28), and where a draw
+ * covers one it is `undefined` and drawn as a plain `drawArrays` — the call every
+ * fullscreen shader on the site makes. It is the same one draw either way: a card
+ * makes one draw call however many instances it reads, which is why `cost()`
+ * counts it as one. */
 export interface GL2FrameExecution {
   gl: WebGL2RenderingContext;
   program: WebGLProgram;
   quad: WebGLBuffer;
   attribute: number;
   vertices: readonly number[];
+  instances?: readonly (number | undefined)[];
   width: number;
   height: number;
   perDraw?: GL2PerDraw;
@@ -46,12 +54,14 @@ export interface GL2FrameExecution {
 
 /** Draws the frame's one pass, exactly as the backend's `draw` did before this
  * was its own layer. The program, the quad and the viewport are set once, and one
- * drawArrays follows for each draw the pass carries. Where the pass reads a
+ * draw follows for each draw the pass carries. A draw covering many instances is
+ * one `drawArraysInstanced` (item 28) — one draw call reading its instance count —
+ * and a draw covering one is a plain `drawArrays`. Where the pass reads a
  * per-draw buffer, a `bindBufferRange` before each draw points its uniform block
  * at that draw's record, which is WebGL 2's dynamic offset (item 27); where it
  * does not, the draws read whatever the block was last bound to. */
 export function drawGL2Frame(exec: GL2FrameExecution): void {
-  const { gl, program, quad, attribute, vertices, width, height, perDraw } = exec;
+  const { gl, program, quad, attribute, vertices, instances, width, height, perDraw } = exec;
   gl.useProgram(program);
   gl.bindBuffer(gl.ARRAY_BUFFER, quad);
   gl.enableVertexAttribArray(attribute);
@@ -61,6 +71,8 @@ export function drawGL2Frame(exec: GL2FrameExecution): void {
     if (perDraw) {
       gl.bindBufferRange(gl.UNIFORM_BUFFER, perDraw.binding, perDraw.buffer, perDraw.offsets[at] ?? 0, perDraw.size);
     }
-    gl.drawArrays(gl.TRIANGLES, 0, count);
+    const copies = instances?.[at];
+    if (copies === undefined) gl.drawArrays(gl.TRIANGLES, 0, count);
+    else gl.drawArraysInstanced(gl.TRIANGLES, 0, count, copies);
   });
 }

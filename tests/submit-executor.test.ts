@@ -134,4 +134,31 @@ describe('every WebGL 2 draw goes through submit/gl2', () => {
     // block was bound to — the offset alone is the draw's.
     expect(ranges.every((call) => call.size === 64 && call.target === 0x8a11 && call.index === 0)).toBe(true);
   });
+
+  it('covers many instances with one drawArraysInstanced, and leaves a lone draw plain (item 28)', () => {
+    const gl = createFakeGL();
+    const context = gl.canvas.getContext('webgl2', {}) as unknown as WebGL2RenderingContext;
+    const program = {} as WebGLProgram;
+    const quad = {} as WebGLBuffer;
+
+    // Two corners-draws: the first covers a thousand instances, the second one.
+    // The instanced draw is one `drawArraysInstanced` reading the count, and the
+    // lone one is a plain `drawArrays` — one draw call either way, which is why
+    // `cost()` counts each as one.
+    drawGL2Frame({
+      gl: context,
+      program,
+      quad,
+      attribute: 0,
+      vertices: [3, 3],
+      instances: [1000, undefined],
+      width: 320,
+      height: 180,
+    });
+
+    expect(gl.of('drawArraysInstanced')).toHaveLength(1);
+    expect(gl.of('drawArraysInstanced').at(-1)).toMatchObject({ mode: 0x0004, first: 0, count: 3, instances: 1000 });
+    expect(gl.of('drawArrays')).toHaveLength(1);
+    expect(gl.of('drawArrays').at(-1)).toMatchObject({ mode: 0x0004, first: 0, count: 3 });
+  });
 });

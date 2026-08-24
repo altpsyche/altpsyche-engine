@@ -318,6 +318,28 @@ describe('the frame it draws', () => {
     expect(gl.of('drawArrays')).toHaveLength(2);
   });
 
+  it('covers many instances with one drawArraysInstanced, not many draws (item 28)', () => {
+    const { gl, backend } = backendOver();
+    backend.resize(320, 180);
+    // One corners-draw carrying an instance count: the card makes one draw call
+    // that reads a thousand instances, rather than the count being silently
+    // dropped and one copy drawn.
+    backend.program({ ...artefact(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3, instances: 1000 }] }] }).draw();
+
+    expect(gl.of('drawArrays')).toHaveLength(0);
+    expect(gl.of('drawArraysInstanced')).toHaveLength(1);
+    expect(gl.of('drawArraysInstanced').at(-1)).toMatchObject({ mode: 0x0004, first: 0, count: 3, instances: 1000 });
+  });
+
+  it('leaves a draw with no instance count a plain drawArrays, the call every shader on the site makes (item 28)', () => {
+    const { gl, backend } = backendOver();
+    backend.resize(320, 180);
+    backend.program({ ...artefact(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }] }).draw();
+
+    expect(gl.of('drawArraysInstanced')).toHaveLength(0);
+    expect(gl.of('drawArrays')).toHaveLength(1);
+  });
+
   it('hands the frame back top row first, because the driver gives it the other way up', async () => {
     const { gl, backend } = backendOver();
     backend.resize(2, 3);

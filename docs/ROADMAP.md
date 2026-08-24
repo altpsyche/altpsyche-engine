@@ -728,11 +728,35 @@ See [JOURNAL.md](JOURNAL.md).
 
 ### 28. Instancing
 
-**Status.** open
+**Status.** done
 
 **Done when.** One draw covers many instances and `cost()` counts it as one draw rather than many.
 
 **Needs.** item 26.
+
+**How it landed.** The WebGPU arm already existed — item 26 made `DrawSpec` carry
+`instances?`, the executor issue `into.draw(count, instances)` / `into.drawIndexed(count,
+instances)`, and `cost().draws` sum `pass.draws.length` (one per draw call, not per
+instance) — so item 28's work was the WebGL 2 arm, where the count was **silently
+dropped**. [submit/gl2.ts](../submit/gl2.ts)'s `drawGL2Frame` gains an
+`instances?: readonly (number | undefined)[]` list aligned to `vertices`: a draw with a
+count is one `gl.drawArraysInstanced`, a draw without one a plain `gl.drawArrays` — the call
+every fullscreen shader on the site makes. [renderer/webgl2.ts](../renderer/webgl2.ts) fills
+it from `pass.draws.map(draw => draw.instances)`. `cost()` is unchanged and pinned by
+[tests/cost.test.ts](../tests/cost.test.ts): one instanced draw counts one, two count two —
+the instances of a call are free, a second call is not. **One draw covers many instances**
+is proven on both backends: WebGPU end to end (`tests/renderer-geometry.test.ts`, item 26),
+WebGL 2 end to end for a corners-with-instances frame
+([tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts)) and at the `submit/`
+layer ([tests/submit-executor.test.ts](../tests/submit-executor.test.ts)). Instancing
+*geometry of the shader's own* on WebGL 2 (a vertex buffer rather than the backend's
+corners) stays refused and is item 49's. **What the gates could not see:** that a
+`drawArraysInstanced` paints many copies needs a card or a browser, and `gate:browser` was
+not run; the node suite reads calls off the doubles, and no corpus preset carries an
+instanced draw until `examples/instanced-cubes` (item 30) emits one. 646 node tests green,
+`type-check` green; the export surface did not move (a field on the already-hidden
+`GL2FrameExecution` and a fake recorder, no door name added or removed), so `gate:pack` was
+not required. See [JOURNAL.md](JOURNAL.md).
 
 ### 29. `submit(graph, { into })`
 
