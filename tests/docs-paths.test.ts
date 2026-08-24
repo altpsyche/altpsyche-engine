@@ -10,12 +10,18 @@ import path from 'node:path';
  * in `docs/` and fails on one that resolves to no file, so the next stale path is
  * caught by a gate rather than noticed by whoever tripped over it.
  *
- * It reads two shapes, which is what the docs use to name a file:
+ * It reads three shapes, which is what the docs use to name a file:
  *   - a Markdown link target, `](renderer/webgpu.ts)`, always a path;
  *   - a backtick span that looks like a file, `` `renderer/types.ts` ``, which is
  *     one when it ends in a source extension and its basename is a filename
  *     rather than a `Type.field` read like `ShaderSource.glsl`.
- * Fenced code blocks are stripped first: their backticks are code, not paths.
+ *   - a Mermaid node label, `frame["fill the documents in<br/>renderer/frame.ts"]`,
+ *     read from inside a ```mermaid fence, because a diagram is the most-read part
+ *     of a document and a stale path in a node label sends a reader chasing a file
+ *     that left with the website exactly as a stale prose path does.
+ * Fenced code blocks are stripped before the link and backtick pass — their
+ * backticks are code, not paths — and the Mermaid fences are then read on their
+ * own, so a node label is checked while a `ts` fence's example code is not.
  *
  * A short allowlist carries the paths that legitimately do not resolve — files a
  * later roadmap item will create, and the website paths [RoadToPureEngine.md]'s
@@ -96,7 +102,41 @@ function looksLikePath(token: string): boolean {
   return /^[a-z0-9]/.test(clean); // a filename starts lowercase; `ShaderSource.glsl` does not
 }
 
-type Ref = { doc: string; kind: 'link' | 'tick'; ref: string; from: string };
+/**
+ * A file- or folder-shaped token inside a Mermaid label. `looksLikePath` alone
+ * misses `content/shaders`, which has no source extension, so a two-segment
+ * lowercase path with content on both sides of a slash also counts. A bare
+ * `graph/` — a folder node label, trailing slash, nothing after — is deliberately
+ * not a file reference and stays unflagged, which is what keeps the §7-folder
+ * diagram in `RoadToPureEngine.md` from reading as a wall of missing files.
+ */
+const MULTI_SEGMENT = /^[a-z0-9][\w.*-]*\/[\w.*-]+/;
+function looksLikeMermaidPath(token: string): boolean {
+  return looksLikePath(token) || MULTI_SEGMENT.test(token);
+}
+
+type Ref = { doc: string; kind: 'link' | 'tick' | 'mermaid'; ref: string; from: string };
+
+/**
+ * The node labels of every ```mermaid fence, as path refs. Reads the text inside
+ * each `["..."]` label, drops the HTML tags a label carries (`<b>`, `<br/>`), and
+ * splits on the separators a label uses, returning each token that looks like a
+ * path. Exported to the negative test below, which injects a stale path inside a
+ * fence and asserts it is caught — the shape `stripFences` would otherwise hide.
+ */
+function mermaidPathRefs(text: string, from: string, doc = ''): Ref[] {
+  const refs: Ref[] = [];
+  for (const fence of text.matchAll(/```mermaid\n([\s\S]*?)```/g)) {
+    for (const label of fence[1]!.matchAll(/\["?([^"\]]*)"?\]/g)) {
+      const cleaned = label[1]!.replace(/<[^>]*>/g, ' '); // drop <b>, <br/>, and the rest
+      for (const raw of cleaned.split(/[\s·,]+/)) {
+        const token = raw.trim();
+        if (token && looksLikeMermaidPath(token)) refs.push({ doc, kind: 'mermaid', ref: token, from });
+      }
+    }
+  }
+  return refs;
+}
 
 function pathRefs(): Ref[] {
   const refs: Ref[] = [];
@@ -112,7 +152,9 @@ function pathRefs(): Ref[] {
     if (name === EXCLUDED_HISTORY) continue;
     const full = path.join(docsDir, name);
     const dir = path.dirname(full);
-    const text = stripFences(readFileSync(full, 'utf-8'));
+    const raw = readFileSync(full, 'utf-8');
+    refs.push(...mermaidPathRefs(raw, dir, name));
+    const text = stripFences(raw);
     for (const m of text.matchAll(/\]\(([^)]+)\)/g)) {
       const raw = m[1]!.trim();
       if (raw === '' || /^(https?:|mailto:|#)/.test(raw)) continue;
@@ -138,6 +180,21 @@ describe('every path the docs name is a file that is here', () => {
       .filter((r) => !(bare(r.ref) in ALLOWED_ABSENT))
       .map((r) => `${r.doc}: ${r.kind} \`${r.ref}\``);
     expect(missing, `these docs name files that are not here:\n${missing.join('\n')}`).toEqual([]);
+  });
+
+  it('reads a stale path inside a Mermaid fence, which stripping the fence would hide', () => {
+    const injected = '```mermaid\nflowchart TB\n    n["a node<br/>lib/gone/vanished.ts"]\n```\n';
+    const refs = mermaidPathRefs(injected, docsDir);
+    expect(refs.map((r) => r.ref)).toContain('lib/gone/vanished.ts');
+    expect(refs.filter((r) => !resolvesToFile(r.ref, r.from))).toHaveLength(1);
+  });
+
+  it('reads a live file label but not a folder node label inside a Mermaid fence', () => {
+    const fence = '```mermaid\n    a["fill in<br/>renderer/webgpu.ts"]\n    b["<b>graph/</b> types"]\n```';
+    const refs = mermaidPathRefs(fence, docsDir);
+    expect(refs.map((r) => r.ref)).toContain('renderer/webgpu.ts'); // a file label is read
+    expect(refs.map((r) => r.ref)).not.toContain('graph/'); // a folder label is not
+    expect(refs.every((r) => resolvesToFile(r.ref, r.from))).toBe(true); // and what is read resolves
   });
 
   it('keeps the allowlist honest: every named absence is still absent', () => {

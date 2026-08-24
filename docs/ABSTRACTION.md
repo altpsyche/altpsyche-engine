@@ -15,21 +15,21 @@ The diagram is Mermaid, which GitHub renders in place and an editor renders with
 ```mermaid
 flowchart TB
     subgraph author["What a person writes"]
-        src["a source file<br/>public/shaders/source/*.wgsl · *.slang · *.frag.glsl"]
-        entry["an entry<br/>content/shaders · lib/shader-base.ts<br/>and the engine's own fixture entries"]
+        src["a source file<br/>WGSL, or GLSL a consumer authors"]
+        entry["an entry<br/>a consumer's, and the engine's own fixture entries"]
     end
 
     subgraph build["Build time"]
         read["read the source<br/>wgsl-references · wgsl-layout · shader-source"]
         describe["write the description<br/>the engine's shader-describe"]
         gen["generate the bytes<br/>the engine's shader-geometry · shader-content"]
-        manifest["the manifest<br/>public/shaders/build/manifest.json"]
+        manifest["the manifest<br/>a consumer's build output"]
     end
 
     subgraph runtime["Run time"]
-        artefacts["fetch a variant<br/>the altpsyche-dev site's adapter<br/>lib/renderer/artefacts.ts"]
+        artefacts["fetch a variant<br/>a consumer's adapter"]
         frame["fill the documents in<br/>renderer/frame.ts"]
-        choose["pick a backend<br/>the altpsyche-dev site's adapter<br/>lib/renderer/choose.ts"]
+        choose["pick a backend<br/>a consumer's adapter, or selectBackend"]
         oneshot["one frame, drawn and read<br/>renderer/index.ts"]
         live["a loop that survives a page<br/>renderer/surface.ts"]
     end
@@ -40,7 +40,7 @@ flowchart TB
     end
 
     subgraph react["React, and only here"]
-        hook["hooks/useShaderSurface.ts"]
+        hook["a consumer's React hook"]
         comps["ShaderSurface · ShaderEmbed · ShaderBackground · the playground"]
     end
 

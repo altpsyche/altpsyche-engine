@@ -1201,13 +1201,42 @@ So two documents meant to differ still silently become one. Before item 3 that h
 
 ### 60. The diagram loses the files that left with the website
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `ABSTRACTION.md`'s Mermaid diagram stops naming files that do not exist here, and the path gate stops being blind to fenced blocks.
 
 **Done when.** No node label in that diagram names a path absent from this tree, and `tests/docs-paths.test.ts` reads Mermaid node labels as well as backtick and link spans — negative-tested on an injected stale path inside a fence, the way item 5 negative-tested the two shapes it already covers.
 
 **Needs.** item 5.
+
+**How it landed.** The seven website paths named in this item's earlier draft — content/shaders,
+hooks/useShaderSurface.ts, lib/renderer/artefacts.ts, lib/renderer/choose.ts, lib/shader-base.ts,
+public/shaders/build/manifest.json and public/shaders/source/*.wgsl — are out of
+[ABSTRACTION.md](ABSTRACTION.md)'s Mermaid node labels, each replaced by what its layer *is* to a
+reader who no longer has the website's tree (`a source file — WGSL, or GLSL a consumer authors`, `a
+consumer's adapter`, `a consumer's React hook`, and so on) rather than by a path that resolves to
+nothing here. The seven in-tree paths the diagram legitimately names — `renderer/frame.ts`,
+`renderer/index.ts`, `renderer/surface.ts`, `renderer/webgpu.ts`, `renderer/webgl2.ts`,
+`renderer/trace.ts`, `tests/support/fake-gpu.ts` — stay and still resolve. **The gate now reads the
+fence** rather than stripping it: [tests/docs-paths.test.ts](../tests/docs-paths.test.ts) gains a
+third ref kind, `mermaid`, reading the text inside each `["..."]` node label of every ```mermaid
+fence, dropping the `<b>`/`<br/>` tags a label carries and splitting on its separators, and flagging
+each token that looks like a path — a file by the existing `looksLikePath`, or a two-segment
+lowercase directory path like `content/shaders` that has no extension for `looksLikePath` to catch.
+A bare folder label such as `graph/` (the §7-folder diagram in [RoadToPureEngine.md](RoadToPureEngine.md),
+trailing slash, nothing after) is deliberately **not** read as a file, so that second diagram — read
+by the same gate now — does not light up as a wall of missing files. **Negative-tested** two ways, as
+this item requires: a fence with an injected stale path (`lib/gone/vanished.ts`) is caught, and a
+fence with a live file label plus a folder label reads the file and skips the folder. Confirmed once
+by hand that the *integrated* gate fails on a stale diagram path, not only the isolated helper —
+temporarily rewriting one live `renderer/*.ts` node label to a dead lib/renderer path reddened the
+resolve test naming that path under a `mermaid` kind, then restored (the dead path is named without
+backticks here, as this item's draft named its seven, so the gate does not read this line as a claim
+the file exists). `public/shaders/build/manifest.json`
+stays on `ALLOWED_ABSENT` because §3 row 12 of `RoadToPureEngine.md` still cites it in backticks
+outside any fence; the other six were never on the allowlist and are not added, keeping that widened
+bar short. 658 node tests green (docs-paths 3 → 5), type-check clean; docs and one test touched, so
+the export surface did not move and `gate:pack` was not required. See [JOURNAL.md](JOURNAL.md).
 
 **Why it exists.** Item 5 met its own wording exactly: it checks backtick-quoted and link-quoted paths, and its own blind-gate row in [JOURNAL.md](JOURNAL.md) says the diagram sits in a stripped fenced block, neither checked nor changed. That row is honest and it was not tracked, and JOURNAL.md's own rule is that a row needing work nobody is tracking needs a roadmap item in the same commit. This is that item.
 
