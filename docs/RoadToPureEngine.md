@@ -2,7 +2,7 @@
 
 **What this document is.** The architecture this library should have, why it does not have it yet, and the staged road from one to the other. It is written to be argued with: every claim about the present names a file, and every claim about the future names what it would cost.
 
-**Where the decisions are.** §17 records the five architectural decisions this document rests on, each with what it commits to and what it costs. Read it first if you want the conclusions before the argument.
+**Where the decisions are.** §17 records the eleven architectural decisions this document rests on, each with what it commits to and what it costs, plus an amendment to decision 4 and the measured evidence behind three of them. Read it first if you want the conclusions before the argument.
 
 **What it is not.** It is not [ABSTRACTION.md](ABSTRACTION.md), which describes the stack as built for a website and still refers to files that left with that website. It is not [RENDERER-DESIGN.md](RENDERER-DESIGN.md), which owns today's type surface. Both of those documents are superseded by this one on the subject of direction; both remain accurate on the subject of what exists today, minus the stale paths noted in §3.
 
@@ -17,7 +17,7 @@ WebGPU is the primary target. WebGL 2 is the fallback. Both tiers reach the card
 
 ---
 
-## 1. The permission slip
+## 1. A derivation that lost its premise
 
 The most important fact about this codebase is that it was not half built. It was **fully built for a different goal**, and that goal has now left the repository.
 
@@ -25,11 +25,17 @@ The most important fact about this codebase is that it was not half built. It wa
 
 > **Code is 1:1 with the shader page**, in the language that shader is written in. This is permanent under D86.
 
-That invariant is not a style preference. It is an architectural constraint with teeth: it says every line of this library is printed in an article a reader opens, which caps how large any layer may grow, and it explicitly caps the engine layer. The same document says so in as many words — "how much of it is allowed to be invisible" — and picks the strict reading.
+**That sentence welds three separate things together, and telling them apart is the whole of this section.** They have different owners, different scopes, and different fates.
 
-An engine's entire value is code you do not read. The invariant and the target are opposites.
+**One, a scope call.** No engine layer is built until an article needs a scene rather than a frame. That is a decision about when work happens, and this plan is entitled to supersede it *for the library*. See the end of this section for where that supersession is recorded, because it is not here.
 
-So the correct reading of the current state is not "the architecture is weak". It is **"invariant 1 was load-bearing, and it is now void."** Moving to this repository is what voids it. Everything in this document follows from that single deletion, and nothing in it was a mistake before that deletion.
+**Two, a content rule.** Code printed in an article stays identical to the shader file it documents. It is enforced today by two live gates in the consuming repository, one reporting drift against the shader source and one refusing a social slide carrying a line the shader does not have. **It is a rule about website content, it has nothing to do with library design, and this repository has no standing to retire it.** Nothing in this document touches it.
+
+**Three, a size cap that ABSTRACTION.md derived on top of the other two.** Because every line is printed in an article, no layer of the library may grow large and none of it may be invisible. That document says so in as many words — "how much of it is allowed to be invisible" — and picks the strict reading.
+
+**Only the third is void, and it is not this document that voids it.** The cap was a valid derivation for exactly as long as the library and the article corpus were one artifact. They are not one artifact any more. So the premise is gone and the conclusion goes with it — which means this section is not performing a retirement, it is **observing that a derivation lost its premise.** That is a smaller claim than a retirement, it needs no authority this repository does not have, and it is the correct one.
+
+An engine's entire value is code you do not read. The size cap and the target are opposites; the content rule and the target never met.
 
 Two more invariants survive intact and should be carried forward without amendment:
 
@@ -37,6 +43,8 @@ Two more invariants survive intact and should be carried forward without amendme
 - **A description is data and its producer is replaceable.** This is the seam that makes the whole road affordable.
 
 Invariant 4, one fact one home, survives and gets extended. Invariant 5, every capability has a preset and a trace, survives and gets extended.
+
+**Where the record goes.** [ROADMAP.md](ROADMAP.md) says of itself that it "queues work and does not decide anything", and points decisions at the consuming repository's log. That applies here: **the scope call's supersession is recorded in the consuming repository's decision log, and this document is the input to that entry rather than the entry itself.** A second entry belongs beside it, recording that the website is a consumer of this package rather than its shape, with the role §17 decision 10 scopes for it — toy-tier validation and device-reading collection, explicitly not Stages 3 and 4. Both entries are written on that side. Nothing in this repository can make them true by asserting them.
 
 ## 2. Why it turned out this way
 
@@ -217,7 +225,7 @@ The rules, each enforceable and worth enforcing in [tests/import-graph.test.ts](
 
 1. **`graph/` imports nothing.** It is types plus pure functions over them. This is what makes a graph serializable, comparable, snapshot-testable and sendable to a worker.
 2. **A producer never imports `gpu/` or `submit/`.** It imports `graph/` and takes an `Arena` as a parameter. Consequence: the entire scene tier is unit-testable with no device at all, and its output is a value you can diff.
-3. **DOM appears in `host/` and nowhere else.** Consequence: `submit/` runs in a worker and in Node against the double.
+3. **Nothing below `host/` requires a DOM object to exist.** Stronger than "DOM appears only in `host/`", and the difference is what makes §17 decision 7 possible: a rule about where `window` is *named* still permits a signature that demands an `HTMLCanvasElement`. Consequence: `submit/` runs in a worker, in Node against the double, and into a target a WebXR session hands it.
 4. **No module owns two lifetimes.** `resource/` never compiles a pipeline; `pipeline/` never allocates a buffer; `submit/` allocates nothing that outlives a frame except pooled transients.
 5. **The word "engine" names the package and no folder.** Folders name what they own. This is the answer to why `renderer/engine` reads as weird: it was naming *when*, and every folder above names *what*.
 
@@ -310,6 +318,11 @@ export type FrameGraph = {
   requires: readonly Capability[];
   transients: readonly Transient[];
   passes: readonly Pass[];
+  /** Which resource is the picture. Absent where a pass drew straight into the
+   *  frame's own colour target. Note that *where* the picture goes is not here:
+   *  a graph names its output resource, and `submit(graph, { into })` decides
+   *  what that resource resolves to — the canvas, an XR layer's texture, or a
+   *  texture a caller wants the frame in. See §17 decision 7. */
   present?: TextureRef;
 };
 ```
@@ -327,17 +340,28 @@ And one thing that is deliberately absent: there is no `uniforms: { name, type }
 
 ```ts
 // resource/arena.ts
-/** WGSL, always, and only. There is no GLSL arm: a shader is authored once,
- *  and what WebGL 2 needs is produced by translation rather than by a second
- *  hand-written source. See §9.1. */
-export type ShaderSource = {
-  wgsl: string;
-  constants?: Record<string, number>;
-  /** A translation this source has already been through, supplied by a build
-   *  step so the running page does not have to do it. Absent means translate
-   *  on demand, which is the editing path. */
-  glsl?: { vertex: string; fragment: string };
-};
+export type GlslPair = { vertex: string; fragment: string };
+
+/**
+ * A shader source, discriminated on **which language was authored**, because
+ * that is the fact everything downstream needs and it is not recoverable from
+ * which fields happen to be present.
+ *
+ * The `glsl` field means two different things depending on the arm — a cached
+ * translation on one, the authored truth on the other — so it may not be one
+ * optional field on one record. That would be two facts in one home, which
+ * invariant 5 forbids and which no reader could disambiguate.
+ */
+export type ShaderSource =
+  /** Authored WGSL. Runs on either backend: WebGPU compiles it, WebGL 2 gets a
+   *  translation of it, per §9.1. `glsl` here is a translation a build already
+   *  performed, carried so the running page does not repeat it; absent means
+   *  translate on demand, which is the editing path. */
+  | { authored: 'wgsl'; wgsl: string; glsl?: GlslPair; constants?: Record<string, number> }
+  /** Authored GLSL, handed in by a consumer. Runs on WebGL 2, and selects that
+   *  backend rather than being refused, per §17 decision 6. Nothing translates
+   *  it: there is no `wgsl` arm to fill and this library will not invent one. */
+  | { authored: 'glsl'; glsl: GlslPair; constants?: Record<string, number> };
 
 export interface Arena {
   buffer(desc: BufferDesc): BufferHandle;
@@ -357,7 +381,9 @@ export interface Arena {
 }
 ```
 
-One `ShaderSource` serving two backends is how **one graph serves two backends**. The source is WGSL; WebGL 2 receives a translation of it. Nothing above `resource/` knows which backend it is feeding, and no producer authors a shader twice. That is §3 rows 5 and 6 deleted rather than papered over.
+One `ShaderSource` serving two backends is how **one graph serves two backends**. A producer authors WGSL; WebGL 2 receives a translation of it. Nothing above `resource/` knows which backend it is feeding, and no producer authors a shader twice. That is §3 rows 5 and 6 deleted rather than papered over.
+
+**A consumer, unlike a producer, may author GLSL** — the second arm above — and what that costs is §17 decision 6. The short version, because it shapes this file: a GLSL-authored shader **selects** the WebGL 2 backend rather than being refused by it, and the capabilities it gives up are ones its own language cannot express.
 
 ### 9.1 Translation, and where it runs
 
@@ -401,6 +427,15 @@ export function refusal(graph: FrameGraph, device: { backend: BackendName; capab
 
 No backend ever grows a method it must throw from. No caller ever branches on which backend it holds. A producer that wants to degrade gracefully offers two graphs and asks which is accepted — which is a producer's choice, made with knowledge the library does not have, and exactly the argument `batchOnePipeline` already makes about pipeline ordering.
 
+**Selection comes before refusal, and getting that order right is most of the adoption story.**
+
+The same two facts — what a graph needs, what a device has — answer two different questions, and a design that only ever asks the second one is needlessly hostile:
+
+1. **Which backend should draw this graph?** Answered first, across every backend the device can offer. A graph whose shaders are GLSL-authored picks WebGL 2 *even on a machine with WebGPU*, because that is where it runs. Nothing is refused; a backend is chosen.
+2. **Is there any backend left that can draw it?** Answered only when the first question came back empty. That is the refusal, and it names the missing capability.
+
+So `refusal` is what a caller reads *after* selection failed, not a gate every graph passes through. §17 decision 6 is the case that makes the distinction pay: a consumer arriving with a GLSL shader gets a picture, not a lecture.
+
 **And now the honest answer about WebGL 2**, which is the opposite of today's.
 
 WebGL 2 **cannot** do: compute, storage buffers, storage textures, indirect draw or dispatch, timestamp queries, bindless. WebGL 2 **can** do: multiple passes, up to eight colour attachments, depth and stencil, instanced draws, uniform buffer ranges per draw, float textures, MSAA resolve, mipmap generation.
@@ -409,7 +444,7 @@ Read that list against §6. **WebGL 2 can run the scene tier. It cannot run the 
 
 So the fallback target is: `sceneView` produces a graph that runs on both, with the compute-dependent options (`post: ['bloom']` via compute, GPU culling, particle simulation) declaring capabilities and degrading to a raster path or being refused by name. `computeToy` declares `compute` and is refused with a message a page can print.
 
-This is a decision rather than a discovery, and §17 says how to reverse it.
+This is a decision rather than a discovery, and §17 decision 1 records it.
 
 ## 11. The single door
 
@@ -438,18 +473,32 @@ State both in the README. Today it explains the first and implies the second is 
 
 ## 12. What holds it
 
-Five mechanisms. Two exist and are strong; three are new and cheap, and are only possible because of §7 rule 2.
+Seven mechanisms. Two exist and are strong; five are new, and every one of the five is only possible because of §7 rule 2.
 
 **Existing, keep.**
 
 1. **The trace contract.** Fake device and real device draw the same graph; traces compared call for call. Extend the corpus with one preset per capability, as today.
 2. **Byte-exact frame comparison**, across runs and across backends, **for the toy tier and the corpus presets only.** Per §17 decision 4, scenes are held by the trace contract and by golden graphs instead. Saying where the guarantee stops is what keeps it worth having where it holds.
 
-**New, and each is a direct dividend of a pure `graph/`.**
+**New, and each is a direct dividend of a pure `graph/` and of producers that cannot reach a device.**
 
 3. **`validate(graph): Diagnostic[]`, a pure function.** Every rule that is today checked in two wordings — [renderer/frame-rules.ts](../renderer/frame-rules.ts) exists precisely because two places needed the same rule — is checked here once. Runs in tests, in dev builds, and in any offline producer. This is where invariant 4, one fact one home, gets its enforcement.
 4. **Golden graphs.** A producer's output is a JSON value. Snapshot it. A change to `sceneView` shows up as a diff in a text file, with no GPU, no browser, and no picture to squint at. This is the single largest maintainability win available, and it is impossible today because no producer output is a value.
 5. **Handle liveness in the double.** ABSTRACTION.md's audit notes that the double models calls rather than lifetimes, so use-after-free and leaks are invisible to the fast suite. With generational handles the double can track liveness, and both become test failures rather than production mysteries.
+6. **`cost(graph, size): FrameCost`, a pure function.** Passes, draws, dispatches, pipeline switches, bind switches, attachment loads and stores, transient bytes. Asserted exactly per preset, in CI, on any machine. §17 decision 9 says why this is the instrument and what it deliberately does not measure.
+7. **The examples suite.** Not documentation. It is the only source of API design feedback available before a stranger arrives, the only workload `cost()` has to measure, and the only vehicle for device readings. §17 decision 10 makes it gate Stages 3 and 4.
+
+**The three pure functions, stated as one rule, because it is checkable by reading a signature.**
+
+```ts
+validate(graph): Diagnostic[]
+refusal(graph, device: { backend, capabilities }): string | null
+cost(graph, size: { width, height }): FrameCost
+```
+
+Each takes the graph plus, at most, **a plain record of facts** — never a device, never an arena, never anything carrying behaviour. That is the invariant, rather than the weaker "each takes the graph alone": `refusal` needs what a device *is*, and `cost` needs the frame size, because a `{ scale: 1 }` transient is 3.6 MB at 1200×750 and 230 KB at 320×180. Neither needs anything it could call.
+
+**What is deliberately not in `cost()`.** Bytes uploaded. That is a **resident**-lifetime fact — `arena.write` and `arena.upload` are calls a consumer makes, and the graph does not carry them at all — so it belongs to `arena.traffic()`, per invariant 3. The two readings sit side by side in a benchmark and are never summed: a frame that uploads 40 MB and draws three things has a resident problem, not a per-frame one, and one merged number hides which.
 
 Extend the one-fact-one-home ledger with the new rows:
 
@@ -501,7 +550,10 @@ Renames, all mechanical, all worth doing before the consumer count grows past on
 | `Extent = number \| 'frame'` | `{ scale: number } \| { width, height }` | says half-resolution, which the old type could not |
 | `Dispatch = … \| 'frame'` | `groups: [n,n,n] \| { indirect }` | a producer computes the count from the size it knows |
 | `unreached()` | `reflect(source).unused`, dev-only, in `toy/` | a compiler quirk is a diagnostic, not a device method |
-| `report()` | `engine.capabilities` and `engine.limits` | a set and a record, both consumed by §10 |
+| `report()` | `engine.capabilities` and `engine.limits`, plus a public `probe()` | a set and a record, both consumed by §10; `probe()` is the one-shot reading of §17 decision 11, which is what `report()` was always shaped like and never had a caller for |
+| `ShaderSource` with optional language fields | a union discriminated on `authored` | which language was written is a fact, not something to infer from which fields are present, per §9 |
+| `sceneView(...).graph(world, camera)` | `graph(world, views)` | one camera is a special case of a list, and the list is free now and breaking after Stage 4 |
+| `engine.submit(graph)` alone | `submit(graph, { into })` | where a frame lands is the caller's, per §17 decision 7 |
 | `readBuffer` answering vacuously | gone | with capabilities, a backend without buffers never receives a graph that reads one |
 | `ShaderFrame.uniforms` | gone from the graph; `reflect()` in `toy/` | a control panel is not a render fact |
 | `renderer/`, `engine/` | the folders in §7 | they named *when*, not *what* |
@@ -510,16 +562,28 @@ Renames, all mechanical, all worth doing before the consumer count grows past on
 
 Seven stages. Every one ships, every one has an exit criterion, and none is a rewrite. The trace contract is the net under all of them: **at every stage, the existing gates must pass unchanged.** Where a stage cannot keep them passing without editing a gate, that is the signal that the stage is doing two things.
 
-### Stage 0 — stop the bleeding
+**The work itself is queued in [ROADMAP.md](ROADMAP.md), as fifty-eight items across seven phases numbered to match these stages.** This section decides what each stage is for and what finishes it; that file holds the items, their dependencies and their done-when. Neither repeats the other, and where they would, this one is the authority on intent and that one is the authority on what is left.
+
+**One thing goes first and goes alone: the cache key.** It is a silent wrong picture, it is one function, and it must not be bundled with anything or absorbed into a renaming pass. A commit that fixes it and does nothing else is the correct first commit of this whole road.
+
+### Stage 0 — stop the bleeding, and give the stage an outward face
 
 Days. No architecture.
 
-- Fix the cache key: include a structural hash of resources, pipelines and passes, or take the key from the caller. **§3 row 2 is a silent wrong picture and it is one function.**
+- **First, alone, in its own commit:** fix the cache key — a structural hash of resources, pipelines and passes, or a key the caller supplies. **§3 row 2 is a silent wrong picture and it is one function.**
 - `DocumentAddress` becomes `string`; key fetched text by document name, not by address.
-- README: state that WebGL 2 covers the toy tier only, today.
+- README: state that WebGL 2 covers the toy tier only, today, and that 0.x is unstable with §14 as the target shape.
 - Both design documents: delete the paths that do not exist, inline what each `Dnnn` settled, mark the stale audit rows solved.
+- **`examples/` begins**, with `fullscreen` and `shadertoy-paste`.
+- **The `shadertoy()` producer**, which Stage 0 owns deliberately — see below.
 
-*Exit:* no known silent-wrong-output path; no document naming a file outside this repository.
+**Why a producer is in the stage that was meant to have no features.** Everything else here benefits only the people who wrote it. A stage with no outward-facing deliverable is a stage that slips, and this is the cheapest outward face available: the WebGL 2 backend already takes GLSL, already draws one fullscreen pass, and `glslFrame` ships today, so `shadertoy()` is a thin producer over machinery that exists. It is also, per §17 decision 6, the largest single adoption surface this package has.
+
+**Its boundary, so the stage stays small.** Stage 0's `shadertoy()` covers the uniform-only subset — `iTime`, `iTimeDelta`, `iFrame`, `iResolution`, `iMouse`. `iChannel0..3` are textures, textures are beyond the fullscreen path, and a source sampling one is **refused by name** until they reach the toy path. That is the capability model of §10 applied to a producer rather than to a device.
+
+**And it is the guardrail working, not breaking.** §17 decision 10 forbids an example from motivating a feature its stage does not contain. `shadertoy-paste` tripped that rule on the first attempt, and the resolution is to put the feature in scope on purpose — recorded here — rather than to let the example quietly pull it in.
+
+*Exit:* no known silent-wrong-output path; no document naming a file outside this repository; an unmodified Shadertoy fragment source in the uniform-only subset draws.
 
 ### Stage 1 — the split
 
@@ -533,47 +597,69 @@ The one piece of real surgery, and it is the stage that matters. Take `createPro
 
 *Exit:* `createProgram` is gone; the twelve trace presets still agree; not one gate edited.
 
-### Stage 2 — handles, transients, validation
+### Stage 2 — handles, transients, validation, and the cost metric
 
 - String resource names become handles throughout; `Ref` gains its resident and transient arms.
 - `submit/` pools and aliases transients.
 - `validate(graph)` absorbs every rule currently written twice, [renderer/frame-rules.ts](../renderer/frame-rules.ts) included.
 - The double starts tracking handle liveness.
+- **`cost(graph, size)` lands**, and `arena.traffic()` beside it, per §17 decision 9.
+- **[ROADMAP.md](ROADMAP.md) item 1 becomes workable here**, and this is the stage that unblocks it: its pass-merge half moves `beginRenderPass` counts, its discard half is a recorded descriptor field, and `cost()` is the instrument that reads both. Neither half needed a phone; both needed a metric that reads fields rather than a contract that compares two runs to each other.
 
-*Exit:* no resource resolved by string at draw time; one home per rule; a use-after-free fails a test.
+*Exit:* no resource resolved by string at draw time; one home per rule; a use-after-free fails a test; every preset asserts an exact `cost()`.
 
 ### Stage 3 — per draw, and many draws
 
 - `RenderPass.draws` becomes a list.
 - `Draw.perDraw` lands: dynamic offsets on WebGPU, `bindBufferRange` on WebGL 2.
 - Instancing lands beside it.
+- `submit(graph, { into })` lands, per §17 decision 7.
+- **`examples/instanced-cubes`**, which is what finishes this stage.
 
-*Exit:* one preset draws a thousand cubes, each with its own transform, on both backends, in one pass.
+*Exit:* `instanced-cubes` draws a thousand objects, each with its own transform, on both backends, in one pass, **and its `cost()` is inside budget.** Per §17 decision 10 the example is the exit criterion rather than an illustration of it: if writing it is painful, the API is wrong, and this is the cheap moment to find out.
 
 ### Stage 4 — the scene becomes a producer
 
-- `sceneView(arena, options).graph(world, camera) → FrameGraph`. §3 row 8 closes.
+- `sceneView(arena, options).graph(world, views) → FrameGraph`, taking **`views: Camera[]`** rather than one camera, per §17 decision 7. §3 row 8 closes.
 - `batchOnePipeline`'s one-pipeline restriction is deleted, because the reason for it is gone.
 - Golden graph snapshots land for every scene preset.
+- **`examples/orbit-shadow`**, which is what finishes this stage.
 - **The folders move here**, not earlier. Stage 4 is when you know what each one owns; renaming before it is guessing.
 
-*Exit:* the §6 scene example runs; a scene change is reviewable as a graph diff.
+*Exit:* `orbit-shadow` runs on both backends — orbit camera, one shadow-casting light, around fifty objects — and a scene change is reviewable as a graph diff.
 
 ### Stage 5 — WebGL 2 becomes a real backend
 
 Two halves, and they are separable: do the translator first, because the backend is worth nothing without shaders to feed it.
 
-**5a, translation.** The WGSL-to-GLSL step of §9.1: the build-time path, the on-demand wasm chunk for the editing path, refusal by named construct for what will not translate, and a both-backends frame comparison on every corpus preset.
+**5a, translation.** The WGSL-to-GLSL step of §9.1: the build-time path, the on-demand wasm chunk for the editing path, refusal by named construct for what will not translate, and a both-backends comparison on every corpus preset — read with the three numbers of §17's amendment to decision 4, not with a per-channel average.
 
 **5b, the backend.** Multi-pass, MRT, depth, stencil, instancing, per-draw UBO ranges, mip generation. Capability declaration and named refusal per §10.
 
-*Exit:* every corpus preset draws byte-identically on both backends from one WGSL source; the same scene graph draws on both; a compute graph is refused by name with a message a page can show.
+*Exit:* **every corpus preset either draws byte-identically from one WGSL source, or is named on the widened list with a cause and its readings** — and that list is expected to be empty, per the amendment to decision 4. The same scene graph draws on both backends; a compute graph is refused by name with a message a page can show.
+
+**Why 5a comes first, and what it is really testing.** Decision 2 puts the entire WebGL 2 story on one translator. If the translator cannot carry what the scene tier needs, decision 1 degrades toward "toy tier only" by construction rather than by choice. 5a's exit criterion is where that wall shows up, and the point of ordering it first is to hit the wall while turning back is still cheap.
 
 ### Stage 6 — the engine, as producers
 
 Shadows, post chain, culling, asset loading, GPU particles. Each is one producer, one preset, one gate — the same process as steps 5 through 18, now on a substrate with room for it.
 
-*Exit:* whatever the first real consumer needs, and nothing beyond it.
+*Exit:* whatever the first real consumer needs, and nothing beyond it. Note that per §17 decision 10 the examples suite is *a* consumer and a deliberately captive one — it validates the plan and may not extend it — so it cannot supply this stage's contents. Stage 6 still waits for someone who did not write it.
+
+### 15.1 The examples suite
+
+Per §17 decision 10 this is a deliverable, it is the first consumer, and two of its entries are stage exit criteria rather than illustrations. Each one is chosen to probe something a stage could otherwise get wrong and not find out.
+
+| example | what it probes | stage |
+| --- | --- | --- |
+| `fullscreen` | the baseline path, and that the door is usable in five lines | 0 |
+| `shadertoy-paste` — an unmodified Shadertoy fragment source | decision 6: GLSL in, backend selection rather than refusal, the uniform-only subset | 0 |
+| `compute-field` — compute writes a storage texture, a blit shows it | decision 1's refusal path: what a WebGL 2 reader is actually told | 2 |
+| `instanced-cubes` — a thousand objects, one pipeline, per-draw data | the per-draw path and the `cost()` budget | **gates 3** |
+| `orbit-shadow` — orbit camera, one shadow-casting light, ~50 objects | the scene producer, transients, multi-pass, `views: Camera[]` | **gates 4** |
+| `gltf-cube` — an asset arriving after the page opened | the arena's upload path and where decision 5's boundary actually falls | 4 |
+
+**The rule that keeps this from becoming scope creep**, restated from decision 10 because it is the part that will be tested by temptation: **an example uses public API only, and may not motivate a feature its stage does not already contain.** Examples falsify the plan; they do not extend it. Where the rule bites and the feature is worth having anyway, it goes into the stage's scope on the record — as Stage 0 does for `shadertoy()` — rather than arriving through the back door of a demo that would look better with it.
 
 ## 16. The new five invariants
 
@@ -585,7 +671,7 @@ Replacing ABSTRACTION.md's, which were correct for a website.
 4. **A producer cannot reach a device.** It imports `graph/` and receives an `Arena`. This is what makes the engine testable without a GPU and extendable without touching a backend.
 5. **One fact, one home, and a disagreement fails a test rather than reaching the card.** Per the §12 ledger, enforced by `validate`.
 
-Invariant 1 of the old five — code 1:1 with a shader page — is retired, per §1. That retirement is what this entire document spends.
+Of the old five, only the **size cap** ABSTRACTION.md derived from invariant 1 falls away, and §1 explains why: its premise was that the library and the article corpus are one artifact, and they are not. **The article content rule that invariant 1 also states is untouched by this document and is not this repository's to retire.** The scope call it carries is superseded for the library, and that supersession is recorded in the consuming repository's log, not here.
 
 ## 17. Decisions, settled 2026-08-24
 
@@ -598,6 +684,12 @@ Every question this document opened has an answer. Recorded here with what each 
 | 3 | one package or two | **one package, one door** | `@altpsyche/engine` holds graph, backends, toy tier and scene tier. `sideEffects: false` keeps a toy consumer from shipping `scene/`. The docs carry the strain of two audiences. |
 | 4 | how far does byte-exact determinism go | **toy tier and corpus presets only** | Kept where it is nearly free. Scenes are held by the trace contract and golden graphs instead. The guarantee's edge is stated rather than implied. |
 | 5 | where does the asset pipeline live | **outside this library** | The arena takes `ImageBitmap`, `ArrayBuffer` and typed arrays. glTF parsing, KTX2 and Basis transcoding, and mesh optimisation are a consumer's business. Runtime dependencies stay at zero and the door stays small. |
+| 6 | may a consumer hand the library GLSL | **yes, and it selects a backend rather than being refused** | `ShaderSource` becomes a union discriminated on `authored`, because `glsl` means a cached translation on one arm and the authored truth on the other, and one optional field cannot mean both. A GLSL-authored graph routes to WebGL 2 *even where WebGPU exists*, and is refused only where WebGL 2 is absent. **It forfeits nothing its own language can express: GLSL ES 3.0 has no compute stage**, compute arrived in ES 3.1, and WebGL 2 is ES 3.0 — so every capability given up is one the source has no syntax for. GLSL-to-WGSL translation is deferred and not planned: Naga's GLSL frontend is its weakest part and would buy WebGPU execution for shaders that cannot use WebGPU features. Costs a `shadertoy()` producer in Stage 0 and opens the migration path from Shadertoy and from three.js materials, which is the largest single adoption surface this package has. |
+| 7 | who owns the frame loop | **the consumer; `submit(graph)` is the primitive** | `engine.loop(fn)` is a convenience over `submit`, and `host/loop.ts` may import only the package's own public exports — enforced in [tests/import-graph.test.ts](../tests/import-graph.test.ts), so the promise is a test rather than a discipline. §7 rule 3 is strengthened from "DOM only in `host/`" to "**nothing below `host/` requires a DOM object to exist**", because the weaker rule still permits a signature demanding an `HTMLCanvasElement`. Commits to `submit(graph, { into })` and to producers taking `views: Camera[]`; both are free before Stage 4 and breaking after it. A WebXR consumer drives its own session loop, reads a pose, builds two views, and submits into the layer's texture, reaching nothing in `host/`. |
+| 8 | how does the exported surface stabilise | **all of §14 before 1.0; after 1.0, addition and deprecation only** | 0.x is labelled unstable in the README with §14 named as the target shape. 1.0 is a checklist rather than a judgement: §14 complete, examples covering both tiers on both backends, `cost()` budget green, device readings published, and **one consumer outside this org shipping something**. Post-1.0 renames are forbidden; deprecation runs a minimum of one minor cycle, removal waits for a major, and the mechanism is `@deprecated` JSDoc — which surfaces at the call site, where it works — plus a one-shot dev-mode warning per symbol. `FrameGraph` is a second stability surface: golden snapshots are regenerable fixtures, and a recorded graph is not a persistence format before 1.0. |
+| 9 | what measures cost | **`cost(graph, size)` gates it; hardware only reports it** | A third pure function beside `validate` and `refusal`, returning passes, draws, dispatches, pipeline and bind switches, attachment loads and stores, and transient bytes — asserted exactly per preset, in CI, on any machine. Bytes uploaded is **not** in it: that is a resident-lifetime fact the graph does not carry, so it belongs to `arena.traffic()` per invariant 3, and the two readings are never summed. GPU timestamps, already implemented and consumed by nothing, are reported and never asserted. Wall-clock p50/p95/p99 is measured on real hardware and never gated in CI, because a flaky perf gate is disabled within a month and takes the real signal with it. Lands in Stage 2. The budget is published at 1.0 and mixes enforceable counters with tracked milliseconds. |
+| 10 | who is the first consumer | **the examples suite, and it gates the stages** | Examples begin at Stage 0 with the toy tier and grow one per stage. Stage 3 is unfinished until `instanced-cubes` — a thousand objects, one pipeline, per-draw data — runs on both backends inside budget; Stage 4 until `orbit-shadow` does. Buys the only API design feedback available before a stranger arrives, the only workload `cost()` can measure, and the only vehicle for device readings — one deliverable answering three questions. Bounded by one rule, because otherwise demo-driven design replaces website-driven design and it is the same disease: **an example uses public API only and may not motivate a feature its stage does not already contain.** Where that rule bites and the feature is worth having, the feature is written into the stage's scope on the record, as Stage 0 does for `shadertoy()`. |
+| 11 | is device support published | **readings are published; a support matrix is not** | `probe()` returns a dated reading: which backend was selected, whether WebGPU was *reported*, whether an adapter was actually *returned*, **whether the device then survived a few frames of on-screen compositing**, the renderer string, an assertion that the adapter architecture is not `swiftshader`, the features and limits, and the tier that ran. Three states, not two, because a reading that stops at "an adapter came back" can record a success that lasted under a second. `docs/DEVICES.md` carries dated rows with an explicit note that **absence is not a claim of non-support**, and `npm run device-report` prints a paste-able row so a stranger can contribute one. Refuses to publish a support matrix, which rots on hardware nobody here owns and turns every stale row into a lie. The package's promise is the capability model of §10 — correct refusal by name on any device, read or unread — and the readings are evidence for it, never a dependency of it. |
 
 ### What decisions 1 and 2 do together
 
@@ -605,16 +697,75 @@ They are the pair that shapes the most work, and they pull in useful opposite di
 
 Decision 1 says WebGL 2 matters enough to run real scenes. Decision 2 says nobody pays for that in authoring effort. Together they push all of the cost into **one** place — the translator — where it can be gated, cached, and made a build-time failure rather than a run-time surprise. That is the right place for a cost to live: a single seam with a test around it.
 
-The residual risk is honest and worth naming: **the translator is now on the critical path for the entire WebGL 2 story.** If it cannot handle something the scene tier needs, decision 1 degrades toward "toy tier only" by construction rather than by choice. Which is why Stage 5a comes before 5b, and why its exit criterion is every corpus preset drawing byte-identically from one source. Find that wall early, while turning back is still cheap.
+The residual risk is honest and worth naming: **the translator is now on the critical path for the entire WebGL 2 story.** If it cannot handle something the scene tier needs, decision 1 degrades toward "toy tier only" by construction rather than by choice. Which is why Stage 5a comes before 5b. Find that wall early, while turning back is still cheap.
+
+### Amendment to decision 4, 2026-08-24: exactness is a property of a shader
+
+Decision 4 scoped byte-exactness to the toy tier on grounds of **cost** at scene scale. A measured case shows it is not always **achievable**, and not at scene scale — at the toy tier, in a fullscreen fragment shader, which is as toy as this library gets. So the decision needs rewriting rather than annotating.
+
+**The reading.** Two compilers folded one `sin` differently because its argument was in the thousands, where an f32 holds about one part in a thousand. In a value-noise function, where one hash call gives the number for a corner two cells share, a sub-representable disagreement became a seam at every cell boundary: **7,537 hard jumps on WebGPU against 292 on WebGL 2** at 800×600, where a hard jump is a pixel more than 40 from its left neighbour on any colour channel. Changing the shader so its hash mixes the bits of its input brought both to **220 against 220, and 0 of 1,440,000 channels apart.**
+
+**Two things follow, and the first is that the translator was not at fault.** The arithmetic was translated correctly. A gate that goes red for a cause its owner cannot fix is a gate that gets ignored, and then it is worse than absent.
+
+#### Exactness becomes declared data, not a tolerance
+
+`exact` is not a field anyone writes: **absence means exact.** The strict side has to be the default, or the default becomes where everything hides.
+
+A preset that genuinely cannot be exact is **named on a widened list** carrying its cause, its date, and the readings taken. Four rules make that a recorded decision rather than a threshold:
+
+1. **It is not settable at the preset.** One file holds the list. A preset author hitting a divergence cannot relieve their own pain in place.
+2. **The list's length is asserted, and it is currently zero.** This is the load-bearing rule. Growing it is a diff someone reviews, which is what "recorded" means when you cannot rely on anybody's attention.
+3. **The gate prints the list every run.** A seam nobody looks at is a seam that is not printed.
+4. **An exemption names a cause, not a symptom.** `diverges: 'differs on WebGL 2'` is a symptom and worthless. `diverges: 'sin folded differently above ~1e3 argument'` is a cause, and a cause can be checked, fixed, or refuted a year later. This document's whole method is falsifiability, and a symptom-shaped exemption is unfalsifiable by construction.
+
+**Why this shape and not a tolerance.** A bar widened at the point of pain, by the person the bar is blocking, is not evidence — it is relief. The mechanism is *a priori*, and there is also a measured instance of it: a cross-backend gate once **passed** a shader at an average channel distance of 19.0 against a bar of 24 while **822,426 of 1,440,000 channels** sat over the per-channel tolerance of 8. The bar had been widened, earlier, to accommodate exactly the difference it existed to catch. **A number a gate accepts because its bar was widened is a number nobody has looked at.** That rule is imported from the consuming repository's experience, but it does not depend on it: invariant 2 says capability lives in deliberately authored data, invariant 5 says a disagreement fails a test, and decision 4 already commits to stating where a guarantee stops. The discipline follows from those three.
+
+And the empty list is the expected state for a reason the reading above gives directly: the right answer was to fix the shader.
+
+#### The comparison reads three numbers, and a per-channel average is retired as a primary
+
+A mean per-channel distance cannot tell **small error spread thin** from **a picture cut into visible blocks on one backend**. That is exactly what 7,537-against-292 shows while an average stays quiet. So a cross-backend comparison reports:
+
+| number | what it catches |
+| --- | --- |
+| **hard jumps per frame**, counted **independently per frame** and compared as counts (220 against 220) rather than as a diff of the two frames | structural change — whether one backend introduced discontinuity the other did not. Robust to a uniform shift a human would not care about |
+| **maximum per-channel delta** | the worst single pixel, which an average buries |
+| **channels differing at all** (0 of 1,440,000 on the fixed case) | the clean-pass signal, and the only one of the three that can say "identical" |
 
 ### What decisions 3, 4 and 5 protect
 
 All three protect the same thing from different sides: **the door stays small and the package stays dependency-free for anything shipped.** One package with tree-shaking, a determinism guarantee that stops where it stops being cheap, and an asset story that lives elsewhere. Each is a refusal to grow the surface faster than the proof machinery can cover it — which is invariant 5 of §16 applied to the library rather than to a capability.
 
+### What the 1.0 adoption gate means, said out loud
+
+Decision 8's last checkbox — one consumer outside this org shipping something — is the only item on the list that cannot be graded from inside this repository. That is why it belongs, and it has a consequence worth stating rather than leaving implicit:
+
+**1.0 now depends on something outside this repository's control.** The package can be finished by every other measure and still be 0.x.
+
+The practical effect is the useful part. The examples suite and the README's first screen stop being documentation chores and become **the mechanism that produces the last checkbox.** Said plainly here because otherwise the gate reads as a formality, and a formality is what gets quietly dropped the first time 1.0 feels overdue.
+
+### Three measured facts behind these decisions
+
+Recorded because each one is the reason a decision has the shape it does, and a later reader deserves the evidence rather than the assertion.
+
+**One, the external render target is not an XR feature.** Decision 7 commits to `submit(graph, { into })`, and WebXR layers are the *weaker* half of that argument. The stronger half is that **a live canvas on this renderer cannot be sampled after the fact at all.** One embed was measured returning **0 of 402,300 pixels lit** by all three of reading the pixels back, drawing the canvas into a 2D canvas, and screenshotting the element — while it was in fact drawing sixty times a second. That is correct behaviour: the renderer does not ask the browser to preserve finished frames, so every method that samples after the frame is gone reports black.
+
+What works today are two instrumentation hacks. Patching `WebGL2RenderingContext.prototype.drawArrays` before page load and reading pixels inside the same frame as the draw. And on WebGPU, copying the backend's own frame texture — which carries `COPY_SRC` — out to a buffer on a 256-byte row stride and stripping the padding, validated on a live surface at 320×180 coming back **180 of 180 rows and 320 of 320 columns painted.**
+
+A first-class external target deletes both, and turns headless capture, thumbnail generation and frame comparison into ordinary API use rather than instrumentation.
+
+**Two, `probe()` needs three states because the third is the one that bites.** Reported, returned, and **survived**. Measured on a software renderer at 200×100: an **on-screen** WebGPU canvas the browser composites drew **3 frames in a second and then lost the device with reason `destroyed`**, while the same content on a canvas left **out of the document drew 54 frames a second.** On a real card an on-screen canvas draws for as long as the page is open, measured at 60 draws a second. Separately, requesting the adapter with only `--enable-unsafe-webgpu` reports **SwiftShader with a 1 GiB buffer ceiling** while WebGL still reports the real card.
+
+So a reading that stops at "an adapter came back" can record a success that lasted under a second, and one that trusts the adapter's own name can record a software renderer as hardware. Hence decision 11's two extra fields: survived a few frames of on-screen compositing, and architecture asserted not to be `swiftshader`.
+
+**Three notes that will save the device-report harness a session**, on the Linux machine these were taken on: every headless launch reaches SwiftShader whatever the flags say, `--headless=new` included. A WebGPU adapter on the real card needs a visible window **plus `--enable-features=Vulkan` and `--ozone-platform=x11` together** — without the second the window renders as a flickering transparent tile on that driver. And do not reach for `--use-angle=vulkan`, `DefaultANGLEVulkan` or `VulkanFromANGLE`: they move the whole browser onto Vulkan and produce the same flickering tile.
+
+**Three, the Shadertoy adoption argument is observed rather than forecast.** Decision 6 calls the Shadertoy migration path the largest adoption surface this package has, and that is not a guess about strangers. The consuming site's homepage art direction moved further in **one message containing two Shadertoy links** than across nine generated candidates that were all rejected on sight, and its published art shader credits another author's Shadertoy work in its own attribution line. So "paste a Shadertoy and it runs" is the observed behaviour of the one person who has used this renderer to make anything.
+
 ### Still genuinely open
 
 Not questions this document can answer, and not blockers for any stage:
 
-1. **What the first real consumer is.** Stage 6 says "whatever the first real consumer needs, and nothing beyond it", and that consumer does not exist yet. Until it does, Stage 6 has no contents and should not be given any.
+1. **Who the first outside consumer is.** Decision 10 makes the examples suite a consumer, and a deliberately captive one — it may validate the plan and may not extend it. So it cannot supply Stage 6's contents, and it cannot tick decision 8's last box. Until someone who did not write this ships something with it, Stage 6 has no contents and should be given none.
 2. **Which translator.** Naga and Tint are both wasm-compilable and both plausible. It is a Stage 5a evaluation against the corpus, not an architecture decision — §9.1 holds whichever wins.
 3. **Whether `scene/` needs its own README inside one package.** Decision 3 puts the strain on the docs; if it shows, the answer is another document rather than another package.
