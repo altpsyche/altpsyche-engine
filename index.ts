@@ -64,6 +64,13 @@ export * from './engine/scene.js';
 export * from './engine/material.js';
 export * from './engine/draw-list.js';
 
+// What one frame costs by its structure alone — passes, draws, dispatches,
+// pipeline and bind switches, attachment loads and stores, transient bytes.
+// Pure and device-free, asserted per preset in CI and only ever reported by
+// hardware, per §17 decision 9 (item 21).
+export { cost } from './renderer/cost.js';
+export type { FrameCost } from './renderer/cost.js';
+
 // How much of a frame carries a picture, which is one reading rather than one per
 // caller: a run refusing a capture and a gate passing a resized surface are the
 // same claim about the same kind of buffer, and two versions of the arithmetic

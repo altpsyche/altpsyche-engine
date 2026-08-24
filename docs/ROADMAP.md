@@ -391,13 +391,39 @@ exercise is off on that path by construction, see [JOURNAL.md](JOURNAL.md).
 
 ### 21. `cost(graph, size)`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** Passes, draws, dispatches, pipeline switches, bind switches, attachment loads and stores, transient bytes. Pure, deterministic, no GPU.
 
 **Done when.** It takes the graph and a `{ width, height }` record and nothing else — no device, no arena, nothing carrying behaviour — and returns identical numbers on any machine.
 
 **Needs.** item 17.
+
+**How it landed.** [renderer/cost.ts](../renderer/cost.ts) holds `cost(graph, size): FrameCost`,
+the third pure function beside `validate` and (still-open) `refusal`, taking the
+graph and a `{ width, height }` record and touching no device, arena or cache. The
+eight fields decision 9 lists: `passes` (every pass), `draws` (one per render pass,
+an instanced or indirect draw counted as one per item 28), `dispatches` (one per
+compute pass), `pipelineSwitches` (a pass whose pipeline differs from the one
+before, the first counting as a bind from nothing), `bindSwitches` (a pass whose
+bound resources — group, binding, resource name, read kind — differ from the pass
+before, so two pipelines binding one set are one bind even across a pipeline
+switch), `attachmentLoads`/`attachmentStores`, and `transientBytes`. The load/store
+accounting mirrors `submit/execute.ts` call for call: a colour or depth attachment
+loads only where it is given no clear (`loadOp: 'load'` there), every attachment
+stores (`storeOp: 'store'` there — item 1 is what makes a store discardable), a
+multisample resolve is one more store, and a depth-stencil attachment keeping both
+halves is two loads-or-clears and two stores because the card takes an op per half.
+`transientBytes` sums every texture or buffer the frame declares with no first
+contents of its own (no `source`, no `data`) — a scratch target, an attachment, a
+compute output, a query buffer — resolved at the given size, so a frame-sized
+attachment follows the window; uploaded bytes stay out of it, being
+`arena.traffic()`'s (item 22). The export surface moved (`cost`, `FrameCost` through
+the door; `gate:pack` green) and [tests/cost.test.ts](../tests/cost.test.ts)
+asserts each field on hand-built frames. **Two calls nobody's gate can see** — the
+nominal byte widths for depth formats and the four-byte default for a format not in
+the table — are in [JOURNAL.md](JOURNAL.md); the corpus's exact per-preset costs are
+item 23's, not asserted here.
 
 ### 22. `arena.traffic()`
 
