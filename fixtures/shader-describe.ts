@@ -16,7 +16,6 @@
 import { WGSL_DOCUMENT } from '@altpsyche/engine';
 import { uniformBindingOf } from '@altpsyche/engine';
 import { dispatchesIndirectly } from '@altpsyche/engine';
-import { assertWholeWords, TIMED_QUERY_BYTES, VISIBLE_QUERY_BYTES } from '@altpsyche/engine';
 import { namesReachedBy } from '@altpsyche/engine';
 import {
   computeEntriesOf,
@@ -259,27 +258,10 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     if (keptFormat && !keptFormat.startsWith('depth') && !keptFormat.startsWith('stencil')) {
       throw new Error(`the frame for "${id}" keeps depth in "${kept?.resource}", which is no depth format`);
     }
-    // Each half of what a pass says has to be a half the format keeps, and the
-    // card reports either mistake against whichever call arrived second while
-    // naming neither the pass nor the attachment.
-    if (kept && keptFormat) {
-      const keepsDepth = keptFormat.startsWith('depth');
-      const keepsMask = keptFormat.includes('stencil');
-      if (keepsDepth && kept.compare === undefined) {
-        throw new Error(`the pass on "${pass.pipeline}" of "${id}" keeps depth as ${keptFormat} and tests none of it`);
-      }
-      if (!keepsDepth && kept.compare !== undefined) {
-        throw new Error(`the pass on "${pass.pipeline}" of "${id}" tests depth and keeps it as ${keptFormat}`);
-      }
-      if (!keepsMask && kept.stencil !== undefined) {
-        throw new Error(`the pass on "${pass.pipeline}" of "${id}" masks with a stencil and keeps it as ${keptFormat}`);
-      }
-      if (keepsMask && kept.stencil === undefined) {
-        throw new Error(
-          `the pass on "${pass.pipeline}" of "${id}" keeps a mask as ${keptFormat} and does nothing to it`
-        );
-      }
-    }
+    // That each half a pass names is a half the format keeps — depth operations
+    // only over a depth format, a mask only over a stencil one — is a rule the
+    // graph carries on its own, so it is checked once in the renderer's `validate`
+    // rather than restated here against the declared shape (item 19).
     const draws = {
       targets,
       ...(counts.has(4) ? { samples: 4 as const } : {}),
@@ -341,33 +323,24 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
       throw new Error(`the frame for "${id}" gives "${texture.name}" contents and the frame's own size`);
     }
   }
-  // Where a pass puts what the card says about it. The bytes are checked here as
-  // well as by the backend, because a buffer too short for its answer is a resolve
-  // the card refuses with a message about a size that names neither the query nor
-  // the pass, and two answers in one buffer would land on top of each other since
-  // a resolve writes from the start of it.
+  // Which buffer each pass writes what the card says about it into, refused here
+  // where the frame declares no such buffer because a source names none. Whether
+  // that buffer is long enough for its answers, and whether two queries land in
+  // one buffer, are rules the graph carries on its own and are checked once in the
+  // renderer's `validate` rather than restated here (item 19).
   const answers = new Map<string, string>();
   for (const pass of declared.passes) {
-    const takes: [string | undefined, number, string][] = [
-      [pass.timed, TIMED_QUERY_BYTES, 'the two times it took'],
-      [pass.visible, VISIBLE_QUERY_BYTES, 'the samples its draw got through'],
+    const takes: [string | undefined, string][] = [
+      [pass.timed, 'the two times it took'],
+      [pass.visible, 'the samples its draw got through'],
     ];
-    for (const [named, bytes, what] of takes) {
+    for (const [named, what] of takes) {
       if (named === undefined) continue;
       const buffer = (declared.buffers ?? []).find((one) => one.name === named);
       if (!buffer) {
         throw new Error(
           `the pass on "${pass.pipeline}" of "${id}" writes ${what} into "${named}", which the frame never declares`
         );
-      }
-      if (buffer.bytes < bytes) {
-        throw new Error(
-          `the pass on "${pass.pipeline}" of "${id}" writes ${bytes} bytes into "${named}", which holds ${buffer.bytes}`
-        );
-      }
-      const already = answers.get(named);
-      if (already !== undefined) {
-        throw new Error(`the frame for "${id}" writes ${already} and ${what} into "${named}"`);
       }
       answers.set(named, what);
     }
@@ -385,7 +358,6 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     if (!stored.has(buffer.name) && !answers.has(buffer.name)) {
       throw new Error(`the frame for "${id}" sizes a buffer "${buffer.name}" its source never declares`);
     }
-    assertWholeWords(id, buffer.name, buffer.bytes);
   }
   const unsized = [...stored.keys()].find((name) => !(declared.buffers ?? []).some((one) => one.name === name));
   if (unsized !== undefined) {

@@ -888,11 +888,8 @@ describe('a buffer the frame owns', () => {
     );
   });
 
-  it('is refused at a size that is no whole number of four-byte words', () => {
-    expect(() => planned({ buffers: [{ name: 'counts', bytes: 30 }] })).toThrow(
-      'the frame for "core-indirect" gives "counts" 30 bytes, which is no whole number of four-byte words'
-    );
-  });
+  // The size being a whole number of four-byte words is a graph rule the renderer's
+  // `validate` now owns, checked at draw by tests/renderer-buffer.test.ts (item 19).
 });
 
 describe('a pass whose counts come out of a buffer', () => {
@@ -1051,26 +1048,9 @@ describe('a pass the card is asked to report on', () => {
     ).toThrow('the pass on "farther" of "core-report" writes the two times it took into "elapsed"');
   });
 
-  it('refuses a buffer shorter than the answer it has to hold', () => {
-    expect(() =>
-      reported({
-        buffers: [
-          { name: 'took', bytes: 8 },
-          { name: 'seen', bytes: 8 },
-        ],
-      })
-    ).toThrow('writes 16 bytes into "took", which holds 8');
-  });
-
-  it('refuses two answers in one buffer, since a resolve writes from the start of it', () => {
-    expect(() =>
-      reported({
-        passes: [REPORTED.passes[0] as never, { ...(REPORTED.passes[1] as object), visible: 'took' } as never],
-      })
-    ).toThrow(
-      'the frame for "core-report" writes the two times it took and the samples its draw got through into "took"'
-    );
-  });
+  // A buffer being long enough for its query's answers, and two queries not landing
+  // in one buffer, are graph rules the renderer's `validate` now owns, checked at
+  // draw by tests/renderer-queries.test.ts (item 19).
 
   it('refuses a count of samples on a compute stage, which draws nothing to be covered', () => {
     expect(() =>
@@ -1181,59 +1161,11 @@ describe('a pass that cuts with a mask', () => {
     });
   });
 
-  it('refuses a mode over a format that keeps no mask', () => {
-    expect(() =>
-      cut({
-        attachments: [
-          { name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm' },
-          { name: 'mask', size: ['frame', 'frame'], format: 'depth24plus' },
-        ],
-        passes: [
-          {
-            ...(CUT.passes[0] as object),
-            depth: { resource: 'mask', clear: 1, compare: 'less', write: true, stencil: 'mark' },
-          } as never,
-          { ...(CUT.passes[1] as object), depth: { resource: 'mask', compare: 'less', write: false } } as never,
-        ],
-      })
-    ).toThrow('masks with a stencil and keeps it as depth24plus');
-  });
-
-  it('refuses a format keeping a mask that the pass does nothing to', () => {
-    expect(() =>
-      cut({
-        passes: [
-          { ...(CUT.passes[0] as object), depth: { resource: 'mask', stencilClear: 0 } } as never,
-          CUT.passes[1] as never,
-        ],
-      })
-    ).toThrow('keeps a mask as stencil8 and does nothing to it');
-  });
-
-  it('refuses a depth test over a format that keeps no distances', () => {
-    expect(() =>
-      cut({
-        passes: [
-          {
-            ...(CUT.passes[0] as object),
-            depth: { resource: 'mask', stencilClear: 0, stencil: 'mark', compare: 'less', write: true },
-          } as never,
-          CUT.passes[1] as never,
-        ],
-      })
-    ).toThrow('tests depth and keeps it as stencil8');
-  });
-
-  it('refuses a format keeping distances the pass tests none of', () => {
-    expect(() =>
-      cut({
-        attachments: [
-          { name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm' },
-          { name: 'mask', size: ['frame', 'frame'], format: 'depth24plus-stencil8' },
-        ],
-      })
-    ).toThrow('keeps depth as depth24plus-stencil8 and tests none of it');
-  });
+  // That each half a pass names is a half the format keeps — a mask only over a
+  // stencil format, a depth test only over a depth one — is a graph rule the
+  // renderer's `validate` now owns, checked at draw by tests/renderer-stencil.test.ts
+  // and tests/renderer-depth.test.ts (item 19). The build still refuses a depth
+  // attachment in no depth format at all, which has only ever had this one home.
 });
 
 /**

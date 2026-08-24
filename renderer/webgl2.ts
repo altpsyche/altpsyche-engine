@@ -17,6 +17,7 @@ import { componentsOf, drawsCorners, isRenderPass, moduleOf } from './types.js';
 import { Arena } from '../resource/arena.js';
 import { drawGL2Frame } from '../submit/gl2.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
+import { validate } from './validate.js';
 
 /** A single triangle covering the frame. Two triangles would draw the diagonal
  * twice, and there is no geometry here beyond filling the screen. */
@@ -129,6 +130,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
 
     program(frame: ShaderFrame): ShaderProgram {
       if (frame.target !== 'glsl') throw new Error(`WebGL 2 was handed a ${frame.target} frame to draw`);
+      // Every rule about the graph is checked in one place; the WebGL 2 path does
+      // not reach `submit/plan.ts`, so it reads the same function directly (item
+      // 19). It is a no-op for the fullscreen GLSL frames this backend draws today
+      // and refuses any graph carrying the faults it names.
+      validate(frame);
 
       // The static lifetime of §5: the linked program a shader compiles to, keyed
       // on the structure of its two documents. Scoped to this program so the linked

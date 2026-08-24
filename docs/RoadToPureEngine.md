@@ -482,7 +482,7 @@ Seven mechanisms. Two exist and are strong; five are new, and every one of the f
 
 **New, and each is a direct dividend of a pure `graph/` and of producers that cannot reach a device.**
 
-3. **`validate(graph): Diagnostic[]`, a pure function.** Every rule that is today checked in two wordings — [renderer/frame-rules.ts](../renderer/frame-rules.ts) exists precisely because two places needed the same rule — is checked here once. Runs in tests, in dev builds, and in any offline producer. This is where invariant 4, one fact one home, gets its enforcement.
+3. **`validate(graph): Diagnostic[]`, a pure function.** Every rule that was once checked in two wordings — a since-deleted renderer/frame-rules.ts existed precisely because two places needed the same rule — is checked here once, in [renderer/validate.ts](../renderer/validate.ts) (ROADMAP item 19). Runs in tests, in dev builds, and in any offline producer. This is where invariant 4, one fact one home, gets its enforcement.
 4. **Golden graphs.** A producer's output is a JSON value. Snapshot it. A change to `sceneView` shows up as a diff in a text file, with no GPU, no browser, and no picture to squint at. This is the single largest maintainability win available, and it is impossible today because no producer output is a value.
 5. **Handle liveness in the double.** ABSTRACTION.md's audit notes that the double models calls rather than lifetimes, so use-after-free and leaks are invisible to the fast suite. With generational handles the double can track liveness, and both become test failures rather than production mysteries.
 6. **`cost(graph, size): FrameCost`, a pure function.** Passes, draws, dispatches, pipeline switches, bind switches, attachment loads and stores, transient bytes. Asserted exactly per preset, in CI, on any machine. §17 decision 9 says why this is the instrument and what it deliberately does not measure.
@@ -598,7 +598,7 @@ The one piece of real surgery, and it is the stage that matters. Take `createPro
 
 - String resource names become handles throughout; `Ref` gains its resident and transient arms.
 - `submit/` pools and aliases transients.
-- `validate(graph)` absorbs every rule currently written twice, [renderer/frame-rules.ts](../renderer/frame-rules.ts) included.
+- `validate(graph)` in [renderer/validate.ts](../renderer/validate.ts) absorbs every rule once written twice, the since-deleted frame-rules file included.
 - The double starts tracking handle liveness.
 - **`cost(graph, size)` lands**, and `arena.traffic()` beside it, per §17 decision 9.
 - **[ROADMAP.md](ROADMAP.md) item 1 becomes workable here**, and this is the stage that unblocks it: its pass-merge half moves `beginRenderPass` counts, its discard half is a recorded descriptor field, and `cost()` is the instrument that reads both. Neither half needed a phone; both needed a metric that reads fields rather than a contract that compares two runs to each other.

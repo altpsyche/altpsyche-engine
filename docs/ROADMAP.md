@@ -321,13 +321,40 @@ transient through it. See [JOURNAL.md](JOURNAL.md).
 
 ### 19. `validate(graph)`
 
-**Status.** open
+**Status.** done
 
-**Asks for.** One pure function holding every rule currently written in two wordings, [renderer/frame-rules.ts](../renderer/frame-rules.ts) included.
+**Asks for.** One pure function holding every rule currently written in two wordings, the since-deleted renderer/frame-rules.ts included.
 
-**Done when.** No rule about a graph is checked in two places; `frame-rules.ts` is absorbed and deleted; the function takes the graph alone and touches no device.
+**Done when.** No rule about a graph is checked in two places; frame-rules.ts is absorbed and deleted; the function takes the graph alone and touches no device.
 
 **Needs.** item 17.
+
+**How it landed.** [renderer/validate.ts](../renderer/validate.ts) holds `validate(graph: ShaderFrame): void`,
+device-free, taking the graph alone. It owns the three rules that were written in two
+wordings each — a build wording in `fixtures/shader-describe.ts` and a runtime wording
+in the backend: the storage-buffer whole-words rule (which was frame-rules.ts's
+`assertWholeWords`), the query-buffer rules (a resolve that overruns its buffer, and
+two queries sharing one buffer — frame-rules.ts's `TIMED_QUERY_BYTES`/
+`VISIBLE_QUERY_BYTES` moved in as private constants), and the depth/stencil
+format-consistency rules (each half a pipeline names must be a half its format keeps).
+The renderer/frame-rules.ts file is absorbed and deleted, and its `export *` line is gone from
+`index.ts` — the byte widths and the whole-words check are no longer a producer's to
+call. The single home is reached on every path: `submit/plan.ts`'s `planFramePasses`
+calls `validate` first (covering the WebGPU program build, a runtime pass change, and
+the description seam), and `renderer/webgl2.ts`'s `program` calls it directly, since the
+WebGL 2 path does not reach `planFramePasses` — a no-op for its fullscreen GLSL frames.
+The duplicate copies are gone: `plan.ts`'s `depthOf` no longer restates the four
+format-kind throws, `webgpu.ts` no longer re-checks whole-words or query size (it keeps
+only which buffers are query targets, a usage fact rather than a rule), and the build
+fixture keeps its source-against-declaration checks and the one-home "no depth format at
+all" refusal while dropping the four format-kind, whole-words and query-size checks.
+Coverage for the moved rules now lives at the runtime home — the whole-words and query
+rules in [tests/renderer-buffer.test.ts](../tests/renderer-buffer.test.ts) and
+[tests/renderer-queries.test.ts](../tests/renderer-queries.test.ts), the depth rules in
+[tests/renderer-stencil.test.ts](../tests/renderer-stencil.test.ts) and
+[tests/renderer-depth.test.ts](../tests/renderer-depth.test.ts); the six obsolete build
+tests in `tests/shader-describe.test.ts` were removed, each with a pointer to where its
+rule is now checked. See [JOURNAL.md](JOURNAL.md).
 
 ### 20. The double tracks handle liveness
 

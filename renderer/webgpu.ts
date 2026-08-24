@@ -42,7 +42,6 @@ import {
   resourceOf,
   uniformResourceOf,
 } from './types.js';
-import { assertWholeWords, TIMED_QUERY_BYTES, VISIBLE_QUERY_BYTES } from './frame-rules.js';
 import { Arena } from '../resource/arena.js';
 import type { Handle } from '../resource/arena.js';
 import { planFramePasses } from '../submit/plan.js';
@@ -475,26 +474,15 @@ export function createWebGPUBackend(
           buffers.set(resource.name, built);
         }
 
-        // Which buffers a pass reads its own counts out of, and how many bytes each
-        // such read takes: four words for a draw, five where the geometry carries
-        // indices, and three for a dispatch. The words are a fixed arrangement the
-        // card reads, so a buffer shorter than the read is one the card refuses at
-        // the call rather than where the size was declared.
-        /** Which buffers a query resolves into, and how many bytes each resolve
-         * writes: two answers for the pair of times a pass is opened and closed at,
-         * and one for the samples a draw got through. A buffer named by both is
-         * refused, because a resolve writes from the start of the buffer and the
-         * second would land on top of the first. */
-        const resolves = new Map<string, number>();
-        const takes = (name: string, bytes: number) => {
-          if (resolves.has(name)) {
-            throw new Error(`the frame for "${frame.id}" resolves more than one query into "${name}"`);
-          }
-          resolves.set(name, bytes);
-        };
+        // Which buffers a query resolves into, so each carries the usage flag for a
+        // resolve. That two queries never share one buffer, and that each is long
+        // enough for its answers, are graph rules `validate` owns (item 19); this
+        // only reads which buffers are query targets, to build them with the right
+        // usage.
+        const queryTargets = new Set<string>();
         for (const pass of frame.passes) {
-          if (pass.timed) takes(pass.timed, TIMED_QUERY_BYTES);
-          if (isRenderPass(pass) && pass.visible) takes(pass.visible, VISIBLE_QUERY_BYTES);
+          if (pass.timed) queryTargets.add(pass.timed);
+          if (isRenderPass(pass) && pass.visible) queryTargets.add(pass.visible);
         }
 
         // The query sets are the backend's own: nothing about how many answers a
@@ -562,17 +550,10 @@ export function createWebGPUBackend(
         // whose first pass fills it be the same picture on every run.
         for (const resource of frame.resources) {
           if (resource.kind !== 'buffer') continue;
-          assertWholeWords(frame.id, resource.name, resource.bytes);
-          // A buffer a query resolves into is refused where it is shorter than the
-          // answer, because the card writes from the start of it and reports a
-          // resolve running past the end with a message about a size that names
-          // neither the query nor the pass that asked for it.
-          const resolved = resolves.get(resource.name);
-          if (resolved !== undefined && resource.bytes < resolved) {
-            throw new Error(
-              `the frame for "${frame.id}" resolves ${resolved} bytes of query into "${resource.name}", which holds ${resource.bytes}`
-            );
-          }
+          // That a buffer is a whole number of four-byte words, and that a buffer
+          // a query resolves into is long enough to hold its answers, are rules the
+          // graph carries on its own; both are checked once in `validate`, reached
+          // through `planFramePasses` before any of this builds (item 19).
           const spec = resource;
           const built = own(() =>
             device.createBuffer({
@@ -590,7 +571,7 @@ export function createWebGPUBackend(
               GPUBufferUsage.STORAGE |
               GPUBufferUsage.COPY_SRC |
               (arguments_.has(spec.name) ? GPUBufferUsage.INDIRECT : 0) |
-              (resolved === undefined ? 0 : GPUBufferUsage.QUERY_RESOLVE) |
+              (queryTargets.has(spec.name) ? GPUBufferUsage.QUERY_RESOLVE : 0) |
               (spec.data ? GPUBufferUsage.COPY_DST : 0),
             })
           );

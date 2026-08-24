@@ -47,14 +47,15 @@ export * from './renderer/types.js';
 export { uniformBlockOf } from './wgsl-layout.js';
 
 // The pure-computation helpers a description builder leans on: the vertex layout
-// a primitive generates, the bindings an entry point reaches, the uniform
-// binding a source declares, and the query-buffer sizes and word-alignment
-// checks a pass is held to. A producer that builds its own descriptions reaches
-// these through the door like everything else.
+// a primitive generates, the bindings an entry point reaches, and the uniform
+// binding a source declares. A producer that builds its own descriptions reaches
+// these through the door like everything else. The query-buffer sizes and
+// word-alignment a graph is held to are no longer among them: they moved into the
+// renderer's own `validate`, which every draw runs, and are not a producer's to
+// call (item 19).
 export * from './shader-geometry.js';
 export * from './wgsl-references.js';
 export * from './wgsl-binding.js';
-export * from './renderer/frame-rules.js';
 
 // The engine above the renderer: the maths, the scene, and a scene becoming a
 // list of draws with the values each object feeds its material.

@@ -25,6 +25,7 @@ import type {
 } from '../renderer/types.js';
 import { drawsCorners, drawsIndirectly, isRenderPass, resourceOf } from '../renderer/types.js';
 import { frameOf } from '../renderer/frame.js';
+import { validate } from '../renderer/validate.js';
 
 /** The geometry one pipeline reads and the indices that order it, looked up where
  * a pipeline is made and where a pass is planned so the two agree on which
@@ -46,6 +47,12 @@ export type PlannedPass = FramePlan[number];
  * against its pipeline and against what earlier passes of the same frame have
  * written, so the loop that submits the frame does no lookups of its own. */
 export function planFramePasses(frame: ShaderFrame, geometryOf: (name: string) => DrawnGeometry) {
+  // Every rule about the graph itself lives in one place now, and this is where
+  // the plan reads it before turning the graph into passes: a frame that would
+  // draw wrong is refused here, in the words a build would use for the same
+  // fault, rather than each backend restating the check (item 19).
+  validate(frame);
+
   /** Where one pass keeps the depth of what it draws, looked up once here
    * rather than every frame. The state and the attachment are given to the
    * card in two separate calls, so it reports a disagreement between them
@@ -61,26 +68,13 @@ export function planFramePasses(frame: ShaderFrame, geometryOf: (name: string) =
     if (!tested) {
       throw new Error(`the pass on "${spec.name}" keeps depth in "${named}" and its pipeline tests none`);
     }
-    // A format is one half, the other or both, and what a pipeline says about
-    // each has to match what its format has: the card refuses a mask nobody
-    // declared operations for, and refuses operations for a half the format
-    // does not keep, both over the pipeline rather than over the description.
+    // Which halves the format keeps, read here for the clear-vs-filled rules
+    // below. That each half the pipeline names is a half the format keeps —
+    // depth operations only over a depth format, a mask only over a stencil one —
+    // is a rule the graph carries on its own, so it is checked once in
+    // `validate` (item 19) rather than restated over the plan.
     const keepsStencil = tested.format.includes('stencil');
-    if (keepsStencil && tested.stencil === undefined) {
-      throw new Error(
-        `the pass on "${spec.name}" keeps a stencil in ${tested.format} and its pipeline says nothing about the mask`
-      );
-    }
-    if (!keepsStencil && tested.stencil !== undefined) {
-      throw new Error(`the pass on "${spec.name}" masks with a stencil and keeps its depth as ${tested.format}`);
-    }
     const keepsDepth = tested.format.startsWith('depth');
-    if (!keepsDepth && tested.compare !== undefined) {
-      throw new Error(`the pass on "${spec.name}" tests depth and keeps it as ${tested.format}, which keeps none`);
-    }
-    if (keepsDepth && tested.compare === undefined) {
-      throw new Error(`the pass on "${spec.name}" keeps depth as ${tested.format} and tests none of it`);
-    }
     const resource = resourceOf(frame, named);
     if (!resource || resource.kind !== 'texture') {
       throw new Error(`the frame for "${frame.id}" keeps depth in "${named}", which is no texture it declares`);
