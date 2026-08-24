@@ -122,6 +122,11 @@ export function glslDescription(): FrameDescription {
  * the description gave it, and a description naming bytes nobody fetched is
  * refused here. Left through, the card would be handed a texture of whatever the
  * memory held, or a buffer of it, and the shader would read it without complaint.
+ *
+ * A document's name is its key, so two documents sharing one name are two
+ * descriptions of one text, not two texts: the loader fetches one, and the second
+ * silently wins. That is refused here too, by name, before the text check the name
+ * would otherwise pass.
  */
 export function frameOf(
   id: string,
@@ -132,6 +137,15 @@ export function frameOf(
   overrides?: Record<string, number>,
   generated?: Map<string, Uint8Array<ArrayBuffer>>
 ): ShaderFrame {
+  const seen = new Set<string>();
+  const repeated = description.documents.find((document) => {
+    if (seen.has(document.name)) return true;
+    seen.add(document.name);
+    return false;
+  });
+  if (repeated)
+    throw new Error(`the description for "${id}" names two documents "${repeated.name}"`);
+
   const missing = description.documents.find((document) => texts[document.name] === undefined);
   if (missing) throw new Error(`the description for "${id}" names a document "${missing.name}" with no text`);
 

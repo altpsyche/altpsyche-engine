@@ -71,3 +71,52 @@ describe('a description naming two distinct WGSL documents', () => {
     expect(gpu.calls('draw')[0]).toMatchObject({ count: 3 });
   });
 });
+
+/**
+ * Two documents sharing one name are two descriptions of one text, not two texts:
+ * the loader fetches one, `Object.fromEntries` maps both to one key, and the second
+ * silently wins. Keying by name is what lets two documents coexist (above); this is
+ * the hole it leaves open — nothing checked the names differ — closed by a refusal
+ * at the same site that already refuses a document with no text.
+ */
+const collision: FrameDescription = {
+  target: 'wgsl',
+  resources: [{ kind: 'uniform', name: 'uniforms' }],
+  documents: [{ name: 'shade' }, { name: 'shade' }],
+  pipelines: [
+    {
+      kind: 'render',
+      name: 'frame',
+      vertex: { module: 'shade', entry: 'main' },
+      fragment: { module: 'shade', entry: 'fragMain' },
+      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+    },
+  ],
+  passes: [{ pipeline: 'frame', draw: { vertices: 3 } }],
+};
+
+describe('a description whose documents do not carry distinct names', () => {
+  it('is refused, naming both the id and the repeated name', () => {
+    expect(() =>
+      assembleFrame(
+        'name-collision',
+        collision,
+        new Map([['shade', FRAGMENT]]),
+        new Map(),
+        [{ name: 'u_time', type: 'float' }],
+        [{ name: 'u_time', offset: 0, size: 4 }]
+      )
+    ).toThrowError(/name-collision.*shade|shade.*name-collision/);
+  });
+
+  it('names both the id and the repeated name literally', () => {
+    let message = '';
+    try {
+      assembleFrame('name-collision', collision, new Map([['shade', FRAGMENT]]), new Map(), [], []);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('name-collision');
+    expect(message).toContain('shade');
+  });
+});

@@ -135,7 +135,7 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 59. A duplicate document name is refused
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `frameOf` refuses a description whose documents do not carry distinct names, by name, the way it already refuses a document with no text and a picture with no bytes.
 
