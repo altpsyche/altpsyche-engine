@@ -562,7 +562,7 @@ Renames, all mechanical, all worth doing before the consumer count grows past on
 
 Seven stages. Every one ships, every one has an exit criterion, and none is a rewrite. The trace contract is the net under all of them: **at every stage, the existing gates must pass unchanged.** Where a stage cannot keep them passing without editing a gate, that is the signal that the stage is doing two things.
 
-**The work itself is queued in [ROADMAP.md](ROADMAP.md), as fifty-eight items across seven phases numbered to match these stages.** This section decides what each stage is for and what finishes it; that file holds the items, their dependencies and their done-when. Neither repeats the other, and where they would, this one is the authority on intent and that one is the authority on what is left.
+**The work itself is queued in [ROADMAP.md](ROADMAP.md), as sixty items across seven phases numbered to match these stages.** This section decides what each stage is for and what finishes it; that file holds the items, their dependencies and their done-when. Neither repeats the other, and where they would, this one is the authority on intent and that one is the authority on what is left.
 
 **One thing goes first and goes alone: the cache key.** It is a silent wrong picture, it is one function, and it must not be bundled with anything or absorbed into a renaming pass. A commit that fixes it and does nothing else is the correct first commit of this whole road.
 

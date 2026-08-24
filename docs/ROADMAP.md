@@ -8,7 +8,7 @@ The library ships from `main` as `@altpsyche/engine`. The site that consumes it 
 
 **Direction for this repository is [RoadToPureEngine.md](RoadToPureEngine.md).** That document decides nothing this file queues, and this file queues nothing that document decides; where an item below names a stage, the stage is defined there.
 
-**Filled out on 2026-08-24** with the whole of that document's road, as fifty-eight items in seven phases.
+**Filled out on 2026-08-24** with the whole of that document's road, as fifty-eight items in seven phases. **Items 59 and 60 were added on 2026-08-24** by the review of the first unattended run, which is where an item found by reading landed work belongs.
 
 ---
 
@@ -129,6 +129,39 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 **Needs.** Nothing. `report()` already gathers most of it and has never had a caller.
 
 **Note.** Three states, not two: an adapter that came back and then died in under a second is a success by any two-state reading. See decision 11 and the measured case beside it.
+
+### 59. A duplicate document name is refused
+
+**Status.** open
+
+**Asks for.** `frameOf` refuses a description whose documents do not carry distinct names, by name, the way it already refuses a document with no text and a picture with no bytes.
+
+**Done when.** A description with two documents sharing one name is refused with both the id and the repeated name in the message, and a test asserts it. A description with two distinctly-named documents still assembles.
+
+**Needs.** item 3.
+
+**Why it exists.** Found reviewing item 3, which is otherwise correct. Item 3 moved document keying from `address` to `name`, which is what lets two WGSL documents coexist — but nothing checks that the names differ, and the old failure mode survives one step to the left:
+
+- `documentNames` collapses the pair through a `Set`, so a loader fetches one text for two documents.
+- `assembleFrame`'s `Object.fromEntries` maps both to one key, so the second text wins.
+- `frameOf`'s missing-text check passes, because the name does have text.
+- The frame carries two modules with one name and one body, and `moduleOf` hands a pipeline whichever it finds first.
+
+So two documents meant to differ still silently become one. Before item 3 that happened whenever two WGSL documents met, because the address was fixed at `'wgsl'`; after it, only when an author repeats a name. That is a real improvement and not a closed hole. **The refusal site already exists**, which is the argument for one line rather than waiting for item 19's `validate(graph)`: `frameOf` is already where a malformed description is stopped, and a rule enforced in two places later is the thing item 19 exists to prevent.
+
+### 60. The diagram loses the files that left with the website
+
+**Status.** open
+
+**Asks for.** `ABSTRACTION.md`'s Mermaid diagram stops naming files that do not exist here, and the path gate stops being blind to fenced blocks.
+
+**Done when.** No node label in that diagram names a path absent from this tree, and `tests/docs-paths.test.ts` reads Mermaid node labels as well as backtick and link spans — negative-tested on an injected stale path inside a fence, the way item 5 negative-tested the two shapes it already covers.
+
+**Needs.** item 5.
+
+**Why it exists.** Item 5 met its own wording exactly: it checks backtick-quoted and link-quoted paths, and its own blind-gate row in [JOURNAL.md](JOURNAL.md) says the diagram sits in a stripped fenced block, neither checked nor changed. That row is honest and it was not tracked, and JOURNAL.md's own rule is that a row needing work nobody is tracking needs a roadmap item in the same commit. This is that item.
+
+Seven website paths are still in that fence today, named here without backticks so that item 5's own gate does not read this item as a claim that they exist: content/shaders, hooks/useShaderSurface.ts, lib/renderer/artefacts.ts, lib/renderer/choose.ts, lib/shader-base.ts, public/shaders/build/manifest.json, public/shaders/source/*.wgsl. Writing them plainly is deliberate rather than a workaround — the alternative was seven more entries on `ALLOWED_ABSENT`, and that list is a widened bar whose value comes from being short. **This item's first draft did quote them, and the gate failed the commit**, which is the gate doing exactly what item 5 built it for. The diagram is the most-read part of that document, so this is where §3 row 12 of [RoadToPureEngine.md](RoadToPureEngine.md) is least closed rather than most.
 
 ---
 
