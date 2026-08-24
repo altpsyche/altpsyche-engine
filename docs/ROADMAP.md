@@ -98,7 +98,7 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 7. `examples/` begins
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The directory, a way to run one, and the first two: `fullscreen` and `shadertoy-paste`.
 

@@ -38,6 +38,7 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "type-check": "tsc --noEmit -p tsconfig.json",
+    "example": "node examples/run.mjs",
     "prepack": "npm run build",
     "gate:browser": "node gates/all.mjs",
     "gate:card": "node gates/card.mjs",

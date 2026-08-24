@@ -18,6 +18,6 @@
     "paths": { "@altpsyche/engine": ["./index.ts"] },
     "baseUrl": "."
   },
-  "include": ["index.ts", "renderer/**/*.ts", "engine/**/*.ts", "*.ts", "fixtures/**/*.ts", "tests/**/*.ts"],
+  "include": ["index.ts", "renderer/**/*.ts", "engine/**/*.ts", "*.ts", "fixtures/**/*.ts", "tests/**/*.ts", "examples/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }
