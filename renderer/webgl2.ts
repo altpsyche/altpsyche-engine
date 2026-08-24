@@ -15,6 +15,7 @@
 import type { Backend, DeviceReport, ShaderFrame, ShaderProgram, UniformValue } from './types.js';
 import { componentsOf, drawsCorners, isRenderPass, moduleOf } from './types.js';
 import { Arena } from '../resource/arena.js';
+import { drawGL2Frame } from '../submit/gl2.js';
 
 /** A single triangle covering the frame. Two triangles would draw the diagonal
  * twice, and there is no geometry here beyond filling the screen. */
@@ -249,12 +250,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         },
 
         draw() {
-          gl.useProgram(program);
-          gl.bindBuffer(gl.ARRAY_BUFFER, quad);
-          gl.enableVertexAttribArray(attribute);
-          gl.vertexAttribPointer(attribute, 3, gl.FLOAT, false, 0, 0);
-          gl.viewport(0, 0, width, height);
-          gl.drawArrays(gl.TRIANGLES, 0, vertices);
+          drawGL2Frame({ gl, program, quad, attribute, vertices, width, height });
         },
 
         // A frame this backend takes declares nothing but its uniform block, since

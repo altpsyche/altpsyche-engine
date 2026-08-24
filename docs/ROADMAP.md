@@ -175,7 +175,7 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 
 ### 13. `submit/`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The executor: a graph plus the arena plus the pipeline cache become commands on a device.
 

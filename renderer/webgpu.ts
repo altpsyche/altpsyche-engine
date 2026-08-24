@@ -44,6 +44,9 @@ import {
 import { assertWholeWords, TIMED_QUERY_BYTES, VISIBLE_QUERY_BYTES } from './frame-rules.js';
 import { Arena } from '../resource/arena.js';
 import type { Handle } from '../resource/arena.js';
+import { planFramePasses } from '../submit/plan.js';
+import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
+import { runFrame } from '../submit/execute.js';
 
 /** What this backend allocates through the arena: the resident resources of §5,
  * which is everything with a lifetime longer than a compilation and shorter than
@@ -97,12 +100,6 @@ const ROW_ALIGNMENT = 256;
 /** A uniform block is written in whole 16 byte lumps whatever its members
  * measure, so the buffer is rounded up to one. */
 const BLOCK_ALIGNMENT = 16;
-
-/** The value a mask is marked with and tested against. It is one number rather
- * than a choice, because the mode a pipeline names is what decides whether it is
- * written or compared, and a second number nothing reads differently would be a
- * value two places could disagree about. */
-const STENCIL_REFERENCE = 1;
 
 /** Every bit of the mask, which is what both modes read and what marking writes.
  * A mask of several layers would need its own bits and its own reference, and
@@ -288,6 +285,26 @@ export function createWebGPUBackend(
       target = arena.resolve(targetHandle) as GPUTexture;
     }
     return target;
+  };
+
+  /** Where a finished frame meets the canvas, handed to the executor so `submit/`
+   * names no DOM object of its own. On a canvas someone can see, the target is
+   * configured once and the picture copied onto the current drawable, on the same
+   * encoder the frame was recorded on so it is still submitted once; a detached
+   * canvas is left alone, which is what keeps the pixel-reading path from
+   * configuring one and paying the reads that costs. */
+  const composite = (encoder: GPUCommandEncoder, source: GPUTexture): void => {
+    if (!onScreen()) return;
+    if (!configured) {
+      context.configure({
+        device,
+        format: FORMAT,
+        alphaMode: 'opaque',
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
+      });
+      configured = true;
+    }
+    encoder.copyTextureToTexture({ texture: source }, { texture: context.getCurrentTexture() }, [width, height]);
   };
 
   return {
@@ -948,184 +965,35 @@ export function createWebGPUBackend(
           const bound = groups[turn] as Map<string, GPUBindGroup[]>;
           const recorded = bundles[turn] as Map<number, GPURenderBundle>;
           if (partner.size > 0) turn = turn === 0 ? 1 : 0;
-          // Every upload the frame queued lands here, before a pass is recorded and
-          // so before any draw reads it. A resize that rebuilt the textures above
-          // has already run; the queued writes go in against the frame the encoder
-          // is about to record, which is the ordering item 11 replaced the
-          // unsequenced write-on-resize with.
-          arena.flush();
-          const encoder = device.createCommandEncoder();
-          // Every pass of the description runs in order on this one encoder and
-          // the whole frame is submitted once, so a frame with one pass in it
-          // makes exactly the calls a single draw made before.
-          for (const [index, { pass, spec, drawn, depth, colour }] of runs.entries()) {
-            const pipeline = pipelines.get(spec.name);
-            const bands = bound.get(spec.name);
-            if (!pipeline || !bands) throw new Error(`the frame names a pipeline "${spec.name}" it does not carry`);
-
-            /** What a pass is opened with so the card writes a time at each end of
-             * it. A device without the feature gets nothing, which is the whole of
-             * how a frame asking to be timed still draws on one. */
-            const timestamps = (name: string | undefined) => {
-              const set = name === undefined ? undefined : times.get(name);
-              return set
-                ? { timestampWrites: { querySet: set, beginningOfPassWriteIndex: 0, endOfPassWriteIndex: 1 } }
-                : {};
-            };
-
-            /** Every query this pass asked for, copied out of the sets into the
-             * buffers the description named. It runs after the pass has ended and
-             * on the frame's own encoder, because a resolve is a command the card
-             * carries out in order rather than something a caller reads. */
-            const resolve = () => {
-              const timed = pass.timed === undefined ? undefined : times.get(pass.timed);
-              if (timed && pass.timed) {
-                encoder.resolveQuerySet(timed, 0, 2, buffers.get(pass.timed) as GPUBuffer, 0);
-              }
-              const counted = isRenderPass(pass) && pass.visible ? counting.get(pass.visible) : undefined;
-              if (counted && isRenderPass(pass) && pass.visible) {
-                encoder.resolveQuerySet(counted, 0, 1, buffers.get(pass.visible) as GPUBuffer, 0);
-              }
-            };
-
-            if (!isRenderPass(pass) && spec.kind === 'compute') {
-              const run = encoder.beginComputePass(timestamps(pass.timed));
-              run.setPipeline(pipeline as GPUComputePipeline);
-              bands.forEach((band, at) => run.setBindGroup(at, band));
-              // A dispatch of `frame` covers the picture in whole blocks, so an
-              // edge that does not divide by the workgroup size is covered by a
-              // block that runs past it rather than left unwritten. Naming a
-              // resource covers that texture the same way, which is what a pass
-              // writing a grid of its own size wants. Naming a buffer hands the
-              // card the buffer and nothing else: the count is the three words an
-              // earlier pass wrote at the start of it.
-              if (dispatchesIndirectly(pass.dispatch)) {
-                run.dispatchWorkgroupsIndirect(buffers.get(pass.dispatch.indirect) as GPUBuffer, 0);
-              } else run.dispatchWorkgroups(...blocks(pass.dispatch, spec.workgroup));
-              run.end();
-              resolve();
-              continue;
-            }
-
-            if (!isRenderPass(pass)) continue;
-            const samples = pass.visible === undefined ? undefined : counting.get(pass.visible);
-            const run = encoder.beginRenderPass({
-              ...timestamps(pass.timed),
-              // The set the card counts into, named on the pass because a query is
-              // opened inside one and the card has to be told where the answer goes
-              // before anything is drawn.
-              ...(samples ? { occlusionQuerySet: samples } : {}),
-              // A pass naming its own textures writes those and not the frame,
-              // and each of them is turned with the swap for the same reason a
-              // binding is: writing the half a pipeline is sampling this frame is
-              // a picture made out of itself.
-              colorAttachments: (
-                colour ?? [
-                  { name: undefined, clear: [0, 0, 0, 1] as [number, number, number, number], resolve: undefined },
-                ]
-              ).map((attachment) => ({
-                view: viewOf(
-                  attachment.name === undefined
-                    ? texture
-                    : (textures.get(turned(attachment.name, swapped)) as GPUTexture)
-                ),
-                // Where the samples of this attachment are averaged at the end of
-                // the pass, which is the only way anything reads a texture keeping
-                // several of them. Turned with the swap for the same reason the
-                // attachment is, since either may be half of a pair.
-                ...(attachment.resolve
-                  ? {
-                      resolveTarget: viewOf(textures.get(turned(attachment.resolve, swapped)) as GPUTexture),
-                    }
-                  : {}),
-                ...(attachment.clear
-                  ? {
-                      clearValue: {
-                        r: attachment.clear[0],
-                        g: attachment.clear[1],
-                        b: attachment.clear[2],
-                        a: attachment.clear[3],
-                      },
-                      loadOp: 'clear' as const,
-                    }
-                  : { loadOp: 'load' as const }),
-                storeOp: 'store' as const,
-              })),
-              // Depth is stored rather than discarded, because what a later pass
-              // over the same attachment tests against is what an earlier one
-              // left there. Its view is cached like the colour one: a texture
-              // following the frame is a new texture after a resize, and the cache
-              // hands back a fresh view for it because it is keyed on the object.
-              ...(depth
-                ? {
-                    depthStencilAttachment: {
-                      view: viewOf(textures.get(depth.name) as GPUTexture),
-                      // A half the format does not keep gets no operations at all,
-                      // which the card refuses rather than ignores, so each of the
-                      // two is attached only where the format has it.
-                      ...(depth.depthHalf
-                        ? {
-                            ...(depth.clear === undefined
-                              ? { depthLoadOp: 'load' as const }
-                              : { depthClearValue: depth.clear, depthLoadOp: 'clear' as const }),
-                            depthStoreOp: 'store' as const,
-                          }
-                        : {}),
-                      ...(depth.stencilHalf
-                        ? {
-                            ...(depth.stencilClear === undefined
-                              ? { stencilLoadOp: 'load' as const }
-                              : { stencilClearValue: depth.stencilClear, stencilLoadOp: 'clear' as const }),
-                            stencilStoreOp: 'store' as const,
-                          }
-                        : {}),
-                    },
-                  }
-                : {}),
-            });
-            // The value the mask is written with and tested against, set on the
-            // pass because that is where the card takes it: it is not compiled
-            // into the pipeline, so a pass that never sets it masks against
-            // whatever the last pass left. It is pass state a bundle cannot hold,
-            // so it is set here before the recorded draws replay against it.
-            if (spec.kind === 'render' && spec.depth?.stencil) run.setStencilReference(STENCIL_REFERENCE);
-            const bundle = recorded?.get(index);
-            if (bundle) run.executeBundles([bundle]);
-            else {
-              // The one pass that counts its own samples draws inline, because the
-              // query opens and closes around the draw on the pass rather than in
-              // a bundle. The count is taken around the draw rather than around the
-              // pass, since what the card counts is the samples of one draw that
-              // got through everything already in the attachment.
-              if (samples) run.beginOcclusionQuery(0);
-              issueDraw(run, pipeline as GPURenderPipeline, bands, drawn, pass.draw);
-              if (samples) run.endOcclusionQuery();
-            }
-            run.end();
-            resolve();
-          }
-
-          // A frame whose picture ended up in a texture of its own is copied into
-          // the target, which is what a compute pass writing a picture needs: it
-          // writes a storage texture and a storage texture cannot be an
-          // attachment in the same pass.
-          const picture = shown === undefined ? undefined : textures.get(turned(shown, swapped));
-          if (picture) encoder.copyTextureToTexture({ texture: picture }, { texture }, [width, height]);
-
-          if (onScreen()) {
-            if (!configured) {
-              context.configure({
-                device,
-                format: FORMAT,
-                alphaMode: 'opaque',
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
-              });
-              configured = true;
-            }
-            encoder.copyTextureToTexture({ texture }, { texture: context.getCurrentTexture() }, [width, height]);
-          }
-
-          device.queue.submit([encoder.finish()]);
+          // The executor takes it from here: the plan this program built, the
+          // resident resources the arena resolved, and the pipelines the
+          // compilation produced become one encoder, submitted once. Flushing the
+          // queued uploads, opening the encoder, recording every pass and copying
+          // the finished picture all live in `submit/` now; the one place a frame
+          // meets the canvas stays here as `composite`, so nothing in `submit/`
+          // names a DOM object.
+          runFrame({
+            device,
+            flush: () => arena.flush(),
+            runs,
+            pipelines,
+            bound,
+            recorded,
+            times,
+            counting,
+            buffers,
+            textures,
+            target: texture,
+            viewOf,
+            turned,
+            swapped,
+            shown,
+            width,
+            height,
+            blocks,
+            issueDraw,
+            composite,
+          });
         },
 
         writeBuffer(name: string, data: Uint8Array<ArrayBuffer>) {
@@ -1250,17 +1118,6 @@ export function createWebGPUBackend(
     },
   };
 }
-
-/** The geometry one pipeline reads and the indices that order it, looked up where
- * a pipeline is made and where a pass is planned so the two agree on which
- * vertices a draw walks. */
-type DrawnGeometry = { vertices: VertexResource; ordered: IndexResource | undefined };
-
-/** One frame's passes read into the shape the draw loop replays: the pass, the
- * pipeline it names, the geometry it binds and the attachments it opens with.
- * Held as its own name because a program keeps it in a variable a runtime pass
- * change reassigns rather than in a const built once. */
-type FramePlan = ReturnType<typeof planFramePasses>;
 
 /** Every document of the frame is compiled, and each is asked about itself rather
  * than the pipeline being asked: a pipeline made from a module that did not
@@ -1496,239 +1353,3 @@ function buildPipelines(
   return { pipelines, wired };
 }
 
-/** The passes the frame draws, read once here into the shape the draw loop
- * replays every frame. Nothing here touches the card: each pass is checked
- * against its pipeline and against what earlier passes of the same frame have
- * written, so the loop that submits the frame does no lookups of its own. */
-function planFramePasses(frame: ShaderFrame, geometryOf: (name: string) => DrawnGeometry) {
-  /** Where one pass keeps the depth of what it draws, looked up once here
-   * rather than every frame. The state and the attachment are given to the
-   * card in two separate calls, so it reports a disagreement between them
-   * against whichever of the two arrived second and names neither the
-   * description nor the pass. */
-  const depthOf = (pass: RenderPassSpec, spec: RenderPipelineSpec, filled: Set<string>) => {
-    const tested = spec.depth;
-    if (!pass.depth) {
-      if (tested) throw new Error(`the pass on "${spec.name}" tests depth and attaches nothing to keep it in`);
-      return undefined;
-    }
-    const named = pass.depth.resource;
-    if (!tested) {
-      throw new Error(`the pass on "${spec.name}" keeps depth in "${named}" and its pipeline tests none`);
-    }
-    // A format is one half, the other or both, and what a pipeline says about
-    // each has to match what its format has: the card refuses a mask nobody
-    // declared operations for, and refuses operations for a half the format
-    // does not keep, both over the pipeline rather than over the description.
-    const keepsStencil = tested.format.includes('stencil');
-    if (keepsStencil && tested.stencil === undefined) {
-      throw new Error(
-        `the pass on "${spec.name}" keeps a stencil in ${tested.format} and its pipeline says nothing about the mask`
-      );
-    }
-    if (!keepsStencil && tested.stencil !== undefined) {
-      throw new Error(`the pass on "${spec.name}" masks with a stencil and keeps its depth as ${tested.format}`);
-    }
-    const keepsDepth = tested.format.startsWith('depth');
-    if (!keepsDepth && tested.compare !== undefined) {
-      throw new Error(`the pass on "${spec.name}" tests depth and keeps it as ${tested.format}, which keeps none`);
-    }
-    if (keepsDepth && tested.compare === undefined) {
-      throw new Error(`the pass on "${spec.name}" keeps depth as ${tested.format} and tests none of it`);
-    }
-    const resource = resourceOf(frame, named);
-    if (!resource || resource.kind !== 'texture') {
-      throw new Error(`the frame for "${frame.id}" keeps depth in "${named}", which is no texture it declares`);
-    }
-    if (resource.format !== tested.format) {
-      throw new Error(
-        `the pass on "${spec.name}" tests depth as ${tested.format} and keeps it in "${named}", which is ${resource.format}`
-      );
-    }
-    // A texture that never asked to be an attachment has no flag for it, and
-    // the card refuses the pass over a usage rather than over the name of the
-    // texture the description gave it.
-    if (!resource.use.includes('attachment')) {
-      throw new Error(`the frame for "${frame.id}" keeps depth in "${named}", which is no attachment it declares`);
-    }
-    // Every attachment of one pass keeps the same number of samples a pixel,
-    // the depth among them, and the card refuses the pass over the count
-    // without saying which attachment disagreed with which pipeline.
-    if ((resource.samples ?? 1) !== (spec.samples ?? 1)) {
-      throw new Error(
-        `the pass on "${spec.name}" draws ${spec.samples ?? 1} samples a pixel and keeps depth in "${named}", which keeps ${resource.samples ?? 1}`
-      );
-    }
-    // An attachment with no clear value keeps what is in it, which is what a
-    // second surface tested against the first needs. Keeping what no earlier
-    // pass wrote is a frame reading its own last one, which is a capability a
-    // pair of textures exists for rather than something to arrive at by
-    // leaving a value out.
-    if (keepsDepth && pass.depth.clear === undefined && !filled.has(named)) {
-      throw new Error(`the pass on "${spec.name}" keeps the depth in "${named}", which no earlier pass wrote`);
-    }
-    // The mask follows the same rule, so the pass that marks empties it and
-    // the pass drawn inside the mark keeps what the marking pass left. A pass
-    // keeping a mask nothing has written would be drawn wherever the memory
-    // happened to hold the reference.
-    if (keepsStencil && pass.depth.stencilClear === undefined && !filled.has(named)) {
-      throw new Error(`the pass on "${spec.name}" keeps the mask in "${named}", which no earlier pass wrote`);
-    }
-    return {
-      name: named,
-      clear: pass.depth.clear,
-      stencilClear: pass.depth.stencilClear,
-      depthHalf: keepsDepth,
-      stencilHalf: keepsStencil,
-    };
-  };
-
-  /** Where the samples of one attachment are averaged, which is a texture of
-   * the same size and format keeping one sample of each pixel. An attachment
-   * keeping several has to name one, since nothing can read the attachment
-   * itself: it cannot be copied out of and no binding here declares a
-   * multisampled read. */
-  const resolved = (
-    spec: RenderPipelineSpec,
-    attachment: { resource: string; resolve?: string },
-    into: TextureResource
-  ) => {
-    if (into.samples === undefined) {
-      if (attachment.resolve === undefined) return undefined;
-      throw new Error(
-        `the pass on "${spec.name}" averages "${attachment.resource}" into "${attachment.resolve}" and it keeps one sample a pixel`
-      );
-    }
-    const name = attachment.resolve;
-    if (name === undefined) {
-      throw new Error(
-        `the pass on "${spec.name}" keeps several samples a pixel in "${attachment.resource}" and averages them nowhere`
-      );
-    }
-    const resource = resourceOf(frame, name);
-    if (!resource || resource.kind !== 'texture') {
-      throw new Error(
-        `the frame for "${frame.id}" averages "${attachment.resource}" into "${name}", which is no texture it declares`
-      );
-    }
-    if (!resource.use.includes('attachment')) {
-      throw new Error(
-        `the frame for "${frame.id}" averages "${attachment.resource}" into "${name}", which is no attachment it declares`
-      );
-    }
-    // Same shape and same format, because averaging is a per-pixel read of the
-    // samples of the pixel underneath it, and same single sample, because a
-    // texture keeping several is what is being averaged rather than what an
-    // average lands in.
-    const shape = (resource: TextureResource) => `${resource.size.join('x')} ${resource.format}`;
-    if (resource.samples !== undefined || shape(resource) !== shape(into)) {
-      throw new Error(
-        `the pass on "${spec.name}" averages "${attachment.resource}" into "${name}", which is not the same picture keeping one sample`
-      );
-    }
-    return name;
-  };
-
-  /** Which textures one pass writes its colours into, looked up once here.
-   * The count, the order and every format have to agree with what the
-   * pipeline says it returns, and a card refuses the pass over the first
-   * attachment that does not match without saying which description named
-   * it. */
-  const coloursOf = (pass: RenderPassSpec, spec: RenderPipelineSpec, filled: Set<string>) => {
-    const written = spec.targets;
-    if (!pass.colour) {
-      if (written) throw new Error(`the pass on "${spec.name}" writes ${written.length} colours and attaches none`);
-      // The frame the reader sees keeps one sample of each pixel, so there is
-      // nothing for a pass drawing into it to average and no texture to
-      // average it into.
-      if (spec.samples) {
-        throw new Error(`the pass on "${spec.name}" draws ${spec.samples} samples a pixel into the frame`);
-      }
-      return undefined;
-    }
-    if (!written) {
-      throw new Error(
-        `the pass on "${spec.name}" attaches ${pass.colour.length} textures and its pipeline writes the frame`
-      );
-    }
-    if (written.length !== pass.colour.length) {
-      throw new Error(
-        `the pass on "${spec.name}" writes ${written.length} colours and attaches ${pass.colour.length} textures`
-      );
-    }
-    return pass.colour.map((attachment, index) => {
-      const target = written[index] as { format: GPUTextureFormat };
-      const resource = resourceOf(frame, attachment.resource);
-      if (!resource || resource.kind !== 'texture') {
-        throw new Error(
-          `the frame for "${frame.id}" writes colour into "${attachment.resource}", which is no texture it declares`
-        );
-      }
-      if (resource.format !== target.format) {
-        throw new Error(
-          `the pass on "${spec.name}" writes colour ${index} as ${target.format} into "${attachment.resource}", which is ${resource.format}`
-        );
-      }
-      if (!resource.use.includes('attachment')) {
-        throw new Error(
-          `the frame for "${frame.id}" writes colour into "${attachment.resource}", which is no attachment it declares`
-        );
-      }
-      if (attachment.clear === undefined && !filled.has(attachment.resource)) {
-        throw new Error(
-          `the pass on "${spec.name}" keeps the colour in "${attachment.resource}", which no earlier pass wrote`
-        );
-      }
-      if ((resource.samples ?? 1) !== (spec.samples ?? 1)) {
-        throw new Error(
-          `the pass on "${spec.name}" draws ${spec.samples ?? 1} samples a pixel into "${attachment.resource}", which keeps ${resource.samples ?? 1}`
-        );
-      }
-      return { name: attachment.resource, clear: attachment.clear, resolve: resolved(spec, attachment, resource) };
-    });
-  };
-
-  // What an earlier pass of this frame has already written, which is what
-  // separates a pass keeping the picture so far from one keeping whatever was
-  // left in a texture by the frame before it.
-  const filled = new Set<string>();
-  const read = (pass: RenderPassSpec, spec: RenderPipelineSpec, drawn: DrawnGeometry | undefined) => {
-    const depth = depthOf(pass, spec, filled);
-    const colour = coloursOf(pass, spec, filled);
-    if (depth) filled.add(depth.name);
-    for (const attachment of colour ?? []) filled.add(attachment.name);
-    return { pass, spec, drawn, depth, colour };
-  };
-
-  return frame.passes.map((pass) => {
-    const spec = frame.pipelines.find((candidate) => candidate.name === pass.pipeline);
-    if (!spec) throw new Error(`the frame names a pipeline "${pass.pipeline}" it does not carry`);
-    // The kind of pass is the pipeline's, and a pass carrying the other
-    // kind's instruction is a description nothing could resolve: a draw
-    // count means nothing to a compute pipeline and a dispatch means nothing
-    // to a render one.
-    if (isRenderPass(pass) !== (spec.kind === 'render')) {
-      throw new Error(`the pass on "${spec.name}" asks for the other kind of work than the pipeline does`);
-    }
-    // A pass reading its counts out of a buffer says nothing about which
-    // vertices are read, so its pipeline is still what decides whether there
-    // is geometry to bind, and either answer is a frame that draws.
-    if (isRenderPass(pass) && drawsIndirectly(pass.draw) && spec.kind === 'render') {
-      const named = spec.geometry;
-      return read(pass, spec, named === undefined ? undefined : geometryOf(named));
-    }
-    // A pass that counts instances alone draws whatever its pipeline reads, so
-    // a pipeline reading no buffer has nothing for it to draw and says so here
-    // rather than drawing nothing on the card.
-    if (isRenderPass(pass) && !drawsCorners(pass.draw)) {
-      if (spec.kind !== 'render' || spec.geometry === undefined) {
-        throw new Error(`the pass on "${spec.name}" draws its pipeline's geometry and that pipeline reads none`);
-      }
-      return read(pass, spec, geometryOf(spec.geometry));
-    }
-    if (!isRenderPass(pass) || spec.kind !== 'render') {
-      return { pass, spec, drawn: undefined, depth: undefined, colour: undefined };
-    }
-    return read(pass, spec, undefined);
-  });
-}
