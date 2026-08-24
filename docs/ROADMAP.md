@@ -598,13 +598,39 @@ irrelevant, since `refusal` touches no device. See [JOURNAL.md](JOURNAL.md).
 
 ### 25. `examples/compute-field`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A compute shader writing a storage texture that a blit shows, which is the compute toy tier.
 
 **Done when.** It draws on WebGPU, and on a WebGL 2 machine it prints the refusal `refusal()` returned rather than a black rectangle.
 
 **Needs.** item 8, item 17.
+
+**How it landed.** [examples/compute-field/main.ts](../examples/compute-field/main.ts) is the
+third example and the first to reach a card by WebGPU. It authors a WGSL compute frame — a
+`texture_storage_2d<rgba8unorm, write>` a `@compute` pass paints one pixel at a time, dispatched
+over the whole frame, named as the frame's `present` so the backend copies it onto the canvas
+(the blit) — from the raw description surface the door already exports: a `FrameDescription`
+literal, `frameOf`, and `uniformBlockOf` to lay the uniform block out from the source. The door
+ships no compute-frame builder (there is `wgslFrame` for a fullscreen fragment and no
+equivalent for a compute field), so the example writes the description by hand, which is the
+honest test of what a consumer authoring a compute toy does today. The frame declares
+`requires: ['compute', 'storage-texture']`, the two capabilities `refusal` reads. Selection and
+refusal are wired **in the example**, per §10 order, because the end-to-end wiring of
+`device.capabilities` is item 51 and not landed: it asks for a WebGPU adapter
+(`requestWebGPUDevice`), builds a `DeviceOffer`, and `selectBackend` routes the WGSL frame to
+WebGPU where an adapter returned. There it draws through `createSurface({ backend: 'webgpu',
+device })`. Where selection comes back empty — a WGSL frame on a machine with no WebGPU adapter,
+which is the WebGL 2 machine — it reads `refusal(frame, { backend: 'webgl2', capabilities })`
+and prints the message over the canvas rather than leaving a black rectangle. It imports only
+the door (`tests/examples-door.test.ts` green), bundles through the door alias, and
+type-checks. **What the gates could not see:** that it *draws on WebGPU* needs a card, which
+this machine has not got (SwiftShader on every headless launch, §17 note 3), and `gate:browser`
+was not run in the unattended session; the WebGL 2 refusal half is exercised only in a browser
+too. What ran here is the pure path: the frame builds, `uniformBlockOf` lays `u_time` at 0 and
+`u_resolution` at 8, `selectBackend` picks `webgpu` given an adapter and refuses without one, and
+`refusal` returns `the graph "compute-field" needs compute and storage-texture; webgl2 has
+neither` — the message the example prints. See [JOURNAL.md](JOURNAL.md).
 
 ---
 
