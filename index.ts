@@ -26,6 +26,14 @@ export { requestWebGPUDevice } from './renderer/webgpu-device.js';
 export { selectBackend } from './renderer/select.js';
 export type { BackendSelection, DeviceOffer } from './renderer/select.js';
 
+// A one-shot reading of what this device is — which backend was selected, whether
+// WebGPU was reported, whether an adapter was returned, whether it then survived a
+// few frames of on-screen compositing, the renderer string, an assertion the
+// architecture is not SwiftShader, features, limits and the tier that ran. Readings
+// are published (in `docs/DEVICES.md`); a support matrix is not.
+export { browserProbeHost, probe, readingOf, readingRow } from './renderer/probe.js';
+export type { BackendFacts, DeviceReading, ProbeFacts, ProbeHost, ProbeTier } from './renderer/probe.js';
+
 // The description a producer hands a backend, and the builders that make one.
 // The type surface carries unions a caller has to discriminate, a pass being a
 // render or a compute one and a draw being counted, instanced or indirect, so the

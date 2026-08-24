@@ -120,7 +120,7 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 9. `probe()`, and readings rather than a matrix
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A public one-shot reading — which backend was selected, whether WebGPU was reported, whether an adapter was returned, **whether the device then survived a few frames of on-screen compositing**, the renderer string, an assertion that the adapter architecture is not `swiftshader`, features, limits, tier run. Plus `docs/DEVICES.md` and `npm run device-report`.
 

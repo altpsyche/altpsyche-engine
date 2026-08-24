@@ -35,7 +35,6 @@ const endsInSourceExt = new RegExp(`\\.(${SOURCE_EXT.join('|')})$`);
  * yet to create, or a website path named here only to say it is absent.
  */
 const ALLOWED_ABSENT: Record<string, string> = {
-  'docs/DEVICES.md': 'device readings file, created by ROADMAP item 9',
   'docs/TESTING.md': "the consuming site's file, cited by ROADMAP item 1's phone row",
   'host/loop.ts': 'the host loop, a folder RoadToPureEngine §7 and ROADMAP item 39 will build',
   'components/ui/WgslRefusal.tsx': 'a website path RoadToPureEngine §3 row 12 names as one that does not exist here',
