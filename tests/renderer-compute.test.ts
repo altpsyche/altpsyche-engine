@@ -66,6 +66,32 @@ describe('the compute preset the build wrote', () => {
     });
   });
 
+  it('recounts its blocks against the new size after a resize between draws', () => {
+    // The dispatch count used to be worked out every frame from the current size.
+    // Item 16 resolves each pass once and re-resolves on a size change rather than
+    // per frame, so a resize between two draws still lands the blocks the new size
+    // implies rather than the old ones — the property that would break if the
+    // re-resolution were skipped when the size moved.
+    const gpu = createFakeGPU();
+    const backend = createWebGPUBackend(gpu.canvas, gpu.device);
+    if (!backend) throw new Error('the fake canvas gave no WebGPU context');
+    const frame = frameOf('core-compute', description, { wgsl: code }, [{ name: 'u_time', type: 'float' }], [
+      { name: 'u_time', offset: 0, size: 4 },
+      { name: 'u_resolution', offset: 8, size: 8 },
+    ]);
+    backend.resize(WIDTH, HEIGHT);
+    const program = backend.program(frame);
+    program.draw();
+    backend.resize(WIDTH / 2, HEIGHT / 2);
+    program.draw();
+    const [x, y] = workgroup();
+    expect(gpu.calls('dispatchWorkgroups').at(-1)).toMatchObject({
+      x: Math.ceil(WIDTH / 2 / x),
+      y: Math.ceil(HEIGHT / 2 / y),
+      z: 1,
+    });
+  });
+
   it('builds a compute pipeline at the layout the description carries, not one the driver inferred', () => {
     const { gpu } = drawn();
     expect(gpu.calls('createComputePipeline')).toHaveLength(1);

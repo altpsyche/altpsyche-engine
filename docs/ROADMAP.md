@@ -228,11 +228,33 @@ Implements decision 9 and unblocks item 1.
 
 ### 16. Strings become handles at every call site
 
-**Status.** open
+**Status.** done
 
 **Done when.** No resource is looked up by string in a map at draw time anywhere in the backend, and misuse is a type error rather than a map miss.
 
 **Needs.** item 10, item 13.
+
+**How it landed.** The WebGPU executor `submit/execute.ts` no longer holds the
+name-keyed maps it looked a resource up in every frame — `pipelines`, `bound`,
+`buffers`, `textures`, `times`, `counting` are gone from `FrameExecution`. It now
+reads a `ResolvedRun[]`, one entry per pass, carrying the pipeline, the bind
+groups, the attachment textures and the query sets **as the typed objects
+themselves**; the frame loop does zero `Map.get`. The backend resolves each name
+once — in `resolveTurns()`, run at build, at a resize, and at a pass change,
+exactly where the render bundles were already rebuilt — and hands the resolved,
+already-turned list to the executor, so the swap is resolved out too. `issueDraw`
+moved into `submit/execute.ts` as a pure function taking the geometry buffers
+resolved rather than looked up, and the WebGL 2 executor already took concrete
+objects, so both backends' draw paths are name-free. Misuse is a type error at the
+executor seam rather than a map miss: passing the wrong object is a compile error,
+where a name miss was `Map.get(...) === undefined`. The compute-dispatch block
+counts, which used to be worked out every frame from the frame size, are worked
+out in `resolveTurns()` and re-resolved on any size change, so a resize between two
+draws still lands the counts the new size implies (a new `renderer-compute` case,
+"recounts its blocks against the new size after a resize between draws"). The twelve trace presets are
+`gate:browser`'s to confirm and were not run in the unattended session; the device
+calls are unchanged by construction (the resolution moves *where* an object is
+found, not *which* object or *what call* is made), see [JOURNAL.md](JOURNAL.md).
 
 ### 17. `Ref` gains its two arms
 

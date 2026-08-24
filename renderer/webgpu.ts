@@ -19,6 +19,7 @@ import type {
   Backend,
   DeviceReport,
   Dispatch,
+  DrawSpec,
   Extent,
   IndexResource,
   PassSpec,
@@ -46,7 +47,8 @@ import { Arena } from '../resource/arena.js';
 import type { Handle } from '../resource/arena.js';
 import { planFramePasses } from '../submit/plan.js';
 import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
-import { runFrame } from '../submit/execute.js';
+import { runFrame, issueDraw } from '../submit/execute.js';
+import type { ResolvedGeometry, ResolvedRun } from '../submit/execute.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
 
 /** What the pipeline cache holds for one structure: the compiled pipeline and the
@@ -363,6 +365,15 @@ export function createWebGPUBackend(
       let turn = 0;
       let bundles: Map<number, GPURenderBundle>[] = [];
 
+      // The passes resolved to the resources they draw with, one list per turn.
+      // This is where item 16 moves the frame loop off names: `submit/`'s executor
+      // reads objects rather than looking a name up in a map every frame, so this
+      // holds the pipelines, bind groups, attachment textures and query sets
+      // already resolved and already turned for each swap. It is rebuilt wherever
+      // the bundles are — after a resize remakes the textures, and after a pass
+      // change re-plans the frame — because both change what a name resolves to.
+      let resolved: { runs: ResolvedRun[]; picture: GPUTexture | undefined }[] = [];
+
       // Which passes the frame runs, held in a variable rather than a const so a
       // runtime pass change can reassign it and the draw below reads the new list
       // without the program being remade. It is filled by the builder that plans
@@ -391,28 +402,22 @@ export function createWebGPUBackend(
       const made_once = buildResources();
       const {
         values,
-        buffer,
         bufferHandle,
         buffers,
         textures,
         times,
         counting,
-        pipelines,
-        groups,
         partner,
         at,
         writable,
         declared,
-        shown,
         made,
         spansFrame,
         build,
         wire,
         recordBundles,
+        resolveTurns,
         geometryOf,
-        blocks,
-        turned,
-        issueDraw,
       } = made_once;
 
       function buildResources() {
@@ -854,38 +859,32 @@ export function createWebGPUBackend(
 
         runs = planFramePasses(frame, geometryOf);
 
-        /** The pipeline, the bind groups and the draw one render pass issues, played
-         * into either the pass itself or a bundle recording it. It is the whole of
-         * what a bundle may hold: the value the mask is tested against and the
-         * counting of a draw's surviving samples are pass state a bundle cannot
-         * carry, so they stay on the pass and out of here. */
-        const issueDraw = (
-          into: GPURenderPassEncoder | GPURenderBundleEncoder,
-          pipeline: GPURenderPipeline,
-          bands: GPUBindGroup[],
-          drawn: DrawnGeometry | undefined,
-          draw: RenderPassSpec['draw']
-        ) => {
-          into.setPipeline(pipeline);
-          bands.forEach((band, at) => into.setBindGroup(at, band));
-          if (drawsIndirectly(draw)) {
-            const counts = buffers.get(draw.indirect) as GPUBuffer;
-            if (drawn) {
-              into.setVertexBuffer(0, buffers.get(drawn.vertices.name) as GPUBuffer);
-              if (drawn.ordered) {
-                into.setIndexBuffer(buffers.get(drawn.ordered.name) as GPUBuffer, drawn.ordered.format);
-                into.drawIndexedIndirect(counts, 0);
-              } else into.drawIndirect(counts, 0);
-            } else into.drawIndirect(counts, 0);
-          } else if (drawsCorners(draw)) into.draw(draw.vertices, draw.instances);
-          else if (drawn) {
-            into.setVertexBuffer(0, buffers.get(drawn.vertices.name) as GPUBuffer);
-            if (drawn.ordered) {
-              into.setIndexBuffer(buffers.get(drawn.ordered.name) as GPUBuffer, drawn.ordered.format);
-              into.drawIndexed(drawn.ordered.count, draw.instances);
-            } else into.draw(drawn.vertices.count, draw.instances);
-          }
-        };
+        /** The geometry an inline draw or a bundle walks, resolved from names to the
+         * buffers the arena holds. Looked up here, at build and resize, rather than
+         * every frame: this is item 16 moving `submit/`'s executor off names. The
+         * count and format travel with the buffers so the loop that draws needs no
+         * resource of the description in hand. */
+        const drawGeometry = (drawn: DrawnGeometry | undefined): ResolvedGeometry | undefined =>
+          drawn === undefined
+            ? undefined
+            : {
+                vertexBuffer: buffers.get(drawn.vertices.name) as GPUBuffer,
+                vertexCount: drawn.vertices.count,
+                index:
+                  drawn.ordered === undefined
+                    ? undefined
+                    : {
+                        buffer: buffers.get(drawn.ordered.name) as GPUBuffer,
+                        format: drawn.ordered.format,
+                        count: drawn.ordered.count,
+                      },
+              };
+
+        /** The buffer an indirect draw reads its counts from, resolved to the object
+         * once rather than looked up by name at each frame. Absent for a draw whose
+         * count this side already holds. */
+        const drawIndirect = (draw: DrawSpec): GPUBuffer | undefined =>
+          drawsIndirectly(draw) ? (buffers.get(draw.indirect) as GPUBuffer) : undefined;
 
         /** A render pass whose draws never change between frames, which is every one
          * that does not count its own samples: an occlusion query wraps the draw on
@@ -915,13 +914,91 @@ export function createWebGPUBackend(
                 ...(run.depth && spec.depth ? { depthStencilFormat: spec.depth.format } : {}),
                 ...(spec.samples ? { sampleCount: spec.samples } : {}),
               });
-              issueDraw(encoder, pipeline, bands, run.drawn, (run.pass as RenderPassSpec).draw);
+              const draw = (run.pass as RenderPassSpec).draw;
+              issueDraw(encoder, pipeline, bands, drawGeometry(run.drawn), drawIndirect(draw), draw);
               made.set(index, encoder.finish({ label: `${spec.name}-bundle-${turnIndex}` }));
             });
             return made;
           });
         };
         recordBundles();
+
+        /** Every pass resolved to the resources it draws with, one list per turn, so
+         * the executor reads objects rather than looking a name up in a map every
+         * frame. It is the whole of item 16 on the WebGPU side: a name becomes a
+         * pipeline, a bind group, a texture or a query set here — once per build, per
+         * resize and per pass change — and turned for each swap, so the frame loop in
+         * [submit/execute.ts](../submit/execute.ts) carries none. Rebuilt exactly
+         * where the bundles are, because both depend on what a name resolves to and a
+         * resize or a pass change moves that. */
+        const resolveTurns = () => {
+          resolved = groups.map((bound, turnIndex) => {
+            const swapped = turnIndex === 1;
+            const recorded = bundles[turnIndex] ?? new Map<number, GPURenderBundle>();
+            const turnRuns = runs.map((run, index): ResolvedRun => {
+              const { pass, spec, drawn, depth, colour } = run;
+              const pipeline = pipelines.get(spec.name);
+              const bands = bound.get(spec.name);
+              if (!pipeline || !bands) throw new Error(`the frame names a pipeline "${spec.name}" it does not carry`);
+              const render = isRenderPass(pass) && spec.kind === 'render';
+              const timesSet = pass.timed === undefined ? undefined : times.get(pass.timed);
+              const timedInto =
+                pass.timed !== undefined && timesSet ? (buffers.get(pass.timed) as GPUBuffer) : undefined;
+              const visible = isRenderPass(pass) ? pass.visible : undefined;
+              const countingSet = visible === undefined ? undefined : counting.get(visible);
+              const visibleInto =
+                visible !== undefined && countingSet ? (buffers.get(visible) as GPUBuffer) : undefined;
+
+              let dispatch: ResolvedRun['dispatch'];
+              if (!isRenderPass(pass) && spec.kind === 'compute') {
+                dispatch = dispatchesIndirectly(pass.dispatch)
+                  ? { indirect: buffers.get(pass.dispatch.indirect) as GPUBuffer }
+                  : { blocks: blocks(pass.dispatch, spec.workgroup) };
+              }
+
+              const draw = isRenderPass(pass) ? pass.draw : undefined;
+              return {
+                kind: render ? 'render' : 'compute',
+                pipeline,
+                bands,
+                bundle: recorded.get(index),
+                timesSet,
+                timedInto,
+                countingSet,
+                visibleInto,
+                dispatch,
+                colour:
+                  colour === undefined
+                    ? undefined
+                    : colour.map((attachment) => ({
+                        texture: textures.get(turned(attachment.name, swapped)) as GPUTexture,
+                        resolveInto:
+                          attachment.resolve === undefined
+                            ? undefined
+                            : (textures.get(turned(attachment.resolve, swapped)) as GPUTexture),
+                        clear: attachment.clear,
+                      })),
+                depth:
+                  depth === undefined
+                    ? undefined
+                    : {
+                        texture: textures.get(depth.name) as GPUTexture,
+                        clear: depth.clear,
+                        stencilClear: depth.stencilClear,
+                        depthHalf: depth.depthHalf,
+                        stencilHalf: depth.stencilHalf,
+                      },
+                geometry: render ? drawGeometry(drawn) : undefined,
+                indirect: draw !== undefined ? drawIndirect(draw) : undefined,
+                draw,
+                stencil: isRenderPass(pass) && spec.kind === 'render' && spec.depth?.stencil !== undefined,
+              };
+            });
+            const picture = shown === undefined ? undefined : (textures.get(turned(shown, swapped)) as GPUTexture);
+            return { runs: turnRuns, picture };
+          });
+        };
+        resolveTurns();
 
         return {
           values,
@@ -943,10 +1020,8 @@ export function createWebGPUBackend(
           build,
           wire,
           recordBundles,
+          resolveTurns,
           geometryOf,
-          blocks,
-          turned,
-          issueDraw,
         };
       }
 
@@ -976,45 +1051,44 @@ export function createWebGPUBackend(
           const texture = surface();
           // A texture that follows the frame is rebuilt at the new size and what
           // was in it is gone, and every group holding a view of one is rebuilt
-          // with it, because a view outlives nothing.
-          if (declared.some(spansFrame) && (made.width !== width || made.height !== height)) {
-            build(spansFrame);
-            wire();
-            // The bundles hold views the resize threw away, so they are recorded
-            // again against the groups the resize rebuilt.
-            recordBundles();
+          // with it, because a view outlives nothing. The bundles hold views the
+          // resize threw away, so they are recorded again, and the resolved runs
+          // point at the textures the resize replaced, so they are resolved again.
+          //
+          // A frame with no such texture still re-resolves on a size change,
+          // because a compute dispatch of `frame` counts its blocks against the
+          // frame size and those counts used to be worked out every frame. It
+          // resolves once per resize rather than once per frame — `made` tracks the
+          // size the runs were resolved at whether or not a texture was rebuilt.
+          if (made.width !== width || made.height !== height) {
+            if (declared.some(spansFrame)) {
+              build(spansFrame);
+              wire();
+              recordBundles();
+            } else {
+              made.width = width;
+              made.height = height;
+            }
+            resolveTurns();
           }
-          const swapped = turn === 1;
-          const bound = groups[turn] as Map<string, GPUBindGroup[]>;
-          const recorded = bundles[turn] as Map<number, GPURenderBundle>;
+          const current = resolved[turn] as { runs: ResolvedRun[]; picture: GPUTexture | undefined };
           if (partner.size > 0) turn = turn === 0 ? 1 : 0;
-          // The executor takes it from here: the plan this program built, the
-          // resident resources the arena resolved, and the pipelines the
-          // compilation produced become one encoder, submitted once. Flushing the
-          // queued uploads, opening the encoder, recording every pass and copying
-          // the finished picture all live in `submit/` now; the one place a frame
-          // meets the canvas stays here as `composite`, so nothing in `submit/`
-          // names a DOM object.
+          // The executor takes it from here: the passes this program already
+          // resolved to their resources become one encoder, submitted once. Flushing
+          // the queued uploads, opening the encoder, recording every pass and copying
+          // the finished picture all live in `submit/` now, and it reads the objects
+          // themselves rather than looking a name up per frame — item 16. The one
+          // place a frame meets the canvas stays here as `composite`, so nothing in
+          // `submit/` names a DOM object.
           runFrame({
             device,
             flush: () => arena.flush(),
-            runs,
-            pipelines,
-            bound,
-            recorded,
-            times,
-            counting,
-            buffers,
-            textures,
+            runs: current.runs,
             target: texture,
             viewOf,
-            turned,
-            swapped,
-            shown,
+            picture: current.picture,
             width,
             height,
-            blocks,
-            issueDraw,
             composite,
           });
         },
@@ -1046,9 +1120,11 @@ export function createWebGPUBackend(
           // refuses a pass naming a pipeline this frame does not carry, so a pass
           // for a pipeline the program was not built with is caught by name here
           // rather than at the draw. The bundles hold the draws of the old list,
-          // so they are recorded again against the new one.
+          // so they are recorded again against the new one, and the resolved runs
+          // describe the old passes, so they are resolved again over the new plan.
           runs = planFramePasses({ ...frame, passes }, geometryOf);
           recordBundles();
+          resolveTurns();
         },
 
         async readBuffer(name: string) {
