@@ -117,7 +117,7 @@ describe('the texture a frame keeps its depth in', () => {
     ]);
   });
 
-  it('is attached to the pass, cleared to the value the description names and kept afterwards', () => {
+  it('is attached to the pass, cleared to the value the description names, and discarded where nothing reads it again', () => {
     const { gpu, backend } = backendOver();
     const frame = tiltedFrame();
     const passes = [
@@ -125,10 +125,13 @@ describe('the texture a frame keeps its depth in', () => {
     ] as ShaderFrame['passes'];
     backend.program(tiltedFrame({ passes })).draw();
 
+    // One pass tests against this depth and nothing reads it afterwards, so the
+    // card is asked to discard it rather than write it back (item 1). A second
+    // pass loading it — as `crossingFrame` has — is what keeps the first store.
     expect(gpu.calls('beginRenderPass')[0]?.depth).toEqual({
       view: 'depth.view',
       loadOp: 'clear',
-      storeOp: 'store',
+      storeOp: 'discard',
       clearValue: 0.25,
     });
   });

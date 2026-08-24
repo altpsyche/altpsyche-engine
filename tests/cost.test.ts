@@ -164,12 +164,15 @@ describe('cost', () => {
     ];
     const c = cost(frame({ pipelines, passes, resources: [target] }), SIZE);
     expect(c.attachmentLoads).toBe(1);
-    expect(c.attachmentStores).toBe(2);
+    // The first pass stores, because the second reads it; the second discards,
+    // because nothing reads scratch after it — no later pass, no present, no
+    // swap (item 1). So the two writes are one store, not two.
+    expect(c.attachmentStores).toBe(1);
     // The scratch texture has no source of its own, so it is transient.
     expect(c.transientBytes).toBe(800 * 600 * 4);
   });
 
-  it('counts a multisample resolve as one more store', () => {
+  it('counts the resolve as the store and discards the samples it came from', () => {
     const resources: ResourceSpec[] = [
       { kind: 'texture', name: 'msaa', size: ['frame', 'frame'], format: 'rgba8unorm', use: ['attachment'], samples: 4 },
       { kind: 'texture', name: 'flat', size: ['frame', 'frame'], format: 'rgba8unorm', use: ['attachment'] },
@@ -189,13 +192,14 @@ describe('cost', () => {
       { pipeline: 'ms', draw: { vertices: 3 }, colour: [{ resource: 'msaa', clear: [0, 0, 0, 1], resolve: 'flat' }] },
     ];
     const c = cost(frame({ pipelines, passes, resources }), SIZE);
-    // The multisampled attachment stores, and its resolve target stores too.
-    expect(c.attachmentStores).toBe(2);
+    // The multisampled source is discarded — nothing reads it once its samples
+    // are averaged — so the resolve's write of `flat` is the only store (item 1).
+    expect(c.attachmentStores).toBe(1);
     // Four samples of the msaa texture, one of the resolve target.
     expect(c.transientBytes).toBe(800 * 600 * 4 * 4 + 800 * 600 * 4);
   });
 
-  it('counts both halves of a depth-stencil attachment', () => {
+  it('stores both halves of a depth-stencil a later pass reads, and discards both where none does', () => {
     const resources: ResourceSpec[] = [
       { kind: 'texture', name: 'zs', size: ['frame', 'frame'], format: 'depth24plus-stencil8', use: ['attachment'] },
     ];
@@ -210,14 +214,19 @@ describe('cost', () => {
       },
     ];
     const passes: PassSpec[] = [
-      // Depth cleared, stencil kept: the depth half fills, the stencil half loads.
-      { pipeline: 'solid', draw: { vertices: 3 }, depth: { resource: 'zs', clear: 1 } },
+      // First pass fills both halves; the second tests against both, so the
+      // first stores each half and the card takes a store op for each.
+      { pipeline: 'solid', draw: { vertices: 3 }, depth: { resource: 'zs', clear: 1, stencilClear: 0 } },
+      // Second pass loads both halves and nothing reads them after it, so each
+      // half discards (item 1).
+      { pipeline: 'solid', draw: { vertices: 3 }, depth: { resource: 'zs' } },
     ];
     const c = cost(frame({ pipelines, passes, resources }), SIZE);
-    // Frame colour store (1) + depth store (1) + stencil store (1) = 3.
-    expect(c.attachmentStores).toBe(3);
-    // Stencil half kept (loads), depth half cleared (does not).
-    expect(c.attachmentLoads).toBe(1);
+    // Two frame-colour stores + the first pass's two depth-stencil halves = 4.
+    // The second pass's halves discard, so they add none.
+    expect(c.attachmentStores).toBe(4);
+    // The second pass loads both halves; the first clears both, so no loads there.
+    expect(c.attachmentLoads).toBe(2);
   });
 
   it('sums transient buffer bytes and excludes uploaded resources', () => {

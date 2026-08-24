@@ -48,6 +48,7 @@ import { planFramePasses } from '../submit/plan.js';
 import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
 import { runFrame, issueDraw } from '../submit/execute.js';
 import type { ResolvedGeometry, ResolvedRun } from '../submit/execute.js';
+import { frameStores, mergeGroups } from './attachments.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
 
 /** What the pipeline cache holds for one structure: the compiled pipeline and the
@@ -913,6 +914,18 @@ export function createWebGPUBackend(
          * where the bundles are, because both depend on what a name resolves to and a
          * resize or a pass change moves that. */
         const resolveTurns = () => {
+          // The graph as its passes now stand — `runs` is re-planned by a pass
+          // change, so the current passes are read off it rather than off the
+          // frame the program was built from. Which attachments store and which
+          // consecutive passes merge are facts about these passes alone, so they
+          // are decided once here, off names, and turned into resolved flags and
+          // grouped runs below (item 1). Both are turn-independent: a swap moves
+          // which texture a name resolves to, not whether the name is read again
+          // or whether two passes share a render pass.
+          const current: ShaderFrame = { ...frame, passes: runs.map((run) => run.pass) };
+          const stores = frameStores(current);
+          const passGroups = mergeGroups(current);
+
           resolved = groups.map((bound, turnIndex) => {
             const swapped = turnIndex === 1;
             const recorded = bundles[turnIndex] ?? new Map<number, GPURenderBundle>();
@@ -922,6 +935,7 @@ export function createWebGPUBackend(
               const bands = bound.get(spec.name);
               if (!pipeline || !bands) throw new Error(`the frame names a pipeline "${spec.name}" it does not carry`);
               const render = isRenderPass(pass) && spec.kind === 'render';
+              const kept = stores[index] as { colour: boolean[]; depth: boolean; stencil: boolean };
               const timesSet = pass.timed === undefined ? undefined : times.get(pass.timed);
               const timedInto =
                 pass.timed !== undefined && timesSet ? (buffers.get(pass.timed) as GPUBuffer) : undefined;
@@ -937,12 +951,15 @@ export function createWebGPUBackend(
                   : { blocks: blocks(pass.dispatch, spec.workgroup) };
               }
 
+              const recordedBundle = recorded.get(index);
               const draw = isRenderPass(pass) ? pass.draw : undefined;
               return {
                 kind: render ? 'render' : 'compute',
                 pipeline,
                 bands,
-                bundle: recorded.get(index),
+                // Wrapped as a list so a merged group can replay several bundles
+                // in one render pass; an inline or compute run carries none.
+                bundle: recordedBundle === undefined ? undefined : [recordedBundle],
                 timesSet,
                 timedInto,
                 countingSet,
@@ -951,13 +968,14 @@ export function createWebGPUBackend(
                 colour:
                   colour === undefined
                     ? undefined
-                    : colour.map((attachment) => ({
+                    : colour.map((attachment, at) => ({
                         texture: textures.get(turned(attachment.name, swapped)) as GPUTexture,
                         resolveInto:
                           attachment.resolve === undefined
                             ? undefined
                             : (textures.get(turned(attachment.resolve, swapped)) as GPUTexture),
                         clear: attachment.clear,
+                        store: kept.colour[at] ?? true,
                       })),
                 depth:
                   depth === undefined
@@ -968,6 +986,8 @@ export function createWebGPUBackend(
                         stencilClear: depth.stencilClear,
                         depthHalf: depth.depthHalf,
                         stencilHalf: depth.stencilHalf,
+                        storeDepth: kept.depth,
+                        storeStencil: kept.stencil,
                       },
                 geometry: render ? drawGeometry(drawn) : undefined,
                 indirect: draw !== undefined ? drawIndirect(draw) : undefined,
@@ -975,8 +995,31 @@ export function createWebGPUBackend(
                 stencil: isRenderPass(pass) && spec.kind === 'render' && spec.depth?.stencil !== undefined,
               };
             });
+            // Fold the consecutive passes a group names into one render pass. The
+            // group's first run opens the pass — its load ops and its attachment
+            // textures — and the last run decides the store ops, since a store is
+            // about what is read after the whole group; the bundles of every
+            // member replay in order. A group of one is left as it stands.
+            const mergedRuns = passGroups.map((group): ResolvedRun => {
+              if (group.length === 1) return turnRuns[group[0] as number] as ResolvedRun;
+              const first = turnRuns[group[0] as number] as ResolvedRun;
+              const lastKept = stores[group[group.length - 1] as number] as {
+                colour: boolean[];
+                depth: boolean;
+                stencil: boolean;
+              };
+              return {
+                ...first,
+                bundle: group.flatMap((index) => turnRuns[index]?.bundle ?? []),
+                colour: first.colour?.map((attachment, at) => ({ ...attachment, store: lastKept.colour[at] ?? true })),
+                depth:
+                  first.depth === undefined
+                    ? undefined
+                    : { ...first.depth, storeDepth: lastKept.depth, storeStencil: lastKept.stencil },
+              };
+            });
             const picture = shown === undefined ? undefined : (textures.get(turned(shown, swapped)) as GPUTexture);
-            return { runs: turnRuns, picture };
+            return { runs: mergedRuns, picture };
           });
         };
         resolveTurns();

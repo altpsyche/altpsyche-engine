@@ -36,6 +36,7 @@ const SHIPPING = [
   'renderer/frame-coverage.ts',
   'renderer/validate.ts',
   'renderer/cost.ts',
+  'renderer/attachments.ts',
   'renderer/index.ts',
   'renderer/probe.ts',
   'renderer/select.ts',

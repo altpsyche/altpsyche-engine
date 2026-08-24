@@ -33,6 +33,12 @@ export interface ResolvedColour {
    * turned, or `undefined` where it keeps one sample a pixel. */
   resolveInto: GPUTexture | undefined;
   clear: [number, number, number, number] | undefined;
+  /** Whether the frame reads this attachment after the pass — a later pass, the
+   * swap, or the present — so the card is asked to store it. An attachment
+   * nothing reads is discarded instead of written back, which is item 1's read
+   * bandwidth saving; the decision is `attachments.ts`'s `frameStores`, taken
+   * where a name is still in hand. */
+  store: boolean;
 }
 
 /** The depth attachment of a pass, resolved to the texture it keeps depth in.
@@ -44,6 +50,12 @@ export interface ResolvedDepth {
   stencilClear: number | undefined;
   depthHalf: boolean;
   stencilHalf: boolean;
+  /** Whether each half is stored rather than discarded, the depth and the mask
+   * decided separately because a frame may test one again and not the other.
+   * Both are the resolved form of `frameStores`, so a depth attachment nothing
+   * tests against again discards where the old path always stored (item 1). */
+  storeDepth: boolean;
+  storeStencil: boolean;
 }
 
 /** The geometry one inline draw walks, resolved to the buffers themselves. A
@@ -62,10 +74,12 @@ export interface ResolvedRun {
   kind: 'render' | 'compute';
   pipeline: GPURenderPipeline | GPUComputePipeline;
   bands: GPUBindGroup[];
-  /** The pre-recorded draws of a bundled render pass, or `undefined` where the
+  /** The pre-recorded draws of this run's render pass, or `undefined` where the
    * pass draws inline (the one pass that counts its own samples, and every compute
-   * pass). */
-  bundle: GPURenderBundle | undefined;
+   * pass). It is a list because two passes over one attachment set are merged
+   * into one render pass replaying both their bundles in order (item 1), so a
+   * lone pass carries one bundle and a merged group carries several. */
+  bundle: GPURenderBundle[] | undefined;
   /** The set a timed pass writes a time into at each end, and the buffer those two
    * times resolve to. Both `undefined` where the pass is untimed or the device
    * cannot time a pass. */
@@ -120,7 +134,8 @@ export interface FrameExecution {
   composite: (encoder: GPUCommandEncoder, target: GPUTexture) => void;
 }
 
-/** The colour a pass writing no textures of its own clears the frame to. */
+/** The colour a pass writing no textures of its own clears the frame to. The
+ * frame target is always presented, so it is always stored. */
 const BLACK: [number, number, number, number] = [0, 0, 0, 1];
 
 /**
@@ -188,7 +203,7 @@ export function runFrame(exec: FrameExecution): void {
       // was turned with the swap where the frame was resolved, so this
       // neither looks a name up nor knows a swap happened.
       colorAttachments: (
-        run.colour ?? [{ texture: target, resolveInto: undefined, clear: BLACK }]
+        run.colour ?? [{ texture: target, resolveInto: undefined, clear: BLACK, store: true }]
       ).map((attachment) => ({
         view: viewOf(attachment.texture),
         // Where the samples of this attachment are averaged at the end of
@@ -206,13 +221,18 @@ export function runFrame(exec: FrameExecution): void {
               loadOp: 'clear' as const,
             }
           : { loadOp: 'load' as const }),
-        storeOp: 'store' as const,
+        // Stored where something reads it afterwards, discarded where nothing
+        // does: the write-back a tiling GPU pays for and item 1 drops where the
+        // graph proves it is never read. A resolve still writes its average,
+        // so a discarded multisample source still hands its picture on.
+        storeOp: attachment.store ? ('store' as const) : ('discard' as const),
       })),
-      // Depth is stored rather than discarded, because what a later pass
-      // over the same attachment tests against is what an earlier one
-      // left there. Its view is cached like the colour one: a texture
-      // remade by a resize is a new object, and the cache hands back a
-      // fresh view for it because it is keyed on the object.
+      // Depth is stored where a later pass over the same attachment tests
+      // against what this one left there, and discarded where nothing reads
+      // it again — a frame drawn once and never tested against keeps no depth
+      // (item 1). Its view is cached like the colour one: a texture remade by
+      // a resize is a new object, and the cache hands back a fresh view for it
+      // because it is keyed on the object.
       ...(run.depth
         ? {
             depthStencilAttachment: {
@@ -225,7 +245,7 @@ export function runFrame(exec: FrameExecution): void {
                     ...(run.depth.clear === undefined
                       ? { depthLoadOp: 'load' as const }
                       : { depthClearValue: run.depth.clear, depthLoadOp: 'clear' as const }),
-                    depthStoreOp: 'store' as const,
+                    depthStoreOp: run.depth.storeDepth ? ('store' as const) : ('discard' as const),
                   }
                 : {}),
               ...(run.depth.stencilHalf
@@ -233,7 +253,7 @@ export function runFrame(exec: FrameExecution): void {
                     ...(run.depth.stencilClear === undefined
                       ? { stencilLoadOp: 'load' as const }
                       : { stencilClearValue: run.depth.stencilClear, stencilLoadOp: 'clear' as const }),
-                    stencilStoreOp: 'store' as const,
+                    stencilStoreOp: run.depth.storeStencil ? ('store' as const) : ('discard' as const),
                   }
                 : {}),
             },
@@ -246,7 +266,10 @@ export function runFrame(exec: FrameExecution): void {
     // whatever the last pass left. It is pass state a bundle cannot hold,
     // so it is set here before the recorded draws replay against it.
     if (run.stencil) run_pass.setStencilReference(STENCIL_REFERENCE);
-    if (run.bundle) run_pass.executeBundles([run.bundle]);
+    // One or several bundles into one render pass: a lone pass replays its own,
+    // and a merged group replays every member's in order, which is the two
+    // passes over one attachment drawn as one (item 1).
+    if (run.bundle) run_pass.executeBundles(run.bundle);
     else {
       // The one pass that counts its own samples draws inline, because the
       // query opens and closes around the draw on the pass rather than in

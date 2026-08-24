@@ -142,12 +142,15 @@ describe('the pipeline and the pass a multisampled attachment is drawn by', () =
 
     const opened = gpu.calls('beginRenderPass');
     expect(opened).toHaveLength(1);
+    // The samples are averaged into `flat`, which is what the reader sees, and
+    // nothing reads the multisampled `edges` itself — so its store is a discard
+    // while the resolve still writes the average (item 1).
     expect(opened[0]?.colour).toEqual([
       {
         view: 'edges.view',
         resolve: 'flat.view',
         loadOp: 'clear',
-        storeOp: 'store',
+        storeOp: 'discard',
         clearValue: { r: 0, g: 0, b: 0, a: 1 },
       },
     ]);

@@ -17,14 +17,17 @@
  * The load/store accounting mirrors what the executor issues, so a person can
  * check it against [submit/execute.ts](../submit/execute.ts): a colour or depth
  * attachment loads its prior contents exactly when it is given no clear value
- * (`loadOp: 'load'` there), and every attachment stores (`storeOp: 'store'`
- * there — nothing discards yet, which is what item 1 will change). A multisample
- * resolve is one extra store, because the resolve target is written at the end
- * of the pass. A depth attachment keeping both halves is two loads-or-clears and
- * two stores, because the card takes a load op and a store op for each half.
+ * (`loadOp: 'load'` there), and stores (`storeOp: 'store'` there) exactly where
+ * something reads it afterwards — a later pass, the swap, or the present — and
+ * discards otherwise, which is the read/write bandwidth item 1 exists to reduce
+ * and `attachments.ts`'s `frameStores` decides for both this and the executor. A
+ * multisample resolve is one extra store, because the resolve target is written
+ * at the end of the pass whatever its source does. A depth attachment keeping
+ * both halves takes a load op and a store op for each half.
  */
 import type { PipelineSpec, ResourceSpec, RenderPipelineSpec, ShaderFrame, TextureResource } from './types.js';
 import { isRenderPass } from './types.js';
+import { frameStores } from './attachments.js';
 
 /** What one frame costs, by its structure alone. Every field is a count except
  * `transientBytes`, and none is ever summed with another: they measure different
@@ -51,9 +54,11 @@ export interface FrameCost {
    * attachment does not — it is filled, not read — so it does not count, which is
    * the read-bandwidth figure a tiling GPU pays and item 1 exists to reduce. */
   attachmentLoads: number;
-  /** How many attachment stores write a pass's result out. Every attachment
-   * stores today; item 1 will let one nothing reads afterwards discard instead,
-   * and this is the number that falls when it does. */
+  /** How many attachment stores write a pass's result out. An attachment nothing
+   * reads afterwards discards rather than stores (item 1), so this counts only
+   * the attachments a later pass, the swap, or the present reads — plus each
+   * multisample resolve, whose averaged target is written whatever its source
+   * does. */
   attachmentStores: number;
   /** The bytes of every transient resource the frame allocates: a texture or
    * buffer it declares with no first contents of its own (no `source`, no
@@ -188,7 +193,15 @@ export function cost(graph: ShaderFrame, size: { width: number; height: number }
   // A key no pipeline can produce, so the first pass always reads as a switch.
   const NONE = '\0none';
 
-  for (const pass of graph.passes) {
+  // Which of each pass's attachments the frame reads again and so must store,
+  // read from the one home the executor reads it from (item 1). A store counts
+  // here exactly where the card is asked for one there: an attachment nothing
+  // reads afterwards is discarded rather than written back, and this is the
+  // number that falls when it is.
+  const stores = frameStores(graph);
+
+  for (const [index, pass] of graph.passes.entries()) {
+    const kept = stores[index]!;
     if (pass.pipeline !== lastPipeline) {
       pipelineSwitches += 1;
       lastPipeline = pass.pipeline;
@@ -209,14 +222,18 @@ export function cost(graph: ShaderFrame, size: { width: number; height: number }
 
     // The colours this pass writes: the textures it names, or the frame's own
     // single target when it names none. The frame target is cleared each frame
-    // and stored to be presented, so it loads nothing and stores once.
+    // and stored to be presented, so it loads nothing and stores once. A named
+    // attachment stores only where a later pass, the swap, or the present reads
+    // it — `kept.colour` — and discards otherwise.
     if (pass.colour) {
-      for (const attachment of pass.colour) {
+      pass.colour.forEach((attachment, at) => {
         if (attachment.clear === undefined) attachmentLoads += 1;
-        attachmentStores += 1;
-        // The resolve target is written at the end of the pass, one more store.
+        if (kept.colour[at]) attachmentStores += 1;
+        // The resolve target is written at the end of the pass whatever the
+        // multisampled source does, so the average is one store even where the
+        // samples it came from are discarded.
         if (attachment.resolve !== undefined) attachmentStores += 1;
-      }
+      });
     } else {
       attachmentStores += 1;
     }
@@ -230,13 +247,17 @@ export function cost(graph: ShaderFrame, size: { width: number; height: number }
       const format = depth?.format;
       const keepsDepth = format ? format.startsWith('depth') : true;
       const keepsStencil = format ? format.includes('stencil') : false;
+      // Each half stores only where a later pass tests against it, the swap
+      // keeps it, or it is shown — `kept.depth`/`kept.stencil`, already false
+      // where the format lacks the half — and discards otherwise, which is the
+      // depth-buffer bandwidth a frame that never reads its depth again saves.
       if (keepsDepth) {
         if (pass.depth.clear === undefined) attachmentLoads += 1;
-        attachmentStores += 1;
+        if (kept.depth) attachmentStores += 1;
       }
       if (keepsStencil) {
         if (pass.depth.stencilClear === undefined) attachmentLoads += 1;
-        attachmentStores += 1;
+        if (kept.stencil) attachmentStores += 1;
       }
     }
   }

@@ -131,7 +131,7 @@ describe('a fragment stage writing more than one colour', () => {
     ]);
   });
 
-  it('keeps what the pass before it drew where an attachment names no value', () => {
+  it('merges a second pass that loads the same attachments into one render pass', () => {
     const { gpu, backend } = backendOver();
     const frame = pairFrame();
     const second = {
@@ -141,10 +141,18 @@ describe('a fragment stage writing more than one colour', () => {
     };
     backend.program(pairFrame({ passes: [...frame.passes, second] })).draw();
 
-    expect(attachments(gpu, 1).map((attachment) => [attachment.loadOp, attachment.clearValue])).toEqual([
-      ['load', undefined],
-      ['load', undefined],
+    // The second pass names no clear, so it builds on the first over the same
+    // two attachments, and its pipeline samples neither — so the two draws are
+    // one render pass rather than two, which is item 1's pass merge and what the
+    // recording double counts as one `beginRenderPass`.
+    expect(gpu.calls('beginRenderPass')).toHaveLength(1);
+    // The one pass opens with the first pass's clears — a merge never re-clears
+    // between the draws it joins — and replays both passes' recorded draws into it.
+    expect(attachments(gpu).map((attachment) => [attachment.loadOp, attachment.clearValue])).toEqual([
+      ['clear', { r: 0, g: 0, b: 0, a: 1 }],
+      ['clear', { r: 1, g: 1, b: 1, a: 1 }],
     ]);
+    expect(gpu.calls('executeBundles')[0]?.bundles).toHaveLength(2);
   });
 
   it('writes the frame itself where the pipeline names no targets, which is every shader on the site', () => {

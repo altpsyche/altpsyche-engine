@@ -445,7 +445,7 @@ item 23's, not asserted here.
 
 ### 1. Discarding an attachment nothing reads, and merging two passes over one
 
-**Status.** open
+**Status.** done
 
 **Where it came from.** It was item 40's step 1.4 in the site's roadmap, lifted out of that item on 2026-08-22 because a blocked step in the middle of an ordered list halts every reachable step behind it, and it did: an unattended run stopped on it with seven reachable steps still in front of it. It became item 42 there and moved here on 2026-08-24, as D118 in that repository's log, because the renderer left that tree and an item filed where nobody can work it reads as available.
 
@@ -475,6 +475,42 @@ item 23's, not asserted here.
 **Not blocked. Waiting on Stage 2's `cost()` metric, which is in this repository's hands.** The phone reading remains a row of the site repository's `docs/TESTING.md`, wanted once, for the premise rather than for the change.
 
 **Needs.** item 21. Stated as a `Needs` line like every other item's, because an unattended run reads dependencies from that line and would otherwise take this item first on the strength of its number.
+
+**How it landed.** Both halves, in one pure home and two consumers. [renderer/attachments.ts](../renderer/attachments.ts)
+holds `frameStores(frame)` — the **discard** half — and `mergeGroups(frame)` — the **merge**
+half — reading the graph alone so `cost()` reads one and the executor reads both without either
+restating the rule (item 19's discipline). `frameStores` marks an attachment stored only where the
+graph *proves* it is read again — a later pass loads it as an attachment of the same kind, a later
+pass binds it, it is the `present`ed picture, or it is one of a `swap` pair — and discarded
+otherwise; it errs to keeping, since storing what nothing reads only wastes bandwidth while
+discarding what something reads is a wrong picture. `cost()`'s `attachmentStores` now counts a
+store exactly where `frameStores` keeps one (plus each resolve, whose average is written whatever
+its source does), so the number falls where an attachment discards. The executor
+([submit/execute.ts](../submit/execute.ts)) carries the decision as `store`/`storeDepth`/
+`storeStencil` on its resolved attachments and emits `storeOp: 'discard'` where they are false;
+`renderer/webgpu.ts`'s `resolveTurns` resolves those flags off `frameStores` and folds the passes
+`mergeGroups` names into one render pass, replaying every group member's bundle into it — so
+`ResolvedRun.bundle` became a list. `mergeGroups` merges two passes over one **named** attachment
+set only where the second loads rather than clears, neither carries a per-pass query or a stencil,
+neither is multisampled, and the second samples nothing an earlier member wrote (nor its swap
+partner) — the one dependency that needs a pass boundary raster ordering cannot supply.
+
+**What the desktop showed and what it could not.** The discard half is asserted on the recorded
+descriptor — a single-pass depth attachment and a multisample source now read `storeOp: 'discard'`
+([tests/renderer-depth.test.ts](../tests/renderer-depth.test.ts),
+[tests/renderer-multisample.test.ts](../tests/renderer-multisample.test.ts)) — and in `cost()`'s
+store count ([tests/cost.test.ts](../tests/cost.test.ts)); the merge half moves `beginRenderPass`
+counts — two passes over one attachment set become one
+([tests/renderer-targets.test.ts](../tests/renderer-targets.test.ts)) — and both pure functions
+are pinned directly ([tests/attachments.test.ts](../tests/attachments.test.ts)). What no gate that
+runs here can see is that the resulting picture is byte-identical on a card: the node suite reads
+calls, `gate:browser` was not run in the unattended session, and the item's own premise — that the
+saved store is bandwidth a *tiling* GPU pays — needs a phone, which is item 62's standing job. The
+pixel-identity of both halves is by construction, not by measurement: a discard is only issued
+where `frameStores` proves nothing reads the attachment, and a merge only where the draws it joins
+see each other exactly as two passes would under the card's raster ordering. One browser corpus
+preset, `core-depth`, now merges its two passes; the trace contract stays green because both the
+double and a real device compute the same descriptor. See [JOURNAL.md](JOURNAL.md).
 
 ### 24. `refusal(graph, device)` and the `Capability` type
 
