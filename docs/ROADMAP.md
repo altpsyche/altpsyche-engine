@@ -289,11 +289,35 @@ which unifies in Stage 2 (item 16's [JOURNAL.md](JOURNAL.md) row); see that file
 
 ### 18. Transient pooling and aliasing
 
-**Status.** open
+**Status.** done
 
 **Done when.** Two graphs asking for the same transient shape reuse one allocation, and a test shows the second frame allocates nothing new.
 
 **Needs.** item 17.
+
+**How it landed.** `submit/transient-pool.ts` holds `TransientPool`, an object
+that outlives the frame — item 17 threw a transient's allocation away when the
+frame ended, and this is where a resource survives from one frame to the next.
+`FrameResources` no longer holds the injected `make`; it borrows from the pool
+(`acquire`) and, at a new `recycle()`, hands its transients back (`release`).
+The pool holds only the resources no frame currently holds, binned by a
+`shapeKey(descriptor)` that keys two descriptors together exactly when they name
+one resource — sorted `use`, defaulted optionals, size/format/samples/mips for a
+texture, bytes/access for a buffer. So a second frame asking for a shape a first
+frame released acquires that resource rather than making one, which
+`tests/graph-refs.test.ts` shows by a counting maker whose call count does not
+move on the second frame. **Aliasing is the safe form:** two shape-identical
+transients live in one frame acquire two distinct resources (the second finds
+the pool empty of that shape), so reuse only ever happens across the time a
+shape is free — frame N's depth target becomes frame N+1's, aliased along the
+time axis. Aliasing two *distinct* transients of one shape *within* a frame,
+where their passes never overlap, needs per-pass lifetimes `FrameResources` does
+not yet carry (the backends do not consume `Ref` until they resolve passes,
+item 17's scope), and is a strict refinement that changes no caller — a
+within-frame release is the same `release` this exposes. The pool is not
+re-exported through the door, so the export surface did not move; the backends do
+not consume it yet (same seam as item 17), so no `gate:browser` preset draws a
+transient through it. See [JOURNAL.md](JOURNAL.md).
 
 ### 19. `validate(graph)`
 

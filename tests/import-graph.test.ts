@@ -49,6 +49,7 @@ const SHIPPING = [
   'submit/execute.ts',
   'submit/gl2.ts',
   'submit/frame-resources.ts',
+  'submit/transient-pool.ts',
   'engine/draw-list.ts',
   'engine/material.ts',
   'engine/maths.ts',

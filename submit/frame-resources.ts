@@ -11,24 +11,28 @@
  * nothing (§7 rule 1), and turning a descriptor into a device resource is a
  * thing only a module holding the arena and the device can do.
  *
- * A transient is allocated once per `FrameResources` and cached against its id,
+ * A transient is acquired once per `FrameResources` and cached against its id,
  * so two passes attaching one depth target resolve to one texture rather than
- * two. That is within-frame identity and nothing more; **pooling and aliasing a
- * transient across frames is item 18**, which is why the second frame's
- * allocation is not yet elided here. `make` is injected rather than reaching a
- * device, so this resolves without a card: a backend hands in a maker that
- * calls `device.createTexture`/`createBuffer`, and a test hands in one that
- * returns a stand-in.
+ * two. That is within-frame identity. Across frames, a transient is acquired
+ * from and released back to a `TransientPool` (item 18) that outlives the frame:
+ * the pool is where an allocation survives from one frame to the next, so a
+ * depth target the toy tier asks for every frame is made once and reused, not
+ * remade sixty times a second. The pool touches no device — its `make` is
+ * injected — so this still resolves without a card: a backend hands the pool a
+ * maker that calls `device.createTexture`/`createBuffer`, and a test hands one
+ * that returns a stand-in.
  */
 import type { Arena, Handle } from '../resource/arena.js';
 import type { Ref, Transient } from '../graph/refs.js';
 import type { TransientId } from '../graph/handles.js';
 import { isResident } from '../graph/refs.js';
+import type { TransientPool } from './transient-pool.js';
 
 export class FrameResources<T> {
-  /** What each transient id has already been allocated to this frame, so a
-   * second ref to one transient resolves to the first allocation rather than a
-   * fresh one. Keyed by the id's integer. */
+  /** What each transient id has already been acquired to this frame, so a
+   * second ref to one transient resolves to the first acquisition rather than a
+   * fresh one, and so `recycle` knows what to hand back. Keyed by the id's
+   * integer. */
   private readonly allocated = new Map<number, T>();
 
   constructor(
@@ -36,10 +40,11 @@ export class FrameResources<T> {
     private readonly arena: Arena<T>,
     /** The descriptors the graph declared its transients by, indexed by id. */
     private readonly transients: readonly Transient[],
-    /** How to turn a transient's descriptor into a device resource. Injected so
-     * this touches no device: the backend passes the real create call and a
-     * test passes a stand-in. */
-    private readonly make: (descriptor: Transient, id: number) => T
+    /** The pool a transient is acquired from and released back to, so an
+     * allocation survives between frames. It, not this, holds the injected
+     * `make`, because reuse is a fact that spans frames and this object is one
+     * frame's. */
+    private readonly pool: TransientPool<T>
   ) {}
 
   /** The resource a ref names: the arena's for a resident ref, the transient's
@@ -55,9 +60,9 @@ export class FrameResources<T> {
     return this.transient(ref.transient);
   }
 
-  /** The resource a transient id names, allocated from its descriptor the first
-   * time it is asked for and cached after. A ref to a transient the graph does
-   * not declare is refused by its id rather than allocated from nothing. */
+  /** The resource a transient id names, acquired from the pool the first time it
+   * is asked for and cached after. A ref to a transient the graph does not
+   * declare is refused by its id rather than acquired from nothing. */
   private transient(id: TransientId): T {
     const index = id as number;
     const held = this.allocated.get(index);
@@ -66,8 +71,22 @@ export class FrameResources<T> {
     if (descriptor === undefined) {
       throw new Error(`the frame was asked for transient ${index}, which it does not declare`);
     }
-    const made = this.make(descriptor, index);
+    const made = this.pool.acquire(descriptor);
     this.allocated.set(index, made);
     return made;
+  }
+
+  /** Hands every transient this frame acquired back to the pool, so the next
+   * frame reuses them rather than making new ones. A backend calls this once the
+   * frame's work is submitted and its transients are no longer read; the frame
+   * holds nothing after, and asking it to resolve again would acquire afresh.
+   * Each resource is released under the descriptor it was acquired from, so the
+   * pool bins it by the right shape. Resident resources are untouched — they are
+   * the arena's, and live across frames without passing through here. */
+  recycle(): void {
+    for (const [index, resource] of this.allocated) {
+      this.pool.release(this.transients[index], resource);
+    }
+    this.allocated.clear();
   }
 }

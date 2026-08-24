@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Arena, type Handle } from '../resource/arena';
 import { FrameResources } from '../submit/frame-resources';
+import { TransientPool, shapeKey } from '../submit/transient-pool';
 import { isResident, isTransient, type BufferRef, type TextureRef, type Transient } from '../graph/refs';
 import type { BufferHandle, TransientId } from '../graph/handles';
 
@@ -49,10 +50,11 @@ describe('a graph declaring a transient depth target and a resident mesh buffer 
     const depthRef: TextureRef = { transient: 0 as TransientId };
 
     const made: Transient[] = [];
-    const resources = new FrameResources<string>(arena, transients, (descriptor) => {
+    const pool = new TransientPool<string>((descriptor) => {
       made.push(descriptor);
       return `${descriptor.kind}-${made.length}`;
     });
+    const resources = new FrameResources<string>(arena, transients, pool);
 
     return { resources, meshRef, depthRef, transients, made };
   }
@@ -97,7 +99,109 @@ describe('a graph declaring a transient depth target and a resident mesh buffer 
     const handle = arena.allocate(() => 'gone');
     arena.free(handle);
     const stale: BufferRef = { resident: handle as unknown as BufferHandle };
-    const resources = new FrameResources<string>(arena, [], () => 'unused');
+    const resources = new FrameResources<string>(arena, [], new TransientPool<string>(() => 'unused'));
     expect(() => resources.resolve(stale)).toThrow(/no live resource/);
+  });
+});
+
+/**
+ * ROADMAP item 18: a transient survives the frame it was made in. Two frames
+ * asking for one shape share one allocation, and the second frame makes nothing
+ * new — the pooling of [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §8. A
+ * fresh count-only maker stands in for the device, the way the arena's own test
+ * uses a string: the fact under test is that `make` runs once, not twice.
+ */
+describe('a transient shape pooled across frames is allocated once, not once per frame', () => {
+  const depth: Transient = { kind: 'texture', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] };
+  const depthRef: TextureRef = { transient: 0 as TransientId };
+
+  /** A pool whose maker labels each resource by the order it was made, so the
+   * name says how many allocations have happened and a reuse is visible as a
+   * repeated name. */
+  function countingPool() {
+    let made = 0;
+    const pool = new TransientPool<string>((descriptor) => `${descriptor.kind}-${++made}`);
+    return { pool, count: () => made };
+  }
+
+  it('reuses one allocation for the same shape a second frame asks for', () => {
+    const arena = new Arena<string>(() => undefined);
+    const { pool, count } = countingPool();
+
+    const frameOne = new FrameResources<string>(arena, [depth], pool);
+    const first = frameOne.resolve(depthRef);
+    expect(count()).toBe(1);
+    // The frame is done with its transients: it hands them back to the pool.
+    frameOne.recycle();
+
+    const frameTwo = new FrameResources<string>(arena, [depth], pool);
+    const second = frameTwo.resolve(depthRef);
+
+    // The second frame allocated nothing new — the count did not move — and it
+    // got the very resource the first frame released.
+    expect(count()).toBe(1);
+    expect(second).toBe(first);
+  });
+
+  it('gives two distinct resources to two shape-identical transients live in one frame', () => {
+    const arena = new Arena<string>(() => undefined);
+    const { pool, count } = countingPool();
+
+    // One graph declaring the same shape twice: two depth targets read in the
+    // same frame cannot be the same physical resource, so aliasing must not
+    // collapse them.
+    const resources = new FrameResources<string>(arena, [depth, depth], pool);
+    const a = resources.resolve({ transient: 0 as TransientId });
+    const b = resources.resolve({ transient: 1 as TransientId });
+
+    expect(a).not.toBe(b);
+    expect(count()).toBe(2);
+  });
+
+  it('does not reuse across shapes: a differing descriptor makes its own', () => {
+    const arena = new Arena<string>(() => undefined);
+    const { pool, count } = countingPool();
+    const halfDepth: Transient = { kind: 'texture', size: { scale: 0.5 }, format: 'depth24plus', use: ['attachment'] };
+
+    const frameOne = new FrameResources<string>(arena, [depth], pool);
+    frameOne.resolve(depthRef);
+    frameOne.recycle();
+
+    // A half-resolution target is a different shape; the freed full-size one is
+    // no use to it, so it makes its own.
+    const frameTwo = new FrameResources<string>(arena, [halfDepth], pool);
+    frameTwo.resolve({ transient: 0 as TransientId });
+    expect(count()).toBe(2);
+  });
+});
+
+/**
+ * `shapeKey` decides what "the same shape" means, and the pooling above rests on
+ * it: two descriptors that name one resource must key together, two that name
+ * different resources must not.
+ */
+describe('shapeKey keys two descriptors together exactly when they name one resource', () => {
+  it('keys use-lists that differ only in order together', () => {
+    const a: Transient = { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['sample', 'attachment'] };
+    const b: Transient = { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment', 'sample'] };
+    expect(shapeKey(a)).toBe(shapeKey(b));
+  });
+
+  it('keys an omitted optional and its default together', () => {
+    const omitted: Transient = { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] };
+    const explicit: Transient = { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'], samples: 1 };
+    expect(shapeKey(omitted)).toBe(shapeKey(explicit));
+  });
+
+  it('keys differing size, format, samples and buffer access apart', () => {
+    const base: Transient = { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] };
+    const half: Transient = { ...base, size: { scale: 0.5 } };
+    const other: Transient = { ...base, format: 'depth24plus' };
+    const multisampled: Transient = { ...base, samples: 4 };
+    const read: Transient = { kind: 'buffer', bytes: 256, access: 'read' };
+    const write: Transient = { kind: 'buffer', bytes: 256, access: 'read-write' };
+
+    const keys = [base, half, other, multisampled, read, write].map(shapeKey);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
