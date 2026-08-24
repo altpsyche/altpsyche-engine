@@ -266,9 +266,14 @@ Run the browser batch gate over every commit this run landed, which is the range
 to HEAD, and report what it found. Do not start new work and do not fix anything beyond a
 baseline that legitimately moved.
 
-- Run `npm run gate:browser`, which is browser-pin, corpus, trace-contract and surface, in that
-  order. The pin comes first because every gate under it compares against a reading taken
-  earlier, and a browser that moved without a commit makes those comparisons mean something else.
+- Run it as `npm run gate:browser 2>&1 | tee .loop/gate-raw.log`, which is browser-pin, corpus,
+  trace-contract and surface, in that order. The pin comes first because every gate under it
+  compares against a reading taken earlier, and a browser that moved without a commit makes those
+  comparisons mean something else.
+- THE `tee` IS NOT OPTIONAL. Your summary of a gate is not evidence: a reviewer who cannot read
+  the gate's own output has only your word for the numbers in it, and the rule here is that
+  nobody quotes a number a gate did not produce. The raw file is what the run keeps. If you run
+  a gate individually as well, append rather than overwrite: `2>&1 | tee -a .loop/gate-raw.log`.
 - Run them ONE AT A TIME if you run them individually. Several browser gates at once starve each
   other under the software renderer and time out, which reads as a red gate and is not one.
 - Do NOT run `npm run gate:card`. It needs a desktop session and a real graphics card, every
@@ -374,9 +379,25 @@ GATE_EXIT=0
 if [ -n "$RUN_GATE" ]; then
     echo
     printf '===== batch gate over %s..HEAD =====\n' "${START_HEAD:0:8}" | tee -a "$LOG"
+    rm -f "$STATE/gate-raw.log"
     timeout --foreground 60m \
         claude -p "$GATE_PROMPT" --permission-mode auto "${REFUSE[@]}" >>"$LOG" 2>&1
     GATE_EXIT=$?
+
+    # The gate's own output, not the session's account of it. Without this the log carries only
+    # prose about the numbers and a reviewer has to take the session's word for them, which is
+    # the one thing this project does not do with a measurement.
+    if [ -s "$STATE/gate-raw.log" ]; then
+        printf '\n----- what the gates themselves printed -----\n' >>"$LOG"
+        cat "$STATE/gate-raw.log" >>"$LOG"
+    else
+        printf '\n----- NO RAW GATE OUTPUT WAS KEPT -----\n' >>"$LOG"
+        echo "The gate session left no .loop/gate-raw.log, so every number it reported is" >>"$LOG"
+        echo "unverifiable from this log. Treat the batch as unread rather than as green." >>"$LOG"
+        echo
+        echo "WARNING  the gate session kept no raw output, so its report cannot be checked."
+        echo "         Treat this batch as unread. Re-run: bash scripts/run-loop.sh gate"
+    fi
 else
     echo
     echo "batch gate skipped, so nothing here has been through a browser. Run it with:"
