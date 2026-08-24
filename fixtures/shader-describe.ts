@@ -701,7 +701,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   return {
     target: 'wgsl',
     resources,
-    documents: [{ name: WGSL_DOCUMENT, address: 'wgsl' }],
+    documents: [{ name: WGSL_DOCUMENT }],
     pipelines,
     passes,
     ...(declared.present !== undefined ? { present: declared.present } : {}),

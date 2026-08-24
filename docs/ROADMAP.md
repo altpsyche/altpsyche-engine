@@ -56,7 +56,7 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 3. `DocumentAddress` becomes a string
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The three-value union goes; fetched text is keyed by the name a description gives a document rather than by its address.
 

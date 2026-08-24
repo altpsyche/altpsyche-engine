@@ -396,17 +396,14 @@ export interface ComputePassSpec {
  * nothing could resolve. */
 export type PassSpec = RenderPassSpec | ComputePassSpec;
 
-/** Which of a rung's file names holds one document of a description. A rung
- * names its files by the role the language gives them, so a document says which
- * of those names is its address rather than carrying the address itself: the
- * addresses differ per rung and the description does not. */
-export type DocumentAddress = 'fragment' | 'vertex' | 'wgsl';
-
 /** One document of a frame before it has been fetched, which is the name a
- * pipeline calls it by and where the rung says it lives. */
+ * pipeline calls it by and the name a loader fetches its text under. There is no
+ * second key: a document is fetched, carried and referenced by the one name,
+ * because a role fixed to a three-value union — fragment, vertex, wgsl — cannot
+ * describe a description that names two WGSL documents, which have one role
+ * between them and two distinct texts. */
 export interface DocumentSpec {
   name: string;
-  address: DocumentAddress;
 }
 
 /**
