@@ -108,7 +108,7 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 8. `selectBackend`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** Backend choice moves inside the library: which backend draws a given frame is answered from what the frame is authored in and what it declares it needs, across whatever the device offers.
 

@@ -20,6 +20,12 @@ export * from './renderer/index.js';
 export * from './renderer/surface.js';
 export { requestWebGPUDevice } from './renderer/webgpu-device.js';
 
+// Which backend draws a frame, chosen inside the library from what the frame is
+// authored in and what the device offers, rather than named by the caller. Pure
+// and device-free: the offering is gathered elsewhere and handed in as data.
+export { selectBackend } from './renderer/select.js';
+export type { BackendSelection, DeviceOffer } from './renderer/select.js';
+
 // The description a producer hands a backend, and the builders that make one.
 // The type surface carries unions a caller has to discriminate, a pass being a
 // render or a compute one and a draw being counted, instanced or indirect, so the
