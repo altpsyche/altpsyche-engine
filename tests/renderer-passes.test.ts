@@ -34,8 +34,8 @@ fn over(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
 }`;
 
 const both: PassSpec[] = [
-  { pipeline: 'under', draw: { vertices: 3 } },
-  { pipeline: 'over', draw: { vertices: 3 } },
+  { pipeline: 'under', draws: [{ vertices: 3 }] },
+  { pipeline: 'over', draws: [{ vertices: 3 }] },
 ];
 
 const holding = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
@@ -92,7 +92,7 @@ describe('a description whose pass list changes between frames', () => {
     const program = backend.program(holding());
     const built = gpu.calls('createShaderModule').length;
 
-    program.setPasses([{ pipeline: 'over', draw: { vertices: 3 } }]);
+    program.setPasses([{ pipeline: 'over', draws: [{ vertices: 3 }] }]);
     program.draw();
 
     expect(gpu.calls('beginRenderPass')).toHaveLength(1);
@@ -106,7 +106,7 @@ describe('a description whose pass list changes between frames', () => {
   it('turns a pass on for a pipeline the program built but no pass had used', () => {
     const { gpu, backend } = backendOver();
     // Both pipelines are built, only one is drawn to start with.
-    const program = backend.program(holding({ passes: [{ pipeline: 'under', draw: { vertices: 3 } }] }));
+    const program = backend.program(holding({ passes: [{ pipeline: 'under', draws: [{ vertices: 3 }] }] }));
     program.draw();
     expect(gpu.calls('beginRenderPass')).toHaveLength(1);
 
@@ -125,7 +125,7 @@ describe('a description whose pass list changes between frames', () => {
     const program = backend.program(holding());
 
     program.draw();
-    program.setPasses([{ pipeline: 'over', draw: { vertices: 3 } }]);
+    program.setPasses([{ pipeline: 'over', draws: [{ vertices: 3 }] }]);
     program.draw();
     program.setPasses(both);
     program.draw();
@@ -144,7 +144,7 @@ describe('a description whose pass list changes between frames', () => {
     const { backend } = backendOver();
     const program = backend.program(holding());
 
-    expect(() => program.setPasses([{ pipeline: 'ghost', draw: { vertices: 3 } }])).toThrow(
+    expect(() => program.setPasses([{ pipeline: 'ghost', draws: [{ vertices: 3 }] }])).toThrow(
       'the frame names a pipeline "ghost" it does not carry'
     );
   });

@@ -81,8 +81,8 @@ const masked = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
     },
   ],
   passes: [
-    { pipeline: 'marking', draw: { vertices: 3 }, depth: { resource: 'mask', stencilClear: 0 } },
-    { pipeline: 'filling', draw: { vertices: 3 }, depth: { resource: 'mask' } },
+    { pipeline: 'marking', draws: [{ vertices: 3 }], depth: { resource: 'mask', stencilClear: 0 } },
+    { pipeline: 'filling', draws: [{ vertices: 3 }], depth: { resource: 'mask' } },
   ],
   ...over,
 });
@@ -149,7 +149,7 @@ describe('what each mode becomes on the card', () => {
     const { gpu, backend } = backendOver();
     const frame = masked();
     const pipelines = [{ ...(frame.pipelines[0] as RenderPipelineSpec), depth: undefined }];
-    backend.program(masked({ pipelines, passes: [{ pipeline: 'marking', draw: { vertices: 3 } }] })).draw();
+    backend.program(masked({ pipelines, passes: [{ pipeline: 'marking', draws: [{ vertices: 3 }] }] })).draw();
 
     expect(gpu.calls('setStencilReference')).toEqual([]);
   });

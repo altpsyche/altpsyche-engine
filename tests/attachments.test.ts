@@ -43,7 +43,7 @@ describe('frameStores decides what a frame stores rather than discards', () => {
   it('discards a depth attachment no later pass tests against', () => {
     const f = frame({
       pipelines: [RENDER('draw', { depth: { format: 'depth24plus', compare: 'less', write: true } })],
-      passes: [{ pipeline: 'draw', draw: { vertices: 3 }, depth: { resource: 'depth', clear: 1 } }],
+      passes: [{ pipeline: 'draw', draws: [{ vertices: 3 }], depth: { resource: 'depth', clear: 1 } }],
     });
     const stores = frameStores(f);
     // The frame target is shown, so it stores; the depth is never read again, so
@@ -58,8 +58,8 @@ describe('frameStores decides what a frame stores rather than discards', () => {
         RENDER('second', { depth: { format: 'depth24plus', compare: 'less', write: false } }),
       ],
       passes: [
-        { pipeline: 'first', draw: { vertices: 3 }, depth: { resource: 'depth', clear: 1 } },
-        { pipeline: 'second', draw: { vertices: 3 }, depth: { resource: 'depth' } },
+        { pipeline: 'first', draws: [{ vertices: 3 }], depth: { resource: 'depth', clear: 1 } },
+        { pipeline: 'second', draws: [{ vertices: 3 }], depth: { resource: 'depth' } },
       ],
     });
     const stores = frameStores(f);
@@ -73,8 +73,8 @@ describe('frameStores decides what a frame stores rather than discards', () => {
     const f = frame({
       pipelines: [RENDER('a', { targets: [{ format: 'rgba8unorm' }] }), RENDER('b', { targets: [{ format: 'rgba8unorm' }] })],
       passes: [
-        { pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'scratch', clear: [0, 0, 0, 1] }] },
-        { pipeline: 'b', draw: { vertices: 3 }, colour: [{ resource: 'scratch' }] },
+        { pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'scratch', clear: [0, 0, 0, 1] }] },
+        { pipeline: 'b', draws: [{ vertices: 3 }], colour: [{ resource: 'scratch' }] },
       ],
     });
     const stores = frameStores(f);
@@ -86,7 +86,7 @@ describe('frameStores decides what a frame stores rather than discards', () => {
     const f = frame({
       present: 'shown',
       pipelines: [RENDER('a', { targets: [{ format: 'rgba8unorm' }] })],
-      passes: [{ pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'shown', clear: [0, 0, 0, 1] }] }],
+      passes: [{ pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'shown', clear: [0, 0, 0, 1] }] }],
     });
     expect(frameStores(f)[0]!.colour).toEqual([true]);
   });
@@ -95,7 +95,7 @@ describe('frameStores decides what a frame stores rather than discards', () => {
     const f = frame({
       swap: [['ping', 'pong']],
       pipelines: [RENDER('a', { targets: [{ format: 'rgba8unorm' }] })],
-      passes: [{ pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'ping', clear: [0, 0, 0, 1] }] }],
+      passes: [{ pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'ping', clear: [0, 0, 0, 1] }] }],
     });
     expect(frameStores(f)[0]!.colour).toEqual([true]);
   });
@@ -108,8 +108,8 @@ describe('frameStores decides what a frame stores rather than discards', () => {
         RENDER('read', { bindings: [{ group: 0, binding: 0, resource: 'flat', visibility: ['fragment'], reads: 'sample' }] }),
       ],
       passes: [
-        { pipeline: 'ms', draw: { vertices: 3 }, colour: [{ resource: 'edges', clear: [0, 0, 0, 1], resolve: 'flat' }] },
-        { pipeline: 'read', draw: { vertices: 3 } },
+        { pipeline: 'ms', draws: [{ vertices: 3 }], colour: [{ resource: 'edges', clear: [0, 0, 0, 1], resolve: 'flat' }] },
+        { pipeline: 'read', draws: [{ vertices: 3 }] },
       ],
     });
     const stores = frameStores(f);
@@ -126,8 +126,8 @@ describe('mergeGroups decides which consecutive passes share a render pass', () 
     const f = frame({
       pipelines: [RENDER('a', { targets }), RENDER('b', { targets })],
       passes: [
-        { pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
-        { pipeline: 'b', draw: { vertices: 3 }, colour: [{ resource: 'buf' }] },
+        { pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
+        { pipeline: 'b', draws: [{ vertices: 3 }], colour: [{ resource: 'buf' }] },
       ],
     });
     expect(mergeGroups(f)).toEqual([[0, 1]]);
@@ -137,8 +137,8 @@ describe('mergeGroups decides which consecutive passes share a render pass', () 
     const f = frame({
       pipelines: [RENDER('a', { targets }), RENDER('b', { targets })],
       passes: [
-        { pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
-        { pipeline: 'b', draw: { vertices: 3 }, colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
+        { pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
+        { pipeline: 'b', draws: [{ vertices: 3 }], colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
       ],
     });
     expect(mergeGroups(f)).toEqual([[0], [1]]);
@@ -148,8 +148,8 @@ describe('mergeGroups decides which consecutive passes share a render pass', () 
     const f = frame({
       pipelines: [RENDER('a', { targets }), RENDER('b', { targets })],
       passes: [
-        { pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
-        { pipeline: 'b', draw: { vertices: 3 }, colour: [{ resource: 'other' }] },
+        { pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
+        { pipeline: 'b', draws: [{ vertices: 3 }], colour: [{ resource: 'other' }] },
       ],
     });
     expect(mergeGroups(f)).toEqual([[0], [1]]);
@@ -169,8 +169,8 @@ describe('mergeGroups decides which consecutive passes share a render pass', () 
         }),
       ],
       passes: [
-        { pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'ping', clear: [0, 0, 0, 1] }] },
-        { pipeline: 'b', draw: { vertices: 3 }, colour: [{ resource: 'ping' }] },
+        { pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'ping', clear: [0, 0, 0, 1] }] },
+        { pipeline: 'b', draws: [{ vertices: 3 }], colour: [{ resource: 'ping' }] },
       ],
     });
     expect(mergeGroups(f)).toEqual([[0], [1]]);
@@ -180,8 +180,8 @@ describe('mergeGroups decides which consecutive passes share a render pass', () 
     const f = frame({
       pipelines: [RENDER('a', { targets }), RENDER('b')],
       passes: [
-        { pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
-        { pipeline: 'b', draw: { vertices: 3 } },
+        { pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
+        { pipeline: 'b', draws: [{ vertices: 3 }] },
       ],
     });
     expect(mergeGroups(f)).toEqual([[0], [1]]);
@@ -194,8 +194,8 @@ describe('mergeGroups decides which consecutive passes share a render pass', () 
         RENDER('b', { targets, depth: { format: 'stencil8', stencil: 'inside' } }),
       ],
       passes: [
-        { pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }], depth: { resource: 'mask', stencilClear: 0 } },
-        { pipeline: 'b', draw: { vertices: 3 }, colour: [{ resource: 'buf' }], depth: { resource: 'mask' } },
+        { pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }], depth: { resource: 'mask', stencilClear: 0 } },
+        { pipeline: 'b', draws: [{ vertices: 3 }], colour: [{ resource: 'buf' }], depth: { resource: 'mask' } },
       ],
     });
     expect(mergeGroups(stencil)).toEqual([[0], [1]]);
@@ -203,8 +203,8 @@ describe('mergeGroups decides which consecutive passes share a render pass', () 
     const timed = frame({
       pipelines: [RENDER('a', { targets }), RENDER('b', { targets })],
       passes: [
-        { pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
-        { pipeline: 'b', draw: { vertices: 3 }, colour: [{ resource: 'buf' }], timed: 'took' },
+        { pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
+        { pipeline: 'b', draws: [{ vertices: 3 }], colour: [{ resource: 'buf' }], timed: 'took' },
       ],
     });
     expect(mergeGroups(timed)).toEqual([[0], [1]]);
@@ -218,9 +218,9 @@ describe('mergeGroups decides which consecutive passes share a render pass', () 
         RENDER('b', { targets }),
       ],
       passes: [
-        { pipeline: 'a', draw: { vertices: 3 }, colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
+        { pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
         { pipeline: 'c', dispatch: 'frame' },
-        { pipeline: 'b', draw: { vertices: 3 }, colour: [{ resource: 'buf' }] },
+        { pipeline: 'b', draws: [{ vertices: 3 }], colour: [{ resource: 'buf' }] },
       ],
     });
     expect(mergeGroups(f)).toEqual([[0], [1], [2]]);

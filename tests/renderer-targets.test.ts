@@ -79,7 +79,7 @@ const pairFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
   passes: [
     {
       pipeline: 'both',
-      draw: { vertices: 3 },
+      draws: [{ vertices: 3 }],
       colour: [
         { resource: 'picture', clear: [0, 0, 0, 1] },
         { resource: 'distance', clear: [1, 1, 1, 1] },
@@ -136,7 +136,7 @@ describe('a fragment stage writing more than one colour', () => {
     const frame = pairFrame();
     const second = {
       pipeline: 'both',
-      draw: { vertices: 3 },
+      draws: [{ vertices: 3 }],
       colour: [{ resource: 'picture' }, { resource: 'distance' }],
     };
     backend.program(pairFrame({ passes: [...frame.passes, second] })).draw();
@@ -161,7 +161,7 @@ describe('a fragment stage writing more than one colour', () => {
     const single = { ...(frame.pipelines[0] as RenderPipelineSpec), targets: undefined };
     backend
       .program(
-        pairFrame({ pipelines: [single], passes: [{ pipeline: 'both', draw: { vertices: 3 } }], present: undefined })
+        pairFrame({ pipelines: [single], passes: [{ pipeline: 'both', draws: [{ vertices: 3 }] }], present: undefined })
       )
       .draw();
 
@@ -238,7 +238,7 @@ describe('what a description disagreeing with itself about its colours is refuse
 
   it('refuses a pipeline writing colours the pass attaches nothing for', () => {
     refuses(
-      { passes: [{ pipeline: 'both', draw: { vertices: 3 } }] },
+      { passes: [{ pipeline: 'both', draws: [{ vertices: 3 }] }] },
       'the pass on "both" writes 2 colours and attaches none'
     );
   });
@@ -253,7 +253,7 @@ describe('what a description disagreeing with itself about its colours is refuse
 
   it('refuses a count that does not match, rather than writing as many as it has', () => {
     refuses(
-      { passes: [{ pipeline: 'both', draw: { vertices: 3 }, colour: [{ resource: 'picture', clear: [0, 0, 0, 1] }] }] },
+      { passes: [{ pipeline: 'both', draws: [{ vertices: 3 }], colour: [{ resource: 'picture', clear: [0, 0, 0, 1] }] }] },
       'the pass on "both" writes 2 colours and attaches 1 textures'
     );
   });
@@ -263,7 +263,7 @@ describe('what a description disagreeing with itself about its colours is refuse
     const passes = [
       {
         pipeline: 'both',
-        draw: { vertices: 3 },
+        draws: [{ vertices: 3 }],
         colour: [
           { resource: 'picture', clear: [0, 0, 0, 1] as [number, number, number, number] },
           { resource: 'uniforms' },
@@ -296,7 +296,7 @@ describe('what a description disagreeing with itself about its colours is refuse
     refuses(
       {
         passes: [
-          { pipeline: 'both', draw: { vertices: 3 }, colour: [{ resource: 'picture' }, { resource: 'distance' }] },
+          { pipeline: 'both', draws: [{ vertices: 3 }], colour: [{ resource: 'picture' }, { resource: 'distance' }] },
         ],
       },
       'the pass on "both" keeps the colour in "picture", which no earlier pass wrote'

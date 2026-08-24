@@ -70,14 +70,14 @@ const frameOf = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
       ],
     },
   ],
-  passes: [{ pipeline: 'paint', draw: { vertices: 3 } }],
+  passes: [{ pipeline: 'paint', draws: [{ vertices: 3 }] }],
   ...over,
 });
 
 /** The drawn pass on its own, which is what most of these vary. */
 const drawing = (over: Partial<RenderPassSpec> = {}): RenderPassSpec => ({
   pipeline: 'paint',
-  draw: { vertices: 3 },
+  draws: [{ vertices: 3 }],
   ...over,
 });
 

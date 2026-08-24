@@ -71,7 +71,7 @@ const gridFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
       bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: 'warp', draw: { instances: 3 } }],
+  passes: [{ pipeline: 'warp', draws: [{ instances: 3 }] }],
   ...over,
 });
 
@@ -161,7 +161,7 @@ describe('the pipeline that reads one vertex at a time', () => {
           bindings: [],
         },
       ],
-      passes: [{ pipeline: 'warp', draw: { vertices: 3 } }],
+      passes: [{ pipeline: 'warp', draws: [{ vertices: 3 }] }],
     });
 
     const descriptor = gpu.calls('createRenderPipeline')[0]?.descriptor as GPURenderPipelineDescriptor;
@@ -177,6 +177,18 @@ describe('the draw itself', () => {
     expect(gpu.calls('setVertexBuffer')[0]).toMatchObject({ slot: 0, buffer: 'grid' });
     expect(gpu.calls('setIndexBuffer')[0]).toMatchObject({ buffer: 'gridIndices', format: 'uint16' });
     expect(gpu.calls('drawIndexed')[0]).toMatchObject({ count: 24, instances: 3 });
+    expect(gpu.calls('draw')).toHaveLength(0);
+  });
+
+  it('issues every draw the pass carries, in order, against the one pipeline (item 26)', () => {
+    const { gpu, backend } = backendOver();
+    backend.program(gridFrame({ passes: [{ pipeline: 'warp', draws: [{ instances: 3 }, { instances: 2 }] }] })).draw();
+
+    // One pass, three draws: the two the list names, each its own drawIndexed
+    // with its own instance count, against the pipeline bound once for the pass.
+    // The one-draw-per-pass shape counted one call here and now counts the list.
+    const drawn = gpu.calls('drawIndexed').map((call) => call.instances);
+    expect(drawn).toEqual([3, 2]);
     expect(gpu.calls('draw')).toHaveLength(0);
   });
 
@@ -211,7 +223,7 @@ describe('the draw itself', () => {
             bindings: [],
           },
         ],
-        passes: [{ pipeline: 'warp', draw: { vertices: 3 } }],
+        passes: [{ pipeline: 'warp', draws: [{ vertices: 3 }] }],
       })
       .draw();
 

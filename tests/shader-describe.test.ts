@@ -62,7 +62,7 @@ describe('the pipeline kind a description takes off the source', () => {
     expect(pipeline.kind).toBe('render');
     expect(pipeline.vertex).toBe('fullscreen');
     expect(pipeline.fragment).toEqual({ module: 'wgsl', entry: 'fragMain' });
-    expect(frame.passes).toEqual([{ pipeline: 'fragMain', draw: { vertices: 3 } }]);
+    expect(frame.passes).toEqual([{ pipeline: 'fragMain', draws: [{ vertices: 3 }] }]);
     expect(frame.documents).toEqual([{ name: 'wgsl' }]);
   });
 
@@ -269,7 +269,7 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     expect(frame.documents).toEqual([{ name: 'wgsl' }]);
     expect(frame.passes).toEqual([
       { pipeline: 'step', dispatch: [32, 32, 1] },
-      { pipeline: 'shade', draw: { vertices: 3 } },
+      { pipeline: 'shade', draws: [{ vertices: 3 }] },
     ]);
   });
 
@@ -383,8 +383,8 @@ describe('the geometry a description says the build writes', () => {
       passes: [{ pipeline: 'shade', vertex: 'warp', geometry: 'grid' }],
     }).passes[0];
 
-    expect(drawn).toEqual({ pipeline: 'shade', draw: { instances: 3 } });
-    expect(once).toEqual({ pipeline: 'shade', draw: { instances: 1 } });
+    expect(drawn).toEqual({ pipeline: 'shade', draws: [{ instances: 3 }] });
+    expect(once).toEqual({ pipeline: 'shade', draws: [{ instances: 1 }] });
   });
 
   it('refuses a pass naming one half of a drawn pass without the other', () => {
@@ -670,7 +670,7 @@ describe('an attachment a later pass samples', () => {
 
     expect(first?.colour).toEqual([{ resource: 'scene', clear: [0, 0, 0, 1] }]);
     expect(second?.colour).toBeUndefined();
-    expect(second?.draw).toEqual({ vertices: 3 });
+    expect(second?.draws).toEqual([{ vertices: 3 }]);
   });
 
   it('gets the writing flag alone where no source samples it', () => {
@@ -896,7 +896,7 @@ describe('a pass whose counts come out of a buffer', () => {
   it('carries the buffer on the draw rather than a count of anything', () => {
     const [, , drawing] = planned().passes;
 
-    expect(drawing).toEqual({ pipeline: 'shade', draw: { indirect: 'counts' } });
+    expect(drawing).toEqual({ pipeline: 'shade', draws: [{ indirect: 'counts' }] });
   });
 
   it('carries the dispatch the entry wrote, which the renderer reads the same way', () => {
@@ -1059,7 +1059,7 @@ describe('a pass the card is asked to report on', () => {
         passes: [
           { pipeline: 'plan', dispatch: [1, 1, 1], visible: 'counts' },
           { pipeline: 'paint', dispatch: [1, 1, 1] },
-          { pipeline: 'shade', draw: undefined } as never,
+          { pipeline: 'shade', draws: undefined } as never,
         ],
       })
     ).toThrow('the frame for "core-indirect" counts the samples of "plan", which is a compute stage');

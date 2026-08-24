@@ -31,7 +31,7 @@ const description: FrameDescription = {
       bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: 'frame', draw: { vertices: 3 } }],
+  passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }],
 };
 
 function assembled(): ShaderFrame {
@@ -92,7 +92,7 @@ const collision: FrameDescription = {
       bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: 'frame', draw: { vertices: 3 } }],
+  passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }],
 };
 
 describe('a description whose documents do not carry distinct names', () => {

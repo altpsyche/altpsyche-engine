@@ -642,11 +642,36 @@ Implements decision 7's target argument. **Gated by an example.**
 
 ### 26. `RenderPass.draws` becomes a list
 
-**Status.** open
+**Status.** done
 
 **Done when.** One pass carries many draws, and the one-draw-per-pass shape is gone from the types rather than merely unused.
 
 **Needs.** item 17.
+
+**How it landed.** `RenderPassSpec.draw: DrawSpec` became `draws: DrawSpec[]` in
+[renderer/types.ts](../renderer/types.ts), and `isRenderPass` now keys on `'draws' in pass` — the
+one-draw-per-pass shape is gone from the types rather than merely unused. The draws share the
+pass's one `pipeline` (item 33 is what lifts that restriction; §8's per-draw pipeline is item 38's
+rename horizon), so the executor sets the pipeline and bind groups once and issues each draw
+against them: `issueDraw` became `issueDraws` in [submit/execute.ts](../submit/execute.ts),
+looping the list, and `ResolvedRun` carries `draws` plus an `indirects` buffer list aligned to it
+(was one `draw`/one `indirect`). The WebGPU backend's bundle recorder and `resolveTurns`
+([renderer/webgpu.ts](../renderer/webgpu.ts)) record and resolve the list, and its indirect-buffer
+sizing loops every indirect draw a pass names rather than the first. The WebGL 2 backend refuses a
+pass unless **every** draw covers corners and issues one `drawArrays` per draw
+([submit/gl2.ts](../submit/gl2.ts) takes a vertex-count list). `submit/plan.ts` resolves the
+pass's geometry off the pipeline once and requires it where any draw counts instances alone.
+`cost().draws` sums `pass.draws.length` across passes (item 28 still counts an instanced or
+indirect draw as one), so every corpus preset — each a list of one today — costs exactly what it
+did and `cost-corpus.test.ts` is unchanged. Two new tests prove a pass carrying many draws issues
+each: two `drawIndexed` with distinct instance counts on WebGPU
+([tests/renderer-geometry.test.ts](../tests/renderer-geometry.test.ts)) and two `drawArrays` on
+WebGL 2 ([tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts)). Both read calls off
+the recording double, not pixels off a card; that a bundle of several draws paints the right
+picture needs `gate:browser` or a card, not run here, and no corpus preset carries a multi-draw
+pass until a producer (items 30/32) emits one. See [JOURNAL.md](JOURNAL.md). 635 node tests green,
+`type-check` green; export surface unmoved (a field rename on an already-hidden type, no door name
+added or removed), so `gate:pack` was not required.
 
 ### 27. `Draw.perDraw`
 

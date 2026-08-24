@@ -73,7 +73,7 @@ export function wgslDescription(code: string): FrameDescription {
         bindings: at ? [{ group: at.group, binding: at.binding, resource: UNIFORMS, visibility: ['fragment'] }] : [],
       },
     ],
-    passes: [{ pipeline: ONE_PASS, draw: { vertices: FULLSCREEN_VERTICES } }],
+    passes: [{ pipeline: ONE_PASS, draws: [{ vertices: FULLSCREEN_VERTICES }] }],
   };
 }
 
@@ -99,7 +99,7 @@ export function glslDescription(): FrameDescription {
         bindings: [],
       },
     ],
-    passes: [{ pipeline: ONE_PASS, draw: { vertices: FULLSCREEN_VERTICES } }],
+    passes: [{ pipeline: ONE_PASS, draws: [{ vertices: FULLSCREEN_VERTICES }] }],
   };
 }
 

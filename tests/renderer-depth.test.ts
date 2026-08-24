@@ -71,7 +71,7 @@ const tiltedFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
       depth: { format: 'depth24plus', compare: 'less', write: true },
     },
   ],
-  passes: [{ pipeline: 'far', draw: { vertices: 3 }, depth: { resource: 'depth', clear: 1 } }],
+  passes: [{ pipeline: 'far', draws: [{ vertices: 3 }], depth: { resource: 'depth', clear: 1 } }],
   ...over,
 });
 
@@ -92,7 +92,7 @@ const crossingFrame = (): ShaderFrame => {
         depth: { format: 'depth24plus', compare: 'less', write: false },
       },
     ],
-    passes: [...frame.passes, { pipeline: 'near', draw: { vertices: 3 }, depth: { resource: 'depth' } }],
+    passes: [...frame.passes, { pipeline: 'near', draws: [{ vertices: 3 }], depth: { resource: 'depth' } }],
   };
 };
 
@@ -164,7 +164,7 @@ describe('the texture a frame keeps its depth in', () => {
     const { gpu, backend } = backendOver();
     const frame = tiltedFrame();
     const pipelines = [{ ...(frame.pipelines[0] as RenderPipelineSpec), depth: undefined }];
-    backend.program(tiltedFrame({ pipelines, passes: [{ pipeline: 'far', draw: { vertices: 3 } }] })).draw();
+    backend.program(tiltedFrame({ pipelines, passes: [{ pipeline: 'far', draws: [{ vertices: 3 }] }] })).draw();
 
     expect(gpu.calls('beginRenderPass')[0]?.depth).toBeUndefined();
   });
@@ -211,7 +211,7 @@ describe('the depth state a pipeline draws under', () => {
     const { gpu, backend } = backendOver();
     const frame = tiltedFrame();
     const pipelines = [{ ...(frame.pipelines[0] as RenderPipelineSpec), depth: undefined }];
-    backend.program(tiltedFrame({ pipelines, passes: [{ pipeline: 'far', draw: { vertices: 3 } }] }));
+    backend.program(tiltedFrame({ pipelines, passes: [{ pipeline: 'far', draws: [{ vertices: 3 }] }] }));
 
     const descriptor = gpu.calls('createRenderPipeline')[0]?.descriptor as GPURenderPipelineDescriptor;
     expect(descriptor.depthStencil).toBeUndefined();
@@ -244,7 +244,7 @@ describe('what a description disagreeing with itself about depth is refused with
 
   it('refuses a pipeline testing depth over a pass that attaches nothing to keep it in', () => {
     refuses(
-      { passes: [{ pipeline: 'far', draw: { vertices: 3 } }] },
+      { passes: [{ pipeline: 'far', draws: [{ vertices: 3 }] }] },
       'the pass on "far" tests depth and attaches nothing to keep it in'
     );
   });
@@ -259,7 +259,7 @@ describe('what a description disagreeing with itself about depth is refused with
 
   it('refuses a name that is no texture the frame declares', () => {
     refuses(
-      { passes: [{ pipeline: 'far', draw: { vertices: 3 }, depth: { resource: 'uniforms' } }] },
+      { passes: [{ pipeline: 'far', draws: [{ vertices: 3 }], depth: { resource: 'uniforms' } }] },
       'the frame for "fixture-depth" keeps depth in "uniforms", which is no texture it declares'
     );
   });
@@ -282,7 +282,7 @@ describe('what a description disagreeing with itself about depth is refused with
 
   it('refuses a pass keeping a depth no earlier pass of the frame wrote', () => {
     refuses(
-      { passes: [{ pipeline: 'far', draw: { vertices: 3 }, depth: { resource: 'depth' } }] },
+      { passes: [{ pipeline: 'far', draws: [{ vertices: 3 }], depth: { resource: 'depth' } }] },
       'the pass on "far" keeps the depth in "depth", which no earlier pass wrote'
     );
   });

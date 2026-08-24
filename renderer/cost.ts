@@ -35,9 +35,9 @@ import { frameStores } from './attachments.js';
 export interface FrameCost {
   /** How many passes the frame runs, render and compute alike. */
   passes: number;
-  /** How many draw calls the render passes issue. One per render pass today,
-   * and an instanced or indirect draw counts as one (item 28), because it is one
-   * call the card makes however many instances or counts it reads. */
+  /** How many draw calls the render passes issue, summed over every pass's draw
+   * list (item 26). An instanced or indirect draw counts as one (item 28), because
+   * it is one call the card makes however many instances or counts it reads. */
   draws: number;
   /** How many dispatches the compute passes issue. */
   dispatches: number;
@@ -218,7 +218,10 @@ export function cost(graph: ShaderFrame, size: { width: number; height: number }
       continue;
     }
 
-    draws += 1;
+    // One draw per entry in the pass's list, an instanced or indirect draw
+    // counted as one apiece (item 28), so a pass carrying many draws counts many
+    // (item 26) where the one-draw-per-pass shape counted one.
+    draws += pass.draws.length;
 
     // The colours this pass writes: the textures it names, or the frame's own
     // single target when it names none. The frame target is cleared each frame

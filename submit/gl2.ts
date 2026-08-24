@@ -16,19 +16,22 @@
 
 /** Everything the one pass needs to become draw commands: the linked program the
  * pipeline produced, the quad buffer the arena allocated, the attribute the
- * positions arrive on, and the size to draw at. */
+ * positions arrive on, the corner count of each draw the pass carries, and the
+ * size to draw at. `vertices` is a list because one pass carries many draws
+ * (item 26); a fullscreen frame is the list of one. */
 export interface GL2FrameExecution {
   gl: WebGL2RenderingContext;
   program: WebGLProgram;
   quad: WebGLBuffer;
   attribute: number;
-  vertices: number;
+  vertices: readonly number[];
   width: number;
   height: number;
 }
 
 /** Draws the frame's one pass, exactly as the backend's `draw` did before this
- * was its own layer. */
+ * was its own layer. The program, the quad and the viewport are set once, and one
+ * drawArrays follows for each draw the pass carries. */
 export function drawGL2Frame(exec: GL2FrameExecution): void {
   const { gl, program, quad, attribute, vertices, width, height } = exec;
   gl.useProgram(program);
@@ -36,5 +39,5 @@ export function drawGL2Frame(exec: GL2FrameExecution): void {
   gl.enableVertexAttribArray(attribute);
   gl.vertexAttribPointer(attribute, 3, gl.FLOAT, false, 0, 0);
   gl.viewport(0, 0, width, height);
-  gl.drawArrays(gl.TRIANGLES, 0, vertices);
+  for (const count of vertices) gl.drawArrays(gl.TRIANGLES, 0, count);
 }

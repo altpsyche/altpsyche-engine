@@ -78,7 +78,7 @@ const stateFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
   ],
   passes: [
     { pipeline: 'step', dispatch: { over: 'next' } },
-    { pipeline: 'shade', draw: { vertices: 3 } },
+    { pipeline: 'shade', draws: [{ vertices: 3 }] },
   ],
   swap: [['previous', 'next']],
   ...over,

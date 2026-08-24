@@ -660,14 +660,14 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     // every number the card needs is in there and an instance count beside it
     // would be a second answer to the same question.
     if (pass.indirect !== undefined) {
-      return { pipeline: pass.pipeline, draw: { indirect: pass.indirect }, ...attaches, ...said };
+      return { pipeline: pass.pipeline, draws: [{ indirect: pass.indirect }], ...attaches, ...said };
     }
     // How many vertices a drawn pass covers is the buffer's, so the pass carries
     // the instance count alone and the count of vertices stays where the bytes are.
     if (pass.geometry !== undefined) {
-      return { pipeline: pass.pipeline, draw: { instances: pass.instances ?? ONE_INSTANCE }, ...attaches, ...said };
+      return { pipeline: pass.pipeline, draws: [{ instances: pass.instances ?? ONE_INSTANCE }], ...attaches, ...said };
     }
-    return { pipeline: pass.pipeline, draw: { vertices: FULLSCREEN_VERTICES }, ...attaches, ...said };
+    return { pipeline: pass.pipeline, draws: [{ vertices: FULLSCREEN_VERTICES }], ...attaches, ...said };
   });
 
   return {

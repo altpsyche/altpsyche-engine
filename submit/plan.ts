@@ -249,26 +249,23 @@ export function planFramePasses(frame: ShaderFrame, geometryOf: (name: string) =
     if (isRenderPass(pass) !== (spec.kind === 'render')) {
       throw new Error(`the pass on "${spec.name}" asks for the other kind of work than the pipeline does`);
     }
-    // A pass reading its counts out of a buffer says nothing about which
-    // vertices are read, so its pipeline is still what decides whether there
-    // is geometry to bind, and either answer is a frame that draws.
-    if (isRenderPass(pass) && drawsIndirectly(pass.draw) && spec.kind === 'render') {
-      const named = spec.geometry;
-      return read(pass, spec, named === undefined ? undefined : geometryOf(named));
-    }
-    // A pass that counts instances alone draws whatever its pipeline reads, so
-    // a pipeline reading no buffer has nothing for it to draw and says so here
-    // rather than drawing nothing on the card.
-    if (isRenderPass(pass) && !drawsCorners(pass.draw)) {
-      if (spec.kind !== 'render' || spec.geometry === undefined) {
-        throw new Error(`the pass on "${spec.name}" draws its pipeline's geometry and that pipeline reads none`);
-      }
-      return read(pass, spec, geometryOf(spec.geometry));
-    }
     if (!isRenderPass(pass) || spec.kind !== 'render') {
       return { pass, spec, drawn: undefined, depth: undefined, colour: undefined };
     }
-    return read(pass, spec, undefined);
+    // The draws of one pass all read the pass's one pipeline (item 33 lifts that),
+    // so whether there is geometry to bind is the pipeline's answer, not any one
+    // draw's. A draw that counts instances alone draws whatever its pipeline reads,
+    // so a pipeline reading no buffer has nothing for such a draw to walk and says
+    // so here rather than drawing nothing on the card. A draw reading its counts
+    // out of a buffer, or one covering the frame's corners, needs no such buffer.
+    const instancesAlone = pass.draws.some((draw) => !drawsCorners(draw) && !drawsIndirectly(draw));
+    if (instancesAlone && spec.geometry === undefined) {
+      throw new Error(`the pass on "${spec.name}" draws its pipeline's geometry and that pipeline reads none`);
+    }
+    // The pipeline's geometry is resolved once for the pass where it names any: an
+    // instances-only or indexed-indirect draw walks it, and a corners draw ignores
+    // it. A fullscreen pipeline names none and the pass carries no geometry.
+    return read(pass, spec, spec.geometry === undefined ? undefined : geometryOf(spec.geometry));
   });
 }
 

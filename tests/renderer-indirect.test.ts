@@ -91,7 +91,7 @@ const planned = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
   passes: [
     { pipeline: 'plan', dispatch: [1, 1, 1] },
     { pipeline: 'paint', dispatch: { indirect: 'counts' } },
-    { pipeline: 'shade', draw: { indirect: 'counts' } },
+    { pipeline: 'shade', draws: [{ indirect: 'counts' }] },
   ],
   ...over,
 });
@@ -191,7 +191,7 @@ describe('a pass whose count comes out of a buffer', () => {
         passes: [
           { pipeline: 'plan', dispatch: [1, 1, 1] },
           { pipeline: 'paint', dispatch: 'frame' },
-          { pipeline: 'shade', draw: { vertices: 3 } },
+          { pipeline: 'shade', draws: [{ vertices: 3 }] },
         ],
       })
     );
@@ -214,7 +214,7 @@ describe('what a count read out of a buffer is refused for', () => {
         passes: [
           { pipeline: 'plan', dispatch: [1, 1, 1] },
           { pipeline: 'paint', dispatch: { indirect: 'picture' } },
-          { pipeline: 'shade', draw: { vertices: 3 } },
+          { pipeline: 'shade', draws: [{ vertices: 3 }] },
         ],
       }),
       'the frame for "fixture-indirect" reads its counts from "picture", which is no buffer it declares'
@@ -228,7 +228,7 @@ describe('what a count read out of a buffer is refused for', () => {
         passes: [
           { pipeline: 'plan', dispatch: [1, 1, 1] },
           { pipeline: 'paint', dispatch: { indirect: 'counts' } },
-          { pipeline: 'shade', draw: { vertices: 3 } },
+          { pipeline: 'shade', draws: [{ vertices: 3 }] },
         ],
       }),
       'the frame for "fixture-indirect" reads 12 bytes of counts from "counts", which is 8 bytes'
@@ -242,7 +242,7 @@ describe('what a count read out of a buffer is refused for', () => {
         passes: [
           { pipeline: 'plan', dispatch: [1, 1, 1] },
           { pipeline: 'paint', dispatch: 'frame' },
-          { pipeline: 'shade', draw: { indirect: 'counts' } },
+          { pipeline: 'shade', draws: [{ indirect: 'counts' }] },
         ],
       }),
       'the frame for "fixture-indirect" reads 16 bytes of counts from "counts", which is 12 bytes'

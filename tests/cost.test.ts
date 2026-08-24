@@ -42,7 +42,7 @@ function frame(over: {
 
 describe('cost', () => {
   it('counts a single fullscreen pass writing the frame target', () => {
-    const c = cost(frame({ passes: [{ pipeline: 'frame', draw: { vertices: 3 } }] }), SIZE);
+    const c = cost(frame({ passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }] }), SIZE);
     expect(c).toEqual({
       passes: 1,
       draws: 1,
@@ -62,9 +62,9 @@ describe('cost', () => {
       { kind: 'render', name: 'b', vertex: 'fullscreen', fragment: { module: 'wgsl', entry: 'b' }, bindings: [] },
     ];
     const passes: PassSpec[] = [
-      { pipeline: 'a', draw: { vertices: 3 } },
-      { pipeline: 'a', draw: { vertices: 3 } },
-      { pipeline: 'b', draw: { vertices: 3 } },
+      { pipeline: 'a', draws: [{ vertices: 3 }] },
+      { pipeline: 'a', draws: [{ vertices: 3 }] },
+      { pipeline: 'b', draws: [{ vertices: 3 }] },
     ];
     const c = cost(frame({ pipelines, passes }), SIZE);
     expect(c.passes).toBe(3);
@@ -80,8 +80,8 @@ describe('cost', () => {
       { kind: 'render', name: 'b', vertex: 'fullscreen', fragment: { module: 'wgsl', entry: 'b' }, bindings },
     ];
     const passes: PassSpec[] = [
-      { pipeline: 'a', draw: { vertices: 3 } },
-      { pipeline: 'b', draw: { vertices: 3 } },
+      { pipeline: 'a', draws: [{ vertices: 3 }] },
+      { pipeline: 'b', draws: [{ vertices: 3 }] },
     ];
     const c = cost(frame({ pipelines, passes }), SIZE);
     // Two distinct pipelines, but one bind set: two pipeline switches, one bind.
@@ -107,8 +107,8 @@ describe('cost', () => {
       },
     ];
     const passes: PassSpec[] = [
-      { pipeline: 'a', draw: { vertices: 3 } },
-      { pipeline: 'b', draw: { vertices: 3 } },
+      { pipeline: 'a', draws: [{ vertices: 3 }] },
+      { pipeline: 'b', draws: [{ vertices: 3 }] },
     ];
     expect(cost(frame({ pipelines, passes }), SIZE).bindSwitches).toBe(2);
   });
@@ -158,9 +158,9 @@ describe('cost', () => {
     ];
     const passes: PassSpec[] = [
       // Cleared: fills rather than reads, so no load.
-      { pipeline: 'into', draw: { vertices: 3 }, colour: [{ resource: 'scratch', clear: [0, 0, 0, 1] }] },
+      { pipeline: 'into', draws: [{ vertices: 3 }], colour: [{ resource: 'scratch', clear: [0, 0, 0, 1] }] },
       // No clear: keeps and reads what the first pass wrote, so one load.
-      { pipeline: 'again', draw: { vertices: 3 }, colour: [{ resource: 'scratch' }] },
+      { pipeline: 'again', draws: [{ vertices: 3 }], colour: [{ resource: 'scratch' }] },
     ];
     const c = cost(frame({ pipelines, passes, resources: [target] }), SIZE);
     expect(c.attachmentLoads).toBe(1);
@@ -189,7 +189,7 @@ describe('cost', () => {
       },
     ];
     const passes: PassSpec[] = [
-      { pipeline: 'ms', draw: { vertices: 3 }, colour: [{ resource: 'msaa', clear: [0, 0, 0, 1], resolve: 'flat' }] },
+      { pipeline: 'ms', draws: [{ vertices: 3 }], colour: [{ resource: 'msaa', clear: [0, 0, 0, 1], resolve: 'flat' }] },
     ];
     const c = cost(frame({ pipelines, passes, resources }), SIZE);
     // The multisampled source is discarded — nothing reads it once its samples
@@ -216,10 +216,10 @@ describe('cost', () => {
     const passes: PassSpec[] = [
       // First pass fills both halves; the second tests against both, so the
       // first stores each half and the card takes a store op for each.
-      { pipeline: 'solid', draw: { vertices: 3 }, depth: { resource: 'zs', clear: 1, stencilClear: 0 } },
+      { pipeline: 'solid', draws: [{ vertices: 3 }], depth: { resource: 'zs', clear: 1, stencilClear: 0 } },
       // Second pass loads both halves and nothing reads them after it, so each
       // half discards (item 1).
-      { pipeline: 'solid', draw: { vertices: 3 }, depth: { resource: 'zs' } },
+      { pipeline: 'solid', draws: [{ vertices: 3 }], depth: { resource: 'zs' } },
     ];
     const c = cost(frame({ pipelines, passes, resources }), SIZE);
     // Two frame-colour stores + the first pass's two depth-stencil halves = 4.
@@ -237,7 +237,7 @@ describe('cost', () => {
       { kind: 'buffer', name: 'consts', bytes: 256, access: 'read', data: new Uint8Array(256) },
       { kind: 'uniform', name: 'uniforms' },
     ];
-    const passes: PassSpec[] = [{ pipeline: 'frame', draw: { vertices: 3 } }];
+    const passes: PassSpec[] = [{ pipeline: 'frame', draws: [{ vertices: 3 }] }];
     expect(cost(frame({ passes, resources }), SIZE).transientBytes).toBe(4096);
   });
 
@@ -245,7 +245,7 @@ describe('cost', () => {
     const resources: ResourceSpec[] = [
       { kind: 'texture', name: 'ladder', size: [4, 4], format: 'rgba8unorm', use: ['attachment'], mips: 'generate' },
     ];
-    const passes: PassSpec[] = [{ pipeline: 'frame', draw: { vertices: 3 } }];
+    const passes: PassSpec[] = [{ pipeline: 'frame', draws: [{ vertices: 3 }] }];
     // 4x4 + 2x2 + 1x1 pixels at four bytes each: (16 + 4 + 1) * 4 = 84.
     expect(cost(frame({ passes, resources }), SIZE).transientBytes).toBe(84);
   });
@@ -254,7 +254,7 @@ describe('cost', () => {
     const resources: ResourceSpec[] = [
       { kind: 'texture', name: 'scratch', size: ['frame', 'frame'], format: 'rgba8unorm', use: ['attachment'] },
     ];
-    const passes: PassSpec[] = [{ pipeline: 'frame', draw: { vertices: 3 } }];
+    const passes: PassSpec[] = [{ pipeline: 'frame', draws: [{ vertices: 3 }] }];
     const small = cost(frame({ passes, resources }), { width: 100, height: 100 });
     const large = cost(frame({ passes, resources }), { width: 200, height: 200 });
     expect(small.transientBytes).toBe(100 * 100 * 4);
@@ -262,7 +262,7 @@ describe('cost', () => {
   });
 
   it('returns identical numbers on a repeated call', () => {
-    const g = frame({ passes: [{ pipeline: 'frame', draw: { vertices: 3 } }] });
+    const g = frame({ passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }] });
     expect(cost(g, SIZE)).toEqual(cost(g, SIZE));
   });
 });

@@ -344,7 +344,11 @@ export type StencilMode = 'mark' | 'inside';
 /** One run of work inside a frame, drawing into the frame's own colour target. */
 export interface RenderPassSpec {
   pipeline: string;
-  draw: DrawSpec;
+  /** The draws this pass issues, in order, all against the pass's one pipeline
+   * until item 33 lifts that restriction. It is a list because one pass carries
+   * many draws (item 26) — the one-draw-per-pass shape is gone rather than merely
+   * unused — and a fullscreen frame is the degenerate case of a list of one. */
+  draws: DrawSpec[];
   /** The buffer the two times this pass took land in, absent for a pass nobody
    * timed. The card writes one time as the pass opens and one as it closes, so
    * what a caller reads is a period rather than a clock reading, and the two
@@ -493,7 +497,7 @@ export function resourceOf(frame: ShaderFrame, name: string): ResourceSpec | und
 /** Whether a pass is the drawing kind, read off the pass rather than off the
  * pipeline it names, so the two are compared where the pipeline is looked up. */
 export function isRenderPass(pass: PassSpec): pass is RenderPassSpec {
-  return 'draw' in pass;
+  return 'draws' in pass;
 }
 
 /** Whether a draw covers the frame with the backend's own corners rather than

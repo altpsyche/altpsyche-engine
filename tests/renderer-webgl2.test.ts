@@ -91,7 +91,7 @@ describe('a description above the subset', () => {
   it('refuses a pass naming a pipeline the frame does not carry', () => {
     const { backend } = backendOver();
     const frame = artefact();
-    expect(() => backend.program(glsl({ passes: [{ pipeline: 'second', draw: { vertices: 3 } }] }))).toThrow(
+    expect(() => backend.program(glsl({ passes: [{ pipeline: 'second', draws: [{ vertices: 3 }] }] }))).toThrow(
       'the frame for "fixture" describes no pass this backend can draw'
     );
     expect(frame.pipelines.map((pipeline) => pipeline.name)).not.toContain('second');
@@ -306,6 +306,16 @@ describe('the frame it draws', () => {
 
     expect(gl.of('viewport').at(-1)).toMatchObject({ x: 0, y: 0, width: 320, height: 180 });
     expect(gl.of('drawArrays').at(-1)).toMatchObject({ mode: 0x0004, first: 0, count: 3 });
+  });
+
+  it('issues one drawArrays for each draw the pass carries (item 26)', () => {
+    const { gl, backend } = backendOver();
+    backend.resize(320, 180);
+    // One fullscreen pass, two corners-draws: the backend draws each rather than
+    // the first alone, so a pass carrying many draws is not merely typeable here.
+    backend.program({ ...artefact(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }, { vertices: 3 }] }] }).draw();
+
+    expect(gl.of('drawArrays')).toHaveLength(2);
   });
 
   it('hands the frame back top row first, because the driver gives it the other way up', async () => {

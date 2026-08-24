@@ -69,7 +69,7 @@ const laddered = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
       ],
     },
   ],
-  passes: [{ pipeline: 'fragMain', draw: { vertices: 3 } }],
+  passes: [{ pipeline: 'fragMain', draws: [{ vertices: 3 }] }],
   ...over,
 });
 

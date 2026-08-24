@@ -82,7 +82,7 @@ describe('every WebGL 2 draw goes through submit/gl2', () => {
     const program = {} as WebGLProgram;
     const quad = {} as WebGLBuffer;
 
-    drawGL2Frame({ gl: context, program, quad, attribute: 0, vertices: 3, width: 320, height: 180 });
+    drawGL2Frame({ gl: context, program, quad, attribute: 0, vertices: [3], width: 320, height: 180 });
 
     // Bind the program and the quad, point the attribute at it, set the viewport
     // to the size handed in, and draw the corners: the whole of the executor, in

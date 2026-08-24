@@ -53,7 +53,7 @@ const shade = (over: Partial<RenderPipelineSpec> = {}): RenderPipelineSpec => ({
 
 const into = (over: Partial<RenderPassSpec> = {}): RenderPassSpec => ({
   pipeline: 'shade',
-  draw: { vertices: 3 },
+  draws: [{ vertices: 3 }],
   colour: [{ resource: 'edges', clear: [0, 0, 0, 1], resolve: 'flat' }],
   ...over,
 });
@@ -249,7 +249,7 @@ describe('what a description keeping several samples a pixel is refused for', ()
       averaged({
         resources: [averaged().resources[0] as TextureResource],
         pipelines: [shade({ targets: undefined })],
-        passes: [{ pipeline: 'shade', draw: { vertices: 3 } }],
+        passes: [{ pipeline: 'shade', draws: [{ vertices: 3 }] }],
         present: undefined,
       }),
       'the pass on "shade" draws 4 samples a pixel into the frame'

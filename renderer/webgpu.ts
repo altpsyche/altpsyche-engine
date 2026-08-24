@@ -46,7 +46,7 @@ import { Arena } from '../resource/arena.js';
 import type { FrameTraffic, Handle } from '../resource/arena.js';
 import { planFramePasses } from '../submit/plan.js';
 import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
-import { runFrame, issueDraw } from '../submit/execute.js';
+import { runFrame, issueDraws } from '../submit/execute.js';
 import type { ResolvedGeometry, ResolvedRun } from '../submit/execute.js';
 import { frameStores, mergeGroups } from './attachments.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
@@ -525,19 +525,19 @@ export function createWebGPUBackend(
         }
 
         const arguments_ = new Map<string, number>();
+        // The buffers every indirect draw or dispatch reads its counts from, and
+        // the space each needs. A render pass carries many draws (item 26), so
+        // every indirect one it names is sized, not just the first.
         for (const pass of frame.passes) {
-          const named = isRenderPass(pass)
-            ? drawsIndirectly(pass.draw)
-              ? pass.draw.indirect
-              : undefined
-            : dispatchesIndirectly(pass.dispatch)
-              ? pass.dispatch.indirect
-              : undefined;
-          if (named === undefined) continue;
           const spec = frame.pipelines.find((one) => one.name === pass.pipeline);
           const ordered = isRenderPass(pass) && spec?.kind === 'render' && spec.geometry !== undefined;
+          const named: string[] = isRenderPass(pass)
+            ? pass.draws.filter(drawsIndirectly).map((draw) => draw.indirect)
+            : dispatchesIndirectly(pass.dispatch)
+              ? [pass.dispatch.indirect]
+              : [];
           const words = !isRenderPass(pass) ? 3 : ordered ? 5 : 4;
-          arguments_.set(named, Math.max(arguments_.get(named) ?? 0, words * 4));
+          for (const name of named) arguments_.set(name, Math.max(arguments_.get(name) ?? 0, words * 4));
         }
         for (const [name, needed] of arguments_) {
           const resource = resourceOf(frame, name);
@@ -910,8 +910,8 @@ export function createWebGPUBackend(
                 ...(run.depth && spec.depth ? { depthStencilFormat: spec.depth.format } : {}),
                 ...(spec.samples ? { sampleCount: spec.samples } : {}),
               });
-              const draw = (run.pass as RenderPassSpec).draw;
-              issueDraw(encoder, pipeline, bands, drawGeometry(run.drawn), drawIndirect(draw), draw);
+              const draws = (run.pass as RenderPassSpec).draws;
+              issueDraws(encoder, pipeline, bands, drawGeometry(run.drawn), draws.map(drawIndirect), draws);
               made.set(index, encoder.finish({ label: `${spec.name}-bundle-${turnIndex}` }));
             });
             return made;
@@ -966,7 +966,7 @@ export function createWebGPUBackend(
               }
 
               const recordedBundle = recorded.get(index);
-              const draw = isRenderPass(pass) ? pass.draw : undefined;
+              const draws = isRenderPass(pass) ? pass.draws : undefined;
               return {
                 kind: render ? 'render' : 'compute',
                 pipeline,
@@ -1004,8 +1004,8 @@ export function createWebGPUBackend(
                         storeStencil: kept.stencil,
                       },
                 geometry: render ? drawGeometry(drawn) : undefined,
-                indirect: draw !== undefined ? drawIndirect(draw) : undefined,
-                draw,
+                indirects: draws !== undefined ? draws.map(drawIndirect) : undefined,
+                draws,
                 stencil: isRenderPass(pass) && spec.kind === 'render' && spec.depth?.stencil !== undefined,
               };
             });

@@ -180,8 +180,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         throw new Error(`the frame for "${frame.id}" runs compute work, and WebGL 2 has no compute stage`);
       }
       // The frame's own corners are the positions this backend draws, so geometry
-      // out of a buffer is refused by name rather than approximated by them.
-      if (!drawsCorners(pass.draw)) {
+      // out of a buffer is refused by name rather than approximated by them. Every
+      // draw the pass carries is asked, since one that walks a buffer is refused
+      // however many corners-draws sit beside it (item 26).
+      if (!pass.draws.every(drawsCorners)) {
         throw new Error(`the frame for "${frame.id}" draws geometry of its own, and this backend has no buffer for it`);
       }
       // The frame the reader sees is the one colour this backend writes, so a
@@ -260,7 +262,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       const ubo = uboHandle === null ? null : arena.resolve(uboHandle);
 
       const locations = new Map<string, WebGLUniformLocation | null>();
-      const vertices = pass.draw.vertices;
+      // The corner count of each draw the pass carries, one drawArrays apiece
+      // (item 26). Every draw is corners — refused above otherwise — so each has a
+      // vertex count to read.
+      const vertices = pass.draws.map((draw) => (draw as { vertices: number }).vertices);
 
       return {
         setUniforms(values: Record<string, UniformValue>) {

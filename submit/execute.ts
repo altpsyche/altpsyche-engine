@@ -96,13 +96,16 @@ export interface ResolvedRun {
    * writes the frame the reader sees. */
   colour: ResolvedColour[] | undefined;
   depth: ResolvedDepth | undefined;
-  /** For an inline render draw: the geometry buffers, and the buffer an indirect
-   * draw reads its counts from. */
+  /** For an inline render draw: the geometry buffers the pass's draws walk. One
+   * per pass because the draws share the pass's one pipeline (item 33 lifts that). */
   geometry: ResolvedGeometry | undefined;
-  indirect: GPUBuffer | undefined;
-  /** What the render pass draws, kept for the shape of the draw — corners,
-   * geometry or indirect — and the instance count. `undefined` for a compute pass. */
-  draw: DrawSpec | undefined;
+  /** The buffer each indirect draw reads its counts from, aligned to `draws`, with
+   * `undefined` where a draw is not indirect. `undefined` for a compute pass. */
+  indirects: (GPUBuffer | undefined)[] | undefined;
+  /** What the render pass draws, in order — each entry the shape of one draw
+   * (corners, geometry or indirect) and its instance count. A list because one
+   * pass carries many draws (item 26); `undefined` for a compute pass. */
+  draws: DrawSpec[] | undefined;
   /** Whether the pass sets a stencil reference before its draws, which a bundle
    * cannot hold. */
   stencil: boolean;
@@ -277,7 +280,14 @@ export function runFrame(exec: FrameExecution): void {
       // pass, since what the card counts is the samples of one draw that
       // got through everything already in the attachment.
       if (run.countingSet) run_pass.beginOcclusionQuery(0);
-      issueDraw(run_pass, run.pipeline as GPURenderPipeline, run.bands, run.geometry, run.indirect, run.draw as DrawSpec);
+      issueDraws(
+        run_pass,
+        run.pipeline as GPURenderPipeline,
+        run.bands,
+        run.geometry,
+        run.indirects ?? [],
+        run.draws as DrawSpec[]
+      );
       if (run.countingSet) run_pass.endOcclusionQuery();
     }
     run_pass.end();
@@ -299,41 +309,48 @@ export function runFrame(exec: FrameExecution): void {
 }
 
 /**
- * The pipeline, the bind groups and the draw one render pass issues, played into
+ * The pipeline, the bind groups and the draws one render pass issues, played into
  * either the pass itself or a bundle recording it. It reads the geometry buffers
  * as the objects themselves rather than by name, so the same function serves the
- * inline draw the executor issues and the bundle the backend records at build
+ * inline draws the executor issues and the bundle the backend records at build
  * time. It is the whole of what a bundle may hold: the value the mask is tested
  * against and the counting of a draw's surviving samples are pass state a bundle
  * cannot carry, so they stay on the pass and out of here.
+ *
+ * The pipeline and the bind groups are set once and every draw in the list
+ * follows against them, which is one pass carrying many draws (item 26). The
+ * `indirects` buffers are aligned to `draws`: the entry for a draw reading its
+ * counts out of a buffer is that buffer, and every other entry is `undefined`.
  */
-export function issueDraw(
+export function issueDraws(
   into: GPURenderPassEncoder | GPURenderBundleEncoder,
   pipeline: GPURenderPipeline,
   bands: GPUBindGroup[],
   geometry: ResolvedGeometry | undefined,
-  indirect: GPUBuffer | undefined,
-  draw: DrawSpec
+  indirects: (GPUBuffer | undefined)[],
+  draws: DrawSpec[]
 ): void {
   into.setPipeline(pipeline);
   bands.forEach((band, at) => into.setBindGroup(at, band));
-  if (drawsIndirectly(draw)) {
-    const counts = indirect as GPUBuffer;
-    if (geometry) {
+  draws.forEach((draw, at) => {
+    if (drawsIndirectly(draw)) {
+      const counts = indirects[at] as GPUBuffer;
+      if (geometry) {
+        into.setVertexBuffer(0, geometry.vertexBuffer);
+        if (geometry.index) {
+          into.setIndexBuffer(geometry.index.buffer, geometry.index.format);
+          into.drawIndexedIndirect(counts, 0);
+        } else into.drawIndirect(counts, 0);
+      } else into.drawIndirect(counts, 0);
+    } else if (drawsCorners(draw)) into.draw(draw.vertices, draw.instances);
+    else if (geometry) {
       into.setVertexBuffer(0, geometry.vertexBuffer);
       if (geometry.index) {
         into.setIndexBuffer(geometry.index.buffer, geometry.index.format);
-        into.drawIndexedIndirect(counts, 0);
-      } else into.drawIndirect(counts, 0);
-    } else into.drawIndirect(counts, 0);
-  } else if (drawsCorners(draw)) into.draw(draw.vertices, draw.instances);
-  else if (geometry) {
-    into.setVertexBuffer(0, geometry.vertexBuffer);
-    if (geometry.index) {
-      into.setIndexBuffer(geometry.index.buffer, geometry.index.format);
-      into.drawIndexed(geometry.index.count, draw.instances);
-    } else into.draw(geometry.vertexCount, draw.instances);
-  }
+        into.drawIndexed(geometry.index.count, draw.instances);
+      } else into.draw(geometry.vertexCount, draw.instances);
+    }
+  });
 }
 
 /** The value a mask is marked with and tested against, the same one the pipeline

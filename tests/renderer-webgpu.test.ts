@@ -663,7 +663,7 @@ describe('a compute description it refuses', () => {
   it('refuses a pass asking for the other kind of work than its pipeline does', () => {
     const { backend } = backendOver();
     const frame = computeFrame();
-    expect(() => backend.program({ ...frame, passes: [{ pipeline: 'field', draw: { vertices: 3 } }] })).toThrow(
+    expect(() => backend.program({ ...frame, passes: [{ pipeline: 'field', draws: [{ vertices: 3 }] }] })).toThrow(
       /asks for the other kind of work/
     );
   });
@@ -720,7 +720,7 @@ const sampledFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
       ],
     },
   ],
-  passes: [{ pipeline: ONE_PASS, draw: { vertices: 3 } }],
+  passes: [{ pipeline: ONE_PASS, draws: [{ vertices: 3 }] }],
   ...over,
 });
 
