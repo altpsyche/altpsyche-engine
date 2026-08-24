@@ -313,7 +313,15 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           return names.filter((name) => (layout ? !layout.has(name) : gl.getUniformLocation(program, name) === null));
         },
 
-        draw() {
+        draw(into?: GPUTexture) {
+          // `into` is a WebGPU texture, and a caller holding one has chosen the
+          // backend it came from. Handing it here is the same class of caller
+          // mistake as a frame of the wrong target, so it is refused by name
+          // rather than dropped into a picture nobody captured (item 29). A
+          // first-class WebGL 2 capture target is its own item, not this one.
+          if (into !== undefined) {
+            throw new Error('WebGL 2 was handed a WebGPU texture to draw into, which it cannot land a frame in');
+          }
           drawGL2Frame({ gl, program, quad, attribute, vertices, instances, width, height });
         },
 
@@ -358,7 +366,13 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       canvas.height = h;
     },
 
-    async readPixels() {
+    async readPixels(from?: GPUTexture) {
+      // The same caller mistake as `draw`'s `into`: a WebGPU texture read back
+      // through the WebGL 2 backend is refused by name rather than silently
+      // read as this backend's own framebuffer (item 29).
+      if (from !== undefined) {
+        throw new Error('WebGL 2 was handed a WebGPU texture to read back, which it cannot read a frame from');
+      }
       const raw = new Uint8Array(width * height * 4);
       gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, raw);
       const rows = new Uint8Array(raw.length);

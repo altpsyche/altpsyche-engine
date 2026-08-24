@@ -212,6 +212,33 @@ describe('drawing against reading', () => {
     expect(pixels).toHaveLength(4 * 3 * 4);
   });
 
+  it('lands the frame in a caller-supplied texture and reads that one back', async () => {
+    const { gpu, renderer } = await rendererOver();
+    renderer.resize(4, 3);
+    gpu.mapped = paddedFrame(4, 3);
+    // The texture a consumer owns and wants the frame in — an XR layer's target,
+    // or one a capture reads back — passed to the one-shot primitive rather than
+    // reached for through the canvas (§17 decision 7, item 29).
+    const into = gpu.device.createTexture({
+      label: 'capture',
+      size: [4, 3],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+    });
+
+    const pixels = await renderer.frame(artefact(), { u_time: 1 }, into);
+
+    // The frame landed in the caller's texture, and the read came back out of it
+    // rather than the backend's own target — with the row-stride repack owned in
+    // the library, so the consumer does none.
+    expect(gpu.calls('copyTextureToTexture')).toContainEqual(
+      expect.objectContaining({ from: 'frame', to: 'capture' })
+    );
+    expect(gpu.calls('copyTextureToBuffer')[0]!.from).toBe('capture');
+    expect(pixels).toHaveLength(4 * 3 * 4);
+    expect([...pixels.slice(0, 16)]).toEqual(Array(16).fill(1));
+  });
+
   it('writes the values it was handed before it draws', async () => {
     const { gpu, renderer } = await rendererOver();
     renderer.draw(artefact(), { u_time: 3, u_resolution: [7, 9] });

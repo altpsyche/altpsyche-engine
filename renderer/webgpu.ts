@@ -1127,7 +1127,7 @@ export function createWebGPUBackend(
           return names.filter((name) => !at.has(name));
         },
 
-        draw() {
+        draw(into?: GPUTexture) {
           const texture = surface();
           // A texture that follows the frame is rebuilt at the new size and what
           // was in it is gone, and every group holding a view of one is rebuilt
@@ -1170,6 +1170,7 @@ export function createWebGPUBackend(
             width,
             height,
             composite,
+            into,
           });
         },
 
@@ -1262,8 +1263,13 @@ export function createWebGPUBackend(
       canvas.height = h;
     },
 
-    async readPixels() {
-      const source = target;
+    async readPixels(from?: GPUTexture) {
+      // A caller reading back the texture a `draw(into)` landed the frame in
+      // reads that one, and the row-stride repack below is the same either way,
+      // so a capture never does the arithmetic itself (item 29). Absent, it is
+      // the backend's own target, and an empty frame of the right size before
+      // anything has drawn.
+      const source = from ?? target;
       if (!source) return new Uint8Array(width * height * 4);
 
       const stride = Math.ceil((width * 4) / ROW_ALIGNMENT) * ROW_ALIGNMENT;

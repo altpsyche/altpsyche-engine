@@ -566,7 +566,19 @@ export interface ShaderProgram {
    * answer this, which is why it is asked here rather than worked out from the
    * source. */
   unreached(names: string[]): string[];
-  draw(): void;
+  /**
+   * Draws the frame, and where `into` is given lands the finished picture in
+   * that caller-supplied texture as well.
+   *
+   * `into` is where a frame lands when the caller owns the texture it goes in —
+   * an XR layer's target, or a texture a capture reads back afterwards — copied
+   * on the frame's own encoder so the whole frame is still submitted once.
+   * Absent, the frame lands in the backend's own target and the canvas, exactly
+   * as before. It is a `GPUTexture`, which is a WebGPU thing: a backend whose
+   * target is not one refuses a given `into` by name, the same class of caller
+   * mistake as a frame of the wrong target, since a caller holding a `GPUTexture`
+   * has already chosen the backend it came from (§17 decision 7, item 29). */
+  draw(into?: GPUTexture): void;
   /**
    * Replaces the contents of one buffer this frame declares, between one frame
    * and the next.
@@ -693,8 +705,16 @@ export interface Backend {
    * It is a promise because one of the two cannot answer any sooner: WebGPU
    * copies the frame into a buffer and waits for that buffer to be mapped,
    * where WebGL blocks the thread until the card is done. Both waits are the
-   * same wait, so nothing has to be synchronised afterwards on either. */
-  readPixels(): Promise<Uint8Array>;
+   * same wait, so nothing has to be synchronised afterwards on either.
+   *
+   * `from` reads back a caller-supplied texture rather than the backend's own
+   * target — the same texture a `draw(into)` landed the frame in — so a capture
+   * reads its own texture with the row-stride arithmetic owned here rather than
+   * in the consumer (§17 decision 7, item 29). Absent, it reads the backend's
+   * own target, exactly as before. It is a `GPUTexture` for the same reason
+   * `draw`'s `into` is: a backend whose target is not one refuses a given `from`
+   * by name. */
+  readPixels(from?: GPUTexture): Promise<Uint8Array>;
   dispose(): void;
 }
 

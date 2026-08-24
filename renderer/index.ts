@@ -29,14 +29,23 @@ export const PROGRAM_CACHE_LIMIT = 16;
 export interface FrameRenderer {
   readonly backend: BackendName;
   /** Draws and reads in the same step, which is why nothing here asks the
-   * browser to keep finished frames around. RGBA, top row first. */
-  frame(shader: ShaderFrame, uniforms: Record<string, UniformValue>): Promise<Uint8Array>;
+   * browser to keep finished frames around. RGBA, top row first.
+   *
+   * `into` lands the frame in a caller-supplied texture and reads that one back,
+   * so a capture reads its own texture with the row-stride arithmetic owned in
+   * the library rather than in the consumer (§17 decision 7, item 29). Absent,
+   * it reads the backend's own target, exactly as before. */
+  frame(shader: ShaderFrame, uniforms: Record<string, UniformValue>, into?: GPUTexture): Promise<Uint8Array>;
   /** Draws and leaves the pixels on the canvas for the browser to composite.
    * Reading them back costs a stall the caller waits on: measured on one
    * full-screen shader at 1200x750, drawing is 1.9 to 2.5 ms a frame and
    * drawing then reading is 5.0. A loop that shows its frames rather than
-   * collecting them wants this one. */
-  draw(shader: ShaderFrame, uniforms: Record<string, UniformValue>): void;
+   * collecting them wants this one.
+   *
+   * `into` lands the frame in a caller-supplied texture as well as the canvas —
+   * an XR layer's target the compositor consumes, drawn without a read-back
+   * stall (item 29). Absent, the frame lands only in the target and the canvas. */
+  draw(shader: ShaderFrame, uniforms: Record<string, UniformValue>, into?: GPUTexture): void;
   /** Which of the names this frame declares the compiled program has nowhere to
    * put. The program is built if it has not been drawn yet, since compiling is
    * the only thing that can answer it and the result is kept either way. */
@@ -159,22 +168,22 @@ export async function createFrameRenderer(
     return program;
   };
 
-  const drawOne = (shader: ShaderFrame, uniforms: Record<string, UniformValue>) => {
+  const drawOne = (shader: ShaderFrame, uniforms: Record<string, UniformValue>, into?: GPUTexture) => {
     const program = programFor(shader);
     program.setUniforms(uniforms);
-    program.draw();
+    program.draw(into);
   };
 
   return {
     backend: backend.name,
 
-    async frame(shader, uniforms) {
-      drawOne(shader, uniforms);
-      return await backend.readPixels();
+    async frame(shader, uniforms, into) {
+      drawOne(shader, uniforms, into);
+      return await backend.readPixels(into);
     },
 
-    draw(shader, uniforms) {
-      drawOne(shader, uniforms);
+    draw(shader, uniforms, into) {
+      drawOne(shader, uniforms, into);
     },
 
     unreached(shader, names) {

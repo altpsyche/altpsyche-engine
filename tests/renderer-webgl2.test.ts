@@ -383,3 +383,31 @@ describe('the words a caller asks it for', () => {
     expect([...(await backend.program(artefact()).readBuffer('counts'))]).toEqual([]);
   });
 });
+
+describe('a WebGPU texture handed to the WebGL 2 backend', () => {
+  // A `GPUTexture` is a WebGPU thing, and a caller holding one has chosen the
+  // backend it came from. Handing it here is the same class of caller mistake as
+  // a frame of the wrong target, so both draw and read refuse it by name rather
+  // than drop the frame into a picture nobody captured (item 29).
+  const foreign = { label: 'someone-elses-texture' } as unknown as GPUTexture;
+
+  it('refuses to draw a frame into it, naming what it cannot do', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(artefact()).draw(foreign)).toThrow(
+      'WebGL 2 was handed a WebGPU texture to draw into, which it cannot land a frame in'
+    );
+  });
+
+  it('refuses to read a frame back out of it, naming what it cannot do', async () => {
+    const { backend } = backendOver();
+    await expect(backend.readPixels(foreign)).rejects.toThrow(
+      'WebGL 2 was handed a WebGPU texture to read back, which it cannot read a frame from'
+    );
+  });
+
+  it('draws and reads as before when it is handed none', async () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(artefact()).draw()).not.toThrow();
+    expect(await backend.readPixels()).toHaveLength(800 * 600 * 4);
+  });
+});

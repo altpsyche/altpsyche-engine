@@ -141,6 +141,12 @@ export interface FrameExecution {
   /** Where the finished picture meets the canvas, if anyone is looking. Handed in
    * so this file names no DOM object. */
   composite: (encoder: GPUCommandEncoder, target: GPUTexture) => void;
+  /** A caller-supplied texture the finished picture is copied into as well, or
+   * `undefined` where the frame lands only in the target and the canvas. It is
+   * where a frame goes when the caller owns the texture — an XR layer's target,
+   * or one a capture reads back — and the copy is added to this same encoder so
+   * the whole frame is still submitted once (item 29). */
+  into: GPUTexture | undefined;
 }
 
 /** The colour a pass writing no textures of its own clears the frame to. The
@@ -306,6 +312,12 @@ export function runFrame(exec: FrameExecution): void {
   // writes a storage texture and a storage texture cannot be an
   // attachment in the same pass.
   if (picture) encoder.copyTextureToTexture({ texture: picture }, { texture: target }, [width, height]);
+
+  // The frame lands in the caller's own texture too where it asked for one,
+  // copied off the target the picture is now in. It is where a capture or an XR
+  // layer reads the frame from, and the copy joins this encoder so the frame is
+  // still submitted once (item 29).
+  if (exec.into) encoder.copyTextureToTexture({ texture: target }, { texture: exec.into }, [width, height]);
 
   // The one place a frame meets the canvas, handed back to the backend so this
   // file names no DOM object. It adds its copy to this same encoder, so the

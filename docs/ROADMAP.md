@@ -760,7 +760,7 @@ not required. See [JOURNAL.md](JOURNAL.md).
 
 ### 29. `submit(graph, { into })`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A frame lands where the caller says — the canvas, a texture, or an XR layer's target.
 
@@ -769,6 +769,33 @@ not required. See [JOURNAL.md](JOURNAL.md).
 **Needs.** item 13, item 17.
 
 **Note.** The stronger half of the argument is not XR. A live canvas on this renderer cannot be sampled after the fact at all — one embed measured 0 of 402,300 pixels lit by three separate methods while drawing sixty times a second. This item deletes two instrumentation hacks and makes capture ordinary API use.
+
+**How it landed.** One optional argument on the draw-and-read primitive, threaded to the
+one place a finished frame meets a texture. `into?: GPUTexture` on
+[`ShaderProgram.draw`](../renderer/types.ts), [`FrameRenderer.frame`/`draw`](../renderer/index.ts)
+and a matching `from?: GPUTexture` on `Backend.readPixels` — the pre-rename home of the
+capability §14 will spell `submit(graph, { into })` (that rename is item 38's, so no top-level
+`submit` export was added for item 38 to then rename; the door stayed at 51 names, `gate:pack`
+green). [submit/execute.ts](../submit/execute.ts)'s `runFrame` copies the finished target into
+the caller's `into` off the target the picture is already in, on the frame's **own** encoder,
+after the `picture` copy and before the canvas `composite` — so a capture and a canvas present
+coexist and the frame is still submitted once. `readPixels(from)` reads `from ?? target`
+through the same 256-byte repack `readPixels()` always owned, so **a consumer reading its own
+texture does no row-stride arithmetic** — the second of the two instrumentation hacks the note
+names, now ordinary API use. WebGL 2 has no `GPUTexture` target, so it **refuses** a given
+`into`/`from` by name — the same caller-mistake doctrine as `webgpu.ts`'s
+`frame.target !== 'wgsl'` throw, not the forbidden asymmetric method (a `GPUTexture` co-occurs
+with the WebGPU backend it came from); a first-class WebGL 2 external target is a later item.
+**Tests read it back:** [tests/renderer-webgpu.test.ts](../tests/renderer-webgpu.test.ts) draws
+into a caller-supplied `GPUTexture` and reads that texture back (the copy into it, the read out
+of it, the repacked bytes, one submit), [tests/renderer-index.test.ts](../tests/renderer-index.test.ts)
+does the same through the public one-shot `frame(shader, uniforms, into)`, and
+[tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts) pins the two refusals.
+**What the gates could not see:** every assertion reads calls off the fake device; that a real
+card lands the pixels in the caller texture and reads the true picture back needs `gate:browser`
+(not run in the unattended session) or a card, and the XR half — submitting into a live layer's
+target — needs a headset. The two consuming-site hacks this enables deleting live in that
+repository and are a `carry`. 653 node tests green (+7), type-check green. See [JOURNAL.md](JOURNAL.md).
 
 ### 30. `examples/instanced-cubes`
 

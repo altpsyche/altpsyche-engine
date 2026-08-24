@@ -414,6 +414,66 @@ describe('the pixels it hands back', () => {
   });
 });
 
+describe('a frame captured into a caller-supplied texture', () => {
+  /** A texture the caller owns and hands the frame a home in, the way an XR
+   * layer's target or a capture's own texture is passed rather than the
+   * backend's own. It carries `COPY_DST` to take the frame and `COPY_SRC` so the
+   * read-back can copy out of it. */
+  const captureTexture = (gpu: ReturnType<typeof createFakeGPU>) =>
+    gpu.device.createTexture({
+      label: 'capture',
+      size: [4, 3],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+    });
+
+  it('lands the finished frame in the caller texture on the frame encoder', () => {
+    const { gpu, backend } = backendOver();
+    backend.resize(4, 3);
+    const into = captureTexture(gpu);
+    backend.program(artefact()).draw(into);
+
+    // The frame the backend drew into its own target is copied into the
+    // caller's texture, off that target, so both hold the same picture.
+    expect(gpu.calls('copyTextureToTexture')).toContainEqual(
+      expect.objectContaining({ from: 'frame', to: 'capture' })
+    );
+    // Still one submit: the capture copy joined the frame's own encoder rather
+    // than opening a second one.
+    expect(gpu.calls('submit')).toHaveLength(1);
+  });
+
+  it('reads the caller texture back with the library owning the row stride', async () => {
+    const { gpu, backend } = backendOver();
+    backend.resize(4, 3);
+    gpu.mapped = paddedFrame(4, 3);
+    const into = captureTexture(gpu);
+    backend.program(artefact()).draw(into);
+
+    const pixels = await backend.readPixels(into);
+    // The read copied out of the caller's own texture, not the backend's target.
+    expect(gpu.calls('copyTextureToBuffer')[0]!.from).toBe('capture');
+    // Padding a device puts on every row is dropped here, so a consumer does no
+    // row-stride arithmetic of its own (item 29).
+    expect(pixels).toHaveLength(4 * 3 * 4);
+    expect([...pixels.slice(0, 16)]).toEqual(Array(16).fill(1));
+    expect([...pixels.slice(16, 32)]).toEqual(Array(16).fill(2));
+    expect([...pixels.slice(32, 48)]).toEqual(Array(16).fill(3));
+  });
+
+  it('leaves the frame out of any caller texture when none is given', () => {
+    const { gpu, backend } = backendOver({ connected: true });
+    backend.resize(4, 3);
+    backend.program(artefact()).draw();
+
+    // With a canvas to composite onto, the only texture-to-texture copy is the
+    // present onto the drawable — none into a caller texture.
+    expect(gpu.calls('copyTextureToTexture')).toEqual([
+      expect.objectContaining({ from: 'frame', to: 'canvas' }),
+    ]);
+  });
+});
+
 describe('what it gives back when it is done', () => {
   it('destroys a program own buffer and leaves the backend usable', () => {
     const { gpu, backend } = backendOver();
