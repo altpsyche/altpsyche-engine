@@ -81,7 +81,7 @@ Read it as four crossings rather than nine boxes. A person writes a file and an 
 
 **The build writes a description per target, not per shader.** A description written in GLSL is two documents and a pipeline whose vertex stage is the shader's own. A description written in WGSL is one document and a pipeline asking for the backend's three corners. Only the resources and the passes coincide, which is why the split is by target.
 
-**The runtime reads that description and never invents one.** `artefacts.ts` asks the manifest which files a variant is, `frame.ts` fills the documents in, and the result is a `ShaderFrame`. The gates that matter fill in the build's own description for the same reason: a gate assembling a description of its own is a gate measuring its own idea of one.
+**The runtime reads that description and never invents one.** The site's artefact adapter asks the manifest which files a variant is, `frame.ts` fills the documents in, and the result is a `ShaderFrame`. The gates that matter fill in the build's own description for the same reason: a gate assembling a description of its own is a gate measuring its own idea of one.
 
 **A backend receives a description and has no capability methods.** The rule at the top of `renderer/types.ts` is that a method one backend has to throw from is the wrong method. A backend that grew `createComputePipeline` and `createSampler` would be a backend where WebGL 2 throws from most of its own interface, and a caller asking whether its backend has compute is a caller branching on which backend it holds. What a backend cannot build it never receives, because the manifest is the only thing deciding which backend a shader can be drawn by.
 
@@ -101,9 +101,9 @@ This is the part that decides whether the abstraction stays understandable as it
 | whether a shader may write a buffer      | the source declaration                               | it is the declaration's own access, and no entry could know it                    |
 | the format of a texture a shader writes  | the source declaration                               | a storage declaration carries it, so an entry repeating it could disagree         |
 | the format of a texture a shader samples | the entry, through the generator                     | a sampled declaration carries no format, and the bytes and format are one answer  |
-| every number about generated geometry    | `lib/shader-geometry.ts`                             | it wrote the bytes, so a stride written elsewhere could contradict them           |
-| where each uniform sits in the block     | `lib/wgsl-layout.ts`, held to what Slang emits       | nothing here compiles WGSL, so this is the only layout with no compiler behind it |
-| which bindings a pipeline may name       | `lib/wgsl-references.ts`, off the entry point's body | one short and the driver refuses the pipeline; one over and it lies about a stage |
+| every number about generated geometry    | `shader-geometry.ts`                                 | it wrote the bytes, so a stride written elsewhere could contradict them           |
+| where each uniform sits in the block     | `wgsl-layout.ts`, held to what Slang emits           | nothing here compiles WGSL, so this is the only layout with no compiler behind it |
+| which bindings a pipeline may name       | `wgsl-references.ts`, off the entry point's body     | one short and the driver refuses the pipeline; one over and it lies about a stage |
 | the value a stencil is marked with       | the mode in the backend                              | a number beside the mode could disagree with the mode                             |
 | how many answers a query resolves        | the backend                                          | nothing about it is a choice a source or an entry could make                      |
 | which files a variant is                 | the manifest                                         | two halves of the site cannot then disagree about where a shader lives            |
@@ -183,8 +183,8 @@ Written as questions because the answers are Siva's.
 
 | finding                                                                                                               | where                                          | severity | owner     |
 | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | -------- | --------- |
-| the editing path and the shipping path have diverged, and the playground's own producer makes single pass frames only | `lib/shader-artefact.ts`                       | high     | phase 0.5 |
-| pipeline layouts are decided by scanning strings, and a layout one binding too wide is accepted while lying           | `lib/wgsl-references.ts`, 100 lines            | high     | phase 0.4 |
+| the editing path and the shipping path have diverged, and the playground's own producer makes single pass frames only | the site's playground producer                 | high     | phase 0.5 |
+| pipeline layouts are decided by scanning strings, and a layout one binding too wide is accepted while lying           | `wgsl-references.ts`, 100 lines                | high     | phase 0.4 |
 | the program cache has no cap and no eviction, so every compiling edit keeps its programs on the card                  | `renderer/index.ts`                        | high     | phase 0.1 |
 | the cache key concatenates and hashes every document's full source text once per draw                                 | `renderer/index.ts`                        | medium   | phase 0.2 |
 | views, attachment arrays and two closures are rebuilt per pass per frame                                              | `renderer/webgpu.ts`                       | medium   | phase 0.2 |
@@ -195,13 +195,13 @@ Written as questions because the answers are Siva's.
 | store operations are always `store`, so a tiler writes out attachments nothing reads                                  | `webgpu.ts`, two sites                         | medium   | phase 1.4 |
 | two passes over one attachment never merge, which on a tiler is a store and a reload                                  | the draw loop                                  | medium   | phase 1.4 |
 | render bundles are absent, though a fixed pass list is exactly what they are for                                      | the design                                     | medium   | phase 1.3 |
-| no per draw data, no dynamic offsets, no second bind group, no bindless                                               | the description                                | medium   | phase 1.1 |
-| a buffer's contents cannot be replaced while the page runs                                                            | three write paths only                         | medium   | phase 1.2 |
-| `report()` has no consumer in shipping code, only a gate that prints it                                               | `types.ts`, `backends.mjs`                     | low      | phase 3   |
+| no per draw data, no dynamic offsets, no second bind group, no bindless                                               | the description                                | medium   | solved    |
+| a buffer's contents cannot be replaced while the page runs                                                            | three write paths only                         | medium   | solved    |
+| `report()` has no consumer in shipping code, only a gate that prints it                                               | `types.ts`, the site's `backends` gate         | low      | phase 3   |
 | `readBuffer` answers vacuously on one backend and `unreached` exists for one compiler quirk                           | `ShaderProgram`                                | low      | accepted  |
 | five words for overlapping ideas, counted in one file: frame 50, texture 31, target 13, picture 12, attachment 9      | `renderer/types.ts`                        | low      | phase 0.3 |
 | the shared description speaks WebGPU's vocabulary, so the other backend refuses words it cannot use                   | `types.ts`, 6 references                       | low      | accepted  |
-| the content layer imports renderer types for a stencil mode and a dispatch                                            | `types/shader.ts`                              | low      | phase 3   |
+| the content layer imports renderer types for a stencil mode and a dispatch                                            | the site's content layer                       | low      | phase 3   |
 | no pooling, no suballocation, no transient or aliased resources, and a staging buffer per readback                    | the backend                                    | low      | phase 2   |
 | recording and submitting happen in one call, so the shape forecloses worker recording                                 | `draw()`                                       | low      | phase 2   |
 | capability queries are inconsistent: formats are assumed at run time and probed only by a gate                        | the backend                                    | low      | phase 1   |
@@ -212,6 +212,8 @@ Written as questions because the answers are Siva's.
 | four documents describe this renderer and two now overlap                                                             | `docs/`                                        | low      | closed    |
 
 **The document overlap is closed as of 2026-08-21.** Each of the three shared subjects has one home now, named in [RENDERER-DESIGN.md](RENDERER-DESIGN.md)'s own header: that file owns the type surface, the vocabulary, the refusal path, what the build writes and the capability table, and this one owns the layer boundaries, the growth path and the questions still open about the direction. Ownership and lifetime stays there because it is a property of the types.
+
+**Two audit rows are marked solved as of 2026-08-24.** Per-draw data with its second bind group landed at step 1.1 and a buffer's contents became replaceable while the page runs at step 1.2, both recorded against the capability table in [RENDERER-DESIGN.md](RENDERER-DESIGN.md); [RoadToPureEngine.md](RoadToPureEngine.md) §3 row 13 named this audit stale for still listing them missing. The Stage-one section above, which presents those same two as available-but-unlanded, is stale for the same reason and reads now as the record of how they were deferred before they landed. Bindless remains unbuilt, so that clause of the first row still stands.
 
 **What the audit found healthy, recorded so a later pass does not re-litigate it.** One global in the whole stack, which is a documented shared fetch promise. No cycles and a one way dependency direction. Zero inheritance and no virtual dispatch beyond two closures behind one interface. No state cache, therefore no state cache that can be wrong. No forced sync in the shipping path. Zero stale markers and no commented out code. A shader system with no permutation explosion and one specialization axis. Determinism strong enough to compare frames byte for byte across runs and across backends. Two real implementations behind the backend interface, which is the number that keeps an interface honest.
 

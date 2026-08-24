@@ -76,7 +76,7 @@ Days, no architecture. Implements decisions 6, 8 and 11.
 
 ### 5. The design documents stop naming files that left
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `ABSTRACTION.md` and `RENDERER-DESIGN.md` lose every path that does not exist here, each `Dnnn` reference gains a sentence saying what it settled, and the stale audit rows are marked solved.
 
