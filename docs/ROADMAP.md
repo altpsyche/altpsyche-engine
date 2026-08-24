@@ -8,7 +8,7 @@ The library ships from `main` as `@altpsyche/engine`. The site that consumes it 
 
 **Direction for this repository is [RoadToPureEngine.md](RoadToPureEngine.md).** That document decides nothing this file queues, and this file queues nothing that document decides; where an item below names a stage, the stage is defined there.
 
-**Filled out on 2026-08-24** with the whole of that document's road, as fifty-eight items in seven phases. **Items 59, 60 and 61 were added on 2026-08-24** by the reviews of the first two unattended runs, which is where an item found by reading landed work belongs.
+**Filled out on 2026-08-24** with the whole of that document's road, as fifty-eight items in seven phases. **Items 59 to 62 were added on 2026-08-24** by the reviews of the first two unattended runs, which is where an item found by reading landed work belongs.
 
 ---
 
@@ -182,6 +182,25 @@ Seven website paths are still in that fence today, named here without backticks 
 **One thing to decide while landing it.** [RoadToPureEngine.md](RoadToPureEngine.md) §14 retires `ShaderFrame.uniforms` from the graph, because what a control panel shows is not a render fact. So the obvious route leans on a field that is scheduled to leave. If it is taken anyway, the type has to move to the binding or the pipeline when that field goes, and this entry is where that follow-on is recorded.
 
 **Also worth checking when landing it.** The uniform-block path above the loose path writes members into a byte buffer as floats too, so an `int` member of a block has the same problem by a different route. No corpus source has one today, and a Shadertoy paste uses loose uniforms rather than a block, so the loose path is the one item 6 made reachable.
+
+### 62. Decision 6's promise is confirmed on a machine that has WebGPU
+
+**Status.** open
+
+**Asks for.** One reading, on a device that actually returns a WebGPU adapter, showing that a GLSL-authored frame is drawn by WebGL 2 there and that the picture comes out.
+
+**Done when.** A dated row in [DEVICES.md](DEVICES.md) records a machine whose `probe()` reports WebGPU returned and survived, on which `examples/shadertoy-paste` selected `webgl2` and drew. Not a node assertion: the point is the machine.
+
+**Needs.** item 9.
+
+**Why it exists.** §17 decision 6's whole promise is that a consumer arriving with a GLSL shader **gets a picture rather than a lecture**, because GLSL selects WebGL 2 even where WebGPU exists. Items 6, 8 and 9 each built a piece of that and each disclosed, accurately, the half it could not prove:
+
+- item 8's row: the offering in its tests is a written fixture rather than a probe, because this machine never returns a real WebGPU adapter, and nothing feeds the chosen backend name to a renderer on a real card.
+- item 9's row: only the pure `readingOf` is exercised; the browser half never ran, so `device-report` has not been run here at all.
+
+Each row is honest and neither is wrong. What nobody owned is the join: **on a machine that has WebGPU, nothing has yet shown a GLSL paste drawing through WebGL 2.** Three green halves are not a verified whole, and this is the item that says so.
+
+**It cannot be settled on the machine the loop runs on**, per §17's three harness notes: every headless launch there reaches SwiftShader whatever the flags say, and a real adapter needs a visible window with `--enable-features=Vulkan` and `--ozone-platform=x11` together. So an unattended run should **lift this item rather than work it**, and the reading belongs to whoever has the hardware — the same standing job as item 57.
 
 ---
 
