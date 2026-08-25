@@ -998,13 +998,48 @@ was not required; 682 node tests green (+4), type-check green. See [JOURNAL.md](
 
 ### 35. `examples/orbit-shadow`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** An orbit camera, one shadow-casting light, around fifty objects.
 
 **Done when.** It runs on both backends. **This is Phase 4's exit criterion.**
 
 **Needs.** item 32, item 34.
+
+**How it landed.** [examples/orbit-shadow/main.ts](../examples/orbit-shadow/main.ts) is the
+fifth example and the first to draw a scene through the tier's producer rather than a
+hand-written description: `sceneView(arena, options).graph(world, [camera])` (item 32) turns a
+forty-nine-cell grid into a frame of **two instanced passes** (item 33) — a shadow pass and a
+lit pass, in the order the producer lists them, shadows first and lit objects over them. **The
+shadow-casting light** is a directional light whose planar projection onto the ground plane
+`y = 0` (`groundShadow`) is baked into the shadow pipeline's per-object buffer, so the light is
+data the graph carries rather than a second render target — expressible through `sceneView`'s
+output today and snapshot-diffable the way item 34's presets are. **The orbit** is the camera
+rebuilt each animation frame with `surface.setArtefact(build(theta))`, off one arena whose
+resident buffers are reused while the world keeps its shape — the honest cost of a producer
+whose output is data (item 32), and what this exit criterion exists to exercise. **Both
+backends** are two authorings of one idea: a WGSL scene (`selectBackend` routes it to WebGPU)
+and a GLSL fullscreen approximation (routed to WebGL 2, which has no scene tier of its own until
+Phase 5), drawn whichever the device offers.
+
+**What the door was missing, now fixed.** `sceneView` takes an `Arena`, but `Arena` was not
+exported through the door, so a door-only consumer could not build one to call the producer —
+the exit criterion surfaced an incomplete public surface. `Arena` (and its `Handle` type) are
+now exported; `gate:pack` green at 54 door names where there were 53. See item 65 for the
+depth-attachment gap the same example surfaced.
+
+**What the gates could not see.** "Runs on both backends" needs a card or `gate:browser`,
+neither run in the unattended session (this machine reaches only SwiftShader, §17 note 3): the
+node suite reads calls off the doubles and does not execute the example, which is exercised only
+by `npm run example orbit-shadow` in a browser. What is verified here is that it bundles through
+the door alias (esbuild, door-only imports, `tests/examples-door.test.ts` green), type-checks,
+and that the frames it builds are well-formed data — `cost(build(0))` and `cost(glslFrame)`
+compute, `selectBackend` routes the WGSL frame to WebGPU given an adapter and the GLSL frame to
+WebGL 2. Three things are card-gated beyond drawing at all: that the shadow pass's output
+survives under the lit pass (the colour load-versus-clear between two passes over one target,
+item 1's territory); that `setArtefact` re-uploads the changed storage buffers each frame so the
+camera visibly orbits; and that overlapping objects order correctly — which they cannot without
+depth, item 65. See [JOURNAL.md](JOURNAL.md).
 
 ### 36. `examples/gltf-cube`
 
@@ -1429,3 +1464,29 @@ Each row is honest and neither is wrong. What nobody owned is the join: **on a m
 **Closed without its own commit, 2026-08-25.** It was the symptom rather than the defect: `loadCorpus` threw because the door's `export *` lines left a bundler an uninitialised namespace, which is the shipped bug fixed in `b644520`. Verified after that fix — `loadCorpus()` awaited returns 15 frames, and `corpus.mjs` and `trace-contract.mjs` both reach a page and report 15 of 15. Recorded here rather than worked, because an item whose cause was fixed elsewhere is closed by evidence and not by a second repair.
 
 **Why it exists.** Found working item 22, which wanted to print `arena.traffic()` beside `cost()` for every corpus preset and could not: `loadCorpus()` throws on the first capability fixture, `core-compute`, with *"the description for core-compute names a document undefined with no text"*. Reproduced on a clean tree (`git stash` then the one-liner above), so it predates item 22 and is not that work's doing. The cause is a `WGSL_DOCUMENT` that resolves to `undefined` inside the esbuild bundle `loadFromRoot` builds — a document named `undefined` reaches `frameOf`, whose missing-text check refuses it correctly. Because `loadCorpus` is what `gate:browser`'s corpus and trace-contract gates call at their first step, **both are currently dead at load**, which the repeated "gate:browser not run in the unattended session" JOURNAL rows have been hiding: a gate nobody runs is a gate whose own loader can rot unnoticed. Item 22's benchmark works around it by building two frames by hand; this item is the fix, and until it lands `gate:browser` cannot confirm anything, including the twelve trace presets several recent items defer to it.
+
+### 65. `sceneView` declares a depth attachment
+
+**Status.** open
+
+**Asks for.** The scene producer emits a frame that depth-tests: a transient depth target the passes share and clear, and each render pipeline declaring its depth compare and write, so a scene of solid objects draws correctly from any camera angle.
+
+**Done when.** A `sceneView` scene of two objects, one in front of the other from the camera's view, draws the near one over the far one whatever order the objects sit in the graph — asserted through the emitted graph carrying a depth attachment and each pipeline a `depth`, and its `cost()` counting the depth loads and stores. A scene with the depth removed regresses the near-over-far ordering in the same test.
+
+**Needs.** item 32.
+
+**Why it exists.** Found writing item 35's `examples/orbit-shadow`, the first example to draw a
+scene through `sceneView`. `sceneView` emits passes carrying only a pipeline and its draws — no
+depth attachment — and `submit/plan.ts` requires a pass's depth attachment for a pipeline that
+declares `depth`, so a `sceneView` pipeline cannot declare depth today and the scene has no
+depth test. Objects therefore order by draw order alone (§8's painter order), which is correct
+for a fixed layering — item 35 relies on it to sit shadows under lit objects, listing the shadow
+pipeline first — but wrong for solid objects an **orbit** camera sees from changing angles: a
+cube behind another draws over it whenever draw order and view order disagree. Item 35 draws
+anyway because its objects are a low grid an elevated orbit rarely stacks and the exit criterion
+is "runs", not "occludes correctly" (its [JOURNAL.md](JOURNAL.md) row names this as the card-gated
+gap). The machinery exists — item 17 lets a graph declare a transient depth target and
+`instanced-cubes` (item 30) hand-writes exactly this attachment — so this is teaching the
+producer to emit what a hand-written frame already can, not new backend work. It is the scene
+tier's `Done when`-visible correctness rather than a demo polish, which is why it is queued
+rather than left in the row.

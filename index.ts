@@ -187,6 +187,14 @@ export type {
   SceneViewOptions,
 } from './engine/scene-view.js';
 
+// The resident lifetime a producer is handed: the arena that allocates, resizes
+// and frees the byte buffers `sceneView` fills from the scene, addressing each by
+// a branded `Handle` a stale reference cannot forge. It is public because
+// `sceneView` takes one and a consumer authoring a scene must be able to build it
+// through the door rather than reaching a folder for it (item 35).
+export { Arena } from './resource/arena.js';
+export type { Handle } from './resource/arena.js';
+
 // What one frame costs by its structure alone — passes, draws, dispatches,
 // pipeline and bind switches, attachment loads and stores, transient bytes.
 // Pure and device-free, asserted per preset in CI and only ever reported by
