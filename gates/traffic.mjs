@@ -83,7 +83,7 @@ const gridFrame = {
       bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: 'warp', draw: { instances: 3 } }],
+  passes: [{ pipeline: 'warp', draws: [{ instances: 3 }] }],
 };
 
 // A compute frame writing a storage buffer whose first contents arrive with it:

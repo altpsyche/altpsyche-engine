@@ -1905,7 +1905,7 @@ the old auto-tracking is gone by design (§7, §14). See [JOURNAL.md](JOURNAL.md
 
 ### 73. `bench:traffic` runs again, and something runs it
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `npm run bench:traffic` to print its two readings, and for a gate to notice when it stops. It has printed nothing since item 26.
 
@@ -1914,6 +1914,23 @@ the old auto-tracking is gone by design (§7, §14). See [JOURNAL.md](JOURNAL.md
 **Needs.** nothing.
 
 **Why it exists.** Found on 2026-08-25 by the closing browser batch over `b3241fc..f734de7`, while checking what that batch's renames touched that a browser gate cannot see. `gates/traffic.mjs`'s `gridFrame` declares `passes: [{ pipeline: 'warp', draw: { instances: 3 } }]` — the singular field item 26 renamed to `draws` — so `isRenderPass`, which tests `'draws' in pass`, takes that render pass for a compute pass. At `b3241fc` that reached a clean refusal (`the pass on "warp" asks for the other kind of work than the pipeline does`); at `f734de7` it is a `TypeError` from `groupsIndirectly` reading `'indirect' in undefined`, because item 72's guard dropped the `typeof === 'object'` arm that had been absorbing the `undefined`. Either way the script dies on its first frame and has since item 26 (`db1f6b3`, 31 commits back): only items 22, 37 and 72 have ever touched the file, and none of them is item 26. **Two things are wrong and the second is the item.** The fixture is one word stale, which is a one-line fix. The reason nobody noticed for 31 commits is that `gates/traffic.mjs` is a `.mjs` outside `tsconfig`, so `type-check` cannot see it, and it is not in `gates/all.mjs`'s list — deliberately, since it asserts nothing and is not a gate — so no command in the repository runs it. That leaves the two readings it exists to keep apart, `cost().transientBytes` against `arena.traffic()` (§12 point 6, §17 decision 9), unprinted and unlooked-at for 31 commits. A node test that runs the script and asserts it exits zero with a row per frame is enough; it need not assert the numbers, which are what a person reads. See [JOURNAL.md](JOURNAL.md).
+
+**How it landed.** The one-word fix and the runner. The stale `passes: [{ pipeline: 'warp', draw:
+{ instances: 3 } }]` in [gates/traffic.mjs](../gates/traffic.mjs) became `draws: [{ instances: 3
+}]` — the field item 26 renamed — so `isRenderPass` (`'draws' in pass`) takes the render pass for
+what it is rather than treating it as a compute pass and dying in `groupsIndirectly`. The script
+now runs to the end and prints both rows: at 800×600, `grid` written 192 B / uploaded 16 B and
+`compute` written 256 B / uploaded 16 B, both `transientBytes` 0 — the same figures item 22
+recorded, `cost().transientBytes` and `arena.traffic()` kept in separate column groups and never
+summed. The runner is [tests/bench-traffic.test.ts](../tests/bench-traffic.test.ts), a node test in
+the fast suite (the item's "cheap place", no browser and no card): it runs `gates/traffic.mjs` as a
+subprocess and fails if it exits non-zero (`execFileSync` throws) or prints no row for a frame in
+its list — the frame ids are read out of the script's own source rather than restated, so the
+script's list stays the one home. It asserts the script reaches the end and prints one line per
+frame, not the byte counts, which are what a person reads — per the item. This closes the specific
+hole (`bench:traffic` broken and unrun for 31 commits); the *class* — scripts nothing points at —
+is item 74's, which `Needs` this. `npm test` 714 green (+1), `type-check` clean; the export surface
+did not move, so `gate:pack` was not required.
 
 ### 74. Every script is run by something, or is named as needing hardware
 
