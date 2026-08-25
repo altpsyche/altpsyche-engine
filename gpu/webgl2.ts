@@ -211,12 +211,12 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // The resource kinds this backend keeps: the frame's one uniform block, the
       // samplers that say how a texture is read between its pixels, a colour texture
       // a pass draws and a later pass samples (the multi-pass shape of item 46), and
-      // a depth or stencil attachment a pass tests against (item 48), and a resident
-      // texture arriving with contents of its own, uploaded once (item 78). The
-      // narrower texture kinds are each a later item and refused here by name: a
-      // storage texture is a compute output and this backend has no compute stage, a
-      // ladder of levels is item 50, and several samples a pixel is the `msaa`
-      // capability item 80 tracks. A depth or stencil attachment reaching one of
+      // a depth or stencil attachment a pass tests against (item 48), a resident
+      // texture arriving with contents of its own, uploaded once (item 78), and a
+      // ladder generated off those contents (item 50). The narrower texture kinds are
+      // each a later item and refused here by name: a storage texture is a compute
+      // output and this backend has no compute stage, and several samples a pixel is
+      // the `msaa` capability item 80 tracks. A depth or stencil attachment reaching one of
       // those refusals — a multisampled depth, say — is refused the same, which is
       // the safe direction until that item lands.
       const samplerSpecs = frame.resources.filter((resource): resource is SamplerResource => resource.kind === 'sampler');
@@ -234,8 +234,18 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             `the frame for "${frame.id}" writes "${resource.name}" as a storage texture, and this backend has no compute to fill one`
           );
         }
-        if (resource.mips) {
-          throw new Error(`the frame for "${frame.id}" gives "${resource.name}" a ladder of levels, and this backend generates none`);
+        // A ladder is generated off resident contents (item 50): the card averages
+        // every level below the first through `generateMipmap`. A ladder over a
+        // texture a pass writes would be the levels of whatever was in it when it was
+        // built, and every frame after the first would read a ladder of a picture that
+        // is gone — so a ladder over an attachment is refused, the same reason and the
+        // same words the WebGPU backend refuses it. A ladder over a texture with no
+        // contents at all has nothing to average, and is refused too.
+        if (resource.mips && resource.use.includes('attachment')) {
+          throw new Error(`the frame for "${frame.id}" gives "${resource.name}" a ladder and writes it every frame`);
+        }
+        if (resource.mips && !resource.data && !resource.source) {
+          throw new Error(`the frame for "${frame.id}" gives "${resource.name}" a ladder and no contents to build it from`);
         }
         if (resource.samples) {
           throw new Error(`the frame for "${frame.id}" keeps several samples of "${resource.name}", and this backend keeps one`);
@@ -368,9 +378,25 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         const contents = record.spec.data ?? null;
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, across, down, 0, gl.RGBA, gl.UNSIGNED_BYTE, contents);
         if (contents) arena.wrote(contents.byteLength);
-        const filter = sampler?.filter === 'linear' ? gl.LINEAR : gl.NEAREST;
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+        // A ladder is generated off the level-0 contents (item 50): the card averages
+        // every level below the first down to a single pixel, the steps the WebGPU
+        // backend draws by hand, and how many there are it works out from the size. It
+        // runs when the contents arrive rather than every frame, since a content
+        // texture does not follow the frame — refused above where it would — so
+        // `buildTexture` runs once for it. A texture with no ladder keeps its one level.
+        const laddered = record.spec.mips === 'generate';
+        if (laddered && contents) gl.generateMipmap(gl.TEXTURE_2D);
+        // How the texture is read between its pixels; and between levels too where a
+        // ladder exists, which is the trilinear min filter a smooth read of a
+        // shrinking picture wants — the two levels either side of the wanted size
+        // mixed, so the climb across the frame shows no hard step where one level
+        // gives way to the next. The mag filter has no levels to mix, so it stays the
+        // plain one.
+        const linear = sampler?.filter === 'linear';
+        const magFilter = linear ? gl.LINEAR : gl.NEAREST;
+        const minFilter = laddered ? (linear ? gl.LINEAR_MIPMAP_LINEAR : gl.NEAREST_MIPMAP_NEAREST) : magFilter;
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, magFilter);
         const wrap = sampler ? WRAPS[sampler.wrap] : gl.CLAMP_TO_EDGE;
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);

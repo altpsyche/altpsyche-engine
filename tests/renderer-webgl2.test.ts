@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGL2Backend } from '../gpu/webgl2';
 import { glslFrame, missing, cost, GEOMETRY_PRIMITIVE } from '@altpsyche/engine';
-import type { RenderPipelineSpec, FrameGraph } from '@altpsyche/engine';
+import type { RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
 import { bottomUpFrame, createFakeGL } from './support/fake-gl';
 
 /**
@@ -206,7 +206,7 @@ describe('a description above the subset', () => {
     );
   });
 
-  it('refuses a texture with a ladder of levels, which is item 50', () => {
+  it('refuses a ladder over a texture with no contents to build it from (item 50)', () => {
     const { backend } = backendOver();
     const resources = [
       ...graph().resources,
@@ -220,7 +220,25 @@ describe('a description above the subset', () => {
       },
     ];
     expect(() => backend.program(glsl({ resources }))).toThrow(
-      'the frame for "fixture" gives "picture" a ladder of levels, and this backend generates none'
+      'the frame for "fixture" gives "picture" a ladder and no contents to build it from'
+    );
+  });
+
+  it('refuses a ladder over an attachment a pass writes every frame (item 50)', () => {
+    const { backend } = backendOver();
+    const resources = [
+      ...graph().resources,
+      {
+        kind: 'texture' as const,
+        name: 'picture',
+        size: { scale: 1 },
+        format: 'rgba8unorm' as const,
+        use: ['attachment' as const, 'sample' as const],
+        mips: 'generate' as const,
+      },
+    ];
+    expect(() => backend.program(glsl({ resources }))).toThrow(
+      'the frame for "fixture" gives "picture" a ladder and writes it every frame'
     );
   });
 
@@ -909,6 +927,99 @@ describe('a pass sampling a resident image (item 78)', () => {
     expect(() => backend.program(textureFrame({ scale: 1 }))).toThrow(
       'the frame for "core-texture" gives "grain" contents and the frame\'s own size, which is thrown away on a resize'
     );
+  });
+});
+
+/**
+ * A fullscreen pass sampling a resident image with a ladder generated off it, the
+ * way the build assembles `core-mips`: a 256×256 `grain` texture arriving with its
+ * own `value-noise` bytes and `mips: 'generate'`, a `grainSampler` reading it
+ * smoothly and tiling it, and one pass that samples it. Item 50 generates the
+ * ladder where the backend refused a laddered texture before. What the levels look
+ * like is a picture a card or a browser answers (item 44); what these assert is
+ * that the ladder is generated when the contents arrive and the texture is read
+ * with the trilinear min filter a shrinking picture wants.
+ */
+const MIPS_SIDE = 256;
+const MIPS_BYTES = MIPS_SIDE * MIPS_SIDE * 4;
+
+function mipsFrame(over: Partial<TextureResource> = {}): FrameGraph {
+  return {
+    id: 'core-mips',
+    target: 'glsl',
+    resources: [
+      { kind: 'uniform', name: 'uniforms' },
+      {
+        kind: 'texture',
+        name: 'grain',
+        size: { width: MIPS_SIDE, height: MIPS_SIDE },
+        format: 'rgba8unorm',
+        use: ['sample'],
+        mips: 'generate',
+        data: new Uint8Array(MIPS_BYTES),
+        ...over,
+      },
+      { kind: 'sampler', name: 'grainSampler', filter: 'linear', wrap: 'repeat' },
+    ],
+    modules: [
+      { name: 'vertex', code: VERTEX },
+      { name: 'shade', code: GRAIN_FRAGMENT },
+    ],
+    pipelines: [
+      {
+        kind: 'render',
+        name: 'sample',
+        vertex: { module: 'vertex', entry: 'main' },
+        fragment: { module: 'shade', entry: 'main' },
+        bindings: [{ group: 0, binding: 0, resource: 'grain', visibility: ['fragment'], reads: 'sample' }],
+      },
+    ],
+    passes: [{ pipeline: 'sample', draws: [{ vertices: 3 }] }],
+  };
+}
+
+describe('a pass sampling a laddered image (item 50)', () => {
+  const TEXTURE_MIN_FILTER = 0x2801;
+  const TEXTURE_MAG_FILTER = 0x2800;
+  const LINEAR = 0x2601;
+  const LINEAR_MIPMAP_LINEAR = 0x2703;
+
+  it('no longer refuses a texture carrying a ladder now that it generates one', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(mipsFrame()).draw()).not.toThrow();
+  });
+
+  it('generates the ladder off the level-0 contents when they arrive', () => {
+    const { gl, backend } = backendOver();
+    backend.program(mipsFrame());
+    // The contents reach level 0 through texImage2D, then the card averages the
+    // ladder off them once — not a call per frame, since the content texture does
+    // not follow the frame.
+    const upload = gl.of('texImage2D').find((entry) => entry.byteLength === MIPS_BYTES);
+    expect(upload).toMatchObject({ level: 0, width: MIPS_SIDE, height: MIPS_SIDE });
+    expect(gl.of('generateMipmap')).toHaveLength(1);
+    expect(gl.of('generateMipmap')[0]).toMatchObject({ target: 0x0de1 });
+  });
+
+  it('reads the ladder with the trilinear min filter a shrinking picture wants', () => {
+    const { gl, backend } = backendOver();
+    backend.program(mipsFrame());
+    const params = gl.of('texParameteri');
+    // The min filter mixes the two levels either side of the wanted size; the mag
+    // filter has no levels to mix and stays the plain linear one.
+    expect(params).toContainEqual(
+      expect.objectContaining({ pname: TEXTURE_MIN_FILTER, param: LINEAR_MIPMAP_LINEAR })
+    );
+    expect(params).toContainEqual(expect.objectContaining({ pname: TEXTURE_MAG_FILTER, param: LINEAR }));
+  });
+
+  it('generates no ladder for a texture that carries none', () => {
+    const { gl, backend } = backendOver();
+    backend.program(mipsFrame({ mips: undefined }));
+    // A texture with no ladder keeps its one level and its plain min filter.
+    expect(gl.of('generateMipmap')).toHaveLength(0);
+    const params = gl.of('texParameteri');
+    expect(params).toContainEqual(expect.objectContaining({ pname: TEXTURE_MIN_FILTER, param: LINEAR }));
   });
 });
 

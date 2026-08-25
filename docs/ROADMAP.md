@@ -1661,7 +1661,7 @@ still impossible on WebGL 2 — which is the state this lift records rather than
 
 ### 50. WebGL 2: mip generation
 
-**Status.** open
+**Status.** done
 
 **Done when.** The mips preset passes and the sampled result agrees per item 44.
 
@@ -1676,6 +1676,36 @@ in the scene tier without itemising it. So `core-mips` cannot draw here until th
 uploads a resident texture's content, which is now **item 78**. Once it lands, item 50 is the
 mip generation on top of it (`gl.generateMipmap`, a trilinear min filter); the `agrees per
 item 44` half is a card's or a browser's, as every WebGL 2 item's pixel-agreement is.
+
+**How it landed.** The WebGL 2 backend ([gpu/webgl2.ts](../gpu/webgl2.ts)) generates a mip
+ladder where it refused a laddered texture before. A texture declaring `mips: 'generate'` has its
+level-0 contents uploaded by item 78's path, and then `gl.generateMipmap` averages every level
+below the first down to a single pixel — the same steps the WebGPU backend draws by hand, and how
+many there are the card works out from the size. It runs once, when the contents arrive, since a
+content texture does not follow the frame (a frame-following content texture is refused by name,
+item 78). The texture is read with the trilinear min filter a shrinking picture wants — the two
+levels either side of the wanted size mixed (`LINEAR_MIPMAP_LINEAR` where the sampler is linear),
+so the climb across the frame shows no hard step where one level gives way to the next — while the
+mag filter, which has no levels to mix, stays the plain one. The refusals narrowed rather than
+vanished: a ladder over an attachment a pass writes every frame is refused by the WebGPU
+backend's own words (*"a ladder and writes it every frame"* — every frame after the first would
+read a ladder of a picture that is gone), and a ladder over a texture with no contents to build it
+from is refused too; a texture carrying no ladder keeps its one level and its plain min filter, so
+every prior toy is byte-identical in its call stream.
+
+**What the gates could see, and what they could not.** The node fake
+([tests/support/fake-gl.ts](../tests/support/fake-gl.ts), now recording `generateMipmap` and the
+mip-filter constants) drives a hand-authored frame built the way the build assembles `core-mips`
+([tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts), reached through the node fast
+suite rather than the dead corpus loader, item 64, as items 46/47/48/77/78 were). It asserts the
+contents reach level 0 through `texImage2D`, the ladder is generated once through `generateMipmap`,
+the trilinear min filter and plain mag filter are set, and a texture carrying no ladder generates
+none. **What no gate here can see is that the resulting level-mixed picture is byte-correct on a
+card** — the fake records calls, not pixels; no browser gate reaches this backend until item 79
+lands the harness, and `gate:browser`/`gate:card` were not run in the unattended session. So *that
+the sampled result agrees per item 44* is a card's or a browser's, per §17 note 3, exactly as
+every prior WebGL 2 item; whether SwiftShader's `generateMipmap` even matches a hardware card's
+averaging is itself unmeasured here. See [JOURNAL.md](JOURNAL.md).
 
 ### 51. Capability declaration wired end to end
 

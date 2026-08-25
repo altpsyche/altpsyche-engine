@@ -51,6 +51,10 @@ const CONSTANTS = {
   TEXTURE_WRAP_T: 0x2803,
   NEAREST: 0x2600,
   LINEAR: 0x2601,
+  // The min filters a ladder is read through (item 50): trilinear mixes the two
+  // levels either side of the wanted size, the plain mip filter reads the nearest.
+  NEAREST_MIPMAP_NEAREST: 0x2700,
+  LINEAR_MIPMAP_LINEAR: 0x2703,
   CLAMP_TO_EDGE: 0x812f,
   REPEAT: 0x2901,
   MIRRORED_REPEAT: 0x8370,
@@ -327,6 +331,9 @@ export function createFakeGL({ context = true } = {}): FakeGL {
       }),
     texParameteri: (target: number, pname: number, param: number) =>
       record('texParameteri', { target, pname, param }),
+    // The card averages a ladder off level 0 (item 50); the fake records the call
+    // so a test can see the ladder generated when the contents arrive.
+    generateMipmap: (target: number) => record('generateMipmap', { target }),
 
     // Framebuffers, one per texture a pass draws into, and the blit that shows a
     // texture on the canvas (item 46). `checkFramebufferStatus` answers complete,
