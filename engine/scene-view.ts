@@ -6,7 +6,7 @@
  *
  * A producer, not a backend: it imports the graph authoring layer (`graph/`) and
  * is handed an arena, and it reaches no device — every matrix it needs it works
- * out on the CPU through the engine's own `viewProjection` and `batchOnePipeline`,
+ * out on the CPU through the engine's own `viewProjection` and `batchScene`,
  * and everything it emits is plain data. That is what lets it be unit-tested with
  * no GPU present and snapshotted as JSON (item 34): the picture is a function of
  * the world and the views alone.
@@ -17,10 +17,12 @@
  * stereo or a cascaded-shadow consumer never has to reshape the call, per §17
  * decision 7.
  *
- * **One pipeline for now.** The whole world is one `batchOnePipeline`, so every
- * drawn object shares one pipeline and reads its own record out of one storage
- * buffer. Item 33 lifts that restriction; until then a scene spanning two
- * pipelines is two `sceneView`s or is refused by the batch.
+ * **Many pipelines, ordered by the producer (item 33).** The world is grouped by
+ * pipeline with `batchScene`, one instanced render pass per pipeline, and the order
+ * the passes run in is the order the producer lists its pipelines — the scheduling
+ * choice `batchScene` deliberately has no knowledge to make. A single-pipeline
+ * scene is the length-one case. Each pipeline reads its own per-object storage
+ * buffer, so two pipelines whose per-object structs differ each pack their own way.
  *
  * Imports `graph/` (the `Ref`/handle authoring layer) and the engine modules
  * beside it. It does **not** import `submit/` or a backend: a producer that
@@ -34,7 +36,7 @@ import { isResident } from '../graph/refs.js';
 import type { BufferRef } from '../graph/refs.js';
 import type { BufferHandle } from '../graph/handles.js';
 import type { Capability } from '../graph/capability.js';
-import { batchOnePipeline } from './material.js';
+import { batchScene } from './material.js';
 import type { Material, MaterialDraw } from './material.js';
 import { viewProjection } from './scene.js';
 import type { Camera, Scene } from './scene.js';
@@ -61,43 +63,61 @@ import type {
  * also binds are `resources` — `sceneView` adds the two scene-derived buffers to
  * them rather than owning the whole resource list.
  */
+/**
+ * One pipeline the world draws through, with the storage buffer its objects pack
+ * into. The scene is grouped by pipeline (`batchScene`), so a pipeline here is one
+ * instanced render pass drawing the objects whose material names it. The buffer and
+ * the pack are per pipeline because two pipelines read two per-object structs: a
+ * shadow pass packs only a transform where a lit pass packs a transform and a
+ * colour, and each pipeline's `pack` lays its record out the way its own source
+ * reads it.
+ */
+export interface ScenePipeline<V> {
+  /** The pipeline the objects in this group draw through. It binds this group's
+   * `objects` buffer and the shared `views` buffer. */
+  pipeline: RenderPipelineSpec;
+  /** The read-only storage buffer this group's per-object records go in, and how
+   * one drawn object packs to bytes for this pipeline's per-object struct — a
+   * record is typically the object's world matrix followed by its material's
+   * values. Two pipelines must name distinct buffers, so one group's records do not
+   * land in another's. */
+  objects: { buffer: string; pack: (draw: MaterialDraw<V>) => Uint8Array };
+}
+
 export interface SceneViewOptions<V> {
   id: string;
   target: ShaderTarget;
-  /** The documents the pipeline links or compiles from, code already in hand — a
+  /** The documents the pipelines link or compile from, code already in hand — a
    * producer reaches no fetch. */
   modules: ModuleSpec[];
-  /** The one pipeline every drawn object shares, until item 33 lets a scene span
-   * two. It binds the two buffers named in `objects` and `views`. */
-  pipeline: RenderPipelineSpec;
+  /** The pipelines the world draws through, one instanced render pass each, in the
+   * order their passes run — the producer's scheduling decision (item 33). A
+   * single-pipeline scene is a length-one list. A pipeline no object draws through
+   * this frame emits no pass; a material naming a pipeline not listed here is
+   * refused by name. */
+  pipelines: ScenePipeline<V>[];
   /** The materials the scene's entities name, turning an entity's material name
-   * into the values its copy reads. One pipeline, so every material here names
-   * `pipeline.name` — an object naming another is refused by the batch. */
+   * into the values its copy reads and the pipeline it draws through. */
   materials: Record<string, Material<V>>;
-  /** The resources the pipeline reads besides the two `sceneView` fills: the
+  /** The resources the pipelines read besides the buffers `sceneView` fills: the
    * uniform block a page feeds, the geometry the vertex stage reads, samplers,
-   * static textures. Absent for a pipeline that binds only the scene buffers. */
+   * static textures. Absent for pipelines that bind only the scene buffers. */
   resources?: ResourceSpec[];
   /** The names and types a page feeds by name, carried onto the frame unchanged.
    * The per-view and per-object matrices are not here — they are baked into the
-   * two buffers below as data, so the graph fully determines the picture and a
-   * snapshot diff shows a scene change (item 34). */
+   * scene buffers as data, so the graph fully determines the picture and a snapshot
+   * diff shows a scene change (item 34). */
   uniforms?: { name: string; type: string }[];
   /** The device capabilities the frame depends on, read by `refusal` (item 24).
    * Absent for a scene that needs only what every backend shares. */
   requires?: readonly Capability[];
-  /** The read-only storage buffer each object's record goes in, and how one drawn
-   * object packs to bytes. The layout is the shader's, so the pack is the caller's:
-   * a record is typically the object's world matrix followed by its material's
-   * values, laid out the way the source's per-object struct reads them. */
-  objects: { buffer: string; pack: (draw: MaterialDraw<V>) => Uint8Array };
   /** The read-only storage buffer the view-projection matrices go in, one
    * column-major `mat4` of sixty-four bytes per view, in the order `views` is
-   * given. A single-view scene is one matrix; the shader indexes by view where it
-   * draws more than one. */
+   * given, shared across every pass. A single-view scene is one matrix; the shader
+   * indexes by view where it draws more than one. */
   views: { buffer: string };
-  /** Which resource holds the picture once the pass has run, absent where the pass
-   * drew into the frame's own colour target. */
+  /** Which resource holds the picture once the passes have run, absent where the
+   * last pass drew into the frame's own colour target. */
   present?: string;
 }
 
@@ -142,16 +162,25 @@ function concatBytes(records: readonly Uint8Array[]): Uint8Array {
  * resident-lifetime reading `cost()` deliberately does not carry (item 22).
  */
 export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions<V>): SceneView {
-  // The resident buffers, held as graph refs so the producer names them the way
-  // the authoring layer does — a resident ref carrying the arena handle the buffer
-  // was allocated under. The authoring `BufferHandle` and the arena's runtime
-  // `Handle` are the same integer under two brands and meet at the one cast below,
-  // which is item 17's documented seam; they unify as resource names become handles
-  // in a later stage.
-  const slots: Record<'objects' | 'views', { ref: BufferRef; bytes: number } | undefined> = {
-    objects: undefined,
-    views: undefined,
-  };
+  // Every scene buffer must carry a distinct name — one resident slot per name — so
+  // two pipeline groups naming one buffer, or a group naming the views buffer, would
+  // have the second fill clobber the first's records within a frame: a silent wrong
+  // picture, refused here by name where the options are fixed rather than left to
+  // surprise a frame. (§3 row 2's class of defect, caught at construction.)
+  const names = [...options.pipelines.map((group) => group.objects.buffer), options.views.buffer];
+  const clash = names.find((name, at) => names.indexOf(name) !== at);
+  if (clash !== undefined) {
+    throw new Error(`sceneView "${options.id}" names the buffer "${clash}" twice; each scene buffer needs its own name`);
+  }
+
+  // The resident buffers, keyed by the name they carry on the frame — one per
+  // pipeline group's objects, plus the shared views buffer — held as graph refs so
+  // the producer names them the way the authoring layer does: a resident ref
+  // carrying the arena handle the buffer was allocated under. The authoring
+  // `BufferHandle` and the arena's runtime `Handle` are the same integer under two
+  // brands and meet at the one cast below, which is item 17's documented seam; they
+  // unify as resource names become handles in a later stage.
+  const slots = new Map<string, { ref: BufferRef; bytes: number }>();
 
   // The one seam item 17 documents: the authoring `BufferHandle` and the arena's
   // runtime `Handle` are the same integer under two brands, so a resident ref is
@@ -162,17 +191,17 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
     return ref.resident as unknown as Handle;
   };
 
-  // Allocate the named slot's buffer where its size changed and reuse it where it
-  // did not, then fill it with this frame's bytes. A first fill or a resize is
-  // `written` (first contents of a resource); refilling a reused buffer is
-  // `uploaded` (new numbers into one already made) — the two categories decision 9
-  // keeps apart, recorded where the write is made.
-  const resident = (which: 'objects' | 'views', name: string, bytes: Uint8Array): BufferResource => {
-    const held = slots[which];
+  // Allocate the named buffer where its size changed and reuse it where it did not,
+  // then fill it with this frame's bytes. A first fill or a resize is `written`
+  // (first contents of a resource); refilling a reused buffer is `uploaded` (new
+  // numbers into one already made) — the two categories decision 9 keeps apart,
+  // recorded where the write is made.
+  const resident = (name: string, bytes: Uint8Array): BufferResource => {
+    const held = slots.get(name);
     if (held === undefined || held.bytes !== bytes.byteLength) {
       const make = (): Uint8Array => new Uint8Array(bytes.byteLength);
       const handle = held === undefined ? arena.allocate(make) : arena.resize(handleOf(held.ref), make);
-      slots[which] = { ref: { resident: handle as unknown as BufferHandle }, bytes: bytes.byteLength };
+      slots.set(name, { ref: { resident: handle as unknown as BufferHandle }, bytes: bytes.byteLength });
       arena.wrote(bytes.byteLength);
     } else {
       arena.sent(bytes.byteLength);
@@ -180,7 +209,7 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
     // Resolve through the ref the way `FrameResources` does — a resident ref reaches
     // the arena — so the emitted resource points at the arena's own live buffer
     // rather than a copy of it.
-    const store = arena.resolve(handleOf(slots[which]!.ref));
+    const store = arena.resolve(handleOf(slots.get(name)!.ref));
     store.set(bytes);
     return { kind: 'buffer', name, bytes: bytes.byteLength, access: 'read', data: store as Uint8Array<ArrayBuffer> };
   };
@@ -190,27 +219,51 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
       if (views.length === 0) {
         throw new Error(`sceneView "${options.id}" needs at least one view to draw, but was given none`);
       }
-      // One pipeline for the whole world (item 33 lifts this). The batch refuses an
-      // object with no material, one naming a material the table does not carry, and
-      // one on a second pipeline — so a scene that cannot be one batch stops here by
-      // name rather than drawing wrong.
-      const batch = batchOnePipeline(world, options.materials);
-      const objectBytes = concatBytes(batch.draws.map(options.objects.pack));
-      const viewBytes = concatBytes(views.map((camera) => mat4Bytes(viewProjection(camera) as unknown as number[])));
+      // Group the world by pipeline (item 33). The batch refuses an object with no
+      // material and one naming a material the table does not carry — so a scene
+      // that cannot be grouped stops here by name rather than drawing wrong — but a
+      // second pipeline is a further batch rather than a throw.
+      const batches = new Map(batchScene(world, options.materials).map((batch) => [batch.pipeline, batch.draws]));
 
-      const objects = resident('objects', options.objects.buffer, objectBytes);
-      const viewsBuffer = resident('views', options.views.buffer, viewBytes);
+      // Plan the passes before touching the arena: one instanced draw per pipeline
+      // the producer lists, in that order — the scheduling choice `batchScene` has
+      // no knowledge to make. A pipeline no object draws through this frame is
+      // skipped. A material naming a pipeline the producer did not list is a drawn
+      // group with no pass to run in — refused by name, before any buffer is filled.
+      const groups = options.pipelines.filter((group) => (batches.get(group.pipeline.name)?.length ?? 0) > 0);
+      const stray = [...batches.keys()].find(
+        (pipeline) => !groups.some((group) => group.pipeline.name === pipeline)
+      );
+      if (stray !== undefined) {
+        throw new Error(`sceneView "${options.id}" draws a pipeline "${stray}" it was not given`);
+      }
+      if (groups.length === 0) throw new Error(`sceneView "${options.id}" has no object to draw`);
+
+      // The shared views buffer, one view-projection per camera, filled once for
+      // every pass to read.
+      const viewBytes = concatBytes(views.map((camera) => mat4Bytes(viewProjection(camera) as unknown as number[])));
+      const viewsBuffer = resident(options.views.buffer, viewBytes);
+
+      // Each group's own per-object storage buffer, filled with its records in draw
+      // order, and its render pass drawing the pipeline's geometry once per object —
+      // each copy reading its own record out of this group's buffer by which copy it
+      // is.
+      const objectResources = groups.map((group) =>
+        resident(group.objects.buffer, concatBytes(batches.get(group.pipeline.name)!.map(group.objects.pack)))
+      );
+      const passes: ShaderFrame['passes'] = groups.map((group) => ({
+        pipeline: group.pipeline.name,
+        draws: [{ instances: batches.get(group.pipeline.name)!.length }],
+      }));
 
       const frame: ShaderFrame = {
         id: options.id,
         target: options.target,
         uniforms: options.uniforms ?? [],
-        resources: [...(options.resources ?? []), objects, viewsBuffer],
+        resources: [...(options.resources ?? []), ...objectResources, viewsBuffer],
         modules: options.modules,
-        pipelines: [options.pipeline],
-        // One instanced draw: the pipeline's geometry drawn once per object, each
-        // copy reading its own record out of the objects buffer by which copy it is.
-        passes: [{ pipeline: options.pipeline.name, draws: [{ instances: batch.draws.length }] }],
+        pipelines: groups.map((group) => group.pipeline),
+        passes,
       };
       if (options.requires !== undefined) frame.requires = options.requires;
       if (options.present !== undefined) frame.present = options.present;

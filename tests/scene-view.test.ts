@@ -65,14 +65,27 @@ const OPTIONS: SceneViewOptions<Panel> = {
   id: 'panels',
   target: 'wgsl',
   modules: [MODULE],
-  pipeline: PIPELINE,
+  pipelines: [{ pipeline: PIPELINE, objects: { buffer: 'objects', pack: packPanel } }],
   materials: MATERIALS,
   uniforms: [
     { name: 'u_time', type: 'float' },
     { name: 'u_resolution', type: 'vec2' },
   ],
-  objects: { buffer: 'objects', pack: packPanel },
   views: { buffer: 'views' },
+};
+
+// A second pipeline, to prove a scene spanning two pipelines is one graph rather
+// than a thrown error (item 33). It draws the same per-object struct through a
+// different program, reading its own objects buffer.
+const GLOW: RenderPipelineSpec = {
+  kind: 'render',
+  name: 'glow',
+  vertex: { module: 'scene', entry: 'project' },
+  fragment: { module: 'scene', entry: 'bloom' },
+  bindings: [
+    { group: 0, binding: 0, resource: 'glowObjects', visibility: ['vertex'] },
+    { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+  ],
 };
 
 const CAMERA: Camera = {
@@ -179,12 +192,106 @@ describe('sceneView turns a world and its cameras into a frame with no GPU', () 
     expect(() => view.graph(TWO_PANELS, [])).toThrow(/"panels" needs at least one view/);
   });
 
-  it('lets the batch refuse a scene it cannot draw as one pipeline', () => {
+  it('lets the batch refuse a scene with an object that has no material, by name', () => {
     const view = sceneView(new Arena<Uint8Array>(() => undefined as never), OPTIONS);
     const bare: Scene = {
       entities: [{ id: 'x', transform: { position: vec3(0, 0, -1), rotation: mat4.rotationX(0), scale: vec3(1, 1, 1) } }],
     };
     expect(() => view.graph(bare, [CAMERA])).toThrow(/"x" has no material/);
+  });
+});
+
+describe('sceneView spans two pipelines in one graph, the producer deciding order (item 33)', () => {
+  // warm/cool draw through 'surface', bright through 'glow' — a scene on two
+  // pipelines, which item 32 refused and item 33 makes one graph.
+  const MATERIALS_TWO: Record<string, Material<Panel>> = {
+    ...MATERIALS,
+    bright: { pipeline: 'glow', values: { tint: [1, 1, 0.6] } },
+  };
+  const SPANNING: Scene = {
+    entities: [
+      { id: 'lit', material: 'warm', order: 1, transform: { position: vec3(-0.5, 0, -3), rotation: mat4.rotationX(0), scale: vec3(0.6, 0.6, 0.6) } },
+      { id: 'glowA', material: 'bright', order: 0, transform: { position: vec3(0.5, 0, -3), rotation: mat4.rotationX(0), scale: vec3(0.6, 0.6, 0.6) } },
+      { id: 'glowB', material: 'bright', order: 2, transform: { position: vec3(0, 0.5, -3), rotation: mat4.rotationX(0), scale: vec3(0.4, 0.4, 0.4) } },
+    ],
+  };
+
+  const optionsFor = (order: RenderPipelineSpec[]): SceneViewOptions<Panel> => ({
+    id: 'spanning',
+    target: 'wgsl',
+    modules: [MODULE],
+    pipelines: order.map((pipeline) => ({
+      pipeline,
+      objects: { buffer: pipeline.name === 'glow' ? 'glowObjects' : 'objects', pack: packPanel },
+    })),
+    materials: MATERIALS_TWO,
+    views: { buffer: 'views' },
+  });
+
+  it('produces one graph of two instanced passes, one per pipeline, not a throw', () => {
+    const view = sceneView(new Arena<Uint8Array>(() => undefined as never), optionsFor([PIPELINE, GLOW]));
+    const frame = view.graph(SPANNING, [CAMERA]);
+
+    // One frame, both pipelines, one pass each — a scene spanning two pipelines is
+    // one graph (item 33's Done-when), the passes in the producer's listed order.
+    expect(frame.pipelines).toEqual([PIPELINE, GLOW]);
+    expect(frame.passes).toHaveLength(2);
+    expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.pipeline : undefined))).toEqual(['surface', 'glow']);
+    // The surface pass draws its one lit object; the glow pass its two, each group
+    // one instanced draw counting only its own objects.
+    expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.draws : undefined))).toEqual([
+      [{ instances: 1 }],
+      [{ instances: 2 }],
+    ]);
+    // Each pipeline reads its own objects buffer, sized to its own object count.
+    expect(frame.resources.find((r) => r.name === 'objects')?.kind === 'buffer' && (frame.resources.find((r) => r.name === 'objects') as { bytes: number }).bytes).toBe(OBJECT_BYTES);
+    expect(frame.resources.find((r) => r.name === 'glowObjects')?.kind === 'buffer' && (frame.resources.find((r) => r.name === 'glowObjects') as { bytes: number }).bytes).toBe(2 * OBJECT_BYTES);
+  });
+
+  it('runs the passes in the order the producer lists the pipelines, not the scene order', () => {
+    // Same scene, pipelines listed glow-first: the pass order flips, so ordering is
+    // the producer's to decide rather than baked into the scene or the batch.
+    const view = sceneView(new Arena<Uint8Array>(() => undefined as never), optionsFor([GLOW, PIPELINE]));
+    const frame = view.graph(SPANNING, [CAMERA]);
+    expect(frame.pipelines).toEqual([GLOW, PIPELINE]);
+    expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.pipeline : undefined))).toEqual(['glow', 'surface']);
+  });
+
+  it('emits no pass for a listed pipeline no object draws through this frame', () => {
+    // The glow pipeline is listed but this frame's scene draws only 'surface'
+    // objects, so only the surface pass is emitted — a producer may list pipelines a
+    // given frame does not use.
+    const view = sceneView(new Arena<Uint8Array>(() => undefined as never), optionsFor([PIPELINE, GLOW]));
+    const frame = view.graph(TWO_PANELS, [CAMERA]);
+    expect(frame.pipelines).toEqual([PIPELINE]);
+    expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.pipeline : undefined))).toEqual(['surface']);
+    expect(frame.resources.some((r) => r.name === 'glowObjects')).toBe(false);
+  });
+
+  it('refuses a material that names a pipeline the producer did not list, by name', () => {
+    // 'glow' is drawn by 'bright' but only 'surface' is listed: a drawn pipeline
+    // with no pass to run in is refused, naming the pipeline.
+    const view = sceneView(new Arena<Uint8Array>(() => undefined as never), optionsFor([PIPELINE]));
+    expect(() => view.graph(SPANNING, [CAMERA])).toThrow(/draws a pipeline "glow" it was not given/);
+  });
+
+  it('refuses two pipeline groups that name one objects buffer, at construction, by name', () => {
+    // Two groups sharing a buffer name would have the second group's records clobber
+    // the first's within a frame — a silent wrong picture, refused where the options
+    // are fixed rather than left to draw wrong.
+    expect(() =>
+      sceneView(new Arena<Uint8Array>(() => undefined as never), {
+        id: 'clash',
+        target: 'wgsl',
+        modules: [MODULE],
+        pipelines: [
+          { pipeline: PIPELINE, objects: { buffer: 'shared', pack: packPanel } },
+          { pipeline: GLOW, objects: { buffer: 'shared', pack: packPanel } },
+        ],
+        materials: MATERIALS_TWO,
+        views: { buffer: 'views' },
+      })
+    ).toThrow(/names the buffer "shared" twice/);
   });
 });
 

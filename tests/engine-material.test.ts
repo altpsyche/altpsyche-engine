@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { vec3, mat4, type Material, batchOnePipeline } from '@altpsyche/engine';
+import { vec3, mat4, type Material, batchOnePipeline, batchScene } from '@altpsyche/engine';
 import { type Scene, worldMatrix } from '@altpsyche/engine';
 
 /**
@@ -116,5 +116,67 @@ describe('a batch is one pipeline drawing objects with their materials values', 
     // Two objects of the same material are one pipeline with the same values: a
     // material is shared, not copied per object.
     expect(result.draws[0]?.values).toBe(result.draws[1]?.values);
+  });
+});
+
+/**
+ * `batchScene` is `batchOnePipeline` with its one restriction lifted (item 33): a
+ * scene spanning two pipelines is one batch per pipeline rather than a thrown error,
+ * so a producer can draw a scene on two programs in one graph. The two authoring
+ * refusals stand; the one-pipeline refusal does not.
+ */
+describe('batchScene groups a scene into one batch per pipeline', () => {
+  const twoPipelines: Record<string, Material<Tint>> = {
+    warm: { pipeline: 'surface', values: { tint: [1, 0, 0] } },
+    glow: { pipeline: 'glow', values: { tint: [0, 0, 1] } },
+  };
+
+  it('splits objects on two pipelines into two batches, each in draw order', () => {
+    const scene: Scene = {
+      entities: [
+        { id: 'a', material: 'warm', order: 0, transform: at([0, 0, 0]) },
+        { id: 'g1', material: 'glow', order: 1, transform: at([1, 0, 0]) },
+        { id: 'b', material: 'warm', order: 2, transform: at([2, 0, 0]) },
+        { id: 'g2', material: 'glow', order: 3, transform: at([3, 0, 0]) },
+      ],
+    };
+    const batches = batchScene(scene, twoPipelines);
+    // One batch per pipeline, in the order each is first drawn (draw order),
+    // 'surface' first because 'a' at order 0 leads.
+    expect(batches.map((b) => b.pipeline)).toEqual(['surface', 'glow']);
+    expect(batches[0]!.draws.map((d) => d.id)).toEqual(['a', 'b']);
+    expect(batches[1]!.draws.map((d) => d.id)).toEqual(['g1', 'g2']);
+  });
+
+  it('is one batch for a single-pipeline scene, agreeing with batchOnePipeline', () => {
+    const scene: Scene = {
+      entities: [
+        { id: 'a', material: 'warm', transform: at([-1, 0, 0]) },
+        { id: 'b', material: 'cool', transform: at([1, 0, 0]) },
+      ],
+    };
+    const batches = batchScene(scene, materials);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toEqual(batchOnePipeline(scene, materials));
+  });
+
+  it('keeps the two authoring refusals but not the one-pipeline refusal', () => {
+    const bare: Scene = { entities: [{ id: 'x', transform: at([0, 0, 0]) }] };
+    expect(() => batchScene(bare, twoPipelines)).toThrow(/"x" has no material/);
+    const gone: Scene = { entities: [{ id: 'x', material: 'gone', transform: at([0, 0, 0]) }] };
+    expect(() => batchScene(gone, twoPipelines)).toThrow(/names a material "gone"/);
+    // Where batchOnePipeline throws on a second pipeline, batchScene does not.
+    const spanning: Scene = {
+      entities: [
+        { id: 'a', material: 'warm', transform: at([0, 0, 0]) },
+        { id: 'g', material: 'glow', transform: at([1, 0, 0]) },
+      ],
+    };
+    expect(() => batchScene(spanning, twoPipelines)).not.toThrow();
+  });
+
+  it('is an empty list for a scene with nothing to draw, not a throw', () => {
+    const scene: Scene = { entities: [{ id: 'anchor', visible: false, transform: at([0, 0, 0]) }] };
+    expect(batchScene(scene, twoPipelines)).toEqual([]);
   });
 });

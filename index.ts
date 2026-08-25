@@ -160,6 +160,7 @@ export type {
 } from './engine/scene.js';
 export {
   batchOnePipeline,
+  batchScene,
 } from './engine/material.js';
 export type {
   Batch,
@@ -181,6 +182,7 @@ export {
   sceneView,
 } from './engine/scene-view.js';
 export type {
+  ScenePipeline,
   SceneView,
   SceneViewOptions,
 } from './engine/scene-view.js';

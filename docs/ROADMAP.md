@@ -919,13 +919,49 @@ draws), and its whole output is data the node suite reads directly. See
 
 ### 33. `batchOnePipeline` loses its restriction
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The one-pipeline rule goes, because the reason for it — no per-draw data — is gone.
 
 **Done when.** A scene spanning two pipelines produces one graph, and the ordering is the producer's to decide rather than a thrown error.
 
 **Needs.** item 32.
+
+**How it landed.** The restriction is lifted where it lived — in `sceneView`, not in
+`batchOnePipeline`, which stays as the single-pipeline building block a dozen fixtures
+and tests still call and whose "one pipeline" name is honest about what it is.
+[engine/material.ts](../engine/material.ts) gains `batchScene(scene, materials): Batch[]`,
+one batch per pipeline in the order each is first drawn, and both it and
+`batchOnePipeline` now share one `withMaterial` helper so the two authoring refusals — an
+object with no material, one naming a material the table does not carry — are written once
+rather than in two places (item 19's discipline). The one-pipeline refusal is what
+`batchScene` drops: a second pipeline is a further batch, and a scene with nothing to draw
+is an empty list rather than a throw (the throw is `batchOnePipeline`'s, where exactly one
+pipeline is wanted).
+
+[engine/scene-view.ts](../engine/scene-view.ts) consumes it: `SceneViewOptions` now carries
+`pipelines: ScenePipeline[]` — each a pipeline and its own per-object storage buffer and
+`pack` — in place of the single `pipeline`/`objects`, and `.graph` emits **one instanced
+render pass per pipeline, in the order the producer lists them**. That list order is the
+scheduling decision `batchScene` deliberately has no knowledge to make (item 32's note),
+so **the ordering is the producer's**: the two-pipeline test draws the same scene twice
+with the pipelines listed in each order and the passes flip. A pipeline no object draws
+through this frame emits no pass; a material naming a pipeline the producer did not list is
+a drawn group with no pass to run in, refused by name before any buffer is filled; two
+groups (or a group and the views buffer) naming one buffer would clobber each other within
+a frame, so that is refused at construction by name — a silent-wrong-picture path (§3 row
+2) closed rather than left. This is a **breaking change to `SceneViewOptions`**, which §17
+decision 8 allows before 1.0 and item 38's rename horizon expects.
+
+The export surface moved — `batchScene` and `ScenePipeline` through the door, 53 names now
+where there were 51; `gate:pack` green at 53, its own "a two-pipeline scene is refused by
+name" check still passing (that is `batchOnePipeline`, unchanged). **What the gates could
+not see:** that a two-pipeline frame *draws* two pipelines' pictures needs a card or
+`gate:browser` (not run in the unattended session), and no corpus preset carries a
+multi-pipeline scene until `orbit-shadow` (item 35) emits one; the node suite reads the
+emitted graph as data — passes, pipelines, per-group buffer sizes, draw counts — which is
+where a scene's structure is a fact by construction. 678 node tests green (+12),
+type-check green. See [JOURNAL.md](JOURNAL.md).
 
 ### 34. Golden graph snapshots
 
