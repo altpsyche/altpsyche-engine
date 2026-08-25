@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { buffer, uniform, moduleHandle, pipelineHandle } from '../graph/handles.js';
 import type { BufferResource, RenderPassSpec, FrameGraph } from '@altpsyche/engine';
 
 /**
@@ -34,7 +35,6 @@ fn paint() -> @location(0) vec4f {
 
 const held = (over: Partial<BufferResource> = {}): BufferResource => ({
   kind: 'buffer',
-  name: 'readings',
   bytes: 16,
   access: 'read-write',
   ...over,
@@ -43,37 +43,35 @@ const held = (over: Partial<BufferResource> = {}): BufferResource => ({
 const frameOf = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-queries',
   authored: 'wgsl',
-  resources: [{ kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] }, held()],
+  resources: [{ kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] }, held()],
   modules: [{ name: 'wgsl', wgsl: SOURCE }],
   pipelines: [
     {
       kind: 'compute',
-      name: 'plan',
-      compute: { module: 'wgsl', entry: 'plan' },
+      compute: { module: moduleHandle(0), entry: 'plan' },
       bindings: [
-        { group: 0, binding: 0, resource: 'uniforms', visibility: ['compute'] },
-        { group: 0, binding: 1, resource: 'readings', visibility: ['compute'] },
+        { group: 0, binding: 0, resource: uniform(0), visibility: ['compute'] },
+        { group: 0, binding: 1, resource: buffer(1), visibility: ['compute'] },
       ],
       workgroup: [1, 1, 1],
     },
     {
       kind: 'render',
-      name: 'paint',
       vertex: 'fullscreen',
-      fragment: { module: 'wgsl', entry: 'paint' },
+      fragment: { module: moduleHandle(0), entry: 'paint' },
       bindings: [
-        { group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] },
-        { group: 0, binding: 1, resource: 'readings', visibility: ['fragment'] },
+        { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] },
+        { group: 0, binding: 1, resource: buffer(1), visibility: ['fragment'] },
       ],
     },
   ],
-  passes: [{ pipeline: 'paint', draws: [{ vertices: 3 }] }],
+  passes: [{ pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] }],
   ...over,
 });
 
 /** The drawn pass on its own, which is what most of these vary. */
 const drawing = (over: Partial<RenderPassSpec> = {}): RenderPassSpec => ({
-  pipeline: 'paint',
+  pipeline: pipelineHandle(1),
   draws: [{ vertices: 3 }],
   ...over,
 });
@@ -90,41 +88,41 @@ function backendOver({ timing = true } = {}) {
 describe('a pass that is timed', () => {
   it('is opened with a set of two, one time written at each end of it', () => {
     const { gpu, backend } = backendOver();
-    backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ timed: buffer(1) })] })).draw();
 
-    expect(gpu.calls('createQuerySet')[0]).toMatchObject({ label: 'readings-times', type: 'timestamp', count: 2 });
-    expect(gpu.calls('beginRenderPass')[0]?.times).toBe('readings-times');
+    expect(gpu.calls('createQuerySet')[0]).toMatchObject({ label: 'buffer1-times', type: 'timestamp', count: 2 });
+    expect(gpu.calls('beginRenderPass')[0]?.times).toBe('buffer1-times');
   });
 
   it('resolves the pair into the buffer the description named, after the pass has ended', () => {
     const { gpu, backend } = backendOver();
-    backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ timed: buffer(1) })] })).draw();
 
     const order = gpu.trace.map((entry) => entry.call);
     expect(order.indexOf('resolveQuerySet')).toBeGreaterThan(order.indexOf('endPass'));
     expect(gpu.calls('resolveQuerySet')[0]).toMatchObject({
-      set: 'readings-times',
+      set: 'buffer1-times',
       first: 0,
       count: 2,
-      into: 'readings',
+      into: 'buffer1',
       offset: 0,
     });
   });
 
   it('asks the buffer for the flag a resolve needs, on top of the ones it already had', () => {
     const { gpu, backend } = backendOver();
-    backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] }));
+    backend.program(frameOf({ passes: [drawing({ timed: buffer(1) })] }));
 
-    expect(gpu.calls('createBuffer').find((call) => call.label === 'readings')?.usage).toBe(
+    expect(gpu.calls('createBuffer').find((call) => call.label === 'buffer1' && (Number(call.usage) & GPUBufferUsage.STORAGE) !== 0)?.usage).toBe(
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE
     );
   });
 
   it('times a compute pass the same way, since a dispatch has two ends as well', () => {
     const { gpu, backend } = backendOver();
-    backend.program(frameOf({ passes: [{ pipeline: 'plan', groups: [1, 1, 1], timed: 'readings' }] })).draw();
+    backend.program(frameOf({ passes: [{ pipeline: pipelineHandle(0), groups: [1, 1, 1], timed: buffer(1) }] })).draw();
 
-    expect(gpu.calls('beginComputePass')[0]?.times).toBe('readings-times');
+    expect(gpu.calls('beginComputePass')[0]?.times).toBe('buffer1-times');
     expect(gpu.calls('resolveQuerySet')[0]?.count).toBe(2);
   });
 
@@ -134,17 +132,17 @@ describe('a pass that is timed', () => {
       backend.program(
         frameOf({
           resources: [frameOf().resources[0] as BufferResource, held({ bytes: 8 })],
-          passes: [drawing({ timed: 'readings' })],
+          passes: [drawing({ timed: buffer(1) })],
         })
       )
-    ).toThrow(/resolves 16 bytes of query into "readings", which holds 8/);
+    ).toThrow(/resolves 16 bytes of query into buffer 1, which holds 8/);
   });
 });
 
 describe('a device that cannot time anything', () => {
   it('draws the pass with no set at all rather than refusing the frame', () => {
     const { gpu, backend } = backendOver({ timing: false });
-    backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ timed: buffer(1) })] })).draw();
 
     expect(gpu.calls('createQuerySet')).toEqual([]);
     expect(gpu.calls('beginRenderPass')[0]?.times).toBeUndefined();
@@ -153,14 +151,14 @@ describe('a device that cannot time anything', () => {
 
   it('leaves the buffer as it found it, so a caller reads what was there', () => {
     const { gpu, backend } = backendOver({ timing: false });
-    backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ timed: buffer(1) })] })).draw();
 
     expect(gpu.calls('resolveQuerySet')).toEqual([]);
   });
 
   it('still counts samples, which is a reading that needs nothing optional', () => {
     const { gpu, backend } = backendOver({ timing: false });
-    backend.program(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ visible: buffer(1) })] })).draw();
 
     expect(gpu.calls('createQuerySet')[0]).toMatchObject({ type: 'occlusion', count: 1 });
     expect(gpu.calls('resolveQuerySet')[0]?.count).toBe(1);
@@ -170,14 +168,14 @@ describe('a device that cannot time anything', () => {
 describe('a pass whose samples are counted', () => {
   it('names the set when the pass is opened, since the card is told before anything is drawn', () => {
     const { gpu, backend } = backendOver();
-    backend.program(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ visible: buffer(1) })] })).draw();
 
-    expect(gpu.calls('beginRenderPass')[0]?.counts).toBe('readings-samples');
+    expect(gpu.calls('beginRenderPass')[0]?.counts).toBe('buffer1-samples');
   });
 
   it('takes the count around the draw rather than around the pass', () => {
     const { gpu, backend } = backendOver();
-    backend.program(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ visible: buffer(1) })] })).draw();
 
     const order = gpu.trace.map((entry) => entry.call);
     expect(order.indexOf('beginOcclusionQuery')).toBeLessThan(order.indexOf('draw'));
@@ -187,9 +185,9 @@ describe('a pass whose samples are counted', () => {
 
   it('resolves one answer rather than two', () => {
     const { gpu, backend } = backendOver();
-    backend.program(frameOf({ passes: [drawing({ visible: 'readings' })] })).draw();
+    backend.program(frameOf({ passes: [drawing({ visible: buffer(1) })] })).draw();
 
-    expect(gpu.calls('resolveQuerySet')[0]).toMatchObject({ set: 'readings-samples', count: 1, into: 'readings' });
+    expect(gpu.calls('resolveQuerySet')[0]).toMatchObject({ set: 'buffer1-samples', count: 1, into: 'buffer1' });
   });
 
   it('leaves a pass nobody counted without a set, so nothing is counted by accident', () => {
@@ -208,15 +206,15 @@ describe('two answers in one buffer', () => {
     // first, which is a number that looks like an answer and is not one.
     const { backend } = backendOver();
     expect(() =>
-      backend.program(frameOf({ passes: [drawing({ timed: 'readings', visible: 'readings' })] }))
-    ).toThrow(/resolves more than one query into "readings"/);
+      backend.program(frameOf({ passes: [drawing({ timed: buffer(1), visible: buffer(1) })] }))
+    ).toThrow(/resolves more than one query into buffer 1/);
   });
 });
 
 describe('what the sets belong to', () => {
   it('are given back when the program is, since a program is what worked out how many it needed', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.program(frameOf({ passes: [drawing({ timed: 'readings' })] }));
+    const program = backend.program(frameOf({ passes: [drawing({ timed: buffer(1) })] }));
     program.draw();
     program.dispose();
 

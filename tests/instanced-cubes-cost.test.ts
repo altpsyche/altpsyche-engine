@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cost } from '@altpsyche/engine';
+import { moduleHandle, pipelineHandle, texture, uniform, vertices } from '../graph/handles.js';
 import type { FrameCost, FrameGraph } from '@altpsyche/engine';
 
 /**
@@ -27,10 +28,9 @@ const wgslCubes: FrameGraph = {
   id: 'instanced-cubes',
   authored: 'wgsl',
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     {
       kind: 'vertices',
-      name: 'cube',
       stride: 24,
       attributes: [
         { location: 0, offset: 0, format: 'float32x3' },
@@ -40,21 +40,20 @@ const wgslCubes: FrameGraph = {
       count: 36,
       data: new Uint8Array(36 * 24),
     },
-    { kind: 'texture', name: 'depth', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
+    { kind: 'texture', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
   ],
   modules: [{ name: 'wgsl', wgsl: '' }],
   pipelines: [
     {
       kind: 'render',
-      name: 'cubes',
-      vertex: { module: 'wgsl', entry: 'cube' },
-      fragment: { module: 'wgsl', entry: 'shade' },
-      geometry: 'cube',
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['vertex'] }],
+      vertex: { module: moduleHandle(0), entry: 'cube' },
+      fragment: { module: moduleHandle(0), entry: 'shade' },
+      geometry: vertices(1),
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['vertex'] }],
       depth: { format: 'depth24plus', compare: 'less', write: true },
     },
   ],
-  passes: [{ pipeline: 'cubes', draws: [{ instances: COUNT }], depth: { resource: 'depth', clear: 1 } }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ instances: COUNT }], depth: { resource: texture(2), clear: 1 } }],
 };
 
 /** The WebGL 2 authoring: the backend's own corners, one instanced draw covering
@@ -62,7 +61,7 @@ const wgslCubes: FrameGraph = {
 const glslCubes: FrameGraph = {
   id: 'instanced-cubes',
   authored: 'glsl',
-  resources: [{ kind: 'uniform', name: 'uniforms' }],
+  resources: [{ kind: 'uniform' }],
   modules: [
     { name: 'vertex', glsl: '' },
     { name: 'fragment', glsl: '' },
@@ -70,13 +69,12 @@ const glslCubes: FrameGraph = {
   pipelines: [
     {
       kind: 'render',
-      name: 'cubes',
-      vertex: { module: 'vertex', entry: 'main' },
-      fragment: { module: 'fragment', entry: 'main' },
+      vertex: { module: moduleHandle(0), entry: 'main' },
+      fragment: { module: moduleHandle(1), entry: 'main' },
       bindings: [],
     },
   ],
-  passes: [{ pipeline: 'cubes', draws: [{ vertices: 3, instances: COUNT }] }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3, instances: COUNT }] }],
 };
 
 describe('a thousand instanced objects cost one draw in one pass', () => {
@@ -115,7 +113,10 @@ describe('a thousand instanced objects cost one draw in one pass', () => {
   it('still counts one draw were the thousand ten times over, since instances are free', () => {
     // The property a budget leans on: instances of a call cost nothing in `draws`,
     // so raising `COUNT` never changes the draw count — only a second call would.
-    const bigger = { ...glslCubes, passes: [{ pipeline: 'cubes', draws: [{ vertices: 3, instances: COUNT * 10 }] }] };
+    const bigger = {
+      ...glslCubes,
+      passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3, instances: COUNT * 10 }] }],
+    };
     expect(cost(bigger, SIZE).draws).toBe(1);
   });
 });

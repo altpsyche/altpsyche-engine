@@ -19,6 +19,7 @@
  * spanning two pipelines (one instanced pass each, in the producer's order, item 33).
  */
 import { Arena } from '../resource/arena.js';
+import { buffer, moduleHandle } from '../graph/handles.js';
 import { mat4, vec3 } from '@altpsyche/engine';
 import type { Camera, Scene } from '@altpsyche/engine';
 import type { Material, MaterialDraw } from '@altpsyche/engine';
@@ -44,25 +45,28 @@ const packPanel = (draw: MaterialDraw<Panel>): Uint8Array => {
 
 const MODULE: ModuleSpec = { name: 'scene', wgsl: '// authored once, fed by the producer' };
 
+// The one shader document is module 0. The scene's resources lay out as `sceneView`
+// builds them (item 87): the shared views buffer first (buffer(0)), then one object
+// buffer per pipeline group in list order — objects at buffer(1) and, where a second
+// group draws, glowObjects at buffer(2). `surface` is always the first group, so it
+// names the same handles in both presets below.
 const SURFACE: RenderPipelineSpec = {
   kind: 'render',
-  name: 'surface',
-  vertex: { module: 'scene', entry: 'project' },
-  fragment: { module: 'scene', entry: 'shade' },
+  vertex: { module: moduleHandle(0), entry: 'project' },
+  fragment: { module: moduleHandle(0), entry: 'shade' },
   bindings: [
-    { group: 0, binding: 0, resource: 'objects', visibility: ['vertex'] },
-    { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+    { group: 0, binding: 0, resource: buffer(1), visibility: ['vertex'] },
+    { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
   ],
 };
 
 const GLOW: RenderPipelineSpec = {
   kind: 'render',
-  name: 'glow',
-  vertex: { module: 'scene', entry: 'project' },
-  fragment: { module: 'scene', entry: 'bloom' },
+  vertex: { module: moduleHandle(0), entry: 'project' },
+  fragment: { module: moduleHandle(0), entry: 'bloom' },
   bindings: [
-    { group: 0, binding: 0, resource: 'glowObjects', visibility: ['vertex'] },
-    { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+    { group: 0, binding: 0, resource: buffer(2), visibility: ['vertex'] },
+    { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
   ],
 };
 
@@ -106,7 +110,7 @@ const SURFACE_ONLY: SceneViewOptions<Panel> = {
   id: 'panels',
   authored: 'wgsl',
   modules: [MODULE],
-  pipelines: [{ pipeline: SURFACE, objects: { buffer: 'objects', pack: packPanel } }],
+  pipelines: [{ name: 'surface', pipeline: SURFACE, objects: { buffer: 'objects', pack: packPanel } }],
   materials: MATERIALS,
   views: { buffer: 'views' },
 };
@@ -116,8 +120,8 @@ const SURFACE_AND_GLOW: SceneViewOptions<Panel> = {
   authored: 'wgsl',
   modules: [MODULE],
   pipelines: [
-    { pipeline: SURFACE, objects: { buffer: 'objects', pack: packPanel } },
-    { pipeline: GLOW, objects: { buffer: 'glowObjects', pack: packPanel } },
+    { name: 'surface', pipeline: SURFACE, objects: { buffer: 'objects', pack: packPanel } },
+    { name: 'glow', pipeline: GLOW, objects: { buffer: 'glowObjects', pack: packPanel } },
   ],
   materials: MATERIALS,
   views: { buffer: 'views' },

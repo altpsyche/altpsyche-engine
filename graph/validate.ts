@@ -18,8 +18,10 @@
  * make (a texture the source never samples, a binding no resource backs) stay in
  * the build, because a graph carries no source to check them against.
  */
-import type { FrameGraph } from './types.js';
-import { isRenderPass, perDrawBinding, resourceOf } from './types.js';
+import type { FrameGraph, ResourceSpec } from './types.js';
+import { isRenderPass, perDrawBinding, resourceOf, drawsIndirectly, groupsIndirectly } from './types.js';
+import type { BufferHandle, ModuleHandle, PipelineHandle, ResourceHandle } from './handles.js';
+import { indexOf } from './handles.js';
 
 /** A dynamic offset into a uniform buffer is taken at this alignment on both
  * backends — WebGPU's default `minUniformBufferOffsetAlignment` and WebGL 2's
@@ -40,12 +42,83 @@ const TIMED_QUERY_BYTES = 2 * QUERY_BYTES;
 const VISIBLE_QUERY_BYTES = QUERY_BYTES;
 
 /**
- * Refuse a graph the card would draw wrong or reject obscurely. Throws with the
- * name the description gave the offending piece; returns nothing when the graph
+ * Refuse a graph the card would draw wrong or reject obscurely. Throws naming the
+ * index the description gave the offending piece; returns nothing when the graph
  * is sound.
  */
 export function validate(graph: FrameGraph): void {
   const id = graph.id;
+
+  // The handle safety net: every handle a frame carries must be in range and name
+  // a member of the right list, and where a field wants a particular kind of
+  // resource the resource its handle points at must be of that kind. The branded
+  // handle types already catch a texture handle handed to a field wanting a buffer
+  // one at compile time; this catches the two mistakes a brand cannot see — an
+  // index past the end of the list, and a same-brand resource of the wrong kind —
+  // turning what would be an `undefined` read deep in a backend into a loud throw
+  // that names the offending index. It runs first, so every lookup below can trust
+  // its handles resolve.
+  const wantsResource = (handle: ResourceHandle, kind: ResourceSpec['kind'] | undefined, verb: string): void => {
+    const resource = graph.resources[indexOf(handle)];
+    if (resource === undefined) {
+      throw new Error(`the frame for "${id}" ${verb} resource ${indexOf(handle)}, which it does not declare`);
+    }
+    if (kind !== undefined && resource.kind !== kind) {
+      throw new Error(
+        `the frame for "${id}" ${verb} resource ${indexOf(handle)}, which is a ${resource.kind} where a ${kind} was wanted`
+      );
+    }
+  };
+  const wantsPipeline = (handle: PipelineHandle, verb: string): void => {
+    if (graph.pipelines[indexOf(handle)] === undefined) {
+      throw new Error(`the frame for "${id}" ${verb} pipeline ${indexOf(handle)}, which it does not declare`);
+    }
+  };
+  const wantsModule = (handle: ModuleHandle, verb: string): void => {
+    if (graph.modules[indexOf(handle)] === undefined) {
+      throw new Error(`the frame for "${id}" ${verb} module ${indexOf(handle)}, which it does not declare`);
+    }
+  };
+
+  for (const resource of graph.resources) {
+    if (resource.kind === 'vertices' && resource.indices !== undefined) {
+      wantsResource(resource.indices, 'indices', 'orders vertices with');
+    }
+  }
+  for (const spec of graph.pipelines) {
+    for (const binding of spec.bindings) {
+      wantsResource(binding.resource, undefined, 'binds');
+    }
+    if (spec.kind === 'render') {
+      if (spec.vertex !== 'fullscreen') wantsModule(spec.vertex.module, 'runs a vertex stage from');
+      wantsModule(spec.fragment.module, 'runs a fragment stage from');
+      if (spec.geometry !== undefined) wantsResource(spec.geometry, 'vertices', 'draws geometry from');
+    } else {
+      wantsModule(spec.compute.module, 'runs a compute stage from');
+    }
+  }
+  for (const pass of graph.passes) {
+    wantsPipeline(pass.pipeline, 'runs');
+    if (pass.timed !== undefined) wantsResource(pass.timed, 'buffer', 'times into');
+    if (isRenderPass(pass)) {
+      if (pass.visible !== undefined) wantsResource(pass.visible, 'buffer', 'counts samples into');
+      if (pass.depth !== undefined) wantsResource(pass.depth.resource, 'texture', 'keeps depth in');
+      for (const attachment of pass.colour ?? []) {
+        wantsResource(attachment.resource, 'texture', 'writes colour into');
+        if (attachment.resolve !== undefined) wantsResource(attachment.resolve, 'texture', 'resolves colour into');
+      }
+      for (const draw of pass.draws) {
+        if (drawsIndirectly(draw)) wantsResource(draw.indirect, 'buffer', 'draws from');
+      }
+    } else if (groupsIndirectly(pass.groups)) {
+      wantsResource(pass.groups.indirect, 'buffer', 'dispatches from');
+    }
+  }
+  if (graph.present !== undefined) wantsResource(graph.present, 'texture', 'presents');
+  for (const [one, other] of graph.swap ?? []) {
+    wantsResource(one, 'texture', 'swaps');
+    wantsResource(other, 'texture', 'swaps');
+  }
 
   // The depth and stencil state a pipeline compiles in has to agree with the
   // format of the attachment its pass keeps it in: the card takes the state when
@@ -53,24 +126,24 @@ export function validate(graph: FrameGraph): void {
   // disagreement between the two against whichever call arrived second, naming
   // neither the pipeline nor the attachment. So both halves are checked here,
   // against the pipeline's own declared format, before either reaches the card.
-  for (const spec of graph.pipelines) {
+  for (const [index, spec] of graph.pipelines.entries()) {
     if (spec.kind !== 'render' || !spec.depth) continue;
     const tested = spec.depth;
     const keepsStencil = tested.format.includes('stencil');
     if (keepsStencil && tested.stencil === undefined) {
       throw new Error(
-        `the pass on "${spec.name}" keeps a stencil in ${tested.format} and its pipeline says nothing about the mask`
+        `the pass on pipeline ${index} keeps a stencil in ${tested.format} and its pipeline says nothing about the mask`
       );
     }
     if (!keepsStencil && tested.stencil !== undefined) {
-      throw new Error(`the pass on "${spec.name}" masks with a stencil and keeps its depth as ${tested.format}`);
+      throw new Error(`the pass on pipeline ${index} masks with a stencil and keeps its depth as ${tested.format}`);
     }
     const keepsDepth = tested.format.startsWith('depth');
     if (!keepsDepth && tested.compare !== undefined) {
-      throw new Error(`the pass on "${spec.name}" tests depth and keeps it as ${tested.format}, which keeps none`);
+      throw new Error(`the pass on pipeline ${index} tests depth and keeps it as ${tested.format}, which keeps none`);
     }
     if (keepsDepth && tested.compare === undefined) {
-      throw new Error(`the pass on "${spec.name}" keeps depth as ${tested.format} and tests none of it`);
+      throw new Error(`the pass on pipeline ${index} keeps depth as ${tested.format} and tests none of it`);
     }
   }
 
@@ -79,22 +152,23 @@ export function validate(graph: FrameGraph): void {
   // the samples a draw got through. A buffer named by two queries is refused,
   // because a resolve writes from the start of the buffer and the second would
   // land on top of the first.
-  const resolves = new Map<string, number>();
+  const resolves = new Map<number, number>();
   for (const pass of graph.passes) {
-    const answers: [string | undefined, number][] = [
+    const answers: [BufferHandle | undefined, number][] = [
       [pass.timed, TIMED_QUERY_BYTES],
       [isRenderPass(pass) ? pass.visible : undefined, VISIBLE_QUERY_BYTES],
     ];
-    for (const [name, bytes] of answers) {
-      if (name === undefined) continue;
-      if (resolves.has(name)) {
-        throw new Error(`the frame for "${id}" resolves more than one query into "${name}"`);
+    for (const [handle, bytes] of answers) {
+      if (handle === undefined) continue;
+      const index = indexOf(handle);
+      if (resolves.has(index)) {
+        throw new Error(`the frame for "${id}" resolves more than one query into buffer ${index}`);
       }
-      resolves.set(name, bytes);
+      resolves.set(index, bytes);
     }
   }
 
-  for (const resource of graph.resources) {
+  for (const [index, resource] of graph.resources.entries()) {
     if (resource.kind !== 'buffer') continue;
     // A storage buffer is read four bytes at a time, so its size is a positive
     // whole number of those words. The card refuses any other over a binding size
@@ -102,17 +176,17 @@ export function validate(graph: FrameGraph): void {
     // backend refuse it first and in the same words.
     if (resource.bytes <= 0 || resource.bytes % 4 !== 0) {
       throw new Error(
-        `the frame for "${id}" gives "${resource.name}" ${resource.bytes} bytes, which is no whole number of four-byte words`
+        `the frame for "${id}" gives buffer ${index} ${resource.bytes} bytes, which is no whole number of four-byte words`
       );
     }
     // A buffer a query resolves into is refused where it is shorter than the
     // answer, because the card writes from the start of it and reports a resolve
     // running past the end with a message about a size that names neither the
     // query nor the pass that asked for it.
-    const resolved = resolves.get(resource.name);
+    const resolved = resolves.get(index);
     if (resolved !== undefined && resource.bytes < resolved) {
       throw new Error(
-        `the frame for "${id}" resolves ${resolved} bytes of query into "${resource.name}", which holds ${resource.bytes}`
+        `the frame for "${id}" resolves ${resolved} bytes of query into buffer ${index}, which holds ${resource.bytes}`
       );
     }
   }
@@ -125,7 +199,8 @@ export function validate(graph: FrameGraph): void {
   // record is, is the pipeline's; the offset is the draw's.
   for (const pass of graph.passes) {
     if (!isRenderPass(pass)) continue;
-    const spec = graph.pipelines.find((candidate) => candidate.name === pass.pipeline);
+    const pipeline = indexOf(pass.pipeline);
+    const spec = graph.pipelines[pipeline];
     if (!spec) continue; // A pass naming no pipeline is caught where the plan is read.
     const slice = perDrawBinding(spec);
     for (const draw of pass.draws) {
@@ -134,23 +209,23 @@ export function validate(graph: FrameGraph): void {
       // the pipeline binds whole, which draws every record the same and is wrong.
       if (!slice) {
         throw new Error(
-          `the pass on "${spec.name}" gives a draw a per-draw offset of ${draw.perDraw} and its pipeline binds no per-draw slice`
+          `the pass on pipeline ${pipeline} gives a draw a per-draw offset of ${draw.perDraw} and its pipeline binds no per-draw slice`
         );
       }
       if (draw.perDraw % PER_DRAW_ALIGNMENT !== 0) {
         throw new Error(
-          `the pass on "${spec.name}" reads a per-draw slice at offset ${draw.perDraw}, which is no whole number of ${PER_DRAW_ALIGNMENT} bytes`
+          `the pass on pipeline ${pipeline} reads a per-draw slice at offset ${draw.perDraw}, which is no whole number of ${PER_DRAW_ALIGNMENT} bytes`
         );
       }
       const resource = resourceOf(graph, slice.resource);
       if (!resource || resource.kind !== 'buffer') {
         throw new Error(
-          `the pass on "${spec.name}" reads a per-draw slice from "${slice.resource}", which is no buffer it declares`
+          `the pass on pipeline ${pipeline} reads a per-draw slice from resource ${indexOf(slice.resource)}, which is no buffer it declares`
         );
       }
       if (draw.perDraw + slice.perDraw!.size > resource.bytes) {
         throw new Error(
-          `the pass on "${spec.name}" reads ${slice.perDraw!.size} bytes of per-draw slice at offset ${draw.perDraw} from "${slice.resource}", which holds ${resource.bytes}`
+          `the pass on pipeline ${pipeline} reads ${slice.perDraw!.size} bytes of per-draw slice at offset ${draw.perDraw} from resource ${indexOf(slice.resource)}, which holds ${resource.bytes}`
         );
       }
     }

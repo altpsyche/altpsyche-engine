@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
 import { Arena } from '../resource/arena';
+import { buffer, moduleHandle, pipelineHandle, texture } from '../graph/handles.js';
 import {
   type Camera,
   cost,
@@ -38,14 +39,17 @@ const OBJECT_BYTES = 80; // model matrix, then a vec3 colour with a padding word
 
 const MODULE: ModuleSpec = { name: 'scene', wgsl: '// authored once, fed by the producer' };
 
+// A pipeline carries no name now (item 87); the string a material selects it by
+// lives on its `ScenePipeline.name` below. It binds resources by handle: the shared
+// views buffer sits at index 0 (no caller `resources`), this pipeline's own objects
+// buffer at index 1.
 const PIPELINE: RenderPipelineSpec = {
   kind: 'render',
-  name: 'surface',
-  vertex: { module: 'scene', entry: 'project' },
-  fragment: { module: 'scene', entry: 'shade' },
+  vertex: { module: moduleHandle(0), entry: 'project' },
+  fragment: { module: moduleHandle(0), entry: 'shade' },
   bindings: [
-    { group: 0, binding: 0, resource: 'objects', visibility: ['vertex'] },
-    { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+    { group: 0, binding: 0, resource: buffer(1), visibility: ['vertex'] },
+    { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
   ],
 };
 
@@ -66,7 +70,7 @@ const OPTIONS: SceneViewOptions<Panel> = {
   id: 'panels',
   authored: 'wgsl',
   modules: [MODULE],
-  pipelines: [{ pipeline: PIPELINE, objects: { buffer: 'objects', pack: packPanel } }],
+  pipelines: [{ name: 'surface', pipeline: PIPELINE, objects: { buffer: 'objects', pack: packPanel } }],
   materials: MATERIALS,
   views: { buffer: 'views' },
 };
@@ -74,14 +78,15 @@ const OPTIONS: SceneViewOptions<Panel> = {
 // A second pipeline, to prove a scene spanning two pipelines is one graph rather
 // than a thrown error (item 33). It draws the same per-object struct through a
 // different program, reading its own objects buffer.
+// glowObjects lands after the surface objects buffer when both draw, so it is
+// resource 2; views stays at 0.
 const GLOW: RenderPipelineSpec = {
   kind: 'render',
-  name: 'glow',
-  vertex: { module: 'scene', entry: 'project' },
-  fragment: { module: 'scene', entry: 'bloom' },
+  vertex: { module: moduleHandle(0), entry: 'project' },
+  fragment: { module: moduleHandle(0), entry: 'bloom' },
   bindings: [
-    { group: 0, binding: 0, resource: 'glowObjects', visibility: ['vertex'] },
-    { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+    { group: 0, binding: 0, resource: buffer(2), visibility: ['vertex'] },
+    { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
   ],
 };
 
@@ -119,7 +124,7 @@ describe('sceneView turns a world and its cameras into a frame with no GPU', () 
     const pass = frame.passes[0]!;
     expect(isRenderPass(pass)).toBe(true);
     if (!isRenderPass(pass)) return;
-    expect(pass.pipeline).toBe('surface');
+    expect(pass.pipeline).toBe(pipelineHandle(0));
     // Two objects, one instanced draw, count reads off the batch not written twice.
     expect(pass.draws).toEqual([{ instances: 2 }]);
   });
@@ -128,7 +133,8 @@ describe('sceneView turns a world and its cameras into a frame with no GPU', () 
     const view = sceneView(new Arena<Uint8Array>(() => undefined as never), OPTIONS);
     const frame = view.graph(TWO_PANELS, [CAMERA]);
 
-    const objects = frame.resources.find((r) => r.name === 'objects');
+    // views is resource 0, this pipeline's objects buffer resource 1.
+    const objects = frame.resources[1];
     expect(objects?.kind).toBe('buffer');
     if (objects?.kind !== 'buffer') return;
     expect(objects.access).toBe('read');
@@ -152,7 +158,7 @@ describe('sceneView turns a world and its cameras into a frame with no GPU', () 
     const view = sceneView(new Arena<Uint8Array>(() => undefined as never), OPTIONS);
 
     const one = view.graph(TWO_PANELS, [CAMERA]);
-    const oneViews = one.resources.find((r) => r.name === 'views');
+    const oneViews = one.resources[0]; // the shared views buffer sits first
     expect(oneViews?.kind === 'buffer' && oneViews.bytes).toBe(MODEL_BYTES);
     if (oneViews?.kind === 'buffer') {
       expect(floatsOf(oneViews.data!)).toEqual(Array.from(mat4.pack(viewProjection(CAMERA))));
@@ -162,7 +168,7 @@ describe('sceneView turns a world and its cameras into a frame with no GPU', () 
     // a second matrix after the first, so a stereo consumer never reshapes the call.
     const second: Camera = { ...CAMERA, eye: vec3(0.1, 0, 0) };
     const two = view.graph(TWO_PANELS, [CAMERA, second]);
-    const twoViews = two.resources.find((r) => r.name === 'views');
+    const twoViews = two.resources[0];
     expect(twoViews?.kind === 'buffer' && twoViews.bytes).toBe(2 * MODEL_BYTES);
     if (twoViews?.kind === 'buffer') {
       expect(floatsOf(twoViews.data!.subarray(0, MODEL_BYTES))).toEqual(Array.from(mat4.pack(viewProjection(CAMERA))));
@@ -173,14 +179,15 @@ describe('sceneView turns a world and its cameras into a frame with no GPU', () 
   it('carries the caller resources and the present target onto the frame', () => {
     const withExtras = sceneView(new Arena<Uint8Array>(() => undefined as never), {
       ...OPTIONS,
-      resources: [{ kind: 'uniform', name: 'uniforms' }],
+      resources: [{ kind: 'uniform' }],
       requires: ['depth-clamp'],
-      present: 'picture',
+      present: texture(3),
     });
     const frame = withExtras.graph(TWO_PANELS, [CAMERA]);
-    expect(frame.resources.find((r) => r.name === 'uniforms')?.kind).toBe('uniform');
+    // The caller resource leads the layout, so the uniform block is resource 0.
+    expect(frame.resources[0]?.kind).toBe('uniform');
     expect(frame.requires).toEqual(['depth-clamp']);
-    expect(frame.present).toBe('picture');
+    expect(frame.present).toBe(texture(3));
   });
 
   it('refuses a graph with no view to draw from, by name', () => {
@@ -212,13 +219,15 @@ describe('sceneView spans two pipelines in one graph, the producer deciding orde
     ],
   };
 
+  const nameOf = (pipeline: RenderPipelineSpec): string => (pipeline === GLOW ? 'glow' : 'surface');
   const optionsFor = (order: RenderPipelineSpec[]): SceneViewOptions<Panel> => ({
     id: 'spanning',
     authored: 'wgsl',
     modules: [MODULE],
     pipelines: order.map((pipeline) => ({
+      name: nameOf(pipeline),
       pipeline,
-      objects: { buffer: pipeline.name === 'glow' ? 'glowObjects' : 'objects', pack: packPanel },
+      objects: { buffer: nameOf(pipeline) === 'glow' ? 'glowObjects' : 'objects', pack: packPanel },
     })),
     materials: MATERIALS_TWO,
     views: { buffer: 'views' },
@@ -232,16 +241,24 @@ describe('sceneView spans two pipelines in one graph, the producer deciding orde
     // one graph (item 33's Done-when), the passes in the producer's listed order.
     expect(frame.pipelines).toEqual([PIPELINE, GLOW]);
     expect(frame.passes).toHaveLength(2);
-    expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.pipeline : undefined))).toEqual(['surface', 'glow']);
+    // A pass names its pipeline by the handle of its slot in `pipelines`, so the two
+    // passes name pipelines 0 and 1; the ordering itself is asserted on `pipelines`.
+    expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.pipeline : undefined))).toEqual([
+      pipelineHandle(0),
+      pipelineHandle(1),
+    ]);
     // The surface pass draws its one lit object; the glow pass its two, each group
     // one instanced draw counting only its own objects.
     expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.draws : undefined))).toEqual([
       [{ instances: 1 }],
       [{ instances: 2 }],
     ]);
-    // Each pipeline reads its own objects buffer, sized to its own object count.
-    expect(frame.resources.find((r) => r.name === 'objects')?.kind === 'buffer' && (frame.resources.find((r) => r.name === 'objects') as { bytes: number }).bytes).toBe(OBJECT_BYTES);
-    expect(frame.resources.find((r) => r.name === 'glowObjects')?.kind === 'buffer' && (frame.resources.find((r) => r.name === 'glowObjects') as { bytes: number }).bytes).toBe(2 * OBJECT_BYTES);
+    // Each pipeline reads its own objects buffer, sized to its own object count:
+    // views 0, the surface objects 1, the glow objects 2.
+    const surfaceObjects = frame.resources[1];
+    const glowObjects = frame.resources[2];
+    expect(surfaceObjects?.kind === 'buffer' && surfaceObjects.bytes).toBe(OBJECT_BYTES);
+    expect(glowObjects?.kind === 'buffer' && glowObjects.bytes).toBe(2 * OBJECT_BYTES);
   });
 
   it('runs the passes in the order the producer lists the pipelines, not the scene order', () => {
@@ -249,8 +266,13 @@ describe('sceneView spans two pipelines in one graph, the producer deciding orde
     // the producer's to decide rather than baked into the scene or the batch.
     const view = sceneView(new Arena<Uint8Array>(() => undefined as never), optionsFor([GLOW, PIPELINE]));
     const frame = view.graph(SPANNING, [CAMERA]);
+    // The pipeline order flips with the list order; the passes still name their
+    // slots 0 and 1, so the flip is read off `pipelines` rather than the handles.
     expect(frame.pipelines).toEqual([GLOW, PIPELINE]);
-    expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.pipeline : undefined))).toEqual(['glow', 'surface']);
+    expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.pipeline : undefined))).toEqual([
+      pipelineHandle(0),
+      pipelineHandle(1),
+    ]);
   });
 
   it('emits no pass for a listed pipeline no object draws through this frame', () => {
@@ -260,8 +282,10 @@ describe('sceneView spans two pipelines in one graph, the producer deciding orde
     const view = sceneView(new Arena<Uint8Array>(() => undefined as never), optionsFor([PIPELINE, GLOW]));
     const frame = view.graph(TWO_PANELS, [CAMERA]);
     expect(frame.pipelines).toEqual([PIPELINE]);
-    expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.pipeline : undefined))).toEqual(['surface']);
-    expect(frame.resources.some((r) => r.name === 'glowObjects')).toBe(false);
+    expect(frame.passes.map((pass) => (isRenderPass(pass) ? pass.pipeline : undefined))).toEqual([pipelineHandle(0)]);
+    // Only the surface pipeline draws, so only its two buffers exist — views and the
+    // surface objects — and no glow objects buffer is laid out.
+    expect(frame.resources).toHaveLength(2);
   });
 
   it('refuses a material that names a pipeline the producer did not list, by name', () => {
@@ -281,8 +305,8 @@ describe('sceneView spans two pipelines in one graph, the producer deciding orde
         authored: 'wgsl',
         modules: [MODULE],
         pipelines: [
-          { pipeline: PIPELINE, objects: { buffer: 'shared', pack: packPanel } },
-          { pipeline: GLOW, objects: { buffer: 'shared', pack: packPanel } },
+          { name: 'surface', pipeline: PIPELINE, objects: { buffer: 'shared', pack: packPanel } },
+          { name: 'glow', pipeline: GLOW, objects: { buffer: 'shared', pack: packPanel } },
         ],
         materials: MATERIALS_TWO,
         views: { buffer: 'views' },
@@ -330,23 +354,22 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
   // Two pipelines, one per object, each depth-testing: a `less` compare that writes
   // the depth it passes. Each reads its own objects buffer, both share the views
   // buffer, and both test into the one depth attachment sceneView declares.
+  // views 0, nearObjects 1, farObjects 2 when both draw (near listed first).
   const NEAR: RenderPipelineSpec = {
     kind: 'render',
-    name: 'near',
-    vertex: { module: 'scene', entry: 'project' },
-    fragment: { module: 'scene', entry: 'shade' },
+    vertex: { module: moduleHandle(0), entry: 'project' },
+    fragment: { module: moduleHandle(0), entry: 'shade' },
     bindings: [
-      { group: 0, binding: 0, resource: 'nearObjects', visibility: ['vertex'] },
-      { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+      { group: 0, binding: 0, resource: buffer(1), visibility: ['vertex'] },
+      { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
     ],
     depth: { format: 'depth24plus', compare: 'less', write: true },
   };
   const FAR: RenderPipelineSpec = {
     ...NEAR,
-    name: 'far',
     bindings: [
-      { group: 0, binding: 0, resource: 'farObjects', visibility: ['vertex'] },
-      { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+      { group: 0, binding: 0, resource: buffer(2), visibility: ['vertex'] },
+      { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
     ],
   };
   const SOLIDS: Record<string, Material<Panel>> = {
@@ -370,13 +393,15 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
     const { depth: _dropped, ...rest } = pipeline;
     return rest;
   };
+  const nameOf = (pipeline: RenderPipelineSpec): string => (pipeline === NEAR ? 'near' : 'far');
   const optionsFor = (order: RenderPipelineSpec[], withDepth: boolean): SceneViewOptions<Panel> => ({
     id: 'solids',
     authored: 'wgsl',
     modules: [MODULE],
     pipelines: order.map((pipeline) => ({
+      name: nameOf(pipeline),
       pipeline: withDepth ? pipeline : flatten(pipeline),
-      objects: { buffer: pipeline.name === 'near' ? 'nearObjects' : 'farObjects', pack: packPanel },
+      objects: { buffer: nameOf(pipeline) === 'near' ? 'nearObjects' : 'farObjects', pack: packPanel },
     })),
     materials: SOLIDS,
     views: { buffer: 'views' },
@@ -391,7 +416,8 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
     // over the near one — the case depth exists to fix.
     const frame = build([NEAR, FAR], true);
 
-    const depth = frame.resources.find((r) => r.name === 'depth');
+    // views 0, nearObjects 1, farObjects 2, the shared depth target 3.
+    const depth = frame.resources[3];
     expect(depth?.kind).toBe('texture');
     if (depth?.kind !== 'texture') return;
     expect(depth.size).toEqual({ scale: 1 });
@@ -405,7 +431,7 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
     // Every pass names the one shared attachment; the first clears it, every later
     // pass loads it (names no clear) so each surface tests against what came before.
     const depths = frame.passes.map((pass) => (isRenderPass(pass) ? pass.depth : undefined));
-    expect(depths).toEqual([{ resource: 'depth', clear: 1 }, { resource: 'depth' }]);
+    expect(depths).toEqual([{ resource: texture(3), clear: 1 }, { resource: texture(3) }]);
   });
 
   it('carries a depth compare and write on each emitted pipeline', () => {
@@ -423,14 +449,15 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
     const nearFirst = build([NEAR, FAR], true);
     const farFirst = build([FAR, NEAR], true);
     for (const frame of [nearFirst, farFirst]) {
-      expect(frame.resources.some((r) => r.name === 'depth' && r.kind === 'texture')).toBe(true);
+      // The shared depth target sits at resource 3 in both orders.
+      expect(frame.resources[3]?.kind).toBe('texture');
       const depths = frame.passes.map((pass) => (isRenderPass(pass) ? pass.depth : undefined));
-      expect(depths).toEqual([expect.objectContaining({ resource: 'depth', clear: 1 }), { resource: 'depth' }]);
+      expect(depths).toEqual([expect.objectContaining({ resource: texture(3), clear: 1 }), { resource: texture(3) }]);
     }
-    // The pass order does flip with the list order — depth is what makes that flip
-    // stop mattering to the picture.
-    expect(nearFirst.passes.map((p) => (isRenderPass(p) ? p.pipeline : undefined))).toEqual(['near', 'far']);
-    expect(farFirst.passes.map((p) => (isRenderPass(p) ? p.pipeline : undefined))).toEqual(['far', 'near']);
+    // The pipeline order does flip with the list order — depth is what makes that
+    // flip stop mattering to the picture.
+    expect(nearFirst.pipelines).toEqual([NEAR, FAR]);
+    expect(farFirst.pipelines).toEqual([FAR, NEAR]);
   });
 
   it("counts the depth's one load and one store in cost(), against a scene with the depth removed", () => {
@@ -450,7 +477,8 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
     // regression this attachment exists to prevent. The depth load and the depth
     // store both vanish from the cost, and the frame declares no transient.
     const flat = build([NEAR, FAR], false);
-    expect(flat.resources.some((r) => r.name === 'depth')).toBe(false);
+    // No depth option means no depth attachment — the frame carries only buffers.
+    expect(flat.resources.some((r) => r.kind === 'texture')).toBe(false);
     expect(flat.passes.every((pass) => isRenderPass(pass) && pass.depth === undefined)).toBe(true);
     const noDepth = cost(flat, size);
     expect(noDepth.attachmentLoads).toBe(0);

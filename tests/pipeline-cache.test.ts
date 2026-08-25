@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PipelineCache, frameKey, pipelineStructureOf, structureKey } from '../pipeline/cache';
 import type { PipelineStructure } from '../pipeline/cache';
 import { wgslFrame } from '@altpsyche/engine';
+import { buffer, moduleHandle, pipelineHandle } from '../graph/handles.js';
 import type { PipelineSpec } from '@altpsyche/engine';
 
 /**
@@ -24,9 +25,8 @@ const structure = (over: Partial<PipelineStructure> = {}): PipelineStructure => 
   stages: [{ code: 'fn main() {}', entry: 'main' }],
   spec: {
     kind: 'render',
-    name: 'draw',
     vertex: 'fullscreen',
-    fragment: { module: 'source', entry: 'fragMain' },
+    fragment: { module: moduleHandle(0), entry: 'fragMain' },
     bindings: [],
   } as PipelineSpec,
   ...over,
@@ -163,18 +163,17 @@ describe('the structure key', () => {
     // binding's kind and access into the structure is what keys them apart.
     const spec: PipelineSpec = {
       kind: 'render',
-      name: 'draw',
       vertex: 'fullscreen',
-      fragment: { module: 'wgsl', entry: 'fragMain' },
-      bindings: [{ group: 0, binding: 0, resource: 'data', visibility: ['fragment'] }],
+      fragment: { module: moduleHandle(0), entry: 'fragMain' },
+      bindings: [{ group: 0, binding: 0, resource: buffer(0), visibility: ['fragment'] }],
     };
     const frame = (access: 'read' | 'read-write'): Parameters<typeof pipelineStructureOf>[0] => ({
       id: 'shared-spec',
       authored: 'wgsl',
       modules: [{ name: 'wgsl', wgsl: 'fn main() {}' }],
-      resources: [{ kind: 'buffer', name: 'data', access, bytes: 16 }],
+      resources: [{ kind: 'buffer', access, bytes: 16 }],
       pipelines: [spec],
-      passes: [{ pipeline: 'draw', draws: [{ vertices: 3 }] }],
+      passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
     });
 
     expect(structureKey(pipelineStructureOf(frame('read'), spec))).not.toBe(
@@ -225,7 +224,6 @@ describe('the program key that supersedes item 2', () => {
           ...frame.resources,
           {
             kind: 'vertices' as const,
-            name: 'mesh',
             stride: 4,
             count: 1,
             topology: 'triangle-list' as const,

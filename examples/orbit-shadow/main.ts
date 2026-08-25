@@ -48,14 +48,17 @@
  */
 import {
   Arena,
+  buffer,
   cost,
   createSurface,
   glslFrame,
   mat4,
+  moduleHandle,
   requestWebGPUDevice,
   sceneView,
   selectBackend,
   vec3,
+  vertices,
 } from '@altpsyche/engine';
 import type {
   Camera,
@@ -240,27 +243,30 @@ function cubeVertices(): Uint8Array<ArrayBuffer> {
 const VERTICES = cubeVertices();
 const VERTEX_STRIDE = 24;
 
+// The resource layout `sceneView` lays these bindings out against (item 87): the
+// one `options.resources` entry (the cube geometry) is resource 0, the shared
+// `views` buffer is resource 1, then one object buffer per pipeline group in list
+// order — shadow first (resource 2), lit second (resource 3). Each pipeline names
+// those resources by the handle its index becomes.
 const litPipeline: RenderPipelineSpec = {
   kind: 'render',
-  name: 'lit',
-  vertex: { module: 'scene', entry: 'project' },
-  fragment: { module: 'scene', entry: 'shade' },
-  geometry: 'cube',
+  vertex: { module: moduleHandle(0), entry: 'project' },
+  fragment: { module: moduleHandle(0), entry: 'shade' },
+  geometry: vertices(0),
   bindings: [
-    { group: 0, binding: 0, resource: 'objects', visibility: ['vertex'] },
-    { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+    { group: 0, binding: 0, resource: buffer(3), visibility: ['vertex'] },
+    { group: 0, binding: 1, resource: buffer(1), visibility: ['vertex'] },
   ],
 };
 
 const shadowPipeline: RenderPipelineSpec = {
   kind: 'render',
-  name: 'shadow',
-  vertex: { module: 'scene', entry: 'project' },
-  fragment: { module: 'scene', entry: 'shadow' },
-  geometry: 'cube',
+  vertex: { module: moduleHandle(0), entry: 'project' },
+  fragment: { module: moduleHandle(0), entry: 'shadow' },
+  geometry: vertices(0),
   bindings: [
-    { group: 0, binding: 0, resource: 'shadowObjects', visibility: ['vertex'] },
-    { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+    { group: 0, binding: 0, resource: buffer(2), visibility: ['vertex'] },
+    { group: 0, binding: 1, resource: buffer(1), visibility: ['vertex'] },
   ],
 };
 
@@ -271,15 +277,14 @@ const options: SceneViewOptions<Panel> = {
   // Shadows first, lit objects on top: the producer's ordering decision (item 33),
   // spelled as the order the pipelines are listed.
   pipelines: [
-    { pipeline: shadowPipeline, objects: { buffer: 'shadowObjects', pack: packShadow } },
-    { pipeline: litPipeline, objects: { buffer: 'objects', pack: packLit } },
+    { name: 'shadow', pipeline: shadowPipeline, objects: { buffer: 'shadowObjects', pack: packShadow } },
+    { name: 'lit', pipeline: litPipeline, objects: { buffer: 'objects', pack: packLit } },
   ],
   materials: MATERIALS,
   requires: ['storage-buffer'],
   resources: [
     {
       kind: 'vertices',
-      name: 'cube',
       stride: VERTEX_STRIDE,
       attributes: [
         { location: 0, offset: 0, format: 'float32x3' },

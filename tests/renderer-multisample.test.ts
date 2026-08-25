@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { texture, uniform, moduleHandle, pipelineHandle } from '../graph/handles.js';
 import type { RenderPassSpec, RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
 
 /**
@@ -32,9 +33,8 @@ fn fragMain(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
   return vec4<f32>(at.xy / uniforms.u_resolution, 0.0, 1.0);
 }`;
 
-const picture = (name: string, over: Partial<TextureResource> = {}): TextureResource => ({
+const picture = (_name: string, over: Partial<TextureResource> = {}): TextureResource => ({
   kind: 'texture',
-  name,
   size: { scale: 1 },
   format: 'rgba8unorm',
   use: ['attachment'],
@@ -43,19 +43,18 @@ const picture = (name: string, over: Partial<TextureResource> = {}): TextureReso
 
 const shade = (over: Partial<RenderPipelineSpec> = {}): RenderPipelineSpec => ({
   kind: 'render',
-  name: 'shade',
   vertex: 'fullscreen',
-  fragment: { module: 'wgsl', entry: 'fragMain' },
-  bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+  fragment: { module: moduleHandle(0), entry: 'fragMain' },
+  bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
   targets: [{ format: 'rgba8unorm' }],
   samples: 4,
   ...over,
 });
 
 const into = (over: Partial<RenderPassSpec> = {}): RenderPassSpec => ({
-  pipeline: 'shade',
+  pipeline: pipelineHandle(0),
   draws: [{ vertices: 3 }],
-  colour: [{ resource: 'edges', clear: [0, 0, 0, 1], resolve: 'flat' }],
+  colour: [{ resource: texture(1), clear: [0, 0, 0, 1], resolve: texture(2) }],
   ...over,
 });
 
@@ -63,14 +62,14 @@ const averaged = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-multisample',
   authored: 'wgsl',
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     picture('edges', { samples: 4 }),
     picture('flat'),
   ],
   modules: [{ name: 'wgsl', wgsl: DRAWS }],
   pipelines: [shade()],
   passes: [into()],
-  present: 'flat',
+  present: texture(2),
   ...over,
 });
 
@@ -90,23 +89,23 @@ describe('the textures a multisampled pass is given', () => {
     const { gpu, backend } = backendOver();
     backend.program(averaged());
 
-    expect(made(gpu, 'edges')?.samples).toBe(4);
+    expect(made(gpu, 'texture1')?.samples).toBe(4);
   });
 
   it('keeps one in the picture those samples are averaged into, which is what a count of none means', () => {
     const { gpu, backend } = backendOver();
     backend.program(averaged());
 
-    expect(made(gpu, 'flat')?.samples).toBeUndefined();
+    expect(made(gpu, 'texture2')?.samples).toBeUndefined();
   });
 
   it('asks only to be drawn into, since nothing may copy out of it or read it', () => {
     const { gpu, backend } = backendOver();
     backend.program(averaged());
 
-    expect(made(gpu, 'edges')?.usage).toBe(GPUTextureUsage.RENDER_ATTACHMENT);
+    expect(made(gpu, 'texture1')?.usage).toBe(GPUTextureUsage.RENDER_ATTACHMENT);
     // The average is what the reader ends up seeing, so that one is copied out.
-    expect(made(gpu, 'flat')?.usage).toBe(GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC);
+    expect(made(gpu, 'texture2')?.usage).toBe(GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC);
   });
 
   it('leaves a frame that keeps one sample everywhere asking for no count at all', () => {
@@ -115,12 +114,12 @@ describe('the textures a multisampled pass is given', () => {
       averaged({
         resources: [averaged().resources[0] as TextureResource, picture('edges'), picture('flat')],
         pipelines: [shade({ samples: undefined })],
-        passes: [into({ colour: [{ resource: 'edges', clear: [0, 0, 0, 1] }] })],
-        present: 'edges',
+        passes: [into({ colour: [{ resource: texture(1), clear: [0, 0, 0, 1] }] })],
+        present: texture(1),
       })
     );
 
-    expect(made(gpu, 'edges')?.samples).toBeUndefined();
+    expect(made(gpu, 'texture1')?.samples).toBeUndefined();
   });
 });
 
@@ -144,8 +143,8 @@ describe('the pipeline and the pass a multisampled attachment is drawn by', () =
     // while the resolve still writes the average (item 1).
     expect(opened[0]?.colour).toEqual([
       {
-        view: 'edges.view',
-        resolve: 'flat.view',
+        view: 'texture1.view',
+        resolve: 'texture2.view',
         loadOp: 'clear',
         storeOp: 'discard',
         clearValue: { r: 0, g: 0, b: 0, a: 1 },
@@ -159,15 +158,15 @@ describe('the pipeline and the pass a multisampled attachment is drawn by', () =
       averaged({
         resources: [averaged().resources[0] as TextureResource, picture('edges'), picture('flat')],
         pipelines: [shade({ samples: undefined })],
-        passes: [into({ colour: [{ resource: 'edges', clear: [0, 0, 0, 1] }] })],
-        present: 'edges',
+        passes: [into({ colour: [{ resource: texture(1), clear: [0, 0, 0, 1] }] })],
+        present: texture(1),
       })
     );
     program.draw();
 
     expect(gpu.calls('beginRenderPass')[0]?.colour).toEqual([
       {
-        view: 'edges.view',
+        view: 'texture1.view',
         resolve: undefined,
         loadOp: 'clear',
         storeOp: 'store',
@@ -185,15 +184,15 @@ describe('what a description keeping several samples a pixel is refused for', ()
 
   it('averaging the samples nowhere, since nothing else can read them', () => {
     refused(
-      averaged({ passes: [into({ colour: [{ resource: 'edges', clear: [0, 0, 0, 1] }] })] }),
-      'the pass on "shade" keeps several samples a pixel in "edges" and averages them nowhere'
+      averaged({ passes: [into({ colour: [{ resource: texture(1), clear: [0, 0, 0, 1] }] })] }),
+      'the pass on pipeline 0 keeps several samples a pixel in resource 1 and averages them nowhere'
     );
   });
 
   it('averaging into a texture the frame does not declare', () => {
     refused(
-      averaged({ passes: [into({ colour: [{ resource: 'edges', clear: [0, 0, 0, 1], resolve: 'elsewhere' }] })] }),
-      'the frame for "fixture-multisample" averages "edges" into "elsewhere", which is no texture it declares'
+      averaged({ passes: [into({ colour: [{ resource: texture(1), clear: [0, 0, 0, 1], resolve: texture(3) }] })] }),
+      'the frame for "fixture-multisample" resolves colour into resource 3, which it does not declare'
     );
   });
 
@@ -206,7 +205,7 @@ describe('what a description keeping several samples a pixel is refused for', ()
           picture('flat', { size: { width: 64, height: 64 } }),
         ],
       }),
-      'the pass on "shade" averages "edges" into "flat", which is not the same picture keeping one sample'
+      'the pass on pipeline 0 averages resource 1 into resource 2, which is not the same picture keeping one sample'
     );
   });
 
@@ -218,9 +217,9 @@ describe('what a description keeping several samples a pixel is refused for', ()
           picture('edges', { samples: 4 }),
           picture('flat', { samples: 4 }),
         ],
-        present: 'edges',
+        present: texture(1),
       }),
-      'the frame for "fixture-multisample" shows "edges", which keeps several samples a pixel'
+      'the frame for "fixture-multisample" shows resource 1, which keeps several samples a pixel'
     );
   });
 
@@ -230,14 +229,14 @@ describe('what a description keeping several samples a pixel is refused for', ()
         resources: [averaged().resources[0] as TextureResource, picture('edges'), picture('flat')],
         pipelines: [shade({ samples: undefined })],
       }),
-      'the pass on "shade" averages "edges" into "flat" and it keeps one sample a pixel'
+      'the pass on pipeline 0 averages resource 1 into resource 2 and it keeps one sample a pixel'
     );
   });
 
   it('a pipeline and an attachment disagreeing about the count', () => {
     refused(
       averaged({ pipelines: [shade({ samples: undefined })] }),
-      'the pass on "shade" draws 1 samples a pixel into "edges", which keeps 4'
+      'the pass on pipeline 0 draws 1 samples a pixel into resource 1, which keeps 4'
     );
   });
 
@@ -246,17 +245,17 @@ describe('what a description keeping several samples a pixel is refused for', ()
       averaged({
         resources: [averaged().resources[0] as TextureResource],
         pipelines: [shade({ targets: undefined })],
-        passes: [{ pipeline: 'shade', draws: [{ vertices: 3 }] }],
+        passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
         present: undefined,
       }),
-      'the pass on "shade" draws 4 samples a pixel into the frame'
+      'the pass on pipeline 0 draws 4 samples a pixel into the frame'
     );
   });
 
   it('showing the attachment rather than the average, since nothing may copy out of it', () => {
     refused(
-      averaged({ present: 'edges' }),
-      'the frame for "fixture-multisample" shows "edges", which keeps several samples a pixel'
+      averaged({ present: texture(1) }),
+      'the frame for "fixture-multisample" shows resource 1, which keeps several samples a pixel'
     );
   });
 
@@ -269,7 +268,7 @@ describe('what a description keeping several samples a pixel is refused for', ()
           picture('flat'),
         ],
       }),
-      'the frame for "fixture-multisample" gives "edges" contents and several samples a pixel'
+      'the frame for "fixture-multisample" gives resource 1 contents and several samples a pixel'
     );
   });
 
@@ -282,7 +281,7 @@ describe('what a description keeping several samples a pixel is refused for', ()
           picture('flat'),
         ],
       }),
-      'the frame for "fixture-multisample" gives "edges" a ladder and writes it every frame'
+      'the frame for "fixture-multisample" gives resource 1 a ladder and writes it every frame'
     );
   });
 
@@ -295,7 +294,7 @@ describe('what a description keeping several samples a pixel is refused for', ()
           picture('flat'),
         ],
       }),
-      'the frame for "fixture-multisample" binds "edges", which keeps several samples a pixel'
+      'the frame for "fixture-multisample" binds resource 1, which keeps several samples a pixel'
     );
   });
 
@@ -309,9 +308,9 @@ describe('what a description keeping several samples a pixel is refused for', ()
           picture('depth', { format: 'depth24plus' }),
         ],
         pipelines: [shade({ depth: { format: 'depth24plus', compare: 'less', write: true } })],
-        passes: [into({ depth: { resource: 'depth', clear: 1 } })],
+        passes: [into({ depth: { resource: texture(3), clear: 1 } })],
       }),
-      'the pass on "shade" draws 4 samples a pixel and keeps depth in "depth", which keeps 1'
+      'the pass on pipeline 0 draws 4 samples a pixel and keeps depth in resource 3, which keeps 1'
     );
   });
 });

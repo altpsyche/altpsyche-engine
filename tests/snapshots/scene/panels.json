@@ -4,7 +4,31 @@
   "resources": [
     {
       "kind": "buffer",
-      "name": "objects",
+      "bytes": 64,
+      "access": "read",
+      "data": {
+        "f32": [
+          1.7320507764816284,
+          0,
+          0,
+          0,
+          0,
+          1.7320507764816284,
+          0,
+          0,
+          0,
+          0,
+          -1.0909091234207153,
+          -1,
+          0,
+          0,
+          -0.5454545617103577,
+          0
+        ]
+      }
+    },
+    {
+      "kind": "buffer",
       "bytes": 160,
       "access": "read",
       "data": {
@@ -51,32 +75,6 @@
           0
         ]
       }
-    },
-    {
-      "kind": "buffer",
-      "name": "views",
-      "bytes": 64,
-      "access": "read",
-      "data": {
-        "f32": [
-          1.7320507764816284,
-          0,
-          0,
-          0,
-          0,
-          1.7320507764816284,
-          0,
-          0,
-          0,
-          0,
-          -1.0909091234207153,
-          -1,
-          0,
-          0,
-          -0.5454545617103577,
-          0
-        ]
-      }
     }
   ],
   "modules": [
@@ -88,20 +86,19 @@
   "pipelines": [
     {
       "kind": "render",
-      "name": "surface",
       "vertex": {
-        "module": "scene",
+        "module": 0,
         "entry": "project"
       },
       "fragment": {
-        "module": "scene",
+        "module": 0,
         "entry": "shade"
       },
       "bindings": [
         {
           "group": 0,
           "binding": 0,
-          "resource": "objects",
+          "resource": 1,
           "visibility": [
             "vertex"
           ]
@@ -109,7 +106,7 @@
         {
           "group": 0,
           "binding": 1,
-          "resource": "views",
+          "resource": 0,
           "visibility": [
             "vertex"
           ]
@@ -119,7 +116,7 @@
   ],
   "passes": [
     {
-      "pipeline": "surface",
+      "pipeline": 0,
       "draws": [
         {
           "instances": 2

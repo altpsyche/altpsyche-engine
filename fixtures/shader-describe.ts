@@ -15,8 +15,9 @@
  */
 import { WGSL_DOCUMENT } from '@altpsyche/engine';
 import { uniformBindingOf } from '@altpsyche/engine';
-import { groupsIndirectly } from '@altpsyche/engine';
 import { namesReachedBy } from '@altpsyche/engine';
+import { buffer, indices, moduleHandle, pipelineHandle, sampler, texture, uniform, vertices } from '../graph/handles.js';
+import type { ResourceHandle, TextureHandle } from '../graph/handles.js';
 import {
   computeEntriesOf,
   hasEntry,
@@ -48,11 +49,6 @@ type RenderPipelineTargets = NonNullable<RenderPipelineSpec['targets']>;
 /** The depth test one pipeline runs, which is the entry's two answers plus the
  * format of the attachment its pass keeps the depth in. */
 type RenderPipelineDepth = NonNullable<RenderPipelineSpec['depth']>;
-
-/** The name the one uniform resource of a frame carries, which is the name the
- * one-pass descriptions use, so a binding points at a resource by the same name
- * whichever description built it. */
-const UNIFORMS = 'uniforms';
 
 /** The three corners the backend supplies, which is what a render pass declared
  * with no geometry of its own covers the frame with. */
@@ -138,6 +134,11 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   // One pipeline per entry point a pass names, in the order the passes name them,
   // and a pipeline named by two passes is built once and run twice.
   const named = [...new Set(declared.passes.map((pass) => pass.pipeline))];
+
+  // Each pipeline's handle: the index it sits at in the `pipelines` array, which is
+  // built from `named` in this order, so a pass names its pipeline by the handle
+  // the index it appears at here becomes (item 87).
+  const pipelineHandleOf = new Map(named.map((name, index) => [name, pipelineHandle(index)]));
 
   // Which kind of pipeline a pass runs is the source's answer rather than the
   // entry's, for the reason every other number here is: a pass claiming one kind
@@ -398,7 +399,9 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   for (const pass of declared.passes) {
     const named =
       pass.indirect ??
-      (pass.groups !== undefined && groupsIndirectly(pass.groups) ? pass.groups.indirect : undefined);
+      (pass.groups !== undefined && !Array.isArray(pass.groups) && 'indirect' in pass.groups
+        ? pass.groups.indirect
+        : undefined);
     if (named === undefined) continue;
     if (!(declared.buffers ?? []).some((one) => one.name === named)) {
       throw new Error(
@@ -498,6 +501,34 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     throw new Error(`the frame for "${id}" describes "${unread.name}", which no pass of it reads`);
   }
 
+  // Each resource's handle: the index it sits at in the `resources` array below,
+  // branded by its kind (item 87). `resourceHandleOf` answers a binding, which names
+  // a resource of whatever kind, and `nameIndex` answers a typed reference — a
+  // colour attachment, a per-draw buffer, a pass's geometry — that takes the same
+  // index through the constructor its own kind wants. Both are built in the exact
+  // order `resources` is, resource 0 the uniform block, so a handle and the resource
+  // it names cannot drift apart.
+  const nameIndex = new Map<string, number>();
+  const resourceHandleOf = new Map<string, ResourceHandle>();
+  let handleAt = 1;
+  const registerResource = (name: string, brand: (index: number) => ResourceHandle): void => {
+    nameIndex.set(name, handleAt);
+    resourceHandleOf.set(name, brand(handleAt));
+    handleAt += 1;
+  };
+  for (const one of declared.textures ?? []) registerResource(one.name, texture);
+  for (const pair of declared.pairs ?? []) {
+    registerResource(pair.read, texture);
+    registerResource(pair.write, texture);
+  }
+  for (const one of declared.buffers ?? []) registerResource(one.name, buffer);
+  for (const one of declared.samplers ?? []) registerResource(one.name, sampler);
+  for (const one of declared.attachments ?? []) registerResource(one.name, texture);
+  for (const one of declared.geometry ?? []) {
+    registerResource(one.name, vertices);
+    registerResource(indexResourceName(one.name), indices);
+  }
+
   /** What one pipeline's layout names, which is every resource its own entry
    * point reaches and nothing the other pipelines read. The visibility is the
    * stage that pipeline runs at, since a layout is built per pipeline and each of
@@ -519,7 +550,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     const reached = new Set(running.flatMap((run) => [...(reaches.get(run.entry) ?? [])]));
     return [
       ...(at && reached.has(at.name)
-        ? [{ group: at.group, binding: at.binding, resource: UNIFORMS, visibility: readers(at.name) }]
+        ? [{ group: at.group, binding: at.binding, resource: uniform(0), visibility: readers(at.name) }]
         : []),
       ...described
         .filter((resource) => reached.has(resource.name))
@@ -528,7 +559,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
           return {
             group: source.group,
             binding: source.binding,
-            resource: resource.name,
+            resource: resourceHandleOf.get(resource.name)!,
             visibility: readers(resource.name),
             // Which kind of thing the source declared this name as, which is the
             // only answer for a name the frame uses both ways.
@@ -546,7 +577,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   };
 
   const resources: ResourceSpec[] = [
-    { kind: 'uniform', name: UNIFORMS },
+    { kind: 'uniform' },
     ...(declared.textures ?? []).map((texture): ResourceSpec => {
       // A stored texture's format is the source's, because the declaration
       // carries it. A sampled one's is the generator's, because the bytes and
@@ -554,7 +585,6 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
       const content = texture.content ? TEXTURE_CONTENT[texture.content] : undefined;
       return {
         kind: 'texture',
-        name: texture.name,
         size: texture.size,
         format: content ? content.format : (written.get(texture.name) as { format: GPUTextureFormat }).format,
         use: content ? ['sample'] : ['storage'],
@@ -566,9 +596,8 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
       // Both halves are written by one pass and read by the next frame's, so each
       // of them carries the flags for both and the format is the one the source
       // declares on the half it stores into: a sampled declaration names none.
-      [pair.read, pair.write].map((name) => ({
+      [pair.read, pair.write].map(() => ({
         kind: 'texture',
-        name,
         size: pair.size,
         format: (written.get(pair.write) as { format: GPUTextureFormat }).format,
         use: ['storage', 'sample'],
@@ -579,7 +608,6 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     ...(declared.buffers ?? []).map(
       (buffer): ResourceSpec => ({
         kind: 'buffer',
-        name: buffer.name,
         bytes: buffer.bytes,
         // A buffer the source binds says whether the shader may write it. One only
         // a query resolves into is read by nobody on this side of the card, so it
@@ -591,7 +619,9 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
         ...(buffer.content ? { source: bufferFileName(id, buffer.name) } : {}),
       })
     ),
-    ...(declared.samplers ?? []).map((sampler): ResourceSpec => ({ kind: 'sampler', ...sampler })),
+    ...(declared.samplers ?? []).map(
+      (one): ResourceSpec => ({ kind: 'sampler', filter: one.filter, wrap: one.wrap })
+    ),
     // An attachment is written by a pass rather than bound by a stage, so it
     // carries the one flag that says so and its format is the entry's. A later
     // pass may also read what an earlier one drew, and the source saying so is
@@ -601,7 +631,6 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     ...(declared.attachments ?? []).map(
       (one): ResourceSpec => ({
         kind: 'texture',
-        name: one.name,
         size: one.size,
         format: one.format,
         use: sampled.has(one.name) ? ['attachment', 'sample'] : ['attachment'],
@@ -617,17 +646,15 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
       return [
         {
           kind: 'vertices',
-          name: one.name,
           stride: primitive.stride,
           attributes: primitive.attributes,
           topology: primitive.topology,
           count: made.vertexCount,
-          indices: indexResourceName(one.name),
+          indices: indices(nameIndex.get(indexResourceName(one.name))!),
           source: geometryFileName(id, one.name, 'vertices'),
         },
         {
           kind: 'indices',
-          name: indexResourceName(one.name),
           format: primitive.indexFormat,
           count: made.indexCount,
           source: geometryFileName(id, one.name, 'indices'),
@@ -642,19 +669,19 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     return compute
       ? {
           kind: 'compute',
-          name,
-          compute: { module: WGSL_DOCUMENT, entry: compute.entry },
+          compute: { module: moduleHandle(0), entry: compute.entry },
           bindings: bindingsOf(name),
           workgroup: compute.workgroup,
         }
       : {
           kind: 'render',
-          name,
           vertex: drawn.has(name)
-            ? { module: WGSL_DOCUMENT, entry: (drawn.get(name) as { vertex: string }).vertex }
+            ? { module: moduleHandle(0), entry: (drawn.get(name) as { vertex: string }).vertex }
             : 'fullscreen',
-          fragment: { module: WGSL_DOCUMENT, entry: name },
-          ...(drawn.has(name) ? { geometry: (drawn.get(name) as { geometry: string }).geometry } : {}),
+          fragment: { module: moduleHandle(0), entry: name },
+          ...(drawn.has(name)
+            ? { geometry: vertices(nameIndex.get((drawn.get(name) as { geometry: string }).geometry)!) }
+            : {}),
           bindings: bindingsOf(name),
           ...(draws && draws.targets.length > 0 ? { targets: draws.targets } : {}),
           ...(draws?.samples ? { samples: draws.samples } : {}),
@@ -667,26 +694,34 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     // the entry gave, since where an answer lands is the entry's and how many
     // answers there are is the backend's.
     const said = {
-      ...(pass.timed !== undefined ? { timed: pass.timed } : {}),
-      ...(pass.visible !== undefined ? { visible: pass.visible } : {}),
+      ...(pass.timed !== undefined ? { timed: buffer(nameIndex.get(pass.timed)!) } : {}),
+      ...(pass.visible !== undefined ? { visible: buffer(nameIndex.get(pass.visible)!) } : {}),
     };
-    if (pass.groups !== undefined) return { pipeline: pass.pipeline, groups: pass.groups, ...said };
+    const pipeline = pipelineHandleOf.get(pass.pipeline)!;
+    if (pass.groups !== undefined) {
+      // A count read out of a buffer names it by the buffer's handle, the same way a
+      // binding does — the name the declaration gave the buffer lowered to its index.
+      const groups = Array.isArray(pass.groups)
+        ? pass.groups
+        : { indirect: buffer(nameIndex.get(pass.groups.indirect)!) };
+      return { pipeline, groups, ...said };
+    }
     // What a pass attaches, carrying only what the entry said: a clear value where
     // it named one, and nothing where it means the attachment is kept.
     const attaches: Pick<RenderPassSpec, 'colour' | 'depth'> = {
       ...(pass.colour
         ? {
             colour: pass.colour.map((one) => ({
-              resource: one.resource,
+              resource: texture(nameIndex.get(one.resource)!),
               ...(one.clear ? { clear: one.clear } : {}),
-              ...(one.resolve ? { resolve: one.resolve } : {}),
+              ...(one.resolve ? { resolve: texture(nameIndex.get(one.resolve)!) } : {}),
             })),
           }
         : {}),
       ...(pass.depth
         ? {
             depth: {
-              resource: pass.depth.resource,
+              resource: texture(nameIndex.get(pass.depth.resource)!),
               ...(pass.depth.clear !== undefined ? { clear: pass.depth.clear } : {}),
               ...(pass.depth.stencilClear !== undefined ? { stencilClear: pass.depth.stencilClear } : {}),
             },
@@ -697,7 +732,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     // every number the card needs is in there and an instance count beside it
     // would be a second answer to the same question.
     if (pass.indirect !== undefined) {
-      return { pipeline: pass.pipeline, draws: [{ indirect: pass.indirect }], ...attaches, ...said };
+      return { pipeline, draws: [{ indirect: buffer(nameIndex.get(pass.indirect)!) }], ...attaches, ...said };
     }
     // A pass slicing a per-draw buffer draws its geometry once per record, each
     // draw naming the byte offset of its slice (§8). One draw per offset, each a
@@ -705,7 +740,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     // reads of its own.
     if (pass.perDraw !== undefined) {
       return {
-        pipeline: pass.pipeline,
+        pipeline,
         draws: pass.perDraw.offsets.map((offset) => ({ instances: 1, perDraw: offset })),
         ...attaches,
         ...said,
@@ -714,9 +749,9 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     // How many vertices a drawn pass covers is the buffer's, so the pass carries
     // the instance count alone and the count of vertices stays where the bytes are.
     if (pass.geometry !== undefined) {
-      return { pipeline: pass.pipeline, draws: [{ instances: pass.instances ?? ONE_INSTANCE }], ...attaches, ...said };
+      return { pipeline, draws: [{ instances: pass.instances ?? ONE_INSTANCE }], ...attaches, ...said };
     }
-    return { pipeline: pass.pipeline, draws: [{ vertices: FULLSCREEN_VERTICES }], ...attaches, ...said };
+    return { pipeline, draws: [{ vertices: FULLSCREEN_VERTICES }], ...attaches, ...said };
   });
 
   return {
@@ -725,9 +760,14 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     modules: [{ name: WGSL_DOCUMENT, wgsl: '' }],
     pipelines,
     passes,
-    ...(declared.present !== undefined ? { present: declared.present } : {}),
+    ...(declared.present !== undefined ? { present: texture(nameIndex.get(declared.present)!) } : {}),
     ...((declared.pairs ?? []).length > 0
-      ? { swap: (declared.pairs ?? []).map((pair): [string, string] => [pair.read, pair.write]) }
+      ? {
+          swap: (declared.pairs ?? []).map((pair): [TextureHandle, TextureHandle] => [
+            texture(nameIndex.get(pair.read)!),
+            texture(nameIndex.get(pair.write)!),
+          ]),
+        }
       : {}),
   };
 }

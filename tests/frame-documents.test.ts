@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { assembleFrame, documentNames } from '@altpsyche/engine';
+import { moduleHandle, pipelineHandle, uniform } from '../graph/handles.js';
 import type { FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU } from './support/fake-gpu';
 
@@ -20,18 +21,17 @@ const FRAGMENT = '@fragment fn fragMain() -> @location(0) vec4f { return vec4f(1
 
 const description: FrameGraph = {
   authored: 'wgsl',
-  resources: [{ kind: 'uniform', name: 'uniforms' }],
+  resources: [{ kind: 'uniform' }],
   modules: [{ name: 'corners', wgsl: '' }, { name: 'shade', wgsl: '' }],
   pipelines: [
     {
       kind: 'render',
-      name: 'frame',
-      vertex: { module: 'corners', entry: 'main' },
-      fragment: { module: 'shade', entry: 'fragMain' },
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      vertex: { module: moduleHandle(0), entry: 'main' },
+      fragment: { module: moduleHandle(1), entry: 'fragMain' },
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
 };
 
 function assembled(): FrameGraph {
@@ -80,18 +80,17 @@ describe('a description naming two distinct WGSL documents', () => {
  */
 const collision: FrameGraph = {
   authored: 'wgsl',
-  resources: [{ kind: 'uniform', name: 'uniforms' }],
+  resources: [{ kind: 'uniform' }],
   modules: [{ name: 'shade', wgsl: '' }, { name: 'shade', wgsl: '' }],
   pipelines: [
     {
       kind: 'render',
-      name: 'frame',
-      vertex: { module: 'shade', entry: 'main' },
-      fragment: { module: 'shade', entry: 'fragMain' },
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      vertex: { module: moduleHandle(0), entry: 'main' },
+      fragment: { module: moduleHandle(1), entry: 'fragMain' },
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
 };
 
 describe('a description whose documents do not carry distinct names', () => {

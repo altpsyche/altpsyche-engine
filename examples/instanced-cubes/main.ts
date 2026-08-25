@@ -30,9 +30,14 @@ import {
   cost,
   createSurface,
   frameOf,
+  moduleHandle,
+  pipelineHandle,
   requestWebGPUDevice,
   selectBackend,
+  texture,
+  uniform,
   uniformBlockOf,
+  vertices,
   WGSL_DOCUMENT,
 } from '@altpsyche/engine';
 import type { FrameGraph } from '@altpsyche/engine';
@@ -153,10 +158,9 @@ const VERTEX_STRIDE = 24;
 const WGSL_DESCRIPTION: FrameGraph = {
   authored: 'wgsl',
   resources: [
-    { kind: 'uniform', name: 'uniforms' },
+    { kind: 'uniform' },
     {
       kind: 'vertices',
-      name: 'cube',
       stride: VERTEX_STRIDE,
       attributes: [
         { location: 0, offset: 0, format: 'float32x3' },
@@ -169,21 +173,20 @@ const WGSL_DESCRIPTION: FrameGraph = {
     // Frame-sized, so the depth follows a resize the way the colour does; it is
     // cleared each frame and read by nothing afterwards, so item 1 discards its
     // store rather than writing it back.
-    { kind: 'texture', name: 'depth', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
+    { kind: 'texture', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
   ],
   modules: [{ name: WGSL_DOCUMENT, wgsl: '' }],
   pipelines: [
     {
       kind: 'render',
-      name: 'cubes',
-      vertex: { module: WGSL_DOCUMENT, entry: 'cube' },
-      fragment: { module: WGSL_DOCUMENT, entry: 'shade' },
-      geometry: 'cube',
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['vertex'] }],
+      vertex: { module: moduleHandle(0), entry: 'cube' },
+      fragment: { module: moduleHandle(0), entry: 'shade' },
+      geometry: vertices(1),
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['vertex'] }],
       depth: { format: 'depth24plus', compare: 'less', write: true },
     },
   ],
-  passes: [{ pipeline: 'cubes', draws: [{ instances: COUNT }], depth: { resource: 'depth', clear: 1 } }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ instances: COUNT }], depth: { resource: texture(2), clear: 1 } }],
 };
 
 const wgslFrame = frameOf(
@@ -192,7 +195,7 @@ const wgslFrame = frameOf(
   { [WGSL_DOCUMENT]: WGSL_SOURCE },
   uniformBlockOf(WGSL_SOURCE),
   undefined,
-  new Map([['cube', VERTICES]])
+  new Map([[1, VERTICES]])
 );
 
 // The GLSL pair for WebGL 2. That backend draws the frame's own corners, so each
@@ -235,18 +238,17 @@ void main() {
 // `drawArraysInstanced` (item 28) covering the thousand objects in one pass.
 const GLSL_DESCRIPTION: FrameGraph = {
   authored: 'glsl',
-  resources: [{ kind: 'uniform', name: 'uniforms' }],
+  resources: [{ kind: 'uniform' }],
   modules: [{ name: 'vertex', glsl: '' }, { name: 'fragment', glsl: '' }],
   pipelines: [
     {
       kind: 'render',
-      name: 'cubes',
-      vertex: { module: 'vertex', entry: 'main' },
-      fragment: { module: 'fragment', entry: 'main' },
+      vertex: { module: moduleHandle(0), entry: 'main' },
+      fragment: { module: moduleHandle(1), entry: 'main' },
       bindings: [],
     },
   ],
-  passes: [{ pipeline: 'cubes', draws: [{ vertices: 3, instances: COUNT }] }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3, instances: COUNT }] }],
 };
 
 const glslFrame = frameOf(

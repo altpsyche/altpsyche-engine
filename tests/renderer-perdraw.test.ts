@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { buffer, moduleHandle, pipelineHandle } from '../graph/handles.js';
 import type { DrawSpec, FrameGraph } from '@altpsyche/engine';
 
 /**
@@ -34,23 +35,24 @@ const SLOT = 256;
 const perDrawFrame = (draws: DrawSpec[], count: number, over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-perdraw',
   authored: 'wgsl',
+  // The per-draw buffer `cubes` is resource 0, the WGSL document module 0, the one
+  // pipeline pipeline 0 — each named below by its index.
   resources: [
     // The per-draw buffer: one record per draw, laid out at 256-byte slots. It
     // arrives with its first contents, which is what a producer of transforms
     // fills once.
-    { kind: 'buffer', name: 'cubes', bytes: count * SLOT, access: 'read', data: new Uint8Array(count * SLOT) },
+    { kind: 'buffer', bytes: count * SLOT, access: 'read', data: new Uint8Array(count * SLOT) },
   ],
   modules: [{ name: 'wgsl', wgsl: WGSL }],
   pipelines: [
     {
       kind: 'render',
-      name: 'cube',
       vertex: 'fullscreen',
-      fragment: { module: 'wgsl', entry: 'shade' },
-      bindings: [{ group: 0, binding: 0, resource: 'cubes', visibility: ['fragment'], perDraw: { size: RECORD } }],
+      fragment: { module: moduleHandle(0), entry: 'shade' },
+      bindings: [{ group: 0, binding: 0, resource: buffer(0), visibility: ['fragment'], perDraw: { size: RECORD } }],
     },
   ],
-  passes: [{ pipeline: 'cube', draws }],
+  passes: [{ pipeline: pipelineHandle(0), draws }],
   ...over,
 });
 
@@ -75,7 +77,7 @@ describe('a per-draw slice on WebGPU', () => {
     const { gpu, backend } = backendOver();
     backend.program(perDrawFrame([{ vertices: 3, perDraw: 0 }], 1));
 
-    const made = gpu.calls('createBuffer').find((call) => call.label === 'cubes');
+    const made = gpu.calls('createBuffer').find((call) => call.label === 'buffer0');
     expect(made?.usage).toBe(GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
 
     const entries = gpu.calls('createBindGroupLayout')[0]?.entries as { kind: string }[];
@@ -114,7 +116,7 @@ describe('a per-draw slice on WebGPU', () => {
   it('refuses an offset that is no whole number of 256 bytes, by name', () => {
     const { backend } = backendOver();
     expect(() => backend.program(perDrawFrame([{ vertices: 3, perDraw: 128 }], 1))).toThrow(
-      'the pass on "cube" reads a per-draw slice at offset 128, which is no whole number of 256 bytes'
+      'the pass on pipeline 0 reads a per-draw slice at offset 128, which is no whole number of 256 bytes'
     );
   });
 
@@ -124,15 +126,14 @@ describe('a per-draw slice on WebGPU', () => {
       pipelines: [
         {
           kind: 'render',
-          name: 'cube',
           vertex: 'fullscreen',
-          fragment: { module: 'wgsl', entry: 'shade' },
-          bindings: [{ group: 0, binding: 0, resource: 'cubes', visibility: ['fragment'] }],
+          fragment: { module: moduleHandle(0), entry: 'shade' },
+          bindings: [{ group: 0, binding: 0, resource: buffer(0), visibility: ['fragment'] }],
         },
       ],
     });
     expect(() => backend.program(frame)).toThrow(
-      'the pass on "cube" gives a draw a per-draw offset of 0 and its pipeline binds no per-draw slice'
+      'the pass on pipeline 0 gives a draw a per-draw offset of 0 and its pipeline binds no per-draw slice'
     );
   });
 
@@ -141,7 +142,7 @@ describe('a per-draw slice on WebGPU', () => {
     // One record fits at offset 0, but a slice at the next slot overruns a buffer
     // of a single slot.
     expect(() => backend.program(perDrawFrame([{ vertices: 3, perDraw: 256 }], 1))).toThrow(
-      'the pass on "cube" reads 64 bytes of per-draw slice at offset 256 from "cubes", which holds 256'
+      'the pass on pipeline 0 reads 64 bytes of per-draw slice at offset 256 from resource 0, which holds 256'
     );
   });
 });

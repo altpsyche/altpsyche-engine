@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
-import { ONE_PASS, missing, wgslFrame } from '@altpsyche/engine';
+import { missing, wgslFrame } from '@altpsyche/engine';
 import type { FrameGraph, TextureResource, WgslFrameGraph } from '@altpsyche/engine';
 import type { UniformSlot } from '@altpsyche/engine';
+import { moduleHandle, pipelineHandle, sampler, texture, uniform } from '../graph/handles.js';
 import { createFakeGPU, paddedFrame } from './support/fake-gpu';
 
 /**
@@ -188,7 +189,7 @@ describe('the layout it builds rather than infers', () => {
     expect(passed).toHaveLength(1);
     // Named by the label the recorder gave the layout above rather than compared
     // as an object, since a pipeline layout is a thing the driver made.
-    expect(passed[0]!.bindGroupLayouts).toEqual([`${ONE_PASS}-bindings`]);
+    expect(passed[0]!.bindGroupLayouts).toEqual(['pipeline0-bindings']);
   });
 
   it('builds no binding at all for a source that declares no block', () => {
@@ -211,7 +212,7 @@ describe('the layout it builds rather than infers', () => {
       bindings: pipeline.bindings.map((at) => ({ ...at, group: 1 })),
     }));
     expect(() => backend.program({ ...frame, pipelines })).toThrow(
-      'the frame for "fixture" binds "frame" past group 0 with no group 0'
+      'the frame for "fixture" binds pipeline 0 past group 0 with no group 0'
     );
   });
 });
@@ -278,13 +279,13 @@ describe('the frame it draws', () => {
     const { gpu, backend } = backendOver();
     backend.program(graph()).draw();
 
-    const texture = gpu.calls('createTexture')[0]!;
-    expect(texture.format).toBe('rgba8unorm');
+    const made = gpu.calls('createTexture')[0]!;
+    expect(made.format).toBe('rgba8unorm');
     // Copied into as well as out of, because a frame whose picture is a storage
     // texture ends with a copy into this one, and a flag that is missing is
     // refused at the copy rather than where the texture was made.
-    expect(texture.usage).toBe(GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST);
-    expect(texture.size).toEqual([800, 600]);
+    expect(made.usage).toBe(GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST);
+    expect(made.size).toEqual([800, 600]);
   });
 
   it('covers the frame with one triangle and clears it first', () => {
@@ -514,27 +515,26 @@ const computeFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-compute',
   authored: 'wgsl',
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: BLOCK },
-    { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['storage'] },
+    { kind: 'uniform', block: BLOCK },
+    { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['storage'] },
   ],
   modules: [{ name: 'compute', wgsl: COMPUTE }],
   pipelines: [
     {
       kind: 'compute',
-      name: 'field',
-      compute: { module: 'compute', entry: 'computeMain' },
+      compute: { module: moduleHandle(0), entry: 'computeMain' },
       workgroup: [8, 8, 1],
       bindings: [
-        { group: 0, binding: 0, resource: 'uniforms', visibility: ['compute'] },
-        { group: 0, binding: 1, resource: 'picture', visibility: ['compute'] },
+        { group: 0, binding: 0, resource: uniform(0), visibility: ['compute'] },
+        { group: 0, binding: 1, resource: texture(1), visibility: ['compute'] },
       ],
     },
   ],
   // The group count is the producer's (item 72): [100, 75, 1] covers the fake
   // canvas's 800×600 in whole blocks of the pipeline's 8×8 workgroup. The backend
   // dispatches it as given and no longer works it out from the frame size.
-  passes: [{ pipeline: 'field', groups: [100, 75, 1] }],
-  present: 'picture',
+  passes: [{ pipeline: pipelineHandle(0), groups: [100, 75, 1] }],
+  present: texture(1),
   ...over,
 });
 
@@ -546,7 +546,7 @@ describe('the compute pipeline it builds', () => {
     expect(gpu.calls('createRenderPipeline')).toHaveLength(0);
     const pipeline = gpu.calls('createComputePipeline')[0]!;
     expect(pipeline.computeEntry).toBe('computeMain');
-    expect(pipeline.layout).toBe('field-layout');
+    expect(pipeline.layout).toBe('pipeline0-layout');
   });
 
   it('names the compute stage in the layout, and the storage texture by its own format', () => {
@@ -572,10 +572,10 @@ describe('the texture a compute pass writes', () => {
     const { gpu, backend } = backendOver();
     backend.program(computeFrame());
 
-    const texture = gpu.calls('createTexture')[0]!;
-    expect(texture.size).toEqual([800, 600]);
-    expect(texture.format).toBe('rgba8unorm');
-    expect(texture.usage).toBe(GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC);
+    const made = gpu.calls('createTexture')[0]!;
+    expect(made.size).toEqual([800, 600]);
+    expect(made.format).toBe('rgba8unorm');
+    expect(made.usage).toBe(GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC);
   });
 
   it('is bound as a view beside the uniform buffer, in the order the source declares', () => {
@@ -584,7 +584,7 @@ describe('the texture a compute pass writes', () => {
 
     expect(gpu.calls('createBindGroup')[0]!.bindings).toEqual([
       { binding: 0, resource: 'buffer1' },
-      { binding: 1, resource: 'picture.view' },
+      { binding: 1, resource: 'texture1.view' },
     ]);
   });
 
@@ -595,7 +595,7 @@ describe('the texture a compute pass writes', () => {
       ...frame,
       resources: [
         frame.resources[0]!,
-        { kind: 'texture', name: 'picture', size: { width: 64, height: 64 }, format: 'rgba8unorm', use: ['storage'] },
+        { kind: 'texture', size: { width: 64, height: 64 }, format: 'rgba8unorm', use: ['storage'] },
       ],
     });
 
@@ -624,7 +624,7 @@ describe('the texture a compute pass writes', () => {
       ...frame,
       resources: [
         frame.resources[0]!,
-        { kind: 'texture', name: 'picture', size: { width: 64, height: 64 }, format: 'rgba8unorm', use: ['storage'] },
+        { kind: 'texture', size: { width: 64, height: 64 }, format: 'rgba8unorm', use: ['storage'] },
       ],
     });
     program.draw();
@@ -684,7 +684,7 @@ describe('the compute pass it runs', () => {
   it('dispatches exactly what a description naming its own count asks for', () => {
     const { gpu, backend } = backendOver();
     const frame = computeFrame();
-    backend.program({ ...frame, passes: [{ pipeline: 'field', groups: [3, 2, 1] }] }).draw();
+    backend.program({ ...frame, passes: [{ pipeline: pipelineHandle(0), groups: [3, 2, 1] }] }).draw();
 
     expect(gpu.calls('dispatchWorkgroups')[0]).toMatchObject({ x: 3, y: 2, z: 1 });
   });
@@ -693,7 +693,7 @@ describe('the compute pass it runs', () => {
     const { gpu, backend } = backendOver({ connected: false });
     backend.program(computeFrame()).draw();
 
-    expect(gpu.calls('copyTextureToTexture')).toEqual([expect.objectContaining({ from: 'picture', to: 'frame' })]);
+    expect(gpu.calls('copyTextureToTexture')).toEqual([expect.objectContaining({ from: 'texture1', to: 'frame' })]);
     expect(gpu.calls('submit')).toHaveLength(1);
   });
 });
@@ -701,8 +701,8 @@ describe('the compute pass it runs', () => {
 describe('a compute description it refuses', () => {
   it('refuses one that shows a resource it never declares', () => {
     const { backend } = backendOver();
-    expect(() => backend.program(computeFrame({ present: 'elsewhere' }))).toThrow(
-      'the frame for "fixture-compute" shows a resource "elsewhere" it does not declare'
+    expect(() => backend.program(computeFrame({ present: texture(2) }))).toThrow(
+      'the frame for "fixture-compute" shows resource 2 it does not declare'
     );
   });
 
@@ -717,17 +717,17 @@ describe('a compute description it refuses', () => {
         pipelines: [
           {
             ...pipeline,
-            bindings: [...pipeline.bindings, { group: 0, binding: 2, resource: 'elsewhere', visibility: ['compute'] }],
+            bindings: [...pipeline.bindings, { group: 0, binding: 2, resource: texture(2), visibility: ['compute'] }],
           },
         ],
       })
-    ).toThrow(/binds a resource "elsewhere" it never declares/);
+    ).toThrow(/binds a resource 2 it never declares/);
   });
 
   it('refuses a pass asking for the other kind of work than its pipeline does', () => {
     const { backend } = backendOver();
     const frame = computeFrame();
-    expect(() => backend.program({ ...frame, passes: [{ pipeline: 'field', draws: [{ vertices: 3 }] }] })).toThrow(
+    expect(() => backend.program({ ...frame, passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }] })).toThrow(
       /asks for the other kind of work/
     );
   });
@@ -757,33 +757,31 @@ const sampledFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-sampled',
   authored: 'wgsl',
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: BLOCK },
+    { kind: 'uniform', block: BLOCK },
     {
       kind: 'texture',
-      name: 'grain',
       size: { width: 4, height: 4 },
       format: 'rgba8unorm',
       use: ['sample'],
       source: 'grain.bin',
       data: GRAIN,
     },
-    { kind: 'sampler', name: 'grainSampler', filter: 'linear', wrap: 'repeat' },
+    { kind: 'sampler', filter: 'linear', wrap: 'repeat' },
   ],
   modules: [{ name: 'fragment', wgsl: SAMPLED }],
   pipelines: [
     {
       kind: 'render',
-      name: ONE_PASS,
       vertex: 'fullscreen',
-      fragment: { module: 'fragment', entry: 'fragMain' },
+      fragment: { module: moduleHandle(0), entry: 'fragMain' },
       bindings: [
-        { group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] },
-        { group: 0, binding: 1, resource: 'grain', visibility: ['fragment'] },
-        { group: 0, binding: 2, resource: 'grainSampler', visibility: ['fragment'] },
+        { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] },
+        { group: 0, binding: 1, resource: texture(1), visibility: ['fragment'] },
+        { group: 0, binding: 2, resource: sampler(2), visibility: ['fragment'] },
       ],
     },
   ],
-  passes: [{ pipeline: ONE_PASS, draws: [{ vertices: 3 }] }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
   ...over,
 });
 
@@ -792,10 +790,10 @@ describe('the texture a shader samples', () => {
     const { gpu, backend } = backendOver();
     backend.program(sampledFrame());
 
-    const texture = gpu.calls('createTexture')[0]!;
-    expect(texture.label).toBe('grain');
-    expect(texture.size).toEqual([4, 4]);
-    expect(texture.usage).toBe(GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST);
+    const made = gpu.calls('createTexture')[0]!;
+    expect(made.label).toBe('texture1');
+    expect(made.size).toEqual([4, 4]);
+    expect(made.usage).toBe(GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST);
   });
 
   it('has its contents handed over once, a row at a time at four bytes a pixel', () => {
@@ -803,7 +801,7 @@ describe('the texture a shader samples', () => {
     backend.program(sampledFrame());
 
     expect(gpu.calls('writeTexture')).toEqual([
-      { call: 'writeTexture', label: 'grain', bytes: 64, stride: 16, size: [4, 4] },
+      { call: 'writeTexture', label: 'texture1', bytes: 64, stride: 16, size: [4, 4] },
     ]);
   });
 
@@ -815,7 +813,7 @@ describe('the texture a shader samples', () => {
     program.draw();
 
     expect(gpu.calls('writeTexture')).toHaveLength(1);
-    expect(gpu.calls('createTexture').filter((call) => call.label === 'grain')).toHaveLength(1);
+    expect(gpu.calls('createTexture').filter((call) => call.label === 'texture1')).toHaveLength(1);
   });
 
   it('keeps its contents while a frame-sized texture beside it is rebuilt on a resize', () => {
@@ -829,8 +827,8 @@ describe('the texture a shader samples', () => {
     backend.resize(320, 180);
     program.draw();
 
-    expect(gpu.calls('createTexture').filter((call) => call.label === 'picture')).toHaveLength(2);
-    expect(gpu.calls('createTexture').filter((call) => call.label === 'grain')).toHaveLength(1);
+    expect(gpu.calls('createTexture').filter((call) => call.label === 'texture1')).toHaveLength(2);
+    expect(gpu.calls('createTexture').filter((call) => call.label === 'texture2')).toHaveLength(1);
     expect(gpu.calls('writeTexture')).toHaveLength(1);
   });
 
@@ -846,7 +844,7 @@ describe('the texture a shader samples', () => {
           frame.resources[2]!,
         ],
       })
-    ).toThrow(/gives "grain" contents and the frame/);
+    ).toThrow(/gives resource 1 contents and the frame/);
   });
 
   it('is refused where a binding points at a texture the frame neither writes nor samples', () => {
@@ -861,7 +859,7 @@ describe('the texture a shader samples', () => {
           frame.resources[2]!,
         ],
       })
-    ).toThrow(/binds "grain", which it neither writes nor samples/);
+    ).toThrow(/binds resource 1, which it neither writes nor samples/);
   });
 });
 
@@ -873,7 +871,7 @@ describe('the sampler a shader reads a texture through', () => {
     expect(gpu.calls('createSampler')).toEqual([
       {
         call: 'createSampler',
-        label: 'grainSampler',
+        label: 'sampler2',
         magFilter: 'linear',
         minFilter: 'linear',
         addressModeU: 'repeat',
@@ -890,7 +888,7 @@ describe('the sampler a shader reads a texture through', () => {
       resources: [
         frame.resources[0]!,
         frame.resources[1]!,
-        { kind: 'sampler', name: 'grainSampler', filter: 'nearest', wrap: 'clamp' },
+        { kind: 'sampler', filter: 'nearest', wrap: 'clamp' },
       ],
     });
 
@@ -918,8 +916,8 @@ describe('the sampler a shader reads a texture through', () => {
 
     expect(gpu.calls('createBindGroup')[0]!.bindings).toEqual([
       { binding: 0, resource: 'buffer1' },
-      { binding: 1, resource: 'grain.view' },
-      { binding: 2, resource: 'grainSampler' },
+      { binding: 1, resource: 'texture1.view' },
+      { binding: 2, resource: 'sampler2' },
     ]);
   });
 });

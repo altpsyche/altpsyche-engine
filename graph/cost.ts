@@ -27,6 +27,8 @@
  */
 import type { PipelineSpec, ResourceSpec, RenderPipelineSpec, FrameGraph, TextureResource } from './types.js';
 import { isRenderPass } from './types.js';
+import type { PipelineHandle } from './handles.js';
+import { indexOf } from './handles.js';
 import { frameStores } from './attachments.js';
 import { sizeAt } from './refs.js';
 
@@ -49,7 +51,7 @@ export interface FrameCost {
   /** How many times the bound resources change between one pass and the next.
    * The first pass counts, for the same reason a pipeline switch does. Two
    * consecutive passes binding the same resources — the same groups, bindings
-   * and resource names — are one bind, even across a pipeline switch. */
+   * and resource handles — are one bind, even across a pipeline switch. */
   bindSwitches: number;
   /** How many attachment loads read prior contents into a pass. A cleared
    * attachment does not — it is filled, not read — so it does not count, which is
@@ -178,8 +180,6 @@ function bindKeyOf(spec: PipelineSpec): string {
  * it touches no device and reads nothing but the graph and the size.
  */
 export function cost(graph: FrameGraph, size: { width: number; height: number }): FrameCost {
-  const pipelineOf = new Map(graph.pipelines.map((spec) => [spec.name, spec]));
-
   let draws = 0;
   let dispatches = 0;
   let pipelineSwitches = 0;
@@ -187,7 +187,7 @@ export function cost(graph: FrameGraph, size: { width: number; height: number })
   let attachmentLoads = 0;
   let attachmentStores = 0;
 
-  let lastPipeline: string | undefined;
+  let lastPipeline: PipelineHandle | undefined;
   let lastBindKey: string | undefined;
   // A key no pipeline can produce, so the first pass always reads as a switch.
   const NONE = '\0none';
@@ -205,7 +205,7 @@ export function cost(graph: FrameGraph, size: { width: number; height: number })
       pipelineSwitches += 1;
       lastPipeline = pass.pipeline;
     }
-    const spec = pipelineOf.get(pass.pipeline);
+    const spec = graph.pipelines[indexOf(pass.pipeline)];
     const bindKey = spec ? bindKeyOf(spec) : NONE;
     if (bindKey !== lastBindKey) {
       bindSwitches += 1;

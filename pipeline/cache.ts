@@ -27,6 +27,7 @@
  * mechanism the backend and the executor reach, not a type a consumer names.
  */
 import type { PipelineSpec, FrameGraph, VertexResource } from '../graph/types.js';
+import type { ModuleHandle } from '../graph/handles.js';
 import { moduleOf, resourceOf } from '../graph/types.js';
 
 /** The brand that stops a plain number being passed where a pipeline handle is
@@ -90,12 +91,12 @@ function stagesOf(frame: FrameGraph, spec: PipelineSpec): { code: string; entry:
   // a WGSL frame's documents carry `wgsl`, a GLSL frame's carry `glsl`. Each backend
   // draws a frame already in its own language — a WGSL-authored frame reaches WebGL 2
   // only after `glslFrameOf` turns it into a GLSL one — so no bake map is read here.
-  const source = (name: string): string => {
-    const module = moduleOf(frame, name);
+  const source = (handle: ModuleHandle): string => {
+    const module = moduleOf(frame, handle);
     if (!module) return '';
     return frame.authored === 'wgsl' ? (module as { wgsl: string }).wgsl : (module as { glsl: string }).glsl;
   };
-  const resolve = (named: { module: string; entry: string }) => ({
+  const resolve = (named: { module: ModuleHandle; entry: string }) => ({
     code: source(named.module),
     entry: named.entry,
   });

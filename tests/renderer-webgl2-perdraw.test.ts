@@ -2,6 +2,7 @@ import type { GlslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGL2Backend } from '../gpu/webgl2';
 import type { FrameGraph } from '@altpsyche/engine';
+import { buffer, moduleHandle, pipelineHandle } from '../graph/handles.js';
 import { createFakeGL } from './support/fake-gl';
 
 /**
@@ -39,8 +40,8 @@ function perDrawFrame(over: Partial<GlslFrameGraph> = {}): FrameGraph {
     id: 'perdraw',
     authored: 'glsl',
     resources: [
-      { kind: 'uniform', name: 'uniforms' },
-      { kind: 'buffer', name: 'slice', bytes: 3 * SLOT, access: 'read', data: new Uint8Array(3 * SLOT) },
+      { kind: 'uniform' },
+      { kind: 'buffer', bytes: 3 * SLOT, access: 'read', data: new Uint8Array(3 * SLOT) },
     ],
     modules: [
       { name: 'vertex', glsl: VERTEX },
@@ -49,15 +50,14 @@ function perDrawFrame(over: Partial<GlslFrameGraph> = {}): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        name: 'draw',
-        vertex: { module: 'vertex', entry: 'main' },
-        fragment: { module: 'fragment', entry: 'main' },
-        bindings: [{ group: 1, binding: 0, resource: 'slice', visibility: ['vertex'], perDraw: { size: RECORD } }],
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(1), entry: 'main' },
+        bindings: [{ group: 1, binding: 0, resource: buffer(1), visibility: ['vertex'], perDraw: { size: RECORD } }],
       },
     ],
     passes: [
       {
-        pipeline: 'draw',
+        pipeline: pipelineHandle(0),
         draws: [
           { vertices: 3, perDraw: 0 },
           { vertices: 3, perDraw: 256 },
@@ -177,8 +177,8 @@ describe('a per-draw uniform slice on WebGL 2', () => {
       id: 'storage',
       authored: 'glsl',
       resources: [
-        { kind: 'uniform', name: 'uniforms' },
-        { kind: 'buffer', name: 'blob', bytes: 64, access: 'read' },
+        { kind: 'uniform' },
+        { kind: 'buffer', bytes: 64, access: 'read' },
       ],
       modules: [
         { name: 'vertex', glsl: VERTEX },
@@ -187,13 +187,12 @@ describe('a per-draw uniform slice on WebGL 2', () => {
       pipelines: [
         {
           kind: 'render',
-          name: 'draw',
-          vertex: { module: 'vertex', entry: 'main' },
-          fragment: { module: 'fragment', entry: 'main' },
+          vertex: { module: moduleHandle(0), entry: 'main' },
+          fragment: { module: moduleHandle(1), entry: 'main' },
           bindings: [],
         },
       ],
-      passes: [{ pipeline: 'draw', draws: [{ vertices: 3 }] }],
+      passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
     };
     expect(() => backend.program(frame)).toThrow('declares a buffer resource, and this backend has none');
   });

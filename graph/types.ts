@@ -12,6 +12,16 @@
 
 import type { Capability } from './capability.js';
 import type { TransientSize } from './refs.js';
+import type {
+  BufferHandle,
+  IndexHandle,
+  ModuleHandle,
+  PipelineHandle,
+  ResourceHandle,
+  TextureHandle,
+  VertexHandle,
+} from './handles.js';
+import { indexOf } from './handles.js';
 
 export type BackendName = 'webgl2' | 'webgpu';
 
@@ -38,6 +48,13 @@ export type UniformValue = number | number[];
  * with a pipeline naming which one runs at which stage.
  */
 export interface WgslModule {
+  /** The document's name — the key a loader fetches its text under and a file
+   * resolves to, since a document is read from a file and a file needs a name.
+   * It is not a resource identity: a pipeline names its documents by
+   * `ModuleHandle` (the index in `modules`), and a backend resolves them by that
+   * handle, never by this name (item 87). So this stays where a resource's name
+   * went, because a module is a document rather than a resource and its name is
+   * the address a loader keeps, not a key a backend maps. */
   name: string;
   /** The WGSL text on a frame a backend draws, and an empty string on the
    * build-time shape a producer names but a loader has not filled yet. */
@@ -66,6 +83,9 @@ export interface WgslModule {
  * optional field cannot mean both a translation and an authored source is why the
  * discriminant exists (§17 decision 6). */
 export interface GlslModule {
+  /** The document's name — the loader's fetch key, the same as a WGSL document's
+   * and for the same reason: a document is read from a file, and a pipeline names
+   * it by `ModuleHandle` rather than by this (item 87). */
   name: string;
   /** The authored GLSL text of one stage's document, empty at build time for the
    * reason a WGSL document's `wgsl` is. */
@@ -97,7 +117,6 @@ export interface UniformSlot {
  */
 export interface UniformResource {
   kind: 'uniform';
-  name: string;
   block?: UniformSlot[];
 }
 
@@ -113,7 +132,6 @@ export interface UniformResource {
  * the old `[Extent, Extent]` pair could not say. */
 export interface TextureResource {
   kind: 'texture';
-  name: string;
   size: TransientSize;
   format: GPUTextureFormat;
   use: ('storage' | 'sample' | 'attachment')[];
@@ -156,7 +174,6 @@ export interface TextureResource {
  * texture through different ones. */
 export interface SamplerResource {
   kind: 'sampler';
-  name: string;
   filter: 'nearest' | 'linear';
   wrap: 'clamp' | 'repeat' | 'mirror';
 }
@@ -171,7 +188,6 @@ export interface SamplerResource {
  * them is what answers it. */
 export interface VertexResource {
   kind: 'vertices';
-  name: string;
   /** Bytes from the start of one vertex to the start of the next. */
   stride: number;
   /** Each field of one vertex, at the location the source reads it at. */
@@ -179,9 +195,9 @@ export interface VertexResource {
   topology: GPUPrimitiveTopology;
   count: number;
   /** The indices that put these vertices in order, absent for geometry drawn
-   * straight through in the order it was written. One name rather than a copy of
+   * straight through in the order it was written. One handle rather than a copy of
    * the index resource, so the two cannot come apart. */
-  indices?: string;
+  indices?: IndexHandle;
   /** Where the bytes come from, and those bytes once fetched, which is the split
    * every generated resource carries: the build writes an address and the runtime
    * fills in what came back from it. */
@@ -195,7 +211,6 @@ export interface VertexResource {
  * vertex resource names it so the pair cannot be declared apart. */
 export interface IndexResource {
   kind: 'indices';
-  name: string;
   format: 'uint16' | 'uint32';
   count: number;
   source?: string;
@@ -215,7 +230,6 @@ export interface IndexResource {
  * whose layout says a buffer is written where the source only reads it. */
 export interface BufferResource {
   kind: 'buffer';
-  name: string;
   bytes: number;
   access: 'read' | 'read-write';
   /** Where its first contents come from, absent for a buffer that starts empty.
@@ -246,8 +260,10 @@ export type ResourceSpec =
 export interface BindingSpec {
   group: number;
   binding: number;
-  /** The resource by the name it carries on the frame. */
-  resource: string;
+  /** The resource by its handle — the index of the resource on the frame,
+   * whatever its kind, so one binding may name a uniform block, a texture, a
+   * sampler or a storage buffer and the kind is the resource's own. */
+  resource: ResourceHandle;
   visibility: ('vertex' | 'fragment' | 'compute')[];
   /** How this binding reads its texture, where the resource alone cannot say.
    * Both halves of a swapping pair are written by one pass and sampled by
@@ -272,14 +288,13 @@ export interface BindingSpec {
  * instead is the vertex program being the shader's own. */
 export interface RenderPipelineSpec {
   kind: 'render';
-  name: string;
-  vertex: { module: string; entry: string } | 'fullscreen';
-  fragment: { module: string; entry: string };
+  vertex: { module: ModuleHandle; entry: string } | 'fullscreen';
+  fragment: { module: ModuleHandle; entry: string };
   /** The geometry this pipeline reads one vertex at a time, absent where the
    * vertex stage reads no buffer at all. The pipeline names it rather than the
    * pass, because what a pipeline needs from it is the layout it was written
    * under and a layout is spent when the pipeline is made. */
-  geometry?: string;
+  geometry?: VertexHandle;
   /** Empty where the compiled program reports its own, which is every GLSL pair:
    * GLSL ES 3.0 declares no binding number for a uniform block and the linked
    * program answers with a block index instead. */
@@ -347,7 +362,7 @@ export interface RenderPipelineSpec {
  * Naming a buffer runs however much the three words at the start of it say, which
  * is the same arrangement a drawn pass has: the count arrives from a pass rather
  * than from the description. */
-export type Groups = [number, number, number] | { indirect: string };
+export type Groups = [number, number, number] | { indirect: BufferHandle };
 
 /** A program run over a grid of work items rather than over the frame's corners.
  * The block size is read off the source's own `@workgroup_size`, because the
@@ -355,8 +370,7 @@ export type Groups = [number, number, number] | { indirect: string };
  * with the source while everything still compiles. */
 export interface ComputePipelineSpec {
   kind: 'compute';
-  name: string;
-  compute: { module: string; entry: string };
+  compute: { module: ModuleHandle; entry: string };
   bindings: BindingSpec[];
   workgroup: [number, number, number];
 }
@@ -381,7 +395,7 @@ export type PipelineSpec = RenderPipelineSpec | ComputePipelineSpec;
 export type DrawSpec =
   | { vertices: number; instances?: number; perDraw?: number }
   | { instances: number; perDraw?: number }
-  | { indirect: string; perDraw?: number };
+  | { indirect: BufferHandle; perDraw?: number };
 
 /**
  * What a pipeline does to the mask a stencil keeps.
@@ -402,7 +416,7 @@ export type StencilMode = 'mark' | 'inside';
 
 /** One run of work inside a frame, drawing into the frame's own colour target. */
 export interface RenderPassSpec {
-  pipeline: string;
+  pipeline: PipelineHandle;
   /** The draws this pass issues, in order, all against the pass's one pipeline
    * until item 33 lifts that restriction. It is a list because one pass carries
    * many draws (item 26) — the one-draw-per-pass shape is gone rather than merely
@@ -416,7 +430,7 @@ export interface RenderPassSpec {
    * A device without the optional feature for it draws this pass anyway and
    * leaves the buffer as it found it, since a picture that arrives untimed is
    * still the picture. */
-  timed?: string;
+  timed?: BufferHandle;
   /** The buffer the count of samples this pass's draw got through lands in,
    * absent for a pass nobody counted. It is the answer to how much of what was
    * drawn came out in front of everything else, so it falls as a nearer surface
@@ -424,7 +438,7 @@ export interface RenderPassSpec {
    *
    * It sits on the drawn pass rather than beside the times, because the card
    * counts what one draw got through and takes the times over a whole pass. */
-  visible?: string;
+  visible?: BufferHandle;
   /** The texture this pass keeps the depth of what it drew in, and tests what it
    * draws against. `clear` is what that texture is emptied to first, and 1 is the
    * far end of the range the card normalises depth into, so a first surface at
@@ -435,7 +449,7 @@ export interface RenderPassSpec {
    * It is the pass's rather than the pipeline's because a pass is where a texture
    * is attached, which is what lets one surface be tested against a surface a
    * different pipeline drew. */
-  depth?: { resource: string; clear?: number; stencilClear?: number };
+  depth?: { resource: TextureHandle; clear?: number; stencilClear?: number };
   /** The textures this pass writes its colours into, in the order the fragment
    * stage returns them, absent where it writes the frame the reader sees.
    *
@@ -443,17 +457,17 @@ export interface RenderPassSpec {
    * a pass is opened with, so two passes writing one set of textures is how a
    * surface comes to be drawn over another one. `clear` is what an attachment is
    * emptied to first, and naming no value keeps what the pass before it drew. */
-  colour?: { resource: string; clear?: [number, number, number, number]; resolve?: string }[];
+  colour?: { resource: TextureHandle; clear?: [number, number, number, number]; resolve?: TextureHandle }[];
 }
 
 /** One run of compute work, over as many workgroups as `groups` asks for. */
 export interface ComputePassSpec {
-  pipeline: string;
+  pipeline: PipelineHandle;
   groups: Groups;
   /** The buffer the two times this pass took land in, the same as a drawn pass.
    * There is no count of samples here, since nothing in a compute pass is drawn
    * for something else to cover. */
-  timed?: string;
+  timed?: BufferHandle;
 }
 
 /** A pass says which pipeline runs and how much of it. Which kind of pass it is
@@ -524,13 +538,13 @@ interface FrameGraphCommon {
    * texture rather than an attachment, so the frame names the one that is the
    * picture and the backend copies it out. Saying so is what keeps the copy off
    * a guess about usage flags. */
-  present?: string;
+  present?: TextureHandle;
   /** Pairs of resources that trade places every frame. A shader cannot read the
    * texture it is writing, so a field that grows out of its own last state needs
    * two of them: one is read this frame and written the next. The trade is the
    * backend's rather than the shader's, so the source binds one name to read and
    * one to write and never learns which of the two textures it was handed. */
-  swap?: [string, string][];
+  swap?: [TextureHandle, TextureHandle][];
 }
 
 /** A WGSL-authored frame: its documents are WGSL, each carrying an optional baked
@@ -555,11 +569,11 @@ export function uniformResourceOf(frame: FrameGraph): UniformResource | undefine
   return frame.resources.find((resource): resource is UniformResource => resource.kind === 'uniform');
 }
 
-/** One resource of a frame by the name a binding gave it, or undefined where the
- * frame declares none by that name, which is a description the renderer refuses
- * before it reaches the device. */
-export function resourceOf(frame: FrameGraph, name: string): ResourceSpec | undefined {
-  return frame.resources.find((resource) => resource.name === name);
+/** One resource of a frame by its handle — the index the binding, pass or
+ * pipeline named it by — or undefined where the handle points past the list,
+ * which is a description the renderer refuses before it reaches the device. */
+export function resourceOf(frame: FrameGraph, handle: ResourceHandle): ResourceSpec | undefined {
+  return frame.resources[indexOf(handle)];
 }
 
 /** Whether a pass is the drawing kind, read off the pass rather than off the
@@ -577,7 +591,7 @@ export function drawsCorners(draw: DrawSpec): draw is { vertices: number; instan
 /** Whether a draw reads its own counts out of a buffer. Every number a card needs
  * is in there rather than in the description, so a frame drawing this way says how
  * much work it does only after the pass that decided it has run. */
-export function drawsIndirectly(draw: DrawSpec): draw is { indirect: string; perDraw?: number } {
+export function drawsIndirectly(draw: DrawSpec): draw is { indirect: BufferHandle; perDraw?: number } {
   return 'indirect' in draw;
 }
 
@@ -594,13 +608,15 @@ export function perDrawBinding(spec: PipelineSpec): BindingSpec | undefined {
 
 /** Whether a group count reads out of a buffer, which is the same question asked
  * of the other kind of pass. */
-export function groupsIndirectly(groups: Groups): groups is { indirect: string } {
+export function groupsIndirectly(groups: Groups): groups is { indirect: BufferHandle } {
   return !Array.isArray(groups) && 'indirect' in groups;
 }
 
-/** One document of a frame by the name a pipeline gave it. */
-export function moduleOf(frame: FrameGraph, name: string): ModuleSpec | undefined {
-  return frame.modules.find((module) => module.name === name);
+/** One document of a frame by the handle a pipeline gave it — the index of the
+ * document in the frame's `modules`, or undefined where the handle points past
+ * the list. */
+export function moduleOf(frame: FrameGraph, handle: ModuleHandle): ModuleSpec | undefined {
+  return frame.modules[indexOf(handle)];
 }
 
 export interface ShaderProgram {
@@ -637,7 +653,7 @@ export interface ShaderProgram {
    * card's own and is refused here by name, because it was never made able to take
    * bytes from this side.
    */
-  writeBuffer(name: string, data: Uint8Array<ArrayBuffer>): void;
+  writeBuffer(handle: BufferHandle, data: Uint8Array<ArrayBuffer>): void;
   /**
    * The words of one buffer this frame declares, as they stand after the last
    * frame that was drawn.
@@ -655,7 +671,7 @@ export interface ShaderProgram {
    * A backend with no buffers to declare answers with no words, which is the true
    * answer rather than a refusal.
    */
-  readBuffer(name: string): Promise<Uint32Array>;
+  readBuffer(handle: BufferHandle): Promise<Uint32Array>;
   /**
    * Replaces which passes this program runs, between one frame and the next,
    * without remaking anything the program owns.

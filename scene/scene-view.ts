@@ -34,7 +34,8 @@
 import type { Arena, Handle } from '../resource/arena.js';
 import { isResident } from '../graph/refs.js';
 import type { BufferRef } from '../graph/refs.js';
-import type { BufferHandle } from '../graph/handles.js';
+import { pipelineHandle, texture } from '../graph/handles.js';
+import type { BufferHandle, TextureHandle } from '../graph/handles.js';
 import type { Capability } from '../graph/capability.js';
 import { batchScene } from './material.js';
 import type { Material, MaterialDraw } from './material.js';
@@ -77,8 +78,17 @@ import type {
  * reads it.
  */
 export interface ScenePipeline<V> {
+  /** The name a material selects this pipeline by — the identity that used to live
+   * on the `RenderPipelineSpec` before a pipeline became an index rather than a name
+   * (item 87). A `RenderPipelineSpec` carries no name now, so the string an entity's
+   * material names to draw through this group lives here, matched against
+   * `Material.pipeline`. */
+  name: string;
   /** The pipeline the objects in this group draw through. It binds this group's
-   * `objects` buffer and the shared `views` buffer. */
+   * `objects` buffer and the shared `views` buffer by their handles — the indices
+   * `sceneView` lays them out at: the shared `views` buffer first (after any
+   * `options.resources`), then one object buffer per pipeline group in list order,
+   * so a pipeline shared across scenes names the same handles in each. */
   pipeline: RenderPipelineSpec;
   /** The read-only storage buffer this group's per-object records go in, and how
    * one drawn object packs to bytes for this pipeline's per-object struct — a
@@ -136,9 +146,9 @@ export interface SceneViewOptions<V> {
    * end of the range the card normalises depth into, so a first surface at any
    * distance passes against an empty attachment. */
   depth?: { texture: string; format: GPUTextureFormat; clear?: number };
-  /** Which resource holds the picture once the passes have run, absent where the
-   * last pass drew into the frame's own colour target. */
-  present?: string;
+  /** Which resource holds the picture once the passes have run, by its handle,
+   * absent where the last pass drew into the frame's own colour target. */
+  present?: TextureHandle;
 }
 
 /** What `sceneView` returns: a `graph` that turns a world and its cameras into a
@@ -200,9 +210,9 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
     throw new Error(`sceneView "${options.id}" names the buffer "${clash}" twice; each scene buffer needs its own name`);
   }
 
-  // The resident buffers, keyed by the name they carry on the frame — one per
-  // pipeline group's objects, plus the shared views buffer — held as graph refs so
-  // the producer names them the way the authoring layer does: a resident ref
+  // The resident buffers, keyed by the authoring name each carries in the options —
+  // one per pipeline group's objects, plus the shared views buffer — held as graph
+  // refs so the producer names them the way the authoring layer does: a resident ref
   // carrying the arena handle the buffer was allocated under. The authoring
   // `BufferHandle` and the arena's runtime `Handle` are the same integer under two
   // brands and meet at the one cast below, which is item 17's documented seam; they
@@ -238,7 +248,7 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
     // rather than a copy of it.
     const store = arena.resolve(handleOf(slots.get(name)!.ref));
     store.set(bytes);
-    return { kind: 'buffer', name, bytes: bytes.byteLength, access: 'read', data: store as Uint8Array<ArrayBuffer> };
+    return { kind: 'buffer', bytes: bytes.byteLength, access: 'read', data: store as Uint8Array<ArrayBuffer> };
   };
 
   return {
@@ -257,10 +267,8 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
       // no knowledge to make. A pipeline no object draws through this frame is
       // skipped. A material naming a pipeline the producer did not list is a drawn
       // group with no pass to run in — refused by name, before any buffer is filled.
-      const groups = options.pipelines.filter((group) => (batches.get(group.pipeline.name)?.length ?? 0) > 0);
-      const stray = [...batches.keys()].find(
-        (pipeline) => !groups.some((group) => group.pipeline.name === pipeline)
-      );
+      const groups = options.pipelines.filter((group) => (batches.get(group.name)?.length ?? 0) > 0);
+      const stray = [...batches.keys()].find((pipeline) => !groups.some((group) => group.name === pipeline));
       if (stray !== undefined) {
         throw new Error(`sceneView "${options.id}" draws a pipeline "${stray}" it was not given`);
       }
@@ -276,7 +284,7 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
       // each copy reading its own record out of this group's buffer by which copy it
       // is.
       const objectResources = groups.map((group) =>
-        resident(group.objects.buffer, concatBytes(batches.get(group.pipeline.name)!.map(group.objects.pack)))
+        resident(group.objects.buffer, concatBytes(batches.get(group.name)!.map(group.objects.pack)))
       );
       // The shared depth target, one frame-sized transient the passes test against.
       // The first pass clears it and every later one loads it, so the whole scene
@@ -286,31 +294,34 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
       // `cost()` counts it as transient and item 1 discards the store no pass reads.
       const depthTarget: TextureResource | undefined = options.depth && {
         kind: 'texture',
-        name: options.depth.texture,
         size: { scale: 1 },
         format: options.depth.format,
         use: ['attachment'],
       };
+      // The resource layout the pipeline bindings are authored against (item 87):
+      // any caller `resources`, then the shared views buffer, then one object buffer
+      // per group in list order, then the depth target. The depth is last, so its
+      // handle is the index every other resource takes up.
+      const base = (options.resources?.length ?? 0) + 1 + objectResources.length;
+      const depthHandle = texture(base);
       const passes: FrameGraph['passes'] = groups.map((group, at): RenderPassSpec => {
         const pass: RenderPassSpec = {
-          pipeline: group.pipeline.name,
-          draws: [{ instances: batches.get(group.pipeline.name)!.length }],
+          pipeline: pipelineHandle(at),
+          draws: [{ instances: batches.get(group.name)!.length }],
         };
         if (options.depth) {
           // The first pass clears the shared depth; every later pass loads it (names
           // no clear), so each surface tests against what the passes before it left.
           pass.depth =
-            at === 0
-              ? { resource: options.depth.texture, clear: options.depth.clear ?? 1 }
-              : { resource: options.depth.texture };
+            at === 0 ? { resource: depthHandle, clear: options.depth.clear ?? 1 } : { resource: depthHandle };
         }
         return pass;
       });
 
       const resources = [
         ...(options.resources ?? []),
-        ...objectResources,
         viewsBuffer,
+        ...objectResources,
         ...(depthTarget ? [depthTarget] : []),
       ];
       const pipelines = groups.map((group) => group.pipeline);

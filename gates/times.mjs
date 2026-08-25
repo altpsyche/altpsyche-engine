@@ -35,6 +35,7 @@ const H = Number(process.env.H ?? 600);
 
 const { createWebGPUBackend } = await loadFromRoot('gpu/webgpu.ts');
 const { createFakeGPU } = await loadFromRoot('tests/support/fake-gpu.ts');
+const { buffer, uniform, moduleHandle, pipelineHandle } = await loadFromRoot('graph/handles.ts');
 
 // One frame, two passes, each timed into a buffer of its own: a compute pass that
 // writes a storage buffer and a render pass that shows a colour. The two timing
@@ -49,43 +50,42 @@ const SOURCE = `struct Uniforms { u_time: f32, u_resolution: vec2<f32> };
 const frame = {
   id: 'timed',
   authored: 'wgsl',
+  // uniforms=0, tally=1, computeTime=2, renderTime=3 — named below by those handles.
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
-    { kind: 'buffer', name: 'tally', bytes: 16, access: 'read-write', data: new Uint8Array(16) },
-    { kind: 'buffer', name: 'computeTime', bytes: 16, access: 'read-write' },
-    { kind: 'buffer', name: 'renderTime', bytes: 16, access: 'read-write' },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    { kind: 'buffer', bytes: 16, access: 'read-write', data: new Uint8Array(16) },
+    { kind: 'buffer', bytes: 16, access: 'read-write' },
+    { kind: 'buffer', bytes: 16, access: 'read-write' },
   ],
   modules: [{ name: 'wgsl', wgsl: SOURCE }],
   pipelines: [
     {
       kind: 'compute',
-      name: 'plan',
-      compute: { module: 'wgsl', entry: 'plan' },
+      compute: { module: moduleHandle(0), entry: 'plan' },
       bindings: [
-        { group: 0, binding: 0, resource: 'uniforms', visibility: ['compute'] },
-        { group: 0, binding: 1, resource: 'tally', visibility: ['compute'] },
+        { group: 0, binding: 0, resource: uniform(0), visibility: ['compute'] },
+        { group: 0, binding: 1, resource: buffer(1), visibility: ['compute'] },
       ],
       workgroup: [1, 1, 1],
     },
     {
       kind: 'render',
-      name: 'paint',
       vertex: 'fullscreen',
-      fragment: { module: 'wgsl', entry: 'paint' },
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      fragment: { module: moduleHandle(0), entry: 'paint' },
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
   // Each pass names the buffer its timestamp pair resolves into: the label a
   // reader below prints against, and the buffer it reads back.
   passes: [
-    { pipeline: 'plan', groups: [1, 1, 1], timed: 'computeTime' },
-    { pipeline: 'paint', draws: [{ vertices: 3 }], timed: 'renderTime' },
+    { pipeline: pipelineHandle(0), groups: [1, 1, 1], timed: buffer(2) },
+    { pipeline: pipelineHandle(1), draws: [{ vertices: 3 }], timed: buffer(3) },
   ],
 };
 
 const timedPasses = [
-  { label: 'compute (plan)', buffer: 'computeTime' },
-  { label: 'render (paint)', buffer: 'renderTime' },
+  { label: 'compute (plan)', buffer: buffer(2) },
+  { label: 'render (paint)', buffer: buffer(3) },
 ];
 
 /** The elapsed nanoseconds a resolved pair carries: two little-endian u64

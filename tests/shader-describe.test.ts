@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { declaredFrame, geometryFileName, textureFileName } from '../fixtures/shader-describe';
+import { buffer, indices, moduleHandle, pipelineHandle, sampler, texture, uniform, vertices } from '../graph/handles.js';
 import { TEXTURE_CONTENT } from '../fixtures/shader-content';
 import type { DeclaredFrame } from '../fixtures/declared-frame';
 import { BLEND_MODE } from '../fixtures/shader-blend';
@@ -61,8 +62,8 @@ describe('the pipeline kind a description takes off the source', () => {
 
     expect(pipeline.kind).toBe('render');
     expect(pipeline.vertex).toBe('fullscreen');
-    expect(pipeline.fragment).toEqual({ module: 'wgsl', entry: 'fragMain' });
-    expect(frame.passes).toEqual([{ pipeline: 'fragMain', draws: [{ vertices: 3 }] }]);
+    expect(pipeline.fragment).toEqual({ module: moduleHandle(0), entry: 'fragMain' });
+    expect(frame.passes).toEqual([{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }]);
     expect(frame.modules).toEqual([{ name: 'wgsl', wgsl: '' }]);
   });
 
@@ -71,7 +72,7 @@ describe('the pipeline kind a description takes off the source', () => {
 
     expect(frame.pipelines[0]!.kind).toBe('compute');
     expect(frame.modules).toEqual([{ name: 'wgsl', wgsl: '' }]);
-    expect(frame.passes).toEqual([{ pipeline: 'paint', groups: [1, 1, 1] }]);
+    expect(frame.passes).toEqual([{ pipeline: pipelineHandle(0), groups: [1, 1, 1] }]);
   });
 
   it('refuses a pass naming an entry point the source declares at neither stage', () => {
@@ -96,7 +97,8 @@ describe('the pipeline kind a description takes off the source', () => {
 describe('the texture a description says the build writes', () => {
   it('carries the generator’s format and an address of its own, and is sampled rather than stored', () => {
     const frame = declaredFrame('core-texture', SAMPLES, SAMPLING_FRAME);
-    const grain = frame.resources.find((one) => one.name === 'grain') as TextureResource;
+    // uniform block 0, grain texture 1, grainSampler 2.
+    const grain = frame.resources[1] as TextureResource;
 
     expect(grain.format).toBe(TEXTURE_CONTENT['value-noise'].format);
     expect(grain.use).toEqual(['sample']);
@@ -106,9 +108,8 @@ describe('the texture a description says the build writes', () => {
   });
 
   it('leaves a stored texture the format its own declaration carries and no address at all', () => {
-    const picture = declaredFrame('core-compute', COMPUTE, COMPUTE_FRAME).resources.find(
-      (one) => one.name === 'picture'
-    ) as TextureResource;
+    // uniform block 0, picture texture 1.
+    const picture = declaredFrame('core-compute', COMPUTE, COMPUTE_FRAME).resources[1] as TextureResource;
 
     expect(picture.use).toEqual(['storage']);
     expect(picture.format).toBe('rgba8unorm');
@@ -146,14 +147,13 @@ describe('the sampler a description names', () => {
 
     expect(frame.resources).toContainEqual({
       kind: 'sampler',
-      name: 'grainSampler',
       filter: 'linear',
       wrap: 'repeat',
     });
     expect((frame.pipelines[0] as RenderPipelineSpec).bindings).toEqual([
-      { group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] },
-      { group: 0, binding: 1, resource: 'grain', visibility: ['fragment'], reads: 'sample' },
-      { group: 0, binding: 2, resource: 'grainSampler', visibility: ['fragment'] },
+      { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] },
+      { group: 0, binding: 1, resource: texture(1), visibility: ['fragment'], reads: 'sample' },
+      { group: 0, binding: 2, resource: sampler(2), visibility: ['fragment'] },
     ]);
   });
 
@@ -228,7 +228,7 @@ describe('a resource the entry point never reads', () => {
     const frame = declaredFrame('core-texture', WITH_SPARE, SAMPLING_FRAME);
     const pipeline = frame.pipelines[0] as RenderPipelineSpec;
 
-    expect(pipeline.bindings.map((at) => at.resource)).toEqual(['uniforms', 'grain', 'grainSampler']);
+    expect(pipeline.bindings.map((at) => at.resource)).toEqual([uniform(0), texture(1), sampler(2)]);
   });
 });
 
@@ -262,14 +262,13 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
   it('builds one pipeline per entry point a pass names, each at its own stage', () => {
     const frame = declaredFrame('core-state', TWO_STAGES, TWO_PASSES);
 
-    expect(frame.pipelines.map((pipeline) => [pipeline.name, pipeline.kind])).toEqual([
-      ['step', 'compute'],
-      ['shade', 'render'],
-    ]);
+    // A pipeline carries no name now (item 87); step is pipeline 0, shade pipeline 1,
+    // named by the handle each pass holds below.
+    expect(frame.pipelines.map((pipeline) => pipeline.kind)).toEqual(['compute', 'render']);
     expect(frame.modules).toEqual([{ name: 'wgsl', wgsl: '' }]);
     expect(frame.passes).toEqual([
-      { pipeline: 'step', groups: [32, 32, 1] },
-      { pipeline: 'shade', draws: [{ vertices: 3 }] },
+      { pipeline: pipelineHandle(0), groups: [32, 32, 1] },
+      { pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] },
     ]);
   });
 
@@ -280,8 +279,9 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     // A layout naming a binding its stage does not read is accepted by the
     // driver while claiming it does, which is why these are two lists rather
     // than one shared between the pipelines.
-    expect(compute.bindings.map((at) => at.resource)).toEqual(['previous', 'next']);
-    expect(render.bindings.map((at) => at.resource)).toEqual(['uniforms', 'previous', 'stateSampler']);
+    // uniform block 0, previous 1, next 2, stateSampler 3.
+    expect(compute.bindings.map((at) => at.resource)).toEqual([texture(1), texture(2)]);
+    expect(render.bindings.map((at) => at.resource)).toEqual([uniform(0), texture(1), sampler(3)]);
     expect(compute.bindings.every((at) => at.visibility[0] === 'compute')).toBe(true);
     expect(render.bindings.every((at) => at.visibility[0] === 'fragment')).toBe(true);
   });
@@ -343,36 +343,37 @@ const DRAWN_FRAME: DeclaredFrame = {
 describe('the geometry a description says the build writes', () => {
   it('carries the generator’s layout, both counts and an address for each buffer', () => {
     const frame = declaredFrame('core-geometry', DRAWS, DRAWN_FRAME);
-    const vertices = frame.resources.find((one) => one.name === 'grid') as VertexResource;
-    const indices = frame.resources.find((one) => one.name === 'grid-indices') as IndexResource;
+    // uniform block 0, grid vertices 1, grid indices 2.
+    const grid = frame.resources[1] as VertexResource;
+    const gridIndices = frame.resources[2] as IndexResource;
 
-    expect(vertices.stride).toBe(16);
-    expect(vertices.attributes).toEqual([
+    expect(grid.stride).toBe(16);
+    expect(grid.attributes).toEqual([
       { location: 0, offset: 0, format: 'float32x2' },
       { location: 1, offset: 8, format: 'float32x2' },
     ]);
-    expect(vertices.topology).toBe('triangle-list');
-    expect(vertices.count).toBe(17 * 17);
-    expect(vertices.indices).toBe('grid-indices');
-    expect(vertices.source).toBe(geometryFileName('core-geometry', 'grid', 'vertices'));
-    expect(indices.format).toBe('uint16');
-    expect(indices.count).toBe(16 * 16 * 6);
-    expect(indices.source).toBe(geometryFileName('core-geometry', 'grid', 'indices'));
+    expect(grid.topology).toBe('triangle-list');
+    expect(grid.count).toBe(17 * 17);
+    expect(grid.indices).toBe(indices(2));
+    expect(grid.source).toBe(geometryFileName('core-geometry', 'grid', 'vertices'));
+    expect(gridIndices.format).toBe('uint16');
+    expect(gridIndices.count).toBe(16 * 16 * 6);
+    expect(gridIndices.source).toBe(geometryFileName('core-geometry', 'grid', 'indices'));
   });
 
   it('runs the shader’s own vertex stage and names the geometry on the pipeline', () => {
     const pipeline = declaredFrame('core-geometry', DRAWS, DRAWN_FRAME).pipelines[0] as RenderPipelineSpec;
 
-    expect(pipeline.vertex).toEqual({ module: 'wgsl', entry: 'warp' });
-    expect(pipeline.fragment).toEqual({ module: 'wgsl', entry: 'shade' });
-    expect(pipeline.geometry).toBe('grid');
+    expect(pipeline.vertex).toEqual({ module: moduleHandle(0), entry: 'warp' });
+    expect(pipeline.fragment).toEqual({ module: moduleHandle(0), entry: 'shade' });
+    expect(pipeline.geometry).toBe(vertices(1));
   });
 
   it('gives the block both stages that read it, since a layout is built once for the pair', () => {
     const pipeline = declaredFrame('core-geometry', DRAWS, DRAWN_FRAME).pipelines[0] as RenderPipelineSpec;
 
     expect(pipeline.bindings).toEqual([
-      { group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment', 'vertex'] },
+      { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment', 'vertex'] },
     ]);
   });
 
@@ -383,8 +384,8 @@ describe('the geometry a description says the build writes', () => {
       passes: [{ pipeline: 'shade', vertex: 'warp', geometry: 'grid' }],
     }).passes[0];
 
-    expect(drawn).toEqual({ pipeline: 'shade', draws: [{ instances: 3 }] });
-    expect(once).toEqual({ pipeline: 'shade', draws: [{ instances: 1 }] });
+    expect(drawn).toEqual({ pipeline: pipelineHandle(0), draws: [{ instances: 3 }] });
+    expect(once).toEqual({ pipeline: pipelineHandle(0), draws: [{ instances: 1 }] });
   });
 
   it('refuses a pass naming one half of a drawn pass without the other', () => {
@@ -506,10 +507,11 @@ describe('the attachments a description says a pass draws into', () => {
   it('are textures the frame owns, at the size and format the entry declares', () => {
     const written = crossing().resources.filter((one): one is TextureResource => one.kind === 'texture');
 
-    expect(written.map((one) => [one.name, one.size, one.format, one.use])).toEqual([
-      ['picture', { scale: 1 }, 'rgba8unorm', ['attachment']],
-      ['distance', { scale: 1 }, 'rgba8unorm', ['attachment']],
-      ['depth', { scale: 1 }, 'depth24plus', ['attachment']],
+    // The attachments, in declaration order: picture 1, distance 2, depth 3.
+    expect(written.map((one) => [one.size, one.format, one.use])).toEqual([
+      [{ scale: 1 }, 'rgba8unorm', ['attachment']],
+      [{ scale: 1 }, 'rgba8unorm', ['attachment']],
+      [{ scale: 1 }, 'depth24plus', ['attachment']],
     ]);
   });
 
@@ -532,16 +534,16 @@ describe('the attachments a description says a pass draws into', () => {
     const [first, second] = crossing().passes as RenderPassSpec[];
 
     expect(first?.colour).toEqual([
-      { resource: 'picture', clear: [0, 0, 0, 1] },
-      { resource: 'distance', clear: [0, 0, 0, 1] },
+      { resource: texture(1), clear: [0, 0, 0, 1] },
+      { resource: texture(2), clear: [0, 0, 0, 1] },
     ]);
-    expect(first?.depth).toEqual({ resource: 'depth', clear: 1 });
-    expect(second?.colour).toEqual([{ resource: 'picture' }, { resource: 'distance' }]);
-    expect(second?.depth).toEqual({ resource: 'depth' });
+    expect(first?.depth).toEqual({ resource: texture(3), clear: 1 });
+    expect(second?.colour).toEqual([{ resource: texture(1) }, { resource: texture(2) }]);
+    expect(second?.depth).toEqual({ resource: texture(3) });
   });
 
   it('may be the picture a reader sees, which no texture the source binds is here', () => {
-    expect(crossing().present).toBe('picture');
+    expect(crossing().present).toBe(texture(1));
   });
 
   it('refuses a pass writing into an attachment the frame never declares', () => {
@@ -647,7 +649,8 @@ const graded = (over: Partial<DeclaredFrame> = {}) => declaredFrame('core-target
 
 describe('an attachment a later pass samples', () => {
   it('carries both roles, off one declaration in the entry and one in the source', () => {
-    const scene = graded().resources.find((one) => one.name === 'scene') as TextureResource;
+    // uniform block 0, sceneSampler 1, scene attachment 2.
+    const scene = graded().resources[2] as TextureResource;
 
     expect(scene.use).toEqual(['attachment', 'sample']);
     expect(scene.size).toEqual({ scale: 1 });
@@ -657,18 +660,18 @@ describe('an attachment a later pass samples', () => {
   it('is bound only on the pipeline whose stage reads it, and as a sampled picture', () => {
     const [first, second] = graded().pipelines as RenderPipelineSpec[];
 
-    expect(first?.bindings.map((at) => at.resource)).toEqual(['uniforms']);
+    expect(first?.bindings.map((at) => at.resource)).toEqual([uniform(0)]);
     expect(second?.bindings).toEqual([
-      { group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] },
-      { group: 0, binding: 1, resource: 'scene', visibility: ['fragment'], reads: 'sample' },
-      { group: 0, binding: 2, resource: 'sceneSampler', visibility: ['fragment'] },
+      { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] },
+      { group: 0, binding: 1, resource: texture(2), visibility: ['fragment'], reads: 'sample' },
+      { group: 0, binding: 2, resource: sampler(1), visibility: ['fragment'] },
     ]);
   });
 
   it('is written by the first pass and left off the second, which writes the frame itself', () => {
     const [first, second] = graded().passes as RenderPassSpec[];
 
-    expect(first?.colour).toEqual([{ resource: 'scene', clear: [0, 0, 0, 1] }]);
+    expect(first?.colour).toEqual([{ resource: texture(2), clear: [0, 0, 0, 1] }]);
     expect(second?.colour).toBeUndefined();
     expect(second?.draws).toEqual([{ vertices: 3 }]);
   });
@@ -691,7 +694,8 @@ describe('an attachment a later pass samples', () => {
         { pipeline: 'grade' },
       ],
     });
-    const spare = unread.resources.find((one) => one.name === 'spare') as TextureResource;
+    // uniform 0, sceneSampler 1, scene 2, spare 3.
+    const spare = unread.resources[3] as TextureResource;
 
     expect(spare.use).toEqual(['attachment']);
   });
@@ -736,10 +740,8 @@ describe('an attachment keeping several readings of every pixel', () => {
   it('carries the count the entry declared, and the picture it is averaged into carries none', () => {
     const written = averaged().resources.filter((one): one is TextureResource => one.kind === 'texture');
 
-    expect(written.map((one) => [one.name, one.samples])).toEqual([
-      ['edges', 4],
-      ['flat', undefined],
-    ]);
+    // The attachments in declaration order: edges 1 (four samples), flat 2 (one).
+    expect(written.map((one) => one.samples)).toEqual([4, undefined]);
   });
 
   it('reaches the pipeline as the count it is built under, off that same declaration', () => {
@@ -758,7 +760,8 @@ describe('an attachment keeping several readings of every pixel', () => {
       present: 'edges',
     });
     const [drawing] = single.pipelines as RenderPipelineSpec[];
-    const edges = single.resources.find((one) => one.name === 'edges') as TextureResource;
+    // uniform block 0, the one edges attachment 1.
+    const edges = single.resources[1] as TextureResource;
 
     expect(drawing?.samples).toBeUndefined();
     expect(edges.samples).toBeUndefined();
@@ -767,7 +770,7 @@ describe('an attachment keeping several readings of every pixel', () => {
   it('says on the pass where its readings are averaged', () => {
     const [drawing] = averaged().passes as RenderPassSpec[];
 
-    expect(drawing?.colour).toEqual([{ resource: 'edges', clear: [0, 0, 0, 1], resolve: 'flat' }]);
+    expect(drawing?.colour).toEqual([{ resource: texture(1), clear: [0, 0, 0, 1], resolve: texture(2) }]);
   });
 
   it('counts the picture it is averaged into as one a pass writes, since nothing else fills it', () => {
@@ -855,25 +858,26 @@ const planned = (over: Partial<DeclaredFrame> = {}) => declaredFrame('core-indir
 
 describe('a buffer the frame owns', () => {
   it('carries the size the entry gives and the access its source declares', () => {
-    const buffer = planned().resources.find((one) => one.name === 'counts');
+    // uniform block 0, picture texture 1, counts buffer 2.
+    const counts = planned().resources[2];
 
-    expect(buffer).toEqual({ kind: 'buffer', name: 'counts', bytes: 32, access: 'read-write' });
+    expect(counts).toEqual({ kind: 'buffer', bytes: 32, access: 'read-write' });
   });
 
   it('carries whatever size the entry gives, since only the entry knows how many words a source needs', () => {
-    const buffer = planned({ buffers: [{ name: 'counts', bytes: 64 }] }).resources.find((one) => one.name === 'counts');
+    const counts = planned({ buffers: [{ name: 'counts', bytes: 64 }] }).resources[2];
 
-    expect(buffer).toEqual({ kind: 'buffer', name: 'counts', bytes: 64, access: 'read-write' });
+    expect(counts).toEqual({ kind: 'buffer', bytes: 64, access: 'read-write' });
   });
 
   it('is bound where its source binds it, on the pipeline whose stage reaches it', () => {
     const [plan, paint] = planned().pipelines;
 
     expect(plan?.bindings).toEqual([
-      { group: 0, binding: 0, resource: 'uniforms', visibility: ['compute'] },
-      { group: 0, binding: 1, resource: 'counts', visibility: ['compute'] },
+      { group: 0, binding: 0, resource: uniform(0), visibility: ['compute'] },
+      { group: 0, binding: 1, resource: buffer(2), visibility: ['compute'] },
     ]);
-    expect(paint?.bindings.map((at) => at.resource)).toEqual(['picture']);
+    expect(paint?.bindings.map((at) => at.resource)).toEqual([texture(1)]);
   });
 
   it('is refused where the source declares no such name', () => {
@@ -896,13 +900,14 @@ describe('a pass whose counts come out of a buffer', () => {
   it('carries the buffer on the draw rather than a count of anything', () => {
     const [, , drawing] = planned().passes;
 
-    expect(drawing).toEqual({ pipeline: 'shade', draws: [{ indirect: 'counts' }] });
+    // plan pipeline 0, paint 1, shade 2; counts is buffer 2.
+    expect(drawing).toEqual({ pipeline: pipelineHandle(2), draws: [{ indirect: buffer(2) }] });
   });
 
   it('carries the group count the entry wrote, which the renderer reads the same way', () => {
     const [, painting] = planned().passes;
 
-    expect(painting).toEqual({ pipeline: 'paint', groups: { indirect: 'counts' } });
+    expect(painting).toEqual({ pipeline: pipelineHandle(1), groups: { indirect: buffer(2) } });
   });
 
   it('is refused where it reads them from something the frame never declares', () => {
@@ -1004,11 +1009,12 @@ describe('a pass the card is asked to report on', () => {
   it('carries the buffers its two answers land in, by the names the entry gave', () => {
     const pass = reported().passes[1];
 
-    expect(pass).toMatchObject({ timed: 'took', visible: 'seen' });
+    // uniform block 0, took buffer 1, seen buffer 2.
+    expect(pass).toMatchObject({ timed: buffer(1), visible: buffer(2) });
   });
 
   it('leaves a pass nobody asked about carrying neither', () => {
-    const pass = reported().passes[0] as { timed?: string; visible?: string };
+    const pass = reported().passes[0] as { timed?: number; visible?: number };
 
     expect(pass.timed).toBeUndefined();
     expect(pass.visible).toBeUndefined();
@@ -1019,15 +1025,14 @@ describe('a pass the card is asked to report on', () => {
     // caller reads them back, so there is no declaration to read an access off.
     const resources = reported().resources;
 
-    expect(resources.find((one) => one.name === 'took')).toEqual({
+    // took buffer 1, seen buffer 2.
+    expect(resources[1]).toEqual({
       kind: 'buffer',
-      name: 'took',
       bytes: 16,
       access: 'read',
     });
-    expect(resources.find((one) => one.name === 'seen')).toEqual({
+    expect(resources[2]).toEqual({
       kind: 'buffer',
-      name: 'seen',
       bytes: 8,
       access: 'read',
     });
@@ -1036,8 +1041,8 @@ describe('a pass the card is asked to report on', () => {
   it('names neither buffer in any pipeline layout, since no stage reads one', () => {
     const bound = reported().pipelines.flatMap((one) => one.bindings.map((binding) => binding.resource));
 
-    expect(bound).not.toContain('took');
-    expect(bound).not.toContain('seen');
+    expect(bound).not.toContain(buffer(1));
+    expect(bound).not.toContain(buffer(2));
   });
 
   it('refuses a buffer the frame never declares', () => {
@@ -1131,7 +1136,8 @@ describe('a pass that cuts with a mask', () => {
   it('empties the mask on the pass that marks and keeps it on the pass drawn inside the mark', () => {
     const passes = cut().passes.map((pass) => ('depth' in pass ? pass.depth : undefined));
 
-    expect(passes).toEqual([{ resource: 'mask', stencilClear: 0 }, { resource: 'mask' }]);
+    // uniform block 0, picture attachment 1, mask attachment 2.
+    expect(passes).toEqual([{ resource: texture(2), stencilClear: 0 }, { resource: texture(2) }]);
   });
 
   it('keeps both halves where the format keeps both', () => {
@@ -1204,10 +1210,10 @@ const PER_DRAW_FRAME: DeclaredFrame = {
 describe('a buffer of per-copy data read in a group of its own', () => {
   it('carries the address its bytes were written to, so the runtime fetches them', () => {
     const frame = declaredFrame('core-perdraw', PER_DRAW, PER_DRAW_FRAME);
-    const copies = frame.resources.find((resource) => resource.name === 'copies');
+    // uniform block 0, copies buffer 1.
+    const copies = frame.resources[1];
     expect(copies).toEqual({
       kind: 'buffer',
-      name: 'copies',
       bytes: 64,
       access: 'read',
       source: 'core-perdraw-copies.buffer.bin',
@@ -1216,14 +1222,14 @@ describe('a buffer of per-copy data read in a group of its own', () => {
 
   it('binds it at the group the source declares rather than folding it into group zero', () => {
     const frame = declaredFrame('core-perdraw', PER_DRAW, PER_DRAW_FRAME);
-    const shade = frame.pipelines.find((pipeline) => pipeline.name === 'shade') as RenderPipelineSpec;
-    const copies = shade.bindings.find((at) => at.resource === 'copies');
+    const shade = frame.pipelines[0] as RenderPipelineSpec;
+    const copies = shade.bindings.find((at) => at.resource === buffer(1));
     // Read by the vertex stage alone, so the visibility is vertex and not the
     // fragment stage the pipeline is named after.
-    expect(copies).toEqual({ group: 1, binding: 0, resource: 'copies', visibility: ['vertex'] });
+    expect(copies).toEqual({ group: 1, binding: 0, resource: buffer(1), visibility: ['vertex'] });
     // The uniform block stays where it was, so the second group is an addition
     // rather than a move.
-    expect(shade.bindings.find((at) => at.resource === 'uniforms')?.group).toBe(0);
+    expect(shade.bindings.find((at) => at.resource === uniform(0))?.group).toBe(0);
   });
 
   it('survives the read-only check, which a resource read by the vertex stage alone used to fail', () => {

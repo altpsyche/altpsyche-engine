@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { indices, moduleHandle, pipelineHandle, uniform, vertices } from '../graph/handles.js';
 import type { FrameGraph, VertexResource } from '@altpsyche/engine';
 
 /**
@@ -38,7 +39,6 @@ const INDICES = new Uint8Array(24 * 2);
 
 const geometry = (over: Partial<VertexResource> = {}): VertexResource => ({
   kind: 'vertices',
-  name: 'grid',
   stride: 16,
   attributes: [
     { location: 0, offset: 0, format: 'float32x2' },
@@ -46,7 +46,7 @@ const geometry = (over: Partial<VertexResource> = {}): VertexResource => ({
   ],
   topology: 'triangle-list',
   count: 9,
-  indices: 'gridIndices',
+  indices: indices(2),
   data: VERTICES,
   ...over,
 });
@@ -54,23 +54,23 @@ const geometry = (over: Partial<VertexResource> = {}): VertexResource => ({
 const gridFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-traffic',
   authored: 'wgsl',
+  // uniforms=0, grid=1, gridIndices=2 — each named below by its index.
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     geometry(),
-    { kind: 'indices', name: 'gridIndices', format: 'uint16', count: 24, data: INDICES },
+    { kind: 'indices', format: 'uint16', count: 24, data: INDICES },
   ],
   modules: [{ name: 'wgsl', wgsl: GRID }],
   pipelines: [
     {
       kind: 'render',
-      name: 'warp',
-      vertex: { module: 'wgsl', entry: 'warp' },
-      fragment: { module: 'wgsl', entry: 'shade' },
-      geometry: 'grid',
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      vertex: { module: moduleHandle(0), entry: 'warp' },
+      fragment: { module: moduleHandle(0), entry: 'shade' },
+      geometry: vertices(1),
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: 'warp', draws: [{ instances: 3 }] }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ instances: 3 }] }],
   ...over,
 });
 

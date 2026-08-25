@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createWebGL2Backend } from '../gpu/webgl2';
 import { glslFrame, missing, cost, GEOMETRY_PRIMITIVE } from '@altpsyche/engine';
 import type { RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
+import { texture, buffer, vertices, indices, moduleHandle, pipelineHandle } from '../graph/handles.js';
 import { bottomUpFrame, createFakeGL } from './support/fake-gl';
 
 /**
@@ -32,10 +33,12 @@ const FRAGMENT_INT =
 /** A fragment declaring an `int` and a `float`, for the mixed cases. */
 const FRAGMENT_MIXED =
   '#version 300 es\nprecision highp float;\nuniform int u_frame;\nuniform float u_time;\nout vec4 c;\nvoid main(){c=vec4(u_time*float(u_frame));}';
-/** A fragment that reads what an earlier pass drew, sampling the texture named
- * `scene` — the second pass of the multi-pass chain (item 46). */
+/** A fragment that reads what an earlier pass drew, sampling the scene texture
+ * through the combined sampler its binding declares — group 0 binding 0, so the
+ * GLSL variable is `_group_0_binding_0` rather than a resource name (item 87) — the
+ * second pass of the multi-pass chain (item 46). */
 const FRAGMENT_SAMPLE =
-  '#version 300 es\nprecision highp float;\nuniform sampler2D scene;\nout vec4 c;\nvoid main(){c=texture(scene,gl_FragCoord.xy/vec2(800.0,600.0));}';
+  '#version 300 es\nprecision highp float;\nuniform sampler2D _group_0_binding_0;\nout vec4 c;\nvoid main(){c=texture(_group_0_binding_0,gl_FragCoord.xy/vec2(800.0,600.0));}';
 
 /**
  * A two-pass chain the way a producer would author it: a first pass draws into a
@@ -44,17 +47,19 @@ const FRAGMENT_SAMPLE =
  * directly, or a second texture the frame `present`s by blitting it on.
  */
 function twoPass(at: 'canvas' | 'present' = 'canvas'): FrameGraph {
+  // uniform 0, scene texture 1, sampler 2; a present frame adds the shown texture
+  // at index 3. Each reference below names one of these by its handle.
   const resources: FrameGraph['resources'] = [
-    { kind: 'uniform', name: 'uniforms' },
-    { kind: 'texture', name: 'scene', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment', 'sample'] },
-    { kind: 'sampler', name: 'smooth', filter: 'linear', wrap: 'clamp' },
+    { kind: 'uniform' },
+    { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment', 'sample'] },
+    { kind: 'sampler', filter: 'linear', wrap: 'clamp' },
   ];
   const second: FrameGraph['passes'][number] =
     at === 'present'
-      ? { pipeline: 'second', draws: [{ vertices: 3 }], colour: [{ resource: 'shown' }] }
-      : { pipeline: 'second', draws: [{ vertices: 3 }] };
+      ? { pipeline: pipelineHandle(1), draws: [{ vertices: 3 }], colour: [{ resource: texture(3) }] }
+      : { pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] };
   if (at === 'present') {
-    resources.push({ kind: 'texture', name: 'shown', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] });
+    resources.push({ kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] });
   }
   return {
     id: 'chain',
@@ -68,23 +73,21 @@ function twoPass(at: 'canvas' | 'present' = 'canvas'): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        name: 'first',
-        vertex: { module: 'vertex', entry: 'main' },
-        fragment: { module: 'paint', entry: 'main' },
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(1), entry: 'main' },
         targets: [{ format: 'rgba8unorm' }],
         bindings: [],
       },
       {
         kind: 'render',
-        name: 'second',
-        vertex: { module: 'vertex', entry: 'main' },
-        fragment: { module: 'show', entry: 'main' },
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(2), entry: 'main' },
         ...(at === 'present' ? { targets: [{ format: 'rgba8unorm' as const }] } : {}),
-        bindings: [{ group: 0, binding: 0, resource: 'scene', visibility: ['fragment'], reads: 'sample' }],
+        bindings: [{ group: 0, binding: 0, resource: texture(1), visibility: ['fragment'], reads: 'sample' }],
       },
     ],
-    passes: [{ pipeline: 'first', draws: [{ vertices: 3 }], colour: [{ resource: 'scene', clear: [0, 0, 0, 1] }] }, second],
-    ...(at === 'present' ? { present: 'shown' } : {}),
+    passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], colour: [{ resource: texture(1), clear: [0, 0, 0, 1] }] }, second],
+    ...(at === 'present' ? { present: texture(3) } : {}),
   };
 }
 
@@ -152,10 +155,10 @@ describe('a description above the subset', () => {
   it('refuses a pass naming a pipeline the frame does not carry', () => {
     const { backend } = backendOver();
     const frame = graph();
-    expect(() => backend.program(glsl({ passes: [{ pipeline: 'second', draws: [{ vertices: 3 }] }] }))).toThrow(
-      'the frame for "fixture" describes no pass this backend can draw'
+    expect(() => backend.program(glsl({ passes: [{ pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] }] }))).toThrow(
+      'the frame for "fixture" runs pipeline 1, which it does not declare'
     );
-    expect(frame.pipelines.map((pipeline) => pipeline.name)).not.toContain('second');
+    expect(frame.pipelines[1]).toBeUndefined();
   });
 
   it('refuses a pipeline asking for a vertex program the shader does not supply', () => {
@@ -172,7 +175,7 @@ describe('a description above the subset', () => {
     const { backend } = backendOver();
     const modules = graph().modules.filter((document) => document.name !== 'vertex');
     expect(() => backend.program(glsl({ modules }))).toThrow(
-      'the frame for "fixture" names a document it does not carry'
+      'the frame for "fixture" runs a fragment stage from module 1, which it does not declare'
     );
   });
 
@@ -180,13 +183,12 @@ describe('a description above the subset', () => {
     const { backend } = backendOver();
     const compute = {
       kind: 'compute' as const,
-      name: 'field',
-      compute: { module: 'fragment', entry: 'computeMain' },
+      compute: { module: moduleHandle(1), entry: 'computeMain' },
       workgroup: [8, 8, 1] as [number, number, number],
       bindings: [],
     };
     expect(() =>
-      backend.program(glsl({ pipelines: [compute], passes: [{ pipeline: 'field', groups: [1, 1, 1] }] }))
+      backend.program(glsl({ pipelines: [compute], passes: [{ pipeline: pipelineHandle(0), groups: [1, 1, 1] }] }))
     ).toThrow('the frame for "fixture" runs compute work, and WebGL 2 has no compute stage');
   });
 
@@ -196,14 +198,13 @@ describe('a description above the subset', () => {
       ...graph().resources,
       {
         kind: 'texture' as const,
-        name: 'picture',
         size: { scale: 1 },
         format: 'rgba8unorm' as const,
         use: ['storage' as const],
       },
     ];
     expect(() => backend.program(glsl({ resources }))).toThrow(
-      'the frame for "fixture" writes "picture" as a storage texture, and this backend has no compute to fill one'
+      'the frame for "fixture" writes resource 1 as a storage texture, and this backend has no compute to fill one'
     );
   });
 
@@ -213,7 +214,6 @@ describe('a description above the subset', () => {
       ...graph().resources,
       {
         kind: 'texture' as const,
-        name: 'picture',
         size: { scale: 1 },
         format: 'rgba8unorm' as const,
         use: ['sample' as const],
@@ -221,7 +221,7 @@ describe('a description above the subset', () => {
       },
     ];
     expect(() => backend.program(glsl({ resources }))).toThrow(
-      'the frame for "fixture" gives "picture" a ladder and no contents to build it from'
+      'the frame for "fixture" gives resource 1 a ladder and no contents to build it from'
     );
   });
 
@@ -231,7 +231,6 @@ describe('a description above the subset', () => {
       ...graph().resources,
       {
         kind: 'texture' as const,
-        name: 'picture',
         size: { scale: 1 },
         format: 'rgba8unorm' as const,
         use: ['attachment' as const, 'sample' as const],
@@ -239,7 +238,7 @@ describe('a description above the subset', () => {
       },
     ];
     expect(() => backend.program(glsl({ resources }))).toThrow(
-      'the frame for "fixture" gives "picture" a ladder and writes it every frame'
+      'the frame for "fixture" gives resource 1 a ladder and writes it every frame'
     );
   });
 
@@ -258,10 +257,11 @@ describe('a description above the subset', () => {
   const multisample = (over: Partial<GlslFrameGraph> = {}, edgesOver: Partial<TextureResource> = {}): FrameGraph => ({
     id: 'fixture',
     authored: 'glsl',
+    // uniform 0, edges texture 1, flat texture 2.
     resources: [
-      { kind: 'uniform', name: 'uniforms' },
-      { kind: 'texture', name: 'edges', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'], samples: 4, ...edgesOver },
-      { kind: 'texture', name: 'flat', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
+      { kind: 'uniform' },
+      { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'], samples: 4, ...edgesOver },
+      { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
     ],
     modules: [
       { name: 'vertex', glsl: VERTEX },
@@ -270,16 +270,15 @@ describe('a description above the subset', () => {
     pipelines: [
       {
         kind: 'render',
-        name: 'shade',
-        vertex: { module: 'vertex', entry: 'main' },
-        fragment: { module: 'fragment', entry: 'main' },
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(1), entry: 'main' },
         targets: [{ format: 'rgba8unorm' }],
         samples: 4,
         bindings: [],
       },
     ],
-    passes: [{ pipeline: 'shade', draws: [{ vertices: 3 }], colour: [{ resource: 'edges', clear: [0, 0, 0, 0], resolve: 'flat' }] }],
-    present: 'flat',
+    passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], colour: [{ resource: texture(1), clear: [0, 0, 0, 0], resolve: texture(2) }] }],
+    present: texture(2),
     ...over,
   });
 
@@ -302,37 +301,37 @@ describe('a description above the subset', () => {
 
   it('refuses a multisample attachment that averages its samples nowhere (item 80)', () => {
     const { backend } = backendOver();
-    const passes = [{ pipeline: 'shade', draws: [{ vertices: 3 }], colour: [{ resource: 'edges', clear: [0, 0, 0, 0] as [number, number, number, number] }] }];
+    const passes = [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], colour: [{ resource: texture(1), clear: [0, 0, 0, 0] as [number, number, number, number] }] }];
     expect(() => backend.program(multisample({ passes, present: undefined }))).toThrow(
-      'the frame for "fixture" keeps several samples a pixel in "edges" and averages them nowhere'
+      'the frame for "fixture" keeps several samples a pixel in resource 1 and averages them nowhere'
     );
   });
 
   it('refuses averaging a single-sample attachment, which has nothing to average (item 80)', () => {
     const { backend } = backendOver();
     expect(() => backend.program(multisample({}, { samples: undefined }))).toThrow(
-      'the frame for "fixture" averages "edges" into "flat" and it keeps one sample a pixel'
+      'the frame for "fixture" averages resource 1 into resource 2 and it keeps one sample a pixel'
     );
   });
 
   it('refuses a multisampled depth, which is item 80 colour-attachment scope alone', () => {
     const { backend } = backendOver();
     expect(() => backend.program(multisample({}, { format: 'depth24plus', use: ['attachment'] }))).toThrow(
-      'the frame for "fixture" keeps several samples of the depth in "edges", and this backend keeps one'
+      'the frame for "fixture" keeps several samples of the depth in resource 1, and this backend keeps one'
     );
   });
 
   it('refuses binding a multisample attachment to a shader, which cannot read one (item 80)', () => {
     const { backend } = backendOver();
     expect(() => backend.program(multisample({}, { use: ['attachment', 'sample'] }))).toThrow(
-      'the frame for "fixture" binds "edges", which keeps several samples a pixel'
+      'the frame for "fixture" binds resource 1, which keeps several samples a pixel'
     );
   });
 
   it('refuses showing a multisample attachment, which nothing copies out of (item 80)', () => {
     const { backend } = backendOver();
-    expect(() => backend.program(multisample({ present: 'edges' }))).toThrow(
-      'the frame for "fixture" shows "edges", which keeps several samples a pixel'
+    expect(() => backend.program(multisample({ present: texture(1) }))).toThrow(
+      'the frame for "fixture" shows resource 1, which keeps several samples a pixel'
     );
   });
 
@@ -340,7 +339,7 @@ describe('a description above the subset', () => {
     const { backend } = backendOver();
     const resources = [
       ...graph().resources,
-      { kind: 'buffer' as const, name: 'counts', bytes: 16, access: 'read-write' as const },
+      { kind: 'buffer' as const, bytes: 16, access: 'read-write' as const },
     ];
     expect(() => backend.program(glsl({ resources }))).toThrow(
       'the frame for "fixture" declares a buffer resource, and this backend has none'
@@ -536,7 +535,7 @@ describe('the frame it draws', () => {
     backend.resize(320, 180);
     // One fullscreen pass, two corners-draws: the backend draws each rather than
     // the first alone, so a pass carrying many draws is not merely typeable here.
-    backend.program({ ...graph(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }, { vertices: 3 }] }] }).draw();
+    backend.program({ ...graph(), passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }, { vertices: 3 }] }] }).draw();
 
     expect(gl.of('drawArrays')).toHaveLength(2);
   });
@@ -547,7 +546,7 @@ describe('the frame it draws', () => {
     // One corners-draw carrying an instance count: the card makes one draw call
     // that reads a thousand instances, rather than the count being silently
     // dropped and one copy drawn.
-    backend.program({ ...graph(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3, instances: 1000 }] }] }).draw();
+    backend.program({ ...graph(), passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3, instances: 1000 }] }] }).draw();
 
     expect(gl.of('drawArrays')).toHaveLength(0);
     expect(gl.of('drawArraysInstanced')).toHaveLength(1);
@@ -557,7 +556,7 @@ describe('the frame it draws', () => {
   it('leaves a draw with no instance count a plain drawArrays, the call every shader on the site makes (item 28)', () => {
     const { gl, backend } = backendOver();
     backend.resize(320, 180);
-    backend.program({ ...graph(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }] }).draw();
+    backend.program({ ...graph(), passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }] }).draw();
 
     expect(gl.of('drawArraysInstanced')).toHaveLength(0);
     expect(gl.of('drawArrays')).toHaveLength(1);
@@ -653,14 +652,15 @@ function manyTargets(n: number): FrameGraph {
   const names = Array.from({ length: n }, (_ignored, at) => `g${at}`);
   const outputs = names.map((_name, at) => `layout(location=${at}) out vec4 c${at};`).join('\n');
   const writes = names.map((_name, at) => `c${at}=vec4(${at}.0);`).join('');
+  // uniform 0, then the n attachment textures at indices 1..n, so g{at} is
+  // resource at+1.
   return {
     id: 'gbuffer',
     authored: 'glsl',
     resources: [
-      { kind: 'uniform', name: 'uniforms' },
-      ...names.map((name) => ({
+      { kind: 'uniform' },
+      ...names.map(() => ({
         kind: 'texture' as const,
-        name,
         size: { scale: 1 } as const,
         format: 'rgba8unorm' as const,
         use: ['attachment' as const],
@@ -673,18 +673,17 @@ function manyTargets(n: number): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        name: 'gather',
-        vertex: { module: 'vertex', entry: 'main' },
-        fragment: { module: 'paint', entry: 'main' },
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(1), entry: 'main' },
         targets: names.map(() => ({ format: 'rgba8unorm' as const })),
         bindings: [],
       },
     ],
     passes: [
       {
-        pipeline: 'gather',
+        pipeline: pipelineHandle(0),
         draws: [{ vertices: 3 }],
-        colour: names.map((name, at) => ({ resource: name, clear: [at / 10, 0, 0, 1] as [number, number, number, number] })),
+        colour: names.map((_name, at) => ({ resource: texture(at + 1), clear: [at / 10, 0, 0, 1] as [number, number, number, number] })),
       },
     ],
   };
@@ -783,19 +782,19 @@ function geometryFrame(instances = 3): FrameGraph {
   return {
     id: 'core-geometry',
     authored: 'glsl',
+    // uniform 0, grid vertices 1, grid-index indices 2.
     resources: [
-      { kind: 'uniform', name: 'uniforms' },
+      { kind: 'uniform' },
       {
         kind: 'vertices',
-        name: 'grid',
         stride: grid.stride,
         attributes: grid.attributes,
         topology: grid.topology,
         count: made.vertexCount,
-        indices: 'grid-index',
+        indices: indices(2),
         data: made.vertices,
       },
-      { kind: 'indices', name: 'grid-index', format: grid.indexFormat, count: made.indexCount, data: made.indices },
+      { kind: 'indices', format: grid.indexFormat, count: made.indexCount, data: made.indices },
     ],
     modules: [
       { name: 'warp', glsl: GRID_VERTEX },
@@ -804,14 +803,13 @@ function geometryFrame(instances = 3): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        name: 'shade',
-        vertex: { module: 'warp', entry: 'main' },
-        fragment: { module: 'shade', entry: 'main' },
-        geometry: 'grid',
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(1), entry: 'main' },
+        geometry: vertices(1),
         bindings: [],
       },
     ],
-    passes: [{ pipeline: 'shade', draws: [{ instances }] }],
+    passes: [{ pipeline: pipelineHandle(0), draws: [{ instances }] }],
   };
 }
 
@@ -902,7 +900,7 @@ describe('a pass drawing the shader own geometry (item 77)', () => {
       ),
     };
     expect(() => backend.program(bogus).draw()).toThrow(
-      'the geometry "grid" on "core-geometry" declares topology "fan", which this backend does not draw'
+      'the geometry 1 on "core-geometry" declares topology "fan", which this backend does not draw'
     );
   });
 
@@ -928,9 +926,9 @@ describe('a pass drawing the shader own geometry (item 77)', () => {
   it('refuses a pass mixing its own corners into the geometry it draws', () => {
     const { backend } = backendOver();
     const frame = geometryFrame();
-    const mixed: FrameGraph = { ...frame, passes: [{ pipeline: 'shade', draws: [{ vertices: 3 }, { instances: 3 }] }] };
+    const mixed: FrameGraph = { ...frame, passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }, { instances: 3 }] }] };
     expect(() => backend.program(mixed)).toThrow(
-      'the frame for "core-geometry" mixes its own corners into the geometry "grid", which it draws from one buffer'
+      'the frame for "core-geometry" mixes its own corners into the geometry 1, which it draws from one buffer'
     );
   });
 });
@@ -949,21 +947,21 @@ function mixedArmsFrame(): FrameGraph {
   return {
     id: 'mixed-arms',
     authored: 'glsl',
+    // uniform 0, grid vertices 1, grid-index indices 2, scene texture 3, sampler 4.
     resources: [
-      { kind: 'uniform', name: 'uniforms' },
+      { kind: 'uniform' },
       {
         kind: 'vertices',
-        name: 'grid',
         stride: grid.stride,
         attributes: grid.attributes,
         topology: grid.topology,
         count: made.vertexCount,
-        indices: 'grid-index',
+        indices: indices(2),
         data: made.vertices,
       },
-      { kind: 'indices', name: 'grid-index', format: grid.indexFormat, count: made.indexCount, data: made.indices },
-      { kind: 'texture', name: 'scene', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment', 'sample'] },
-      { kind: 'sampler', name: 'smooth', filter: 'linear', wrap: 'clamp' },
+      { kind: 'indices', format: grid.indexFormat, count: made.indexCount, data: made.indices },
+      { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment', 'sample'] },
+      { kind: 'sampler', filter: 'linear', wrap: 'clamp' },
     ],
     modules: [
       { name: 'warp', glsl: GRID_VERTEX },
@@ -974,24 +972,22 @@ function mixedArmsFrame(): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        name: 'geo',
-        vertex: { module: 'warp', entry: 'main' },
-        fragment: { module: 'shade', entry: 'main' },
-        geometry: 'grid',
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(1), entry: 'main' },
+        geometry: vertices(1),
         targets: [{ format: 'rgba8unorm' }],
         bindings: [],
       },
       {
         kind: 'render',
-        name: 'corners',
-        vertex: { module: 'vertex', entry: 'main' },
-        fragment: { module: 'show', entry: 'main' },
-        bindings: [{ group: 0, binding: 0, resource: 'scene', visibility: ['fragment'], reads: 'sample' }],
+        vertex: { module: moduleHandle(2), entry: 'main' },
+        fragment: { module: moduleHandle(3), entry: 'main' },
+        bindings: [{ group: 0, binding: 0, resource: texture(3), visibility: ['fragment'], reads: 'sample' }],
       },
     ],
     passes: [
-      { pipeline: 'geo', draws: [{ instances: 3 }], colour: [{ resource: 'scene', clear: [0, 0, 0, 1] }] },
-      { pipeline: 'corners', draws: [{ vertices: 3 }] },
+      { pipeline: pipelineHandle(0), draws: [{ instances: 3 }], colour: [{ resource: texture(3), clear: [0, 0, 0, 1] }] },
+      { pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] },
     ],
   };
 }
@@ -1034,7 +1030,7 @@ describe('a pass does not leak its vertex attribute arrays to the next (item 84)
  * than a shape written here.
  */
 const GRAIN_FRAGMENT =
-  '#version 300 es\nprecision highp float;\nuniform sampler2D grain;\nout vec4 c;\nvoid main(){c=texture(grain,gl_FragCoord.xy/vec2(64.0));}';
+  '#version 300 es\nprecision highp float;\nuniform sampler2D _group_0_binding_0;\nout vec4 c;\nvoid main(){c=texture(_group_0_binding_0,gl_FragCoord.xy/vec2(64.0));}';
 
 /** Sixty-four pixels square at four bytes a pixel, the size and layout the
  * `core-texture` fixture's `value-noise` arrives in. */
@@ -1044,10 +1040,11 @@ function textureFrame(size: { width: number; height: number } | { scale: number 
   return {
     id: 'core-texture',
     authored: 'glsl',
+    // uniform 0, grain texture 1, sampler 2.
     resources: [
-      { kind: 'uniform', name: 'uniforms' },
-      { kind: 'texture', name: 'grain', size, format: 'rgba8unorm', use: ['sample'], data: new Uint8Array(GRAIN_BYTES) },
-      { kind: 'sampler', name: 'grainSampler', filter: 'linear', wrap: 'repeat' },
+      { kind: 'uniform' },
+      { kind: 'texture', size, format: 'rgba8unorm', use: ['sample'], data: new Uint8Array(GRAIN_BYTES) },
+      { kind: 'sampler', filter: 'linear', wrap: 'repeat' },
     ],
     modules: [
       { name: 'vertex', glsl: VERTEX },
@@ -1056,13 +1053,12 @@ function textureFrame(size: { width: number; height: number } | { scale: number 
     pipelines: [
       {
         kind: 'render',
-        name: 'sample',
-        vertex: { module: 'vertex', entry: 'main' },
-        fragment: { module: 'shade', entry: 'main' },
-        bindings: [{ group: 0, binding: 0, resource: 'grain', visibility: ['fragment'], reads: 'sample' }],
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(1), entry: 'main' },
+        bindings: [{ group: 0, binding: 0, resource: texture(1), visibility: ['fragment'], reads: 'sample' }],
       },
     ],
-    passes: [{ pipeline: 'sample', draws: [{ vertices: 3 }] }],
+    passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
   };
 }
 
@@ -1124,7 +1120,7 @@ describe('a pass sampling a resident image (item 78)', () => {
   it('refuses a content texture the frame own size, which a resize would throw away', () => {
     const { backend } = backendOver();
     expect(() => backend.program(textureFrame({ scale: 1 }))).toThrow(
-      'the frame for "core-texture" gives "grain" contents and the frame\'s own size, which is thrown away on a resize'
+      'the frame for "core-texture" gives resource 1 contents and the frame\'s own size, which is thrown away on a resize'
     );
   });
 });
@@ -1146,11 +1142,11 @@ function mipsFrame(over: Partial<TextureResource> = {}): FrameGraph {
   return {
     id: 'core-mips',
     authored: 'glsl',
+    // uniform 0, grain texture 1, sampler 2.
     resources: [
-      { kind: 'uniform', name: 'uniforms' },
+      { kind: 'uniform' },
       {
         kind: 'texture',
-        name: 'grain',
         size: { width: MIPS_SIDE, height: MIPS_SIDE },
         format: 'rgba8unorm',
         use: ['sample'],
@@ -1158,7 +1154,7 @@ function mipsFrame(over: Partial<TextureResource> = {}): FrameGraph {
         data: new Uint8Array(MIPS_BYTES),
         ...over,
       },
-      { kind: 'sampler', name: 'grainSampler', filter: 'linear', wrap: 'repeat' },
+      { kind: 'sampler', filter: 'linear', wrap: 'repeat' },
     ],
     modules: [
       { name: 'vertex', glsl: VERTEX },
@@ -1167,13 +1163,12 @@ function mipsFrame(over: Partial<TextureResource> = {}): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        name: 'sample',
-        vertex: { module: 'vertex', entry: 'main' },
-        fragment: { module: 'shade', entry: 'main' },
-        bindings: [{ group: 0, binding: 0, resource: 'grain', visibility: ['fragment'], reads: 'sample' }],
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(1), entry: 'main' },
+        bindings: [{ group: 0, binding: 0, resource: texture(1), visibility: ['fragment'], reads: 'sample' }],
       },
     ],
-    passes: [{ pipeline: 'sample', draws: [{ vertices: 3 }] }],
+    passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
   };
 }
 
@@ -1241,33 +1236,36 @@ const SHEET_VERTEX =
 function sheetResources(): FrameGraph['resources'] {
   const grid = GEOMETRY_PRIMITIVE['quad-grid'];
   const made = grid.bytes(16, 16);
+  // Both depthFrame and stencilFrame spread these after the uniform and two
+  // textures, so the sheet vertices land at index 3 and the sheet indices at 4.
   return [
-    { kind: 'vertices', name: 'sheet', stride: grid.stride, attributes: grid.attributes, topology: grid.topology, count: made.vertexCount, indices: 'sheet-index', data: made.vertices },
-    { kind: 'indices', name: 'sheet-index', format: grid.indexFormat, count: made.indexCount, data: made.indices },
+    { kind: 'vertices', stride: grid.stride, attributes: grid.attributes, topology: grid.topology, count: made.vertexCount, indices: indices(4), data: made.vertices },
+    { kind: 'indices', format: grid.indexFormat, count: made.indexCount, data: made.indices },
   ];
 }
 
 function depthFrame(): FrameGraph {
   const pipelines: RenderPipelineSpec[] = [
     {
-      kind: 'render', name: 'farther',
-      vertex: { module: 'project', entry: 'main' }, fragment: { module: 'paint', entry: 'main' },
-      geometry: 'sheet', bindings: [], targets: [{ format: 'rgba8unorm' }],
+      kind: 'render',
+      vertex: { module: moduleHandle(0), entry: 'main' }, fragment: { module: moduleHandle(1), entry: 'main' },
+      geometry: vertices(3), bindings: [], targets: [{ format: 'rgba8unorm' }],
       depth: { format: 'depth24plus', compare: 'less', write: true },
     },
     {
-      kind: 'render', name: 'nearer',
-      vertex: { module: 'project', entry: 'main' }, fragment: { module: 'paint', entry: 'main' },
-      geometry: 'sheet', bindings: [], targets: [{ format: 'rgba8unorm' }],
+      kind: 'render',
+      vertex: { module: moduleHandle(0), entry: 'main' }, fragment: { module: moduleHandle(1), entry: 'main' },
+      geometry: vertices(3), bindings: [], targets: [{ format: 'rgba8unorm' }],
       depth: { format: 'depth24plus', compare: 'less', write: false },
     },
   ];
+  // uniform 0, picture texture 1, depth texture 2, sheet vertices 3, sheet-index 4.
   return {
     id: 'core-depth', authored: 'glsl',
     resources: [
-      { kind: 'uniform', name: 'uniforms' },
-      { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
-      { kind: 'texture', name: 'depth', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
+      { kind: 'uniform' },
+      { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
+      { kind: 'texture', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
       ...sheetResources(),
     ],
     modules: [
@@ -1276,34 +1274,35 @@ function depthFrame(): FrameGraph {
     ],
     pipelines,
     passes: [
-      { pipeline: 'farther', draws: [{ instances: 1 }], colour: [{ resource: 'picture', clear: [0, 0, 0, 1] }], depth: { resource: 'depth', clear: 1 } },
-      { pipeline: 'nearer', draws: [{ instances: 1 }], colour: [{ resource: 'picture' }], depth: { resource: 'depth' } },
+      { pipeline: pipelineHandle(0), draws: [{ instances: 1 }], colour: [{ resource: texture(1), clear: [0, 0, 0, 1] }], depth: { resource: texture(2), clear: 1 } },
+      { pipeline: pipelineHandle(1), draws: [{ instances: 1 }], colour: [{ resource: texture(1) }], depth: { resource: texture(2) } },
     ],
-    present: 'picture',
+    present: texture(1),
   };
 }
 
 function stencilFrame(): FrameGraph {
   const pipelines: RenderPipelineSpec[] = [
     {
-      kind: 'render', name: 'marking',
-      vertex: { module: 'project', entry: 'main' }, fragment: { module: 'paint', entry: 'main' },
-      geometry: 'sheet', bindings: [], targets: [{ format: 'rgba8unorm' }],
+      kind: 'render',
+      vertex: { module: moduleHandle(0), entry: 'main' }, fragment: { module: moduleHandle(2), entry: 'main' },
+      geometry: vertices(3), bindings: [], targets: [{ format: 'rgba8unorm' }],
       depth: { format: 'stencil8', stencil: 'mark' },
     },
     {
-      kind: 'render', name: 'filling',
-      vertex: { module: 'cover', entry: 'main' }, fragment: { module: 'paint', entry: 'main' },
+      kind: 'render',
+      vertex: { module: moduleHandle(1), entry: 'main' }, fragment: { module: moduleHandle(2), entry: 'main' },
       bindings: [], targets: [{ format: 'rgba8unorm' }],
       depth: { format: 'stencil8', stencil: 'inside' },
     },
   ];
+  // uniform 0, picture texture 1, mask texture 2, sheet vertices 3, sheet-index 4.
   return {
     id: 'core-stencil', authored: 'glsl',
     resources: [
-      { kind: 'uniform', name: 'uniforms' },
-      { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
-      { kind: 'texture', name: 'mask', size: { scale: 1 }, format: 'stencil8', use: ['attachment'] },
+      { kind: 'uniform' },
+      { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
+      { kind: 'texture', size: { scale: 1 }, format: 'stencil8', use: ['attachment'] },
       ...sheetResources(),
     ],
     modules: [
@@ -1313,10 +1312,10 @@ function stencilFrame(): FrameGraph {
     ],
     pipelines,
     passes: [
-      { pipeline: 'marking', draws: [{ instances: 1 }], colour: [{ resource: 'picture', clear: [0, 0, 0, 1] }], depth: { resource: 'mask', stencilClear: 0 } },
-      { pipeline: 'filling', draws: [{ vertices: 3 }], colour: [{ resource: 'picture' }], depth: { resource: 'mask' } },
+      { pipeline: pipelineHandle(0), draws: [{ instances: 1 }], colour: [{ resource: texture(1), clear: [0, 0, 0, 1] }], depth: { resource: texture(2), stencilClear: 0 } },
+      { pipeline: pipelineHandle(1), draws: [{ vertices: 3 }], colour: [{ resource: texture(1) }], depth: { resource: texture(2) } },
     ],
-    present: 'picture',
+    present: texture(1),
   };
 }
 
@@ -1471,7 +1470,7 @@ describe('the words a caller asks it for', () => {
     // empty reading from the one that keeps no such numbers, so nothing has to
     // know which backend it holds before asking.
     const { backend } = backendOver();
-    expect([...(await backend.program(graph()).readBuffer('counts'))]).toEqual([]);
+    expect([...(await backend.program(graph()).readBuffer(buffer(0)))]).toEqual([]);
   });
 });
 

@@ -8,7 +8,7 @@
  * surface. A shader a reader can reach declaring a frame of its own is what would
  * move it.
  */
-import type { Groups, GeometryPrimitive, StencilMode, TransientSize } from '@altpsyche/engine';
+import type { GeometryPrimitive, StencilMode, TransientSize } from '@altpsyche/engine';
 import type { TextureContent, BufferContent } from './shader-content';
 import type { BlendMode } from './shader-blend';
 
@@ -109,7 +109,12 @@ export interface DeclaredFrame {
    * pass is comes off the stage the source declares its entry point at. */
   passes: {
     pipeline: string;
-    groups?: Groups;
+    /** The whole workgroup count, or the buffer to read it from named the way this
+     * declaration names every buffer — by the name its source binds it under (item
+     * 87). `declaredFrame` lowers that name to the buffer's handle on the frame; the
+     * engine `Groups` type carries the handle, which a name-based declaration cannot,
+     * so the shape is spelled out here rather than imported. */
+    groups?: [number, number, number] | { indirect: string };
     /** The vertex entry point the geometry is read by, which a drawn pass needs
      * because the frame's own corners are the backend's program rather than the
      * shader's. */

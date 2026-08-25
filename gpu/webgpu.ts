@@ -42,6 +42,8 @@ import {
   uniformResourceOf,
 } from '../graph/types.js';
 import type { FrameTraffic } from '../graph/types.js';
+import type { BufferHandle, ModuleHandle, VertexHandle } from '../graph/handles.js';
+import { indexOf } from '../graph/handles.js';
 import { followsFrame, sizeAt, sizeKey } from '../graph/refs.js';
 import { Arena } from '../resource/arena.js';
 import type { Handle, Range } from '../resource/arena.js';
@@ -450,15 +452,15 @@ export function createWebGPUBackend(
       // is freed through it on dispose. `own` covers the ones freed only then —
       // the uniform block, the geometry and storage buffers, the samplers and the
       // query sets — by collecting their handles here. A texture is freed on a
-      // resize as well as on dispose, so its handle is kept by name instead and
-      // the resize frees the old before allocating the new.
+      // resize as well as on dispose, so its handle is kept by its index instead
+      // and the resize frees the old before allocating the new.
       const owned: Handle[] = [];
       const own = <R extends GpuResource>(make: () => R): R => {
         const handle = arena.allocate(make);
         owned.push(handle);
         return arena.resolve(handle) as R;
       };
-      const textureHandles = new Map<string, Handle>();
+      const textureHandles = new Map<number, Handle>();
 
       // Everything a program owns is made once, here, and handed to the per-frame
       // methods below rather than built alongside them. A resize is the one thing
@@ -523,23 +525,25 @@ export function createWebGPUBackend(
         // Every buffer of geometry the description names, filled once from the bytes
         // that came with it. Neither buffer follows the frame, since geometry is the
         // same shape however big the window is and what moves it is the vertex stage.
-        const buffers = new Map<string, GPUBuffer>();
-        // The arena handle each page-or-card buffer was allocated under, kept by
-        // name so a readback can name one by handle through the arena's own `read`
-        // (§9, item 89) rather than through a `ShaderProgram` method. Only the
-        // buffers a `readBuffer` could ever have named — the `buffer`-kind
+        // Keyed by the resource's index, which is the buffer handle a reference
+        // resolves by (item 87).
+        const buffers = new Map<number, GPUBuffer>();
+        // The arena handle each page-or-card buffer was allocated under, kept by the
+        // resource's index so a readback can name one by handle through the arena's
+        // own `read` (§9, item 89) rather than through a `ShaderProgram` method. Only
+        // the buffers a `readBuffer` could ever have named — the `buffer`-kind
         // resources a compute pass or a query fills — are recorded here; geometry
         // and the uniform block are not read this way.
-        const bufferHandles = new Map<string, Handle>();
-        for (const resource of frame.resources) {
+        const bufferHandles = new Map<number, Handle>();
+        for (const [index, resource] of frame.resources.entries()) {
           if (resource.kind !== 'vertices' && resource.kind !== 'indices') continue;
           if (!resource.data) {
-            throw new Error(`the frame for "${frame.id}" draws "${resource.name}" and carries no bytes for it`);
+            throw new Error(`the frame for "${frame.id}" draws resource ${index} and carries no bytes for it`);
           }
           const bytes = resource.data;
           const built = own(() =>
             device.createBuffer({
-              label: resource.name,
+              label: `buffer${index}`,
               size: bytes.byteLength,
               usage:
                 (resource.kind === 'vertices' ? GPUBufferUsage.VERTEX : GPUBufferUsage.INDEX) | GPUBufferUsage.COPY_DST,
@@ -547,7 +551,7 @@ export function createWebGPUBackend(
           );
           device.queue.writeBuffer(built, 0, bytes);
           arena.wrote(bytes.byteLength);
-          buffers.set(resource.name, built);
+          buffers.set(index, built);
         }
 
         // Which buffers a query resolves into, so each carries the usage flag for a
@@ -555,10 +559,10 @@ export function createWebGPUBackend(
         // enough for its answers, are graph rules `validate` owns (item 19); this
         // only reads which buffers are query targets, to build them with the right
         // usage.
-        const queryTargets = new Set<string>();
+        const queryTargets = new Set<number>();
         for (const pass of frame.passes) {
-          if (pass.timed) queryTargets.add(pass.timed);
-          if (isRenderPass(pass) && pass.visible) queryTargets.add(pass.visible);
+          if (pass.timed !== undefined) queryTargets.add(indexOf(pass.timed));
+          if (isRenderPass(pass) && pass.visible !== undefined) queryTargets.add(indexOf(pass.visible));
         }
 
         // The query sets are the backend's own: nothing about how many answers a
@@ -567,58 +571,62 @@ export function createWebGPUBackend(
         // per timed pass rather than one shared, because a pass writes its pair at
         // fixed places in the set it was given.
         const timing = device.features.has(TIMING);
-        const times = new Map<string, GPUQuerySet>();
-        const counting = new Map<string, GPUQuerySet>();
+        const times = new Map<number, GPUQuerySet>();
+        const counting = new Map<number, GPUQuerySet>();
         for (const pass of frame.passes) {
-          if (pass.timed && timing) {
-            const timed = pass.timed;
+          if (pass.timed !== undefined && timing) {
+            const timed = indexOf(pass.timed);
             times.set(
               timed,
-              own(() => device.createQuerySet({ label: `${timed}-times`, type: 'timestamp', count: 2 }))
+              own(() => device.createQuerySet({ label: `buffer${timed}-times`, type: 'timestamp', count: 2 }))
             );
           }
-          if (isRenderPass(pass) && pass.visible) {
-            const visible = pass.visible;
+          if (isRenderPass(pass) && pass.visible !== undefined) {
+            const visible = indexOf(pass.visible);
             counting.set(
               visible,
-              own(() => device.createQuerySet({ label: `${visible}-samples`, type: 'occlusion', count: 1 }))
+              own(() => device.createQuerySet({ label: `buffer${visible}-samples`, type: 'occlusion', count: 1 }))
             );
           }
         }
 
-        const arguments_ = new Map<string, number>();
+        const arguments_ = new Map<number, number>();
         // The buffers every indirect draw or dispatch reads its counts from, and
         // the space each needs. A render pass carries many draws (item 26), so
-        // every indirect one it names is sized, not just the first.
+        // every indirect one it names is sized, not just the first. Keyed by the
+        // buffer resource's index, which is the handle a draw or dispatch names it by.
         for (const pass of frame.passes) {
-          const spec = frame.pipelines.find((one) => one.name === pass.pipeline);
+          const spec = frame.pipelines[indexOf(pass.pipeline)];
           const ordered = isRenderPass(pass) && spec?.kind === 'render' && spec.geometry !== undefined;
-          const named: string[] = isRenderPass(pass)
+          const named: BufferHandle[] = isRenderPass(pass)
             ? pass.draws.filter(drawsIndirectly).map((draw) => draw.indirect)
             : groupsIndirectly(pass.groups)
               ? [pass.groups.indirect]
               : [];
           const words = !isRenderPass(pass) ? 3 : ordered ? 5 : 4;
-          for (const name of named) arguments_.set(name, Math.max(arguments_.get(name) ?? 0, words * 4));
+          for (const handle of named) {
+            const argIndex = indexOf(handle);
+            arguments_.set(argIndex, Math.max(arguments_.get(argIndex) ?? 0, words * 4));
+          }
         }
-        for (const [name, needed] of arguments_) {
-          const resource = resourceOf(frame, name);
+        for (const [index, needed] of arguments_) {
+          const resource = frame.resources[index];
           if (!resource || resource.kind !== 'buffer') {
             throw new Error(
-              `the frame for "${frame.id}" reads its counts from "${name}", which is no buffer it declares`
+              `the frame for "${frame.id}" reads its counts from resource ${index}, which is no buffer it declares`
             );
           }
           if (resource.bytes < needed) {
             throw new Error(
-              `the frame for "${frame.id}" reads ${needed} bytes of counts from "${name}", which is ${resource.bytes} bytes`
+              `the frame for "${frame.id}" reads ${needed} bytes of counts from resource ${index}, which is ${resource.bytes} bytes`
             );
           }
         }
 
-        // The names of the buffers the page is allowed to write, which is the ones
+        // The indices of the buffers the page is allowed to write, which is the ones
         // the build gave first contents. A buffer the card fills for itself is not
         // among them, so a write aimed at one is refused before it reaches the card.
-        const writable = new Set<string>();
+        const writable = new Set<number>();
 
         // Which buffers a pipeline reaches one per-draw slice of, so each is built
         // as a uniform bound with a dynamic offset rather than as a storage buffer
@@ -626,17 +634,17 @@ export function createWebGPUBackend(
         // the draw names which — a `hasDynamicOffset` uniform binding on WebGPU — so
         // its usage is UNIFORM rather than STORAGE, and it is not a query or indirect
         // target either.
-        const perDrawBuffers = new Set<string>();
+        const perDrawBuffers = new Set<number>();
         for (const spec of frame.pipelines) {
           const slice = perDrawBinding(spec);
-          if (slice) perDrawBuffers.add(slice.resource);
+          if (slice) perDrawBuffers.add(indexOf(slice.resource));
         }
 
         // Every block of bytes the description names, handed out empty. WebGPU zeroes
         // a new buffer, so a pass reading one before anything has written it reads
         // zeros rather than whatever the memory held, which is what lets a frame
         // whose first pass fills it be the same picture on every run.
-        for (const resource of frame.resources) {
+        for (const [index, resource] of frame.resources.entries()) {
           if (resource.kind !== 'buffer') continue;
           // That a buffer is a whole number of four-byte words, and that a buffer
           // a query resolves into is long enough to hold its answers, are rules the
@@ -645,13 +653,13 @@ export function createWebGPUBackend(
           const spec = resource;
           // Allocated so the handle is kept, not just the resolved buffer: a
           // readback names this buffer by its arena handle through `arena.read`
-          // (item 89), so the name-to-handle it is recorded under below is what
-          // turns "read the buffer called `copies`" into a handle the arena
-          // resolves. It is `owned` like any resident this program frees on
-          // dispose, exactly as `own` would have collected it.
+          // (item 89), so the index-to-handle it is recorded under below is what
+          // turns a buffer handle into an arena handle the arena resolves. It is
+          // `owned` like any resident this program frees on dispose, exactly as
+          // `own` would have collected it.
           const handle = arena.allocate(() =>
             device.createBuffer({
-            label: spec.name,
+            label: `buffer${index}`,
             size: spec.bytes,
             // A buffer a pass reads its counts out of carries the flag for that as
             // well as the one for the shader writing it, and a flag nothing asked
@@ -661,7 +669,7 @@ export function createWebGPUBackend(
             // has no other way of seeing, and the copy is refused over a usage as
             // well. A buffer the build filled is written into once here, so it
             // carries the flag for that as the shader-written textures do.
-            usage: perDrawBuffers.has(spec.name)
+            usage: perDrawBuffers.has(index)
               ? // A per-draw buffer is bound as a uniform and read one slice at a
                 // time by a dynamic offset, so it carries UNIFORM rather than the
                 // storage flags, and COPY_DST because its records arrive from this
@@ -669,15 +677,15 @@ export function createWebGPUBackend(
                 GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
               : GPUBufferUsage.STORAGE |
                 GPUBufferUsage.COPY_SRC |
-                (arguments_.has(spec.name) ? GPUBufferUsage.INDIRECT : 0) |
-                (queryTargets.has(spec.name) ? GPUBufferUsage.QUERY_RESOLVE : 0) |
+                (arguments_.has(index) ? GPUBufferUsage.INDIRECT : 0) |
+                (queryTargets.has(index) ? GPUBufferUsage.QUERY_RESOLVE : 0) |
                 (spec.data ? GPUBufferUsage.COPY_DST : 0),
             })
           );
           owned.push(handle);
           const built = arena.resolve(handle) as GPUBuffer;
-          buffers.set(resource.name, built);
-          bufferHandles.set(resource.name, handle);
+          buffers.set(index, built);
+          bufferHandles.set(index, handle);
           // The contents the build wrote, uploaded once before anything reads them,
           // which is what a copy of a pipeline carrying its own numbers is handed.
           // A buffer arriving with contents is the one kind the page may write later,
@@ -686,22 +694,22 @@ export function createWebGPUBackend(
           if (resource.data) {
             device.queue.writeBuffer(built, 0, resource.data);
             arena.wrote(resource.data.byteLength);
-            writable.add(resource.name);
+            writable.add(index);
           }
         }
 
         /** The geometry one pipeline reads and the indices that order it, looked up
-         * where the pipeline is made rather than where the pass draws, so a name
-         * pointing at the wrong kind of resource is refused once and by name. */
-        const geometryOf = (name: string) => {
-          const vertices = resourceOf(frame, name);
+         * where the pipeline is made rather than where the pass draws, so a handle
+         * pointing at the wrong kind of resource is refused once and by index. */
+        const geometryOf = (handle: VertexHandle) => {
+          const vertices = resourceOf(frame, handle);
           if (!vertices || vertices.kind !== 'vertices') {
-            throw new Error(`the frame for "${frame.id}" draws "${name}", which is no geometry it declares`);
+            throw new Error(`the frame for "${frame.id}" draws resource ${indexOf(handle)}, which is no geometry it declares`);
           }
           const ordered = vertices.indices === undefined ? undefined : resourceOf(frame, vertices.indices);
           if (vertices.indices !== undefined && ordered?.kind !== 'indices') {
             throw new Error(
-              `the geometry "${name}" on "${frame.id}" orders itself by "${vertices.indices}", which it does not declare`
+              `the geometry resource ${indexOf(handle)} on "${frame.id}" orders itself by resource ${indexOf(vertices.indices)}, which it does not declare`
             );
           }
           return { vertices, ordered: ordered as IndexResource | undefined };
@@ -709,13 +717,20 @@ export function createWebGPUBackend(
 
         // A program owns every texture its description names, which is what lets it
         // be disposed on its own while the backend keeps the target it draws into.
-        const declared = frame.resources.filter((resource): resource is TextureResource => resource.kind === 'texture');
+        // Each texture is carried with its index in `frame.resources`, since that
+        // index is the handle every attachment, present and swap resolves it by
+        // (item 87) and the resource itself no longer carries a name.
+        const declared: { index: number; resource: TextureResource }[] = [];
+        frame.resources.forEach((resource, index) => {
+          if (resource.kind === 'texture') declared.push({ index, resource });
+        });
         const shown = frame.present;
-        if (shown !== undefined && !declared.some((resource) => resource.name === shown)) {
-          throw new Error(`the frame for "${frame.id}" shows a resource "${shown}" it does not declare`);
+        const shownIndex = shown === undefined ? undefined : indexOf(shown);
+        if (shownIndex !== undefined && !declared.some((one) => one.index === shownIndex)) {
+          throw new Error(`the frame for "${frame.id}" shows resource ${shownIndex} it does not declare`);
         }
 
-        const textures = new Map<string, GPUTexture>();
+        const textures = new Map<number, GPUTexture>();
         const spansFrame = (resource: TextureResource) => followsFrame(resource.size);
         const made = { width: 0, height: 0 };
 
@@ -730,14 +745,14 @@ export function createWebGPUBackend(
         // contents they average arrive once, so this is refused rather than left as
         // a picture that is right for one frame.
         const redrawn = declared.find(
-          (resource) => resource.mips && (resource.use.includes('storage') || resource.use.includes('attachment'))
+          (one) => one.resource.mips && (one.resource.use.includes('storage') || one.resource.use.includes('attachment'))
         );
         if (redrawn) {
-          throw new Error(`the frame for "${frame.id}" gives "${redrawn.name}" a ladder and writes it every frame`);
+          throw new Error(`the frame for "${frame.id}" gives resource ${redrawn.index} a ladder and writes it every frame`);
         }
-        const sourced = declared.find((resource) => resource.data && spansFrame(resource));
+        const sourced = declared.find((one) => one.resource.data && spansFrame(one.resource));
         if (sourced) {
-          throw new Error(`the frame for "${frame.id}" gives "${sourced.name}" contents and the frame's own size`);
+          throw new Error(`the frame for "${frame.id}" gives resource ${sourced.index} contents and the frame's own size`);
         }
 
         // A texture keeping several samples of a pixel is the narrowest kind there
@@ -747,30 +762,30 @@ export function createWebGPUBackend(
         // shader reads one only through a binding declared as multisampled, which no
         // source here has. A ladder over one needs no rule of its own, since the
         // check above already refuses a ladder over anything a pass writes.
-        const multisampled = declared.filter((resource) => resource.samples !== undefined);
-        const upload = multisampled.find((resource) => resource.data);
+        const multisampled = declared.filter((one) => one.resource.samples !== undefined);
+        const upload = multisampled.find((one) => one.resource.data);
         if (upload) {
-          throw new Error(`the frame for "${frame.id}" gives "${upload.name}" contents and several samples a pixel`);
+          throw new Error(`the frame for "${frame.id}" gives resource ${upload.index} contents and several samples a pixel`);
         }
         const sampled = multisampled.find(
-          (resource) => resource.use.includes('sample') || resource.use.includes('storage')
+          (one) => one.resource.use.includes('sample') || one.resource.use.includes('storage')
         );
         if (sampled) {
-          throw new Error(`the frame for "${frame.id}" binds "${sampled.name}", which keeps several samples a pixel`);
+          throw new Error(`the frame for "${frame.id}" binds resource ${sampled.index}, which keeps several samples a pixel`);
         }
-        const presented = multisampled.find((resource) => resource.name === shown);
+        const presented = multisampled.find((one) => one.index === shownIndex);
         if (presented) {
-          throw new Error(`the frame for "${frame.id}" shows "${presented.name}", which keeps several samples a pixel`);
+          throw new Error(`the frame for "${frame.id}" shows resource ${presented.index}, which keeps several samples a pixel`);
         }
 
         const build = (which: (resource: TextureResource) => boolean) => {
-          for (const resource of declared) {
+          for (const { index, resource } of declared) {
             if (!which(resource)) continue;
             const { width: across, height: down } = sizeAt(resource.size, { width, height });
             const levels = resource.mips ? levelsOf(across, down) : 1;
             const make = () =>
               device.createTexture({
-                label: resource.name,
+                label: `texture${index}`,
                 size: [across, down],
                 format: resource.format,
                 ...(levels > 1 ? { mipLevelCount: levels } : {}),
@@ -781,7 +796,7 @@ export function createWebGPUBackend(
                 // into once before anything reads it.
                 usage: resource.use.reduce(
                   (mask, use) => mask | USES[use],
-                  (resource.name === shown ? GPUTextureUsage.COPY_SRC : 0) |
+                  (index === shownIndex ? GPUTextureUsage.COPY_SRC : 0) |
                     (resource.data ? GPUTextureUsage.COPY_DST : 0) |
                     // Every level below the first is drawn rather than uploaded, so a
                     // texture carrying a ladder is an attachment as well as a picture.
@@ -791,12 +806,12 @@ export function createWebGPUBackend(
             // A texture that follows the frame is freed and remade on every resize,
             // which is the arena's `resize`: the old slot's contents go with it and
             // the new handle is what the maps below read. The first build has no
-            // prior handle for the name and allocates outright.
-            const prior = textureHandles.get(resource.name);
+            // prior handle for the index and allocates outright.
+            const prior = textureHandles.get(index);
             const handle = prior === undefined ? arena.allocate(make) : arena.resize(prior, make);
-            textureHandles.set(resource.name, handle);
+            textureHandles.set(index, handle);
             const built = arena.resolve(handle) as GPUTexture;
-            textures.set(resource.name, built);
+            textures.set(index, built);
 
             if (resource.data) {
               device.queue.writeTexture({ texture: built }, resource.data, { bytesPerRow: across * 4 }, [across, down]);
@@ -813,15 +828,15 @@ export function createWebGPUBackend(
         // either kind of sampler where a non-filtering one refuses a smooth
         // sampler, so the layout below says filtering whatever this asks for and
         // the sampler alone decides whether the card reads between pixels.
-        const samplers = new Map<string, GPUSampler>();
-        for (const resource of frame.resources) {
+        const samplers = new Map<number, GPUSampler>();
+        for (const [index, resource] of frame.resources.entries()) {
           if (resource.kind !== 'sampler') continue;
           const spec = resource;
           samplers.set(
-            spec.name,
+            index,
             own(() =>
               device.createSampler({
-                label: spec.name,
+                label: `sampler${index}`,
                 magFilter: spec.filter,
                 minFilter: spec.filter,
                 addressModeU: WRAPS[spec.wrap],
@@ -833,49 +848,52 @@ export function createWebGPUBackend(
 
         const { pipelines, wired } = buildPipelines(device, frame, compiled, geometryOf, fullscreen, pipelineCache);
 
-        // Which resource each name trades places with, if any. A pair is written by
+        // Which resource each index trades places with, if any. A pair is written by
         // one pass and read by the next frame's, so the two textures swap between
         // frames and the shader is handed one to read and one to write without ever
         // learning which of them it got.
-        const partner = new Map<string, string>();
+        const partner = new Map<number, number>();
         for (const [one, other] of frame.swap ?? []) {
-          const pair = [one, other].map((name) => declared.find((resource) => resource.name === name));
-          const [first, second] = pair;
-          const absent = [one, other][pair.findIndex((resource) => !resource)];
-          if (absent !== undefined) {
-            throw new Error(`the frame for "${frame.id}" swaps "${absent}", which is no texture it declares`);
+          const oneIndex = indexOf(one);
+          const otherIndex = indexOf(other);
+          const first = declared.find((entry) => entry.index === oneIndex);
+          const second = declared.find((entry) => entry.index === otherIndex);
+          if (!first || !second) {
+            throw new Error(
+              `the frame for "${frame.id}" swaps resource ${!first ? oneIndex : otherIndex}, which is no texture it declares`
+            );
           }
           // Both halves are the same shape, since the picture is read out of
           // whichever of them the frame ended on and either may be the one a pass
           // wrote. Refused here rather than left to a copy the card reports as out
           // of range on the frames that swap and not on the frames that do not.
           const shape = (resource: TextureResource) => `${sizeKey(resource.size)} ${resource.format}`;
-          if (shape(first as TextureResource) !== shape(second as TextureResource)) {
+          if (shape(first.resource) !== shape(second.resource)) {
             throw new Error(
-              `the frame for "${frame.id}" swaps "${one}" and "${other}", which are not the same texture`
+              `the frame for "${frame.id}" swaps resource ${oneIndex} and resource ${otherIndex}, which are not the same texture`
             );
           }
-          partner.set(one, other);
-          partner.set(other, one);
+          partner.set(oneIndex, otherIndex);
+          partner.set(otherIndex, oneIndex);
         }
 
-        /** The name a binding points at on this turn of the frame, which is the
+        /** The resource a binding points at on this turn of the frame, which is the
          * partner of what the source wrote on every other one. */
-        const turned = (name: string, swapped: boolean) => (swapped ? (partner.get(name) ?? name) : name);
+        const turned = (index: number, swapped: boolean) => (swapped ? (partner.get(index) ?? index) : index);
 
         // One set of bind groups per turn rather than one rebuilt every frame. A
         // bind group holds a view of the texture it was made with, so swapping by
         // rebuilding would make a group per pipeline per frame for as long as the
         // shader runs. A frame with nothing to swap has one turn, so it makes the
         // groups it made before any of this existed and no more.
-        const groups: Map<string, GPUBindGroup[]>[] =
-          partner.size > 0 ? [new Map(), new Map()] : [new Map<string, GPUBindGroup[]>()];
+        const groups: Map<number, GPUBindGroup[]>[] =
+          partner.size > 0 ? [new Map(), new Map()] : [new Map<number, GPUBindGroup[]>()];
         const wire = () => {
           for (const [turn, made] of groups.entries()) {
             made.clear();
             for (const pipeline of wired) {
               made.set(
-                pipeline.name,
+                pipeline.index,
                 pipeline.bands.map((entries, band) =>
                   device.createBindGroup({
                     // Named for the pipeline and the turn, which is what lets a
@@ -886,16 +904,16 @@ export function createWebGPUBackend(
                     // with a single group makes the calls it made before.
                     label:
                       pipeline.bands.length > 1
-                        ? `${pipeline.name}-group-${turn}-${band}`
-                        : `${pipeline.name}-group-${turn}`,
+                        ? `pipeline${pipeline.index}-group-${turn}-${band}`
+                        : `pipeline${pipeline.index}-group-${turn}`,
                     layout: pipeline.layouts[band] as GPUBindGroupLayout,
                     entries: entries.map((at) => {
-                      const name = turned(at.resource, turn === 1);
-                      const bound = samplers.get(name) ?? textures.get(name)?.createView();
+                      const index = turned(indexOf(at.resource), turn === 1);
+                      const bound = samplers.get(index) ?? textures.get(index)?.createView();
                       // A block of bytes is bound as itself, and the uniform block is
                       // what is left: a binding pointing at geometry never reaches
-                      // here, since the lookup above refuses one by name.
-                      const stored = buffers.get(name);
+                      // here, since the lookup above refuses one by index.
+                      const stored = buffers.get(index);
                       // A per-draw binding names one record's width, not the whole
                       // buffer, so the card reads exactly one slice and the offset
                       // to it arrives per draw (item 27). Every other binding reads
@@ -923,32 +941,35 @@ export function createWebGPUBackend(
 
         runs = planFramePasses(frame, geometryOf);
 
-        /** The geometry an inline draw or a bundle walks, resolved from names to the
-         * buffers the arena holds. Looked up here, at build and resize, rather than
-         * every frame: this is item 16 moving `submit/`'s executor off names. The
+        /** The geometry an inline draw or a bundle walks, resolved from the
+         * description's resources to the buffers the arena holds. Looked up here, at
+         * build and resize, rather than every frame: this is item 16 moving
+         * `submit/`'s executor off names. The plan carries the resolved resource
+         * objects (`DrawnGeometry`), so which buffer each is comes off its index in
+         * `frame.resources` — the same index `buffers` is keyed by (item 87). The
          * count and format travel with the buffers so the loop that draws needs no
          * resource of the description in hand. */
         const drawGeometry = (drawn: DrawnGeometry | undefined): ResolvedGeometry | undefined =>
           drawn === undefined
             ? undefined
             : {
-                vertexBuffer: buffers.get(drawn.vertices.name) as GPUBuffer,
+                vertexBuffer: buffers.get(frame.resources.indexOf(drawn.vertices)) as GPUBuffer,
                 vertexCount: drawn.vertices.count,
                 index:
                   drawn.ordered === undefined
                     ? undefined
                     : {
-                        buffer: buffers.get(drawn.ordered.name) as GPUBuffer,
+                        buffer: buffers.get(frame.resources.indexOf(drawn.ordered)) as GPUBuffer,
                         format: drawn.ordered.format,
                         count: drawn.ordered.count,
                       },
               };
 
         /** The buffer an indirect draw reads its counts from, resolved to the object
-         * once rather than looked up by name at each frame. Absent for a draw whose
+         * once rather than looked up by handle at each frame. Absent for a draw whose
          * count this side already holds. */
         const drawIndirect = (draw: DrawSpec): GPUBuffer | undefined =>
-          drawsIndirectly(draw) ? (buffers.get(draw.indirect) as GPUBuffer) : undefined;
+          drawsIndirectly(draw) ? (buffers.get(indexOf(draw.indirect)) as GPUBuffer) : undefined;
 
         /** A render pass whose draws never change between frames, which is every one
          * that does not count its own samples: an occlusion query wraps the draw on
@@ -969,11 +990,12 @@ export function createWebGPUBackend(
             runs.forEach((run, index) => {
               if (!isBundled(run)) return;
               const spec = run.spec as RenderPipelineSpec;
-              const pipeline = pipelines.get(spec.name) as GPURenderPipeline;
-              const bands = bound.get(spec.name);
-              if (!pipeline || !bands) throw new Error(`the frame names a pipeline "${spec.name}" it does not carry`);
+              const pipe = indexOf(run.pass.pipeline);
+              const pipeline = pipelines.get(pipe) as GPURenderPipeline;
+              const bands = bound.get(pipe);
+              if (!pipeline || !bands) throw new Error(`the frame names a pipeline ${pipe} it does not carry`);
               const encoder = device.createRenderBundleEncoder({
-                label: `${spec.name}-bundle-${turnIndex}`,
+                label: `pipeline${pipe}-bundle-${turnIndex}`,
                 colorFormats: run.colour ? (spec.targets ?? []).map((target) => target.format) : [FORMAT],
                 ...(run.depth && spec.depth ? { depthStencilFormat: spec.depth.format } : {}),
                 ...(spec.samples ? { sampleCount: spec.samples } : {}),
@@ -991,7 +1013,7 @@ export function createWebGPUBackend(
                 draws,
                 perDrawBinding(spec)?.group
               );
-              made.set(index, encoder.finish({ label: `${spec.name}-bundle-${turnIndex}` }));
+              made.set(index, encoder.finish({ label: `pipeline${pipe}-bundle-${turnIndex}` }));
             });
             return made;
           });
@@ -1024,18 +1046,19 @@ export function createWebGPUBackend(
             const recorded = bundles[turnIndex] ?? new Map<number, GPURenderBundle>();
             const turnRuns = runs.map((run, index): ResolvedRun => {
               const { pass, spec, drawn, depth, colour } = run;
-              const pipeline = pipelines.get(spec.name);
-              const bands = bound.get(spec.name);
-              if (!pipeline || !bands) throw new Error(`the frame names a pipeline "${spec.name}" it does not carry`);
+              const pipe = indexOf(pass.pipeline);
+              const pipeline = pipelines.get(pipe);
+              const bands = bound.get(pipe);
+              if (!pipeline || !bands) throw new Error(`the frame names a pipeline ${pipe} it does not carry`);
               const render = isRenderPass(pass) && spec.kind === 'render';
               const kept = stores[index] as { colour: boolean[]; depth: boolean; stencil: boolean };
-              const timesSet = pass.timed === undefined ? undefined : times.get(pass.timed);
+              const timesSet = pass.timed === undefined ? undefined : times.get(indexOf(pass.timed));
               const timedInto =
-                pass.timed !== undefined && timesSet ? (buffers.get(pass.timed) as GPUBuffer) : undefined;
+                pass.timed !== undefined && timesSet ? (buffers.get(indexOf(pass.timed)) as GPUBuffer) : undefined;
               const visible = isRenderPass(pass) ? pass.visible : undefined;
-              const countingSet = visible === undefined ? undefined : counting.get(visible);
+              const countingSet = visible === undefined ? undefined : counting.get(indexOf(visible));
               const visibleInto =
-                visible !== undefined && countingSet ? (buffers.get(visible) as GPUBuffer) : undefined;
+                visible !== undefined && countingSet ? (buffers.get(indexOf(visible)) as GPUBuffer) : undefined;
 
               let dispatch: ResolvedRun['dispatch'];
               if (!isRenderPass(pass) && spec.kind === 'compute') {
@@ -1043,7 +1066,7 @@ export function createWebGPUBackend(
                 // had (item 72): `groups` is either the count itself or a buffer
                 // to read it from, so nothing here derives it from the frame size.
                 dispatch = groupsIndirectly(pass.groups)
-                  ? { indirect: buffers.get(pass.groups.indirect) as GPUBuffer }
+                  ? { indirect: buffers.get(indexOf(pass.groups.indirect)) as GPUBuffer }
                   : { blocks: pass.groups };
               }
 
@@ -1065,11 +1088,11 @@ export function createWebGPUBackend(
                   colour === undefined
                     ? undefined
                     : colour.map((attachment, at) => ({
-                        texture: textures.get(turned(attachment.name, swapped)) as GPUTexture,
+                        texture: textures.get(turned(indexOf(attachment.handle), swapped)) as GPUTexture,
                         resolveInto:
                           attachment.resolve === undefined
                             ? undefined
-                            : (textures.get(turned(attachment.resolve, swapped)) as GPUTexture),
+                            : (textures.get(turned(indexOf(attachment.resolve), swapped)) as GPUTexture),
                         clear: attachment.clear,
                         store: kept.colour[at] ?? true,
                       })),
@@ -1077,7 +1100,7 @@ export function createWebGPUBackend(
                   depth === undefined
                     ? undefined
                     : {
-                        texture: textures.get(depth.name) as GPUTexture,
+                        texture: textures.get(indexOf(depth.handle)) as GPUTexture,
                         clear: depth.clear,
                         stencilClear: depth.stencilClear,
                         depthHalf: depth.depthHalf,
@@ -1118,7 +1141,8 @@ export function createWebGPUBackend(
                     : { ...first.depth, storeDepth: lastKept.depth, storeStencil: lastKept.stencil },
               };
             });
-            const picture = shown === undefined ? undefined : (textures.get(turned(shown, swapped)) as GPUTexture);
+            const picture =
+              shownIndex === undefined ? undefined : (textures.get(turned(shownIndex, swapped)) as GPUTexture);
             return { runs: mergedRuns, picture };
           });
         };
@@ -1187,7 +1211,7 @@ export function createWebGPUBackend(
           // texture re-resolves to the same runs — harmless, and `made` still tracks
           // the size the runs were resolved at whether or not a texture was rebuilt.
           if (made.width !== width || made.height !== height) {
-            if (declared.some(spansFrame)) {
+            if (declared.some((one) => spansFrame(one.resource))) {
               build(spansFrame);
               wire();
               recordBundles();
@@ -1220,22 +1244,23 @@ export function createWebGPUBackend(
           });
         },
 
-        writeBuffer(name: string, data: Uint8Array<ArrayBuffer>) {
-          const held = buffers.get(name);
-          if (!held) throw new Error(`the frame for "${frame.id}" declares no buffer called "${name}"`);
-          if (!writable.has(name)) {
+        writeBuffer(handle: BufferHandle, data: Uint8Array<ArrayBuffer>) {
+          const index = indexOf(handle);
+          const held = buffers.get(index);
+          if (!held) throw new Error(`the frame for "${frame.id}" declares no buffer ${index}`);
+          if (!writable.has(index)) {
             throw new Error(
-              `the frame for "${frame.id}" fills "${name}" on the card, so the page has no contents there to replace`
+              `the frame for "${frame.id}" fills resource ${index} on the card, so the page has no contents there to replace`
             );
           }
           if (data.byteLength % 4 !== 0) {
             throw new Error(
-              `the frame for "${frame.id}" writes ${data.byteLength} bytes into "${name}", which is no whole number of four-byte words`
+              `the frame for "${frame.id}" writes ${data.byteLength} bytes into resource ${index}, which is no whole number of four-byte words`
             );
           }
           if (data.byteLength > held.size) {
             throw new Error(
-              `the frame for "${frame.id}" writes ${data.byteLength} bytes into "${name}", which holds ${held.size}`
+              `the frame for "${frame.id}" writes ${data.byteLength} bytes into resource ${index}, which holds ${held.size}`
             );
           }
           device.queue.writeBuffer(held, 0, data);
@@ -1245,7 +1270,7 @@ export function createWebGPUBackend(
           // The same frame with a different pass list, planned over the modules,
           // the pipelines and the resources already built. `planFramePasses`
           // refuses a pass naming a pipeline this frame does not carry, so a pass
-          // for a pipeline the program was not built with is caught by name here
+          // for a pipeline the program was not built with is caught by index here
           // rather than at the draw. The bundles hold the draws of the old list,
           // so they are recorded again against the new one, and the resolved runs
           // describe the old passes, so they are resolved again over the new plan.
@@ -1254,23 +1279,25 @@ export function createWebGPUBackend(
           resolveTurns();
         },
 
-        // The arena handle a named buffer was allocated under, so a caller reading
-        // one back names it through `arena.read` — the §9 door (item 89) — rather
-        // than through this program. It is the bridge until the graph's names are
-        // themselves handles (Stage 2, item 16): a name-keyed lookup here stands in
-        // for the handle a producer will one day hold directly. A name that is no
-        // readable buffer of this frame is refused, the same as `readBuffer` did.
-        bufferHandle(name: string): Handle {
-          const handle = bufferHandles.get(name);
-          if (handle === undefined) {
-            throw new Error(`the frame for "${frame.id}" declares no buffer called "${name}"`);
+        // The arena handle a buffer resource was allocated under, so a caller
+        // reading one back names it through `arena.read` — the §9 door (item 89) —
+        // rather than through this program. It maps the graph's `BufferHandle` (the
+        // resource's index, item 87) to the arena handle a producer will one day
+        // hold directly (Stage 2, item 16). A handle that is no readable buffer of
+        // this frame is refused, the same as `readBuffer` did.
+        bufferHandle(handle: BufferHandle): Handle {
+          const index = indexOf(handle);
+          const arenaHandle = bufferHandles.get(index);
+          if (arenaHandle === undefined) {
+            throw new Error(`the frame for "${frame.id}" declares no buffer ${index}`);
           }
-          return handle;
+          return arenaHandle;
         },
 
-        async readBuffer(name: string) {
-          const handle = bufferHandles.get(name);
-          if (handle === undefined) throw new Error(`the frame for "${frame.id}" declares no buffer called "${name}"`);
+        async readBuffer(handle: BufferHandle) {
+          const index = indexOf(handle);
+          const arenaHandle = bufferHandles.get(index);
+          if (arenaHandle === undefined) throw new Error(`the frame for "${frame.id}" declares no buffer ${index}`);
           // The words as they stand, read through the arena's own `read` (item 89)
           // rather than mapped inline here — a buffer the shader writes cannot be
           // mapped, so `read` copies it into a staging buffer of the moment and
@@ -1278,7 +1305,7 @@ export function createWebGPUBackend(
           // of its own accord with counts; a caller wanting bytes reads the words'
           // memory. `readBuffer` stays only until item 82 removes it; its two gate
           // consumers already read through `arena.read` directly (item 89).
-          return new Uint32Array(await arena.read(handle));
+          return new Uint32Array(await arena.read(arenaHandle));
         },
 
         dispose() {
@@ -1361,15 +1388,19 @@ function compileModules(
   device: GPUDevice,
   frame: FrameGraph,
   onRefused?: (message: string) => void
-): Map<string, GPUShaderModule> {
-  const compiled = new Map<string, GPUShaderModule>();
+): GPUShaderModule[] {
+  // An array indexed by the module's position in `frame.modules`, so a pipeline
+  // resolves a stage's `ModuleHandle` by that index (item 87). The device module
+  // still carries the document's own name as its label, which is kept for the
+  // trace and for the refusal message a reader typing WGSL needs.
+  const compiled: GPUShaderModule[] = [];
   // WebGPU compiles WGSL, so every document it is handed carries `wgsl` text; the
   // backend guards a non-WGSL frame before here (item 94), and this narrows on the
   // same discriminant so the field it reads is the one the language names.
   if (frame.authored !== 'wgsl') return compiled;
-  for (const document of frame.modules) {
+  for (const [index, document] of frame.modules.entries()) {
     const built = device.createShaderModule({ label: document.name, code: document.wgsl });
-    compiled.set(document.name, built);
+    compiled[index] = built;
     void built.getCompilationInfo().then((info) => {
       const said = refusal(info);
       if (said) onRefused?.(frame.modules.length > 1 ? `${document.name}: ${said}` : said);
@@ -1386,17 +1417,17 @@ function compileModules(
 function buildPipelines(
   device: GPUDevice,
   frame: FrameGraph,
-  compiled: Map<string, GPUShaderModule>,
-  geometryOf: (name: string) => DrawnGeometry,
+  compiled: GPUShaderModule[],
+  geometryOf: (handle: VertexHandle) => DrawnGeometry,
   fullscreen: GPUShaderModule,
   cache: PipelineCache<CachedPipeline>
 ): {
-  pipelines: Map<string, GPURenderPipeline | GPUComputePipeline>;
-  wired: { name: string; layouts: GPUBindGroupLayout[]; bands: BindingSpec[][] }[];
+  pipelines: Map<number, GPURenderPipeline | GPUComputePipeline>;
+  wired: { index: number; layouts: GPUBindGroupLayout[]; bands: BindingSpec[][] }[];
 } {
-  const stage = (named: { module: string; entry: string }) => {
-    const built = compiled.get(named.module);
-    if (!built) throw new Error(`the frame names a document "${named.module}" it does not carry`);
+  const stage = (named: { module: ModuleHandle; entry: string }) => {
+    const built = compiled[indexOf(named.module)];
+    if (!built) throw new Error(`the frame names a document ${indexOf(named.module)} it does not carry`);
     return { module: built, entryPoint: named.entry };
   };
 
@@ -1410,16 +1441,17 @@ function buildPipelines(
    * declares rather than off the binding, so a layout cannot claim one kind
    * of thing while the description declares another. */
   const pointsAt = (at: BindingSpec) => {
+    const src = indexOf(at.resource);
     const resource = resourceOf(frame, at.resource);
-    if (!resource) throw new Error(`the frame for "${frame.id}" binds a resource "${at.resource}" it never declares`);
+    if (!resource) throw new Error(`the frame for "${frame.id}" binds a resource ${src} it never declares`);
     if (resource.kind === 'texture' && !resource.use.includes('storage') && !resource.use.includes('sample')) {
-      throw new Error(`the frame for "${frame.id}" binds "${at.resource}", which it neither writes nor samples`);
+      throw new Error(`the frame for "${frame.id}" binds resource ${src}, which it neither writes nor samples`);
     }
     // Geometry is read one vertex at a time by the stage the pipeline names it
     // on, so it reaches a layout through the pipeline rather than through a
     // group, and a binding pointing at it is a layout entry with no kind.
     if (resource.kind === 'vertices' || resource.kind === 'indices') {
-      throw new Error(`the frame for "${frame.id}" binds "${at.resource}", which is geometry rather than a binding`);
+      throw new Error(`the frame for "${frame.id}" binds resource ${src}, which is geometry rather than a binding`);
     }
     return resource;
   };
@@ -1464,14 +1496,14 @@ function buildPipelines(
     return { binding: at.binding, visibility, texture: { sampleType: 'float' } };
   };
 
-  const wired: { name: string; layouts: GPUBindGroupLayout[]; bands: BindingSpec[][] }[] = [];
-  const pipelines = new Map<string, GPURenderPipeline | GPUComputePipeline>();
+  const wired: { index: number; layouts: GPUBindGroupLayout[]; bands: BindingSpec[][] }[] = [];
+  const pipelines = new Map<number, GPURenderPipeline | GPUComputePipeline>();
 
-  for (const spec of frame.pipelines) {
+  for (const [index, spec] of frame.pipelines.entries()) {
     // A pipeline is compiled from its structure and nothing else, so the whole
     // build below runs once per distinct structure through the cache and a repeat
     // request — another frame drawing the same shader — returns the pipeline and
-    // layouts already made rather than compiling a second. The `name` a frame gave
+    // layouts already made rather than compiling a second. The index a frame gives
     // the pipeline is a per-frame fact and stays out here; the pipeline, its
     // layouts and the bands they were built from are the static lifetime the cache
     // owns. This is where item 15 moves compilation off `createProgram` and onto
@@ -1489,9 +1521,9 @@ function buildPipelines(
       // since a pipeline layout is a list the card reads by position.
       const grouped: BindingSpec[][] = [];
       for (const at of spec.bindings) (grouped[at.group] ??= []).push(at);
-      const gap = [...grouped.keys()].find((index) => grouped[index] === undefined);
+      const gap = [...grouped.keys()].find((group) => grouped[group] === undefined);
       if (gap !== undefined) {
-        throw new Error(`the frame for "${frame.id}" binds "${spec.name}" past group ${gap} with no group ${gap}`);
+        throw new Error(`the frame for "${frame.id}" binds pipeline ${index} past group ${gap} with no group ${gap}`);
       }
       const bands = grouped.length === 0 ? [[]] : grouped;
       const layouts = bands.map((entries, band) =>
@@ -1499,7 +1531,7 @@ function buildPipelines(
           // The band is left off the label of a pipeline that binds only group
           // zero, so a shader with one group makes the calls it made before groups
           // past the first existed.
-          label: bands.length > 1 ? `${spec.name}-bindings-${band}` : `${spec.name}-bindings`,
+          label: bands.length > 1 ? `pipeline${index}-bindings-${band}` : `pipeline${index}-bindings`,
           entries: entries.map((at) =>
             layoutEntry(
               at,
@@ -1509,7 +1541,7 @@ function buildPipelines(
         })
       );
       const pipelineLayout = device.createPipelineLayout({
-        label: `${spec.name}-layout`,
+        label: `pipeline${index}-layout`,
         bindGroupLayouts: layouts,
       });
 
@@ -1602,8 +1634,8 @@ function buildPipelines(
         bands,
       };
     }));
-    pipelines.set(spec.name, pipeline);
-    wired.push({ name: spec.name, layouts, bands });
+    pipelines.set(index, pipeline);
+    wired.push({ index, layouts, bands });
   }
 
   return { pipelines, wired };

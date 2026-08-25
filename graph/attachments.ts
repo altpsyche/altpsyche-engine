@@ -28,8 +28,9 @@
  * answer on any machine, and `cost()` can assert the store count and a trace can
  * assert the pass count with neither a card nor a browser.
  */
-import type { RenderPassSpec, RenderPipelineSpec, FrameGraph } from './types.js';
+import type { RenderPassSpec, FrameGraph } from './types.js';
 import { isRenderPass } from './types.js';
+import { indexOf } from './handles.js';
 
 /** Whether each attachment a render pass writes is kept — stored — or may be
  * discarded. `colour` is one flag per colour attachment in the pass's order; a
@@ -49,13 +50,12 @@ const NONE: PassStore = { colour: [], depth: false, stencil: false };
 /** Which halves a pass's depth attachment keeps, read off its pipeline's declared
  * format the same way `cost` and the executor read it: a depth op only over a
  * depth format, a mask only over a stencil one. A pass keeping depth with no
- * declared format defaults to keeping the depth half, mirroring `cost`. */
-function halvesOf(
-  pass: RenderPassSpec,
-  pipelineOf: Map<string, RenderPipelineSpec>
-): { depth: boolean; stencil: boolean } {
-  const spec = pipelineOf.get(pass.pipeline);
-  const format = spec?.depth?.format;
+ * declared format defaults to keeping the depth half, mirroring `cost`. The
+ * pipeline is resolved by the pass's `PipelineHandle` — its index in
+ * `frame.pipelines` — rather than by a name. */
+function halvesOf(pass: RenderPassSpec, frame: FrameGraph): { depth: boolean; stencil: boolean } {
+  const spec = frame.pipelines[indexOf(pass.pipeline)];
+  const format = spec?.kind === 'render' ? spec.depth?.format : undefined;
   return {
     depth: format ? format.startsWith('depth') : true,
     stencil: format ? format.includes('stencil') : false,
@@ -66,7 +66,7 @@ function halvesOf(
  * Per pass, which of its attachments the frame reads again afterwards and so must
  * store. Indexed to match `frame.passes`; a compute pass reads as `NONE`.
  *
- * An attachment named `R` written at pass `i` is kept when any of these can be
+ * An attachment at index `R` written at pass `i` is kept when any of these can be
  * shown: `R` is the frame's `present`ed picture, `R` is one of a `swap` pair (so
  * the next frame reads it), or some later pass reads it — by loading it as an
  * attachment of the same kind (colour, depth half, or stencil half), or by
@@ -74,48 +74,50 @@ function halvesOf(
  * a later pass keeps `R`, whether that binding samples it or overwrites it,
  * because over-keeping only costs bandwidth while under-keeping is a wrong
  * picture. Everything not shown to be read is discarded.
+ *
+ * The Sets below hold resource *indices* — `indexOf(handle)` — since a resource
+ * has no name to key by; two references are the same resource exactly when their
+ * handles carry the same index.
  */
 export function frameStores(frame: FrameGraph): PassStore[] {
-  const present = frame.present;
-  const swapped = new Set<string>();
+  const present = frame.present === undefined ? undefined : indexOf(frame.present);
+  const swapped = new Set<number>();
   for (const [one, other] of frame.swap ?? []) {
-    swapped.add(one);
-    swapped.add(other);
+    swapped.add(indexOf(one));
+    swapped.add(indexOf(other));
   }
-  const pipelineOf = new Map(
-    frame.pipelines
-      .filter((spec): spec is RenderPipelineSpec => spec.kind === 'render')
-      .map((spec) => [spec.name, spec])
-  );
 
-  const halves = (pass: RenderPassSpec) => halvesOf(pass, pipelineOf);
+  const halves = (pass: RenderPassSpec) => halvesOf(pass, frame);
 
-  /** Whether any pass after `after` binds `name` — samples it or writes it as a
-   * storage resource — which reads what an earlier pass left in it. */
-  const boundAfter = (name: string, after: number): boolean => {
+  /** Whether any pass after `after` binds resource index `resource` — samples it
+   * or writes it as a storage resource — which reads what an earlier pass left in
+   * it. */
+  const boundAfter = (resource: number, after: number): boolean => {
     for (let j = after + 1; j < frame.passes.length; j++) {
-      const spec = frame.pipelines.find((one) => one.name === frame.passes[j]!.pipeline);
-      if (spec?.bindings.some((binding) => binding.resource === name)) return true;
+      const spec = frame.pipelines[indexOf(frame.passes[j]!.pipeline)];
+      if (spec?.bindings.some((binding) => indexOf(binding.resource) === resource)) return true;
     }
     return false;
   };
 
-  /** Whether any later pass loads `name` as a colour attachment — keeps and reads
-   * what an earlier pass wrote rather than clearing over it. */
-  const colourLoadedAfter = (name: string, after: number): boolean => {
+  /** Whether any later pass loads resource index `resource` as a colour attachment
+   * — keeps and reads what an earlier pass wrote rather than clearing over it. */
+  const colourLoadedAfter = (resource: number, after: number): boolean => {
     for (let j = after + 1; j < frame.passes.length; j++) {
       const pass = frame.passes[j]!;
-      if (isRenderPass(pass) && pass.colour?.some((a) => a.resource === name && a.clear === undefined)) return true;
+      if (isRenderPass(pass) && pass.colour?.some((a) => indexOf(a.resource) === resource && a.clear === undefined))
+        return true;
     }
     return false;
   };
 
-  /** Whether any later pass loads the depth or stencil half of `name`. Which half
-   * is asked separately, since a pass may load one and clear the other. */
-  const depthLoadedAfter = (name: string, after: number, half: 'depth' | 'stencil'): boolean => {
+  /** Whether any later pass loads the depth or stencil half of resource index
+   * `resource`. Which half is asked separately, since a pass may load one and
+   * clear the other. */
+  const depthLoadedAfter = (resource: number, after: number, half: 'depth' | 'stencil'): boolean => {
     for (let j = after + 1; j < frame.passes.length; j++) {
       const pass = frame.passes[j]!;
-      if (!isRenderPass(pass) || pass.depth?.resource !== name) continue;
+      if (!isRenderPass(pass) || pass.depth === undefined || indexOf(pass.depth.resource) !== resource) continue;
       const keeps = halves(pass);
       if (half === 'depth' && keeps.depth && pass.depth.clear === undefined) return true;
       if (half === 'stencil' && keeps.stencil && pass.depth.stencilClear === undefined) return true;
@@ -123,12 +125,15 @@ export function frameStores(frame: FrameGraph): PassStore[] {
     return false;
   };
 
-  const keptColour = (name: string, i: number) =>
-    present === name || swapped.has(name) || colourLoadedAfter(name, i) || boundAfter(name, i);
-  const keptDepth = (name: string, i: number) =>
-    present === name || swapped.has(name) || depthLoadedAfter(name, i, 'depth') || boundAfter(name, i);
-  const keptStencil = (name: string, i: number) =>
-    present === name || swapped.has(name) || depthLoadedAfter(name, i, 'stencil') || boundAfter(name, i);
+  const keptColour = (resource: number, i: number) =>
+    present === resource || swapped.has(resource) || colourLoadedAfter(resource, i) || boundAfter(resource, i);
+  const keptDepth = (resource: number, i: number) =>
+    present === resource || swapped.has(resource) || depthLoadedAfter(resource, i, 'depth') || boundAfter(resource, i);
+  const keptStencil = (resource: number, i: number) =>
+    present === resource ||
+    swapped.has(resource) ||
+    depthLoadedAfter(resource, i, 'stencil') ||
+    boundAfter(resource, i);
 
   return frame.passes.map((pass, i): PassStore => {
     if (!isRenderPass(pass)) return NONE;
@@ -136,9 +141,9 @@ export function frameStores(frame: FrameGraph): PassStore[] {
     return {
       // A pass naming its own textures keeps each only where it is read again; a
       // pass writing the frame target keeps that one, since the frame is shown.
-      colour: pass.colour ? pass.colour.map((a) => keptColour(a.resource, i)) : [true],
-      depth: pass.depth ? keeps.depth && keptDepth(pass.depth.resource, i) : false,
-      stencil: pass.depth ? keeps.stencil && keptStencil(pass.depth.resource, i) : false,
+      colour: pass.colour ? pass.colour.map((a) => keptColour(indexOf(a.resource), i)) : [true],
+      depth: pass.depth ? keeps.depth && keptDepth(indexOf(pass.depth.resource), i) : false,
+      stencil: pass.depth ? keeps.stencil && keptStencil(indexOf(pass.depth.resource), i) : false,
     };
   });
 }
@@ -166,19 +171,19 @@ export function frameStores(frame: FrameGraph): PassStore[] {
  *   than raster ordering, and so the one that forbids the merge.
  */
 export function mergeGroups(frame: FrameGraph): number[][] {
-  const pipelineOf = new Map(frame.pipelines.map((spec) => [spec.name, spec]));
-  const partner = new Map<string, string>();
+  const partner = new Map<number, number>();
   for (const [one, other] of frame.swap ?? []) {
-    partner.set(one, other);
-    partner.set(other, one);
+    partner.set(indexOf(one), indexOf(other));
+    partner.set(indexOf(other), indexOf(one));
   }
 
   /** Whether a pass can be a group member at all: a render pass drawing its own
    * colour attachments, with no resolve, query, or stencil, whose every mergeable
-   * neighbour joins it by the pairwise test below. */
+   * neighbour joins it by the pairwise test below. The pipeline is resolved by the
+   * pass's `PipelineHandle`. */
   const mergeable = (index: number): boolean => {
     const pass = frame.passes[index]!;
-    const spec = pipelineOf.get(pass.pipeline);
+    const spec = frame.pipelines[indexOf(pass.pipeline)];
     if (!isRenderPass(pass) || spec?.kind !== 'render') return false;
     return (
       pass.colour !== undefined &&
@@ -190,43 +195,44 @@ export function mergeGroups(frame: FrameGraph): number[][] {
     );
   };
 
-  /** Whether `q` may join a group that has already written the attachments in
-   * `written`, given the group's head pass `p` for the attachment-set match. */
-  const joins = (p: RenderPassSpec, q: RenderPassSpec, written: Set<string>): boolean => {
+  /** Whether `q` may join a group that has already written the attachment indices
+   * in `written`, given the group's head pass `p` for the attachment-set match. */
+  const joins = (p: RenderPassSpec, q: RenderPassSpec, written: Set<number>): boolean => {
     // The same colour attachments in the same order — a bundle recorded for one
     // set replays into the other, and the merged pass opens them once.
     const pc = p.colour ?? [];
     const qc = q.colour ?? [];
     if (pc.length !== qc.length) return false;
-    if (!qc.every((a, k) => a.resource === pc[k]!.resource)) return false;
+    if (!qc.every((a, k) => indexOf(a.resource) === indexOf(pc[k]!.resource))) return false;
     // q builds on what is there rather than clearing it, or the merge would lose
     // the earlier draws it clears over.
     if (!qc.every((a) => a.clear === undefined)) return false;
     // The depth attachment matches and q loads it too, or neither keeps depth.
     if ((p.depth === undefined) !== (q.depth === undefined)) return false;
     if (p.depth && q.depth) {
-      if (q.depth.resource !== p.depth.resource) return false;
+      if (indexOf(q.depth.resource) !== indexOf(p.depth.resource)) return false;
       if (q.depth.clear !== undefined || q.depth.stencilClear !== undefined) return false;
     }
     // q must not sample or otherwise bind anything an earlier group member wrote,
     // nor its swap partner: that read needs a pass boundary the merge removes.
-    const qSpec = pipelineOf.get(q.pipeline);
+    const qSpec = frame.pipelines[indexOf(q.pipeline)];
     for (const binding of qSpec?.bindings ?? []) {
-      if (written.has(binding.resource)) return false;
-      const twin = partner.get(binding.resource);
+      const resource = indexOf(binding.resource);
+      if (written.has(resource)) return false;
+      const twin = partner.get(resource);
       if (twin !== undefined && written.has(twin)) return false;
     }
     return true;
   };
 
-  const writesOf = (pass: RenderPassSpec): string[] => [
-    ...(pass.colour?.map((a) => a.resource) ?? []),
-    ...(pass.depth ? [pass.depth.resource] : []),
+  const writesOf = (pass: RenderPassSpec): number[] => [
+    ...(pass.colour?.map((a) => indexOf(a.resource)) ?? []),
+    ...(pass.depth ? [indexOf(pass.depth.resource)] : []),
   ];
 
   const groups: number[][] = [];
   let current: number[] | null = null;
-  let written = new Set<string>();
+  let written = new Set<number>();
 
   for (let i = 0; i < frame.passes.length; i++) {
     const pass = frame.passes[i]!;
@@ -245,7 +251,7 @@ export function mergeGroups(frame: FrameGraph): number[][] {
       current = [i];
       written = new Set();
     }
-    for (const name of writesOf(render)) written.add(name);
+    for (const resource of writesOf(render)) written.add(resource);
   }
   if (current) groups.push(current);
   return groups;

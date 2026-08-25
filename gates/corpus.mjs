@@ -254,7 +254,14 @@ for (const { id, frame, values, entry, description, bytes, code } of corpus) {
       const backend = window.createWebGL2Backend(canvas);
       if (!backend) return { error: 'no webgl2 context' };
       backend.resize(W, H);
-      const generated = new Map(Object.entries(bytesArrays).map(([name, made]) => [name, new Uint8Array(made)]));
+      // The bytes arrive keyed by the address a description sends a reader to; a
+      // frame wants them keyed by the resource's index (its handle) now (item 87),
+      // remapped through the description's resource order the way `gates/lib.mjs` does.
+      const generated = new Map();
+      description.resources.forEach((resource, index) => {
+        const source = 'source' in resource ? resource.source : undefined;
+        if (source && bytesArrays[source]) generated.set(index, new Uint8Array(bytesArrays[source]));
+      });
       let program;
       try {
         const wgslFrame = window.frameOf(id, description, { wgsl: code }, undefined, undefined, generated);

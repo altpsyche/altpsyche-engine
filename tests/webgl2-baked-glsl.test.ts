@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createWebGL2Backend } from '../gpu/webgl2';
 import { frameOf, glslFrameOf } from '../toy/frame';
 import { loadFixture } from './support/fixture';
+import { buffer } from '../graph/handles.js';
 import { createFakeGL } from './support/fake-gl';
 import type { FixtureName } from './support/fixture';
 import type { FrameGraph, WgslFrameGraph } from '@altpsyche/engine';
@@ -34,17 +35,17 @@ const artifact = (): {
   presets: Record<string, { entries: Record<string, { stage: string; glsl: string }> }>;
 } => JSON.parse(readFileSync(ARTIFACT, 'utf8'));
 
-/** The bytes the loader fetched, keyed by the resource that reads them — the same
- * rekey `gates/lib.mjs`'s `loadCorpus` does. */
+/** The bytes the loader fetched, keyed by the index of the resource that reads them
+ * (item 87) — the same rekey `gates/lib.mjs`'s `loadCorpus` does. */
 function bytesOf(description: FrameGraph, generated: Map<string, Uint8Array<ArrayBuffer>>) {
-  const bytes = new Map<string, Uint8Array<ArrayBuffer>>();
-  for (const resource of description.resources) {
+  const bytes = new Map<number, Uint8Array<ArrayBuffer>>();
+  description.resources.forEach((resource, index) => {
     const source = 'source' in resource ? resource.source : undefined;
-    if (!source) continue;
+    if (!source) return;
     const made = generated.get(source);
     if (!made) throw new Error(`nothing generated ${source} for the fixture`);
-    bytes.set(resource.name, made);
-  }
+    bytes.set(index, made);
+  });
   return bytes;
 }
 
@@ -109,7 +110,7 @@ describe('the WebGL 2 corpus column draws baked GLSL off the source that carries
     // The per-draw binding survives the re-point where the shared block's binding
     // drops, so the backend can read which buffer to slice and how wide a record is.
     expect(frame!.pipelines[0].bindings).toEqual([
-      { group: 1, binding: 0, resource: 'slice', visibility: ['vertex'], perDraw: { size: 16 } },
+      { group: 1, binding: 0, resource: buffer(1), visibility: ['vertex'], perDraw: { size: 16 } },
     ]);
     const gl = createFakeGL();
     const backend = createWebGL2Backend(gl.canvas)!;

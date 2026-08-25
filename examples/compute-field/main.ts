@@ -25,6 +25,10 @@
  */
 import {
   frameOf,
+  moduleHandle,
+  pipelineHandle,
+  texture,
+  uniform,
   uniformBlockOf,
   resolve,
   webgl2Capabilities,
@@ -95,10 +99,9 @@ function groupsCovering(width: number, height: number): [number, number, number]
 const descriptionAt = (groups: [number, number, number]): FrameGraph => ({
   authored: 'wgsl',
   resources: [
-    { kind: 'uniform', name: 'uniforms' },
+    { kind: 'uniform' },
     {
       kind: 'texture',
-      name: 'picture',
       // Frame-sized, so the picture still covers the canvas after a resize; what
       // it held is gone when it is rebuilt, which is what a shader writing every
       // pixel of it every frame wants.
@@ -111,17 +114,16 @@ const descriptionAt = (groups: [number, number, number]): FrameGraph => ({
   pipelines: [
     {
       kind: 'compute',
-      name: 'paint',
-      compute: { module: WGSL_DOCUMENT, entry: 'paint' },
+      compute: { module: moduleHandle(0), entry: 'paint' },
       bindings: [
-        { group: 0, binding: 0, resource: 'uniforms', visibility: ['compute'] },
-        { group: 0, binding: 1, resource: 'picture', visibility: ['compute'], reads: 'storage' },
+        { group: 0, binding: 0, resource: uniform(0), visibility: ['compute'] },
+        { group: 0, binding: 1, resource: texture(1), visibility: ['compute'], reads: 'storage' },
       ],
       workgroup: WORKGROUP,
     },
   ],
-  passes: [{ pipeline: 'paint', groups }],
-  present: 'picture',
+  passes: [{ pipeline: pipelineHandle(0), groups }],
+  present: texture(1),
 });
 
 const canvas = document.querySelector('canvas') as HTMLCanvasElement;

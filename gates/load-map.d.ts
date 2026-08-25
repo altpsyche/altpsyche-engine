@@ -18,6 +18,7 @@ export type ModuleOf<M extends string> =
   M extends 'tests/support/fixture.ts' ? typeof import('../tests/support/fixture.js') :
   M extends 'fixtures/capability-fixtures.ts' ? typeof import('../fixtures/capability-fixtures.js') :
   M extends 'graph/cost.ts' ? typeof import('../graph/cost.js') :
+  M extends 'graph/handles.ts' ? typeof import('../graph/handles.js') :
   M extends 'gpu/webgpu.ts' ? typeof import('../gpu/webgpu.js') :
   M extends 'tests/support/fake-gpu.ts' ? typeof import('../tests/support/fake-gpu.js') :
   M extends 'index.ts' ? typeof import('../index.js') :

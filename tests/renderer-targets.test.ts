@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { moduleHandle, pipelineHandle, texture, uniform } from '../graph/handles.js';
 import type { RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
 
 /**
@@ -43,9 +44,8 @@ const OVER: GPUBlendState = {
   alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
 };
 
-const holds = (name: string, over: Partial<TextureResource> = {}): TextureResource => ({
+const holds = (over: Partial<TextureResource> = {}): TextureResource => ({
   kind: 'texture',
-  name,
   size: { scale: 1 },
   format: 'rgba8unorm',
   use: ['attachment'],
@@ -58,32 +58,31 @@ const pairFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-targets',
   authored: 'wgsl',
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
-    holds('picture'),
-    holds('distance'),
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    holds(),
+    holds(),
   ],
   modules: [{ name: 'wgsl', wgsl: TWO }],
   pipelines: [
     {
       kind: 'render',
-      name: 'both',
-      vertex: { module: 'wgsl', entry: 'corners' },
-      fragment: { module: 'wgsl', entry: 'both' },
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      vertex: { module: moduleHandle(0), entry: 'corners' },
+      fragment: { module: moduleHandle(0), entry: 'both' },
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       targets: [{ format: 'rgba8unorm' }, { format: 'rgba8unorm' }],
     },
   ],
   passes: [
     {
-      pipeline: 'both',
+      pipeline: pipelineHandle(0),
       draws: [{ vertices: 3 }],
       colour: [
-        { resource: 'picture', clear: [0, 0, 0, 1] },
-        { resource: 'distance', clear: [1, 1, 1, 1] },
+        { resource: texture(1), clear: [0, 0, 0, 1] },
+        { resource: texture(2), clear: [1, 1, 1, 1] },
       ],
     },
   ],
-  present: 'picture',
+  present: texture(1),
   ...over,
 });
 
@@ -111,11 +110,11 @@ describe('a fragment stage writing more than one colour', () => {
     const { gpu, backend } = backendOver();
     backend.program(pairFrame()).draw();
 
-    expect(attachments(gpu).map((attachment) => attachment.view)).toEqual(['picture.view', 'distance.view']);
+    expect(attachments(gpu).map((attachment) => attachment.view)).toEqual(['texture1.view', 'texture2.view']);
     // The frame is copied from whichever texture the description shows, so the
     // one the reader sees is named rather than being whichever the card happened
     // to hold.
-    expect(gpu.calls('copyTextureToTexture').map((call) => [call.from, call.to])).toEqual([['picture', 'frame']]);
+    expect(gpu.calls('copyTextureToTexture').map((call) => [call.from, call.to])).toEqual([['texture1', 'frame']]);
   });
 
   it('empties each attachment to the value it names', () => {
@@ -132,9 +131,9 @@ describe('a fragment stage writing more than one colour', () => {
     const { gpu, backend } = backendOver();
     const frame = pairFrame();
     const second = {
-      pipeline: 'both',
+      pipeline: pipelineHandle(0),
       draws: [{ vertices: 3 }],
-      colour: [{ resource: 'picture' }, { resource: 'distance' }],
+      colour: [{ resource: texture(1) }, { resource: texture(2) }],
     };
     backend.program(pairFrame({ passes: [...frame.passes, second] })).draw();
 
@@ -158,7 +157,7 @@ describe('a fragment stage writing more than one colour', () => {
     const single = { ...(frame.pipelines[0] as RenderPipelineSpec), targets: undefined };
     backend
       .program(
-        pairFrame({ pipelines: [single], passes: [{ pipeline: 'both', draws: [{ vertices: 3 }] }], present: undefined })
+        pairFrame({ pipelines: [single], passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }], present: undefined })
       )
       .draw();
 
@@ -179,18 +178,18 @@ describe('a fragment stage writing more than one colour', () => {
         // the backend's business rather than the source's.
         resources: [
           frame.resources[0] as never,
-          holds('picture', { use: ['attachment', 'sample'] }),
-          holds('distance', { use: ['attachment', 'sample'] }),
+          holds({ use: ['attachment', 'sample'] }),
+          holds({ use: ['attachment', 'sample'] }),
         ],
-        swap: [['picture', 'distance']],
+        swap: [[texture(1), texture(2)]],
       })
     );
     program.draw();
     program.draw();
 
     expect([0, 1].map((pass) => attachments(gpu, pass).map((attachment) => attachment.view))).toEqual([
-      ['picture.view', 'distance.view'],
-      ['distance.view', 'picture.view'],
+      ['texture1.view', 'texture2.view'],
+      ['texture2.view', 'texture1.view'],
     ]);
   });
 });
@@ -235,8 +234,8 @@ describe('what a description disagreeing with itself about its colours is refuse
 
   it('refuses a pipeline writing colours the pass attaches nothing for', () => {
     refuses(
-      { passes: [{ pipeline: 'both', draws: [{ vertices: 3 }] }] },
-      'the pass on "both" writes 2 colours and attaches none'
+      { passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }] },
+      'the pass on pipeline 0 writes 2 colours and attaches none'
     );
   });
 
@@ -244,14 +243,14 @@ describe('what a description disagreeing with itself about its colours is refuse
     const frame = pairFrame();
     refuses(
       { pipelines: [{ ...(frame.pipelines[0] as RenderPipelineSpec), targets: undefined }] },
-      'the pass on "both" attaches 2 textures and its pipeline writes the frame'
+      'the pass on pipeline 0 attaches 2 textures and its pipeline writes the frame'
     );
   });
 
   it('refuses a count that does not match, rather than writing as many as it has', () => {
     refuses(
-      { passes: [{ pipeline: 'both', draws: [{ vertices: 3 }], colour: [{ resource: 'picture', clear: [0, 0, 0, 1] }] }] },
-      'the pass on "both" writes 2 colours and attaches 1 textures'
+      { passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], colour: [{ resource: texture(1), clear: [0, 0, 0, 1] }] }] },
+      'the pass on pipeline 0 writes 2 colours and attaches 1 textures'
     );
   });
 
@@ -259,33 +258,35 @@ describe('what a description disagreeing with itself about its colours is refuse
     const frame = pairFrame();
     const passes = [
       {
-        pipeline: 'both',
+        pipeline: pipelineHandle(0),
         draws: [{ vertices: 3 }],
         colour: [
-          { resource: 'picture', clear: [0, 0, 0, 1] as [number, number, number, number] },
-          { resource: 'uniforms' },
+          { resource: texture(1), clear: [0, 0, 0, 1] as [number, number, number, number] },
+          { resource: texture(0) },
         ],
       },
     ];
+    // The validator front-runs the plan here: the colour handle resolves to the
+    // uniform at index 0, so it is refused for its kind before the plan reads it.
     refuses(
       { passes, present: frame.present },
-      'the frame for "fixture-targets" writes colour into "uniforms", which is no texture it declares'
+      'the frame for "fixture-targets" writes colour into resource 0, which is a uniform where a texture was wanted'
     );
   });
 
   it('refuses a texture in a format the colour written into it is not', () => {
     refuses(
       {
-        resources: [pairFrame().resources[0] as never, holds('picture'), holds('distance', { format: 'rgba16float' })],
+        resources: [pairFrame().resources[0] as never, holds(), holds({ format: 'rgba16float' })],
       },
-      'the pass on "both" writes colour 1 as rgba8unorm into "distance", which is rgba16float'
+      'the pass on pipeline 0 writes colour 1 as rgba8unorm into resource 2, which is rgba16float'
     );
   });
 
   it('refuses a texture that never asked to be an attachment', () => {
     refuses(
-      { resources: [pairFrame().resources[0] as never, holds('picture'), holds('distance', { use: ['sample'] })] },
-      'the frame for "fixture-targets" writes colour into "distance", which is no attachment it declares'
+      { resources: [pairFrame().resources[0] as never, holds(), holds({ use: ['sample'] })] },
+      'the frame for "fixture-targets" writes colour into resource 2, which is no attachment it declares'
     );
   });
 
@@ -293,10 +294,10 @@ describe('what a description disagreeing with itself about its colours is refuse
     refuses(
       {
         passes: [
-          { pipeline: 'both', draws: [{ vertices: 3 }], colour: [{ resource: 'picture' }, { resource: 'distance' }] },
+          { pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], colour: [{ resource: texture(1) }, { resource: texture(2) }] },
         ],
       },
-      'the pass on "both" keeps the colour in "picture", which no earlier pass wrote'
+      'the pass on pipeline 0 keeps the colour in resource 1, which no earlier pass wrote'
     );
   });
 });

@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { moduleHandle, pipelineHandle, texture, uniform } from '../graph/handles.js';
 import type { RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
 
 /**
@@ -44,7 +45,6 @@ fn far(shaded: Vertex) -> @location(0) vec4<f32> {
 
 const kept = (over: Partial<TextureResource> = {}): TextureResource => ({
   kind: 'texture',
-  name: 'depth',
   size: { scale: 1 },
   format: 'depth24plus',
   use: ['attachment'],
@@ -56,19 +56,18 @@ const kept = (over: Partial<TextureResource> = {}): TextureResource => ({
 const tiltedFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-depth',
   authored: 'wgsl',
-  resources: [{ kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] }, kept()],
+  resources: [{ kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] }, kept()],
   modules: [{ name: 'wgsl', wgsl: SURFACES }],
   pipelines: [
     {
       kind: 'render',
-      name: 'far',
-      vertex: { module: 'wgsl', entry: 'tilt' },
-      fragment: { module: 'wgsl', entry: 'far' },
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      vertex: { module: moduleHandle(0), entry: 'tilt' },
+      fragment: { module: moduleHandle(0), entry: 'far' },
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       depth: { format: 'depth24plus', compare: 'less', write: true },
     },
   ],
-  passes: [{ pipeline: 'far', draws: [{ vertices: 3 }], depth: { resource: 'depth', clear: 1 } }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], depth: { resource: texture(1), clear: 1 } }],
   ...over,
 });
 
@@ -84,12 +83,11 @@ const crossingFrame = (): FrameGraph => {
       behind,
       {
         ...behind,
-        name: 'near',
-        fragment: { module: 'wgsl', entry: 'near' },
+        fragment: { module: moduleHandle(0), entry: 'near' },
         depth: { format: 'depth24plus', compare: 'less', write: false },
       },
     ],
-    passes: [...frame.passes, { pipeline: 'near', draws: [{ vertices: 3 }], depth: { resource: 'depth' } }],
+    passes: [...frame.passes, { pipeline: pipelineHandle(1), draws: [{ vertices: 3 }], depth: { resource: texture(1) } }],
   };
 };
 
@@ -102,7 +100,7 @@ function backendOver() {
 }
 
 const madeDepth = (gpu: ReturnType<typeof createFakeGPU>) =>
-  gpu.calls('createTexture').filter((call) => call.label === 'depth');
+  gpu.calls('createTexture').filter((call) => call.label === 'texture1');
 
 describe('the texture a frame keeps its depth in', () => {
   it('is made at the frame size in the format the pipeline tests, asking to be an attachment', () => {
@@ -118,7 +116,7 @@ describe('the texture a frame keeps its depth in', () => {
     const { gpu, backend } = backendOver();
     const frame = tiltedFrame();
     const passes = [
-      { ...(frame.passes[0] as object), depth: { resource: 'depth', clear: 0.25 } },
+      { ...(frame.passes[0] as object), depth: { resource: texture(1), clear: 0.25 } },
     ] as FrameGraph['passes'];
     backend.program(tiltedFrame({ passes })).draw();
 
@@ -126,7 +124,7 @@ describe('the texture a frame keeps its depth in', () => {
     // card is asked to discard it rather than write it back (item 1). A second
     // pass loading it — as `crossingFrame` has — is what keeps the first store.
     expect(gpu.calls('beginRenderPass')[0]?.depth).toEqual({
-      view: 'depth.view',
+      view: 'texture1.view',
       loadOp: 'clear',
       storeOp: 'discard',
       clearValue: 0.25,
@@ -161,7 +159,7 @@ describe('the texture a frame keeps its depth in', () => {
     const { gpu, backend } = backendOver();
     const frame = tiltedFrame();
     const pipelines = [{ ...(frame.pipelines[0] as RenderPipelineSpec), depth: undefined }];
-    backend.program(tiltedFrame({ pipelines, passes: [{ pipeline: 'far', draws: [{ vertices: 3 }] }] })).draw();
+    backend.program(tiltedFrame({ pipelines, passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }] })).draw();
 
     expect(gpu.calls('beginRenderPass')[0]?.depth).toBeUndefined();
   });
@@ -179,15 +177,15 @@ describe('the texture a frame keeps its depth in', () => {
       [800, 600],
       [400, 300],
     ]);
-    expect(gpu.calls('texture.destroy').map((call) => call.label)).toContain('depth');
-    expect(gpu.calls('createView').filter((call) => call.label === 'depth')).toHaveLength(2);
+    expect(gpu.calls('texture.destroy').map((call) => call.label)).toContain('texture1');
+    expect(gpu.calls('createView').filter((call) => call.label === 'texture1')).toHaveLength(2);
   });
 
   it('goes when the program does, the same as every other texture it owns', () => {
     const { gpu, backend } = backendOver();
     backend.program(tiltedFrame()).dispose();
 
-    expect(gpu.calls('texture.destroy').map((call) => call.label)).toContain('depth');
+    expect(gpu.calls('texture.destroy').map((call) => call.label)).toContain('texture1');
   });
 });
 
@@ -208,7 +206,7 @@ describe('the depth state a pipeline draws under', () => {
     const { gpu, backend } = backendOver();
     const frame = tiltedFrame();
     const pipelines = [{ ...(frame.pipelines[0] as RenderPipelineSpec), depth: undefined }];
-    backend.program(tiltedFrame({ pipelines, passes: [{ pipeline: 'far', draws: [{ vertices: 3 }] }] }));
+    backend.program(tiltedFrame({ pipelines, passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }] }));
 
     const descriptor = gpu.calls('createRenderPipeline')[0]?.descriptor as GPURenderPipelineDescriptor;
     expect(descriptor.depthStencil).toBeUndefined();
@@ -227,8 +225,8 @@ describe('the depth state a pipeline draws under', () => {
     // Both passes attach the same texture, which is what makes the second
     // surface tested against the first rather than against a fresh one.
     expect(gpu.calls('beginRenderPass').map((call) => (call.depth as { view: string }).view)).toEqual([
-      'depth.view',
-      'depth.view',
+      'texture1.view',
+      'texture1.view',
     ]);
   });
 });
@@ -241,8 +239,8 @@ describe('what a description disagreeing with itself about depth is refused with
 
   it('refuses a pipeline testing depth over a pass that attaches nothing to keep it in', () => {
     refuses(
-      { passes: [{ pipeline: 'far', draws: [{ vertices: 3 }] }] },
-      'the pass on "far" tests depth and attaches nothing to keep it in'
+      { passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }] },
+      'the pass on pipeline 0 tests depth and attaches nothing to keep it in'
     );
   });
 
@@ -250,14 +248,16 @@ describe('what a description disagreeing with itself about depth is refused with
     const frame = tiltedFrame();
     refuses(
       { pipelines: [{ ...(frame.pipelines[0] as RenderPipelineSpec), depth: undefined }] },
-      'the pass on "far" keeps depth in "depth" and its pipeline tests none'
+      'the pass on pipeline 0 keeps depth in resource 1 and its pipeline tests none'
     );
   });
 
   it('refuses a name that is no texture the frame declares', () => {
+    // The validator front-runs the plan: the depth handle resolves to the uniform
+    // at index 0, refused for its kind before the plan reads it.
     refuses(
-      { passes: [{ pipeline: 'far', draws: [{ vertices: 3 }], depth: { resource: 'uniforms' } }] },
-      'the frame for "fixture-depth" keeps depth in "uniforms", which is no texture it declares'
+      { passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], depth: { resource: texture(0) } }] },
+      'the frame for "fixture-depth" keeps depth in resource 0, which is a uniform where a texture was wanted'
     );
   });
 
@@ -265,7 +265,7 @@ describe('what a description disagreeing with itself about depth is refused with
     const frame = tiltedFrame();
     refuses(
       { resources: [frame.resources[0] as never, kept({ format: 'depth32float' })] },
-      'the pass on "far" tests depth as depth24plus and keeps it in "depth", which is depth32float'
+      'the pass on pipeline 0 tests depth as depth24plus and keeps it in resource 1, which is depth32float'
     );
   });
 
@@ -273,14 +273,14 @@ describe('what a description disagreeing with itself about depth is refused with
     const frame = tiltedFrame();
     refuses(
       { resources: [frame.resources[0] as never, kept({ use: ['sample'] })] },
-      'the frame for "fixture-depth" keeps depth in "depth", which is no attachment it declares'
+      'the frame for "fixture-depth" keeps depth in resource 1, which is no attachment it declares'
     );
   });
 
   it('refuses a pass keeping a depth no earlier pass of the frame wrote', () => {
     refuses(
-      { passes: [{ pipeline: 'far', draws: [{ vertices: 3 }], depth: { resource: 'depth' } }] },
-      'the pass on "far" keeps the depth in "depth", which no earlier pass wrote'
+      { passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], depth: { resource: texture(1) } }] },
+      'the pass on pipeline 0 keeps the depth in resource 1, which no earlier pass wrote'
     );
   });
 

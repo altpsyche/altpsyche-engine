@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { planFromDescription, planFramePasses } from '../submit/plan';
-import { frameOf, wgslDescription, glslDescription, ONE_PASS, WGSL_DOCUMENT } from '@altpsyche/engine';
+import { frameOf, wgslDescription, glslDescription, WGSL_DOCUMENT } from '@altpsyche/engine';
+import { indexOf, pipelineHandle } from '../graph/handles.js';
+import type { VertexHandle } from '../graph/handles.js';
 import type { DrawnGeometry } from '../submit/plan';
 
 /**
@@ -32,8 +34,8 @@ const FRAGMENT = '#version 300 es\nprecision highp float;\nout vec4 c;\nvoid mai
 // A fullscreen frame draws the backend's own corners, so the plan never asks which
 // vertices a draw walks. A resolver that throws proves the corpus reaches the new
 // path through the seam without a resident lifetime under it.
-const noGeometry = (name: string): DrawnGeometry => {
-  throw new Error(`the seam resolved geometry "${name}" for a fullscreen frame`);
+const noGeometry = (handle: VertexHandle): DrawnGeometry => {
+  throw new Error(`the seam resolved geometry ${indexOf(handle)} for a fullscreen frame`);
 };
 
 describe('planFromDescription is the one seam a description reaches the new path through', () => {
@@ -54,7 +56,9 @@ describe('planFromDescription is the one seam a description reaches the new path
 
     expect(throughSeam).toEqual(byHand);
     expect(throughSeam).toHaveLength(1);
-    expect(throughSeam[0]?.spec.name).toBe(ONE_PASS);
+    // ONE_PASS is no longer a pipeline reference (item 87): the one pass names its
+    // pipeline by handle, the fullscreen pipeline at index 0.
+    expect(throughSeam[0]?.pass.pipeline).toBe(pipelineHandle(0));
   });
 
   it('plans a GLSL pair the same way, carrying both documents across', () => {

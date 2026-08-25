@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { moduleHandle, pipelineHandle, sampler, texture, uniform } from '../graph/handles.js';
 import type { FrameGraph } from '@altpsyche/engine';
 
 /**
@@ -31,10 +32,9 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
   return textureSample(previous, stateSampler, pixel.xy / uniforms.u_resolution);
 }`;
 
-const PAIR = (name: string) =>
+const PAIR = () =>
   ({
     kind: 'texture' as const,
-    name,
     size: { width: 256, height: 256 },
     format: 'rgba16float' as GPUTextureFormat,
     use: ['storage', 'sample'] as ('storage' | 'sample')[],
@@ -43,33 +43,32 @@ const PAIR = (name: string) =>
 const stateFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-state',
   authored: 'wgsl',
+  // uniforms=0, previous=1, next=2, stateSampler=3 — each named below by its index.
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
-    PAIR('previous'),
-    PAIR('next'),
-    { kind: 'sampler', name: 'stateSampler', filter: 'linear', wrap: 'clamp' },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    PAIR(),
+    PAIR(),
+    { kind: 'sampler', filter: 'linear', wrap: 'clamp' },
   ],
   modules: [{ name: 'wgsl', wgsl: STATE }],
   pipelines: [
     {
       kind: 'compute',
-      name: 'step',
-      compute: { module: 'wgsl', entry: 'step' },
+      compute: { module: moduleHandle(0), entry: 'step' },
       workgroup: [8, 8, 1],
       bindings: [
-        { group: 0, binding: 1, resource: 'previous', visibility: ['compute'] },
-        { group: 0, binding: 2, resource: 'next', visibility: ['compute'] },
+        { group: 0, binding: 1, resource: texture(1), visibility: ['compute'] },
+        { group: 0, binding: 2, resource: texture(2), visibility: ['compute'] },
       ],
     },
     {
       kind: 'render',
-      name: 'shade',
       vertex: 'fullscreen',
-      fragment: { module: 'wgsl', entry: 'shade' },
+      fragment: { module: moduleHandle(0), entry: 'shade' },
       bindings: [
-        { group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] },
-        { group: 0, binding: 1, resource: 'previous', visibility: ['fragment'] },
-        { group: 0, binding: 3, resource: 'stateSampler', visibility: ['fragment'] },
+        { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] },
+        { group: 0, binding: 1, resource: texture(1), visibility: ['fragment'] },
+        { group: 0, binding: 3, resource: sampler(3), visibility: ['fragment'] },
       ],
     },
   ],
@@ -77,10 +76,10 @@ const stateFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
     // The producer's group count (item 72): [32, 32, 1] covers the 256×256 grid
     // the `next` texture holds in whole blocks of the pipeline's 8×8 workgroup,
     // worked out from that fixed size rather than the frame's own by the backend.
-    { pipeline: 'step', groups: [32, 32, 1] },
-    { pipeline: 'shade', draws: [{ vertices: 3 }] },
+    { pipeline: pipelineHandle(0), groups: [32, 32, 1] },
+    { pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] },
   ],
-  swap: [['previous', 'next']],
+  swap: [[texture(1), texture(2)]],
   ...over,
 });
 
@@ -102,7 +101,7 @@ describe('the textures a swapping frame owns', () => {
 
     const pair = gpu.calls('createTexture').filter((call) => JSON.stringify(call.size) === '[256,256]');
     expect(pair).toHaveLength(2);
-    expect(pair.map((call) => call.label)).toEqual(['previous', 'next']);
+    expect(pair.map((call) => call.label)).toEqual(['texture1', 'texture2']);
   });
 
   it('gives both halves the flags for being written and read, since either may be either', () => {
@@ -122,16 +121,16 @@ describe('the textures a swapping frame owns', () => {
     expect(() =>
       backend.program({
         ...frame,
-        resources: [frame.resources[0]!, PAIR('previous'), { ...PAIR('next'), size: { width: 128, height: 128 } }, frame.resources[3]!],
+        resources: [frame.resources[0]!, PAIR(), { ...PAIR(), size: { width: 128, height: 128 } }, frame.resources[3]!],
       })
-    ).toThrow(/swaps "previous" and "next", which are not the same texture/);
+    ).toThrow(/swaps resource 1 and resource 2, which are not the same texture/);
   });
 
   it('refuses a pair naming a texture the frame never declares', () => {
     const { backend } = backendOver();
 
-    expect(() => backend.program(stateFrame({ swap: [['previous', 'absent']] }))).toThrow(
-      /swaps "absent", which is no texture it declares/
+    expect(() => backend.program(stateFrame({ swap: [[texture(1), texture(4)]] }))).toThrow(
+      /swaps resource 4, which is no texture it declares/
     );
   });
 });
@@ -159,8 +158,8 @@ describe('the two sets of bind groups', () => {
     const made = gpu
       .calls('createBindGroup')
       .map((call) => (call.bindings as { resource: string }[]).map((at) => at.resource));
-    expect(made[0]).toEqual(['previous.view', 'next.view']);
-    expect(made[2]).toEqual(['next.view', 'previous.view']);
+    expect(made[0]).toEqual(['texture1.view', 'texture2.view']);
+    expect(made[2]).toEqual(['texture2.view', 'texture1.view']);
   });
 
   it('give the pass that draws the half the other pass is not writing', () => {
@@ -170,25 +169,27 @@ describe('the two sets of bind groups', () => {
     const made = gpu
       .calls('createBindGroup')
       .map((call) => (call.bindings as { resource: string }[]).map((at) => at.resource));
-    expect(made[1]).toEqual(['buffer1', 'previous.view', 'stateSampler']);
-    expect(made[3]).toEqual(['buffer1', 'next.view', 'stateSampler']);
+    expect(made[1]).toEqual(['buffer1', 'texture1.view', 'sampler3']);
+    expect(made[3]).toEqual(['buffer1', 'texture2.view', 'sampler3']);
   });
 
   it('alternate across frames rather than one of them being read every time', () => {
     const { gpu, backend } = backendOver();
     // The picture is read out of whichever half the frame ended on, so the copy
     // out of it is what says which way round the pair was bound.
-    const program = backend.program(stateFrame({ present: 'next' }));
+    const program = backend.program(stateFrame({ present: texture(2) }));
     program.draw();
     program.draw();
     program.draw();
     program.draw();
 
+    // previous is resource 1 (label texture1), next is resource 2 (texture2); the
+    // frame presents `next` first, then the swap turns the pair each frame.
     expect(gpu.calls('copyTextureToTexture').map((call) => call.from)).toEqual([
-      'next',
-      'previous',
-      'next',
-      'previous',
+      'texture2',
+      'texture1',
+      'texture2',
+      'texture1',
     ]);
   });
 
@@ -207,11 +208,11 @@ describe('the two sets of bind groups', () => {
     // binds inline every frame, so its group follows the turn each of the three
     // draws runs on.
     expect(gpu.calls('setBindGroup').map((call) => call.group)).toEqual([
-      'shade-group-0',
-      'shade-group-1',
-      'step-group-0',
-      'step-group-1',
-      'step-group-0',
+      'pipeline1-group-0',
+      'pipeline1-group-1',
+      'pipeline0-group-0',
+      'pipeline0-group-1',
+      'pipeline0-group-0',
     ]);
   });
 
@@ -220,9 +221,11 @@ describe('the two sets of bind groups', () => {
     const frame = stateFrame();
     const program = backend.program({
       ...frame,
-      passes: [frame.passes[1]!],
+      // Keeping only the render pipeline moves it to pipeline index 0, so the pass
+      // that ran it is re-pointed at `pipelineHandle(0)` to match its new position.
+      passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
       pipelines: [frame.pipelines[1]!],
-      swap: undefined as unknown as [string, string][],
+      swap: undefined,
     });
     program.draw();
     program.draw();

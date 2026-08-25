@@ -35,6 +35,7 @@ const H = Number(process.env.H ?? 600);
 const { cost } = await loadFromRoot('graph/cost.ts');
 const { createWebGPUBackend } = await loadFromRoot('gpu/webgpu.ts');
 const { createFakeGPU } = await loadFromRoot('tests/support/fake-gpu.ts');
+const { buffer, uniform, vertices, indices, moduleHandle, pipelineHandle } = await loadFromRoot('graph/handles.ts');
 
 // A frame drawing geometry through a uniform block: the geometry and its indices
 // are written once at build, the uniform block is uploaded every frame.
@@ -52,11 +53,11 @@ struct Vertex { @builtin(position) at: vec4<f32>, @location(0) place: vec2<f32> 
 const gridFrame = {
   id: 'grid',
   authored: 'wgsl',
+  // uniforms=0, grid=1, gridIndices=2; module wgsl=0; pipeline warp=0.
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     {
       kind: 'vertices',
-      name: 'grid',
       stride: 16,
       attributes: [
         { location: 0, offset: 0, format: 'float32x2' },
@@ -64,23 +65,22 @@ const gridFrame = {
       ],
       topology: 'triangle-list',
       count: 9,
-      indices: 'gridIndices',
+      indices: indices(2),
       data: new Uint8Array(9 * 16),
     },
-    { kind: 'indices', name: 'gridIndices', format: 'uint16', count: 24, data: new Uint8Array(24 * 2) },
+    { kind: 'indices', format: 'uint16', count: 24, data: new Uint8Array(24 * 2) },
   ],
   modules: [{ name: 'wgsl', wgsl: GRID_SOURCE }],
   pipelines: [
     {
       kind: 'render',
-      name: 'warp',
-      vertex: { module: 'wgsl', entry: 'warp' },
-      fragment: { module: 'wgsl', entry: 'shade' },
-      geometry: 'grid',
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      vertex: { module: moduleHandle(0), entry: 'warp' },
+      fragment: { module: moduleHandle(0), entry: 'shade' },
+      geometry: vertices(1),
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: 'warp', draws: [{ instances: 3 }] }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ instances: 3 }] }],
 };
 
 // A compute frame writing a storage buffer whose first contents arrive with it:
@@ -97,24 +97,24 @@ const COMPUTE_SOURCE = `struct Uniforms { u_time: f32, u_resolution: vec2<f32> }
 const computeFrame = {
   id: 'compute',
   authored: 'wgsl',
+  // uniforms=0, tally=1; module wgsl=0; pipeline plan=0.
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
-    { kind: 'buffer', name: 'tally', bytes: 256, access: 'read-write', data: new Uint8Array(256) },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    { kind: 'buffer', bytes: 256, access: 'read-write', data: new Uint8Array(256) },
   ],
   modules: [{ name: 'wgsl', wgsl: COMPUTE_SOURCE }],
   pipelines: [
     {
       kind: 'compute',
-      name: 'plan',
-      compute: { module: 'wgsl', entry: 'plan' },
+      compute: { module: moduleHandle(0), entry: 'plan' },
       bindings: [
-        { group: 0, binding: 0, resource: 'uniforms', visibility: ['compute'] },
-        { group: 0, binding: 1, resource: 'tally', visibility: ['compute'] },
+        { group: 0, binding: 0, resource: uniform(0), visibility: ['compute'] },
+        { group: 0, binding: 1, resource: buffer(1), visibility: ['compute'] },
       ],
       workgroup: [1, 1, 1],
     },
   ],
-  passes: [{ pipeline: 'plan', groups: [1, 1, 1] }],
+  passes: [{ pipeline: pipelineHandle(0), groups: [1, 1, 1] }],
 };
 
 const frames = [

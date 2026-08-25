@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { indices, moduleHandle, pipelineHandle, uniform, vertices } from '../graph/handles.js';
 import type { FrameGraph, VertexResource } from '@altpsyche/engine';
 
 /**
@@ -36,7 +37,6 @@ const INDICES = new Uint8Array(24 * 2);
 
 const geometry = (over: Partial<VertexResource> = {}): VertexResource => ({
   kind: 'vertices',
-  name: 'grid',
   stride: 16,
   attributes: [
     { location: 0, offset: 0, format: 'float32x2' },
@@ -44,7 +44,7 @@ const geometry = (over: Partial<VertexResource> = {}): VertexResource => ({
   ],
   topology: 'triangle-list',
   count: 9,
-  indices: 'gridIndices',
+  indices: indices(2),
   data: VERTICES,
   ...over,
 });
@@ -53,22 +53,21 @@ const gridFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-geometry',
   authored: 'wgsl',
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     geometry(),
-    { kind: 'indices', name: 'gridIndices', format: 'uint16', count: 24, data: INDICES },
+    { kind: 'indices', format: 'uint16', count: 24, data: INDICES },
   ],
   modules: [{ name: 'wgsl', wgsl: GRID }],
   pipelines: [
     {
       kind: 'render',
-      name: 'warp',
-      vertex: { module: 'wgsl', entry: 'warp' },
-      fragment: { module: 'wgsl', entry: 'shade' },
-      geometry: 'grid',
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      vertex: { module: moduleHandle(0), entry: 'warp' },
+      fragment: { module: moduleHandle(0), entry: 'shade' },
+      geometry: vertices(1),
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: 'warp', draws: [{ instances: 3 }] }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ instances: 3 }] }],
   ...over,
 });
 
@@ -87,21 +86,41 @@ describe('the buffers a drawn frame owns', () => {
     program.draw();
     program.draw();
 
-    const made = gpu.calls('createBuffer').filter((call) => call.label === 'grid' || call.label === 'gridIndices');
+    // The geometry buffers are labelled by their resource index now (item 87):
+    // the vertices at index 1 are `buffer1`, the indices at index 2 `buffer2`.
+    // The unlabelled uniform block also falls back to `buffer1` on the recorder's
+    // own counter, so the two byte-sets are picked out by their usage — vertex or
+    // index — rather than by a label that no longer tells them apart.
+    const made = gpu
+      .calls('createBuffer')
+      .filter(
+        (call) =>
+          call.usage === (GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST) ||
+          call.usage === (GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST)
+      );
     expect(made.map((call) => [call.label, call.size])).toEqual([
-      ['grid', VERTICES.byteLength],
-      ['gridIndices', INDICES.byteLength],
+      ['buffer1', VERTICES.byteLength],
+      ['buffer2', INDICES.byteLength],
     ]);
-    expect(gpu.calls('writeBuffer').filter((call) => call.label === 'grid')).toHaveLength(1);
+    // The uniform block is never written here (no `setUniforms`), so the only
+    // `buffer1` write is the vertices' one fill.
+    expect(gpu.calls('writeBuffer').filter((call) => call.label === 'buffer1')).toHaveLength(1);
   });
 
   it('asks for the usage each buffer is read through and for being written into once', () => {
     const { gpu, backend } = backendOver();
     backend.program(gridFrame());
 
-    const usage = (label: string) => gpu.calls('createBuffer').find((call) => call.label === label)?.usage;
-    expect(usage('grid')).toBe(GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST);
-    expect(usage('gridIndices')).toBe(GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST);
+    // The last match, because the unlabelled uniform block shares the `buffer1`
+    // label (the recorder's counter) with the vertices at index 1, and the
+    // vertices are created after it.
+    const usage = (label: string) =>
+      gpu
+        .calls('createBuffer')
+        .filter((call) => call.label === label)
+        .at(-1)?.usage;
+    expect(usage('buffer1')).toBe(GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST);
+    expect(usage('buffer2')).toBe(GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST);
   });
 
   it('destroys both of them when the program goes', () => {
@@ -110,8 +129,8 @@ describe('the buffers a drawn frame owns', () => {
     program.dispose();
 
     const gone = gpu.calls('buffer.destroy').map((call) => call.label);
-    expect(gone).toContain('grid');
-    expect(gone).toContain('gridIndices');
+    expect(gone).toContain('buffer1');
+    expect(gone).toContain('buffer2');
   });
 });
 
@@ -152,13 +171,12 @@ describe('the pipeline that reads one vertex at a time', () => {
       pipelines: [
         {
           kind: 'render',
-          name: 'warp',
           vertex: 'fullscreen',
-          fragment: { module: 'wgsl', entry: 'shade' },
+          fragment: { module: moduleHandle(0), entry: 'shade' },
           bindings: [],
         },
       ],
-      passes: [{ pipeline: 'warp', draws: [{ vertices: 3 }] }],
+      passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
     });
 
     const descriptor = gpu.calls('createRenderPipeline')[0]?.descriptor as GPURenderPipelineDescriptor;
@@ -171,15 +189,15 @@ describe('the draw itself', () => {
     const { gpu, backend } = backendOver();
     backend.program(gridFrame()).draw();
 
-    expect(gpu.calls('setVertexBuffer')[0]).toMatchObject({ slot: 0, buffer: 'grid' });
-    expect(gpu.calls('setIndexBuffer')[0]).toMatchObject({ buffer: 'gridIndices', format: 'uint16' });
+    expect(gpu.calls('setVertexBuffer')[0]).toMatchObject({ slot: 0, buffer: 'buffer1' });
+    expect(gpu.calls('setIndexBuffer')[0]).toMatchObject({ buffer: 'buffer2', format: 'uint16' });
     expect(gpu.calls('drawIndexed')[0]).toMatchObject({ count: 24, instances: 3 });
     expect(gpu.calls('draw')).toHaveLength(0);
   });
 
   it('issues every draw the pass carries, in order, against the one pipeline (item 26)', () => {
     const { gpu, backend } = backendOver();
-    backend.program(gridFrame({ passes: [{ pipeline: 'warp', draws: [{ instances: 3 }, { instances: 2 }] }] })).draw();
+    backend.program(gridFrame({ passes: [{ pipeline: pipelineHandle(0), draws: [{ instances: 3 }, { instances: 2 }] }] })).draw();
 
     // One pass, three draws: the two the list names, each its own drawIndexed
     // with its own instance count, against the pipeline bound once for the pass.
@@ -214,13 +232,12 @@ describe('the draw itself', () => {
         pipelines: [
           {
             kind: 'render',
-            name: 'warp',
             vertex: 'fullscreen',
-            fragment: { module: 'wgsl', entry: 'shade' },
+            fragment: { module: moduleHandle(0), entry: 'shade' },
             bindings: [],
           },
         ],
-        passes: [{ pipeline: 'warp', draws: [{ vertices: 3 }] }],
+        passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
       })
       .draw();
 
@@ -238,7 +255,7 @@ describe('what a drawn frame is refused for', () => {
         ...frame,
         resources: [frame.resources[0]!, geometry({ data: undefined }), frame.resources[2]!],
       })
-    ).toThrow(/draws "grid" and carries no bytes for it/);
+    ).toThrow(/draws resource 1 and carries no bytes for it/);
   });
 
   it('refuses a pipeline reading geometry the frame declares as something else', () => {
@@ -248,9 +265,9 @@ describe('what a drawn frame is refused for', () => {
     expect(() =>
       backend.program({
         ...frame,
-        pipelines: [{ ...(frame.pipelines[0] as { kind: 'render' } & object), geometry: 'uniforms' }],
+        pipelines: [{ ...(frame.pipelines[0] as { kind: 'render' } & object), geometry: vertices(0) }],
       } as FrameGraph)
-    ).toThrow(/draws "uniforms", which is no geometry it declares/);
+    ).toThrow(/draws resource 0, which is no geometry it declares/);
   });
 
   it('refuses geometry ordered by indices the frame does not declare', () => {
@@ -260,9 +277,9 @@ describe('what a drawn frame is refused for', () => {
     expect(() =>
       backend.program({
         ...frame,
-        resources: [frame.resources[0]!, geometry({ indices: 'absent' }), frame.resources[2]!],
+        resources: [frame.resources[0]!, geometry({ indices: indices(3) }), frame.resources[2]!],
       })
-    ).toThrow(/orders itself by "absent", which it does not declare/);
+    ).toThrow(/orders itself by resource 3, which it does not declare/);
   });
 
   it('refuses a pass counting instances through a pipeline that reads no buffer', () => {
@@ -275,9 +292,8 @@ describe('what a drawn frame is refused for', () => {
         pipelines: [
           {
             kind: 'render',
-            name: 'warp',
-            vertex: { module: 'wgsl', entry: 'warp' },
-            fragment: { module: 'wgsl', entry: 'shade' },
+            vertex: { module: moduleHandle(0), entry: 'warp' },
+            fragment: { module: moduleHandle(0), entry: 'shade' },
             bindings: [],
           },
         ],
@@ -295,10 +311,10 @@ describe('what a drawn frame is refused for', () => {
         pipelines: [
           {
             ...(frame.pipelines[0] as { kind: 'render' } & object),
-            bindings: [{ group: 0, binding: 1, resource: 'grid', visibility: ['vertex'] }],
+            bindings: [{ group: 0, binding: 1, resource: vertices(1), visibility: ['vertex'] }],
           },
         ],
       } as FrameGraph)
-    ).toThrow(/binds "grid", which is geometry rather than a binding/);
+    ).toThrow(/binds resource 1, which is geometry rather than a binding/);
   });
 });

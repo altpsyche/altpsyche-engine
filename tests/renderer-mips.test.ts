@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { moduleHandle, pipelineHandle, sampler, texture, uniform } from '../graph/handles.js';
 import type { FrameGraph, TextureResource } from '@altpsyche/engine';
 
 /**
@@ -35,7 +36,6 @@ const BYTES = new Uint8Array(64 * 64 * 4).fill(128);
 
 const grain = (over: Partial<TextureResource> = {}): TextureResource => ({
   kind: 'texture',
-  name: 'grain',
   size: { width: 64, height: 64 },
   format: 'rgba8unorm',
   use: ['sample'],
@@ -47,26 +47,26 @@ const grain = (over: Partial<TextureResource> = {}): TextureResource => ({
 const laddered = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-mips',
   authored: 'wgsl',
+  // uniforms=0, grain=1, grainSampler=2 — each named below by its index.
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     grain(),
-    { kind: 'sampler', name: 'grainSampler', filter: 'linear', wrap: 'clamp' },
+    { kind: 'sampler', filter: 'linear', wrap: 'clamp' },
   ],
   modules: [{ name: 'wgsl', wgsl: READS }],
   pipelines: [
     {
       kind: 'render',
-      name: 'fragMain',
       vertex: 'fullscreen',
-      fragment: { module: 'wgsl', entry: 'fragMain' },
+      fragment: { module: moduleHandle(0), entry: 'fragMain' },
       bindings: [
-        { group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] },
-        { group: 0, binding: 1, resource: 'grain', visibility: ['fragment'], reads: 'sample' },
-        { group: 0, binding: 2, resource: 'grainSampler', visibility: ['fragment'] },
+        { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] },
+        { group: 0, binding: 1, resource: texture(1), visibility: ['fragment'], reads: 'sample' },
+        { group: 0, binding: 2, resource: sampler(2), visibility: ['fragment'] },
       ],
     },
   ],
-  passes: [{ pipeline: 'fragMain', draws: [{ vertices: 3 }] }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
   ...over,
 });
 
@@ -78,8 +78,9 @@ function backendOver() {
   return { gpu, backend };
 }
 
+// `grain` sits at resource index 1, so the backend labels its texture `texture1`.
 const made = (gpu: ReturnType<typeof createFakeGPU>) =>
-  gpu.calls('createTexture').find((call) => call.label === 'grain');
+  gpu.calls('createTexture').find((call) => call.label === 'texture1');
 
 describe('the levels a laddered texture is made with', () => {
   it('is as many as halving the longest side reaches, which is 7 for a 64 pixel picture', () => {
@@ -102,7 +103,7 @@ describe('the levels a laddered texture is made with', () => {
 
   it('leaves a texture read at its own size with no ladder at all', () => {
     const { gpu, backend } = backendOver();
-    const plain = laddered().resources.map((one) => (one.name === 'grain' ? grain({ mips: undefined }) : one));
+    const plain = laddered().resources.map((one) => (one.kind === 'texture' ? grain({ mips: undefined }) : one));
     backend.program(laddered({ resources: plain }));
 
     expect(made(gpu)?.levels).toBeUndefined();
@@ -138,7 +139,7 @@ describe('the passes that fill the ladder', () => {
     // Two views a pass, the level being drawn into and the level being read, and
     // one more with no level at all, which is the shader's own binding of the
     // whole picture.
-    const views = gpu.calls('createView').filter((call) => call.label === 'grain');
+    const views = gpu.calls('createView').filter((call) => call.label === 'texture1');
     expect(views.filter((call) => call.level === undefined)).toHaveLength(1);
     expect(views.filter((call) => call.level !== undefined).map((call) => [call.level, call.levels])).toEqual([
       [1, 1],
@@ -181,17 +182,17 @@ describe('the passes that fill the ladder', () => {
     backend.program(laddered());
 
     expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
-    expect(gpu.calls('createSampler').map((call) => call.label)).toEqual(['grainSampler', 'averaging']);
+    expect(gpu.calls('createSampler').map((call) => call.label)).toEqual(['sampler2', 'averaging']);
   });
 
   it('refuses a ladder over a texture the frame writes, since nothing redraws the levels', () => {
     const { backend } = backendOver();
     const written = laddered().resources.map((one) =>
-      one.name === 'grain' ? grain({ use: ['storage'], data: undefined }) : one
+      one.kind === 'texture' ? grain({ use: ['storage'], data: undefined }) : one
     );
 
     expect(() => backend.program(laddered({ resources: written }))).toThrow(
-      'the frame for "fixture-mips" gives "grain" a ladder and writes it every frame'
+      'the frame for "fixture-mips" gives resource 1 a ladder and writes it every frame'
     );
   });
 });

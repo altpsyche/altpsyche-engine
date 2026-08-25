@@ -156,16 +156,17 @@ export async function loadCorpus() {
     // frame wants them keyed by the resource that reads them, which is the
     // remapping a loader does after fetching those files.
     const bytes = new Map();
-    for (const resource of description.resources) {
+    description.resources.forEach((resource, index) => {
       // Only some resource kinds carry a `source`; the others skip here exactly as
       // a falsy `source` skipped them before, so the `in` narrows the union without
-      // changing which resources are remapped.
+      // changing which resources are remapped. A frame wants the bytes keyed by the
+      // resource's index (its handle), which is how `frameOf` reads them now (item 87).
       const source = 'source' in resource ? resource.source : undefined;
-      if (!source) continue;
+      if (!source) return;
       const made = generated.get(source);
       if (!made) throw new Error(`nothing generated ${source} for ${entry.id}`);
-      bytes.set(resource.name, made);
-    }
+      bytes.set(index, made);
+    });
 
     const block = uniformBlockOf(code);
     const uniforms = entry.uniforms.map((uniform) => ({ name: uniform.name, type: uniform.type }));

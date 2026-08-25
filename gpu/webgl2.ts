@@ -15,20 +15,19 @@
 import type {
   Backend,
   BindingSpec,
-  BufferResource,
   DeviceReport,
   FrameTraffic,
   FrameGraph,
-  IndexResource,
   RenderPipelineSpec,
   SamplerResource,
   ShaderProgram,
   StencilMode,
   TextureResource,
   UniformValue,
-  VertexResource,
 } from '../graph/types.js';
-import { componentsOf, drawsCorners, drawsIndirectly, isRenderPass, moduleOf, perDrawBinding } from '../graph/types.js';
+import { componentsOf, drawsCorners, drawsIndirectly, isRenderPass, moduleOf, perDrawBinding, resourceOf } from '../graph/types.js';
+import type { ResourceHandle, TextureHandle, VertexHandle } from '../graph/handles.js';
+import { indexOf } from '../graph/handles.js';
 import { Arena } from '../resource/arena.js';
 import type { Handle, Range } from '../resource/arena.js';
 import type { GL2Geometry, GL2PerDraw } from '../submit/gl2.js';
@@ -53,7 +52,7 @@ const FULLSCREEN_TRIANGLE = new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]);
  * refusal the item allows for a topology this backend could not draw — a guard
  * that only fires if the union grows a member with no GL mode.
  */
-function modeOfTopology(gl: WebGL2RenderingContext, topology: GPUPrimitiveTopology, frameId: string | undefined, geometryName: string): number {
+function modeOfTopology(gl: WebGL2RenderingContext, topology: GPUPrimitiveTopology, frameId: string | undefined, geometryIndex: number): number {
   switch (topology) {
     case 'point-list':
       return gl.POINTS;
@@ -66,7 +65,7 @@ function modeOfTopology(gl: WebGL2RenderingContext, topology: GPUPrimitiveTopolo
     case 'triangle-strip':
       return gl.TRIANGLE_STRIP;
     default:
-      throw new Error(`the geometry "${geometryName}" on "${frameId}" declares topology "${topology as string}", which this backend does not draw`);
+      throw new Error(`the geometry ${geometryIndex} on "${frameId}" declares topology "${topology as string}", which this backend does not draw`);
   }
 }
 
@@ -307,11 +306,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // other buffer is a storage buffer refused below. The size is one record's,
       // fixed for the binding; the group and binding are what tell the linked
       // program's per-draw block apart from the shared one.
-      const perDrawResources = new Map<string, { size: number; group: number; binding: number }>();
+      const perDrawResources = new Map<number, { size: number; group: number; binding: number }>();
       for (const spec of frame.pipelines) {
         const slice = perDrawBinding(spec);
         if (slice?.perDraw) {
-          perDrawResources.set(slice.resource, { size: slice.perDraw.size, group: slice.group, binding: slice.binding });
+          perDrawResources.set(indexOf(slice.resource), { size: slice.perDraw.size, group: slice.group, binding: slice.binding });
         }
       }
       // The alignment this device takes a dynamic offset at, read rather than
@@ -332,7 +331,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // multisampled *depth* stays refused too — item 80 is colour-attachment MSAA
       // alone — which is the safe direction until a later item lands it.
       const samplerSpecs = frame.resources.filter((resource): resource is SamplerResource => resource.kind === 'sampler');
-      for (const resource of frame.resources) {
+      for (const [index, resource] of frame.resources.entries()) {
         // The uniform block, the samplers, and the vertex/index buffers of the
         // shader's own geometry (item 77) are the resource kinds this backend keeps;
         // a storage buffer is a compute output and stays refused below.
@@ -342,13 +341,13 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // it is bound one slice at a time by a dynamic offset, which this backend
         // has where it has no storage buffer. Every other buffer is a storage
         // buffer a compute stage fills, refused by name.
-        if (resource.kind === 'buffer' && perDrawResources.has(resource.name)) continue;
+        if (resource.kind === 'buffer' && perDrawResources.has(index)) continue;
         if (resource.kind !== 'texture') {
           throw new Error(`the frame for "${frame.id}" declares a ${resource.kind} resource, and this backend has none`);
         }
         if (resource.use.includes('storage')) {
           throw new Error(
-            `the frame for "${frame.id}" writes "${resource.name}" as a storage texture, and this backend has no compute to fill one`
+            `the frame for "${frame.id}" writes resource ${index} as a storage texture, and this backend has no compute to fill one`
           );
         }
         // A ladder is generated off resident contents (item 50): the card averages
@@ -359,10 +358,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // same words the WebGPU backend refuses it. A ladder over a texture with no
         // contents at all has nothing to average, and is refused too.
         if (resource.mips && resource.use.includes('attachment')) {
-          throw new Error(`the frame for "${frame.id}" gives "${resource.name}" a ladder and writes it every frame`);
+          throw new Error(`the frame for "${frame.id}" gives resource ${index} a ladder and writes it every frame`);
         }
         if (resource.mips && !resource.data && !resource.source) {
-          throw new Error(`the frame for "${frame.id}" gives "${resource.name}" a ladder and no contents to build it from`);
+          throw new Error(`the frame for "${frame.id}" gives resource ${index} a ladder and no contents to build it from`);
         }
         // A texture keeping several samples of a pixel is a multisample colour
         // attachment (item 80): built as a multisample renderbuffer below, drawn
@@ -373,13 +372,13 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // refinement this backend still refuses (colour attachments alone).
         if (resource.samples) {
           if (depthStencilOf(resource.format) !== null) {
-            throw new Error(`the frame for "${frame.id}" keeps several samples of the depth in "${resource.name}", and this backend keeps one`);
+            throw new Error(`the frame for "${frame.id}" keeps several samples of the depth in resource ${index}, and this backend keeps one`);
           }
           if (resource.data || resource.source) {
-            throw new Error(`the frame for "${frame.id}" gives "${resource.name}" contents and several samples a pixel`);
+            throw new Error(`the frame for "${frame.id}" gives resource ${index} contents and several samples a pixel`);
           }
           if (resource.use.includes('sample')) {
-            throw new Error(`the frame for "${frame.id}" binds "${resource.name}", which keeps several samples a pixel`);
+            throw new Error(`the frame for "${frame.id}" binds resource ${index}, which keeps several samples a pixel`);
           }
         }
         // A texture arriving with contents is uploaded now (item 78) — but the
@@ -389,23 +388,23 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // backend makes for the same reason.
         if ((resource.data || resource.source) && followsFrame(resource.size)) {
           throw new Error(
-            `the frame for "${frame.id}" gives "${resource.name}" contents and the frame's own size, which is thrown away on a resize`
+            `the frame for "${frame.id}" gives resource ${index} contents and the frame's own size, which is thrown away on a resize`
           );
         }
       }
-      const textureSpecs = frame.resources.filter((resource): resource is TextureResource => resource.kind === 'texture');
       const shown = frame.present;
-      if (shown !== undefined && !textureSpecs.some((resource) => resource.name === shown)) {
-        throw new Error(`the frame for "${frame.id}" shows a resource "${shown}" it does not declare`);
+      const shownSpec = shown === undefined ? undefined : resourceOf(frame, shown);
+      if (shown !== undefined && (!shownSpec || shownSpec.kind !== 'texture')) {
+        throw new Error(`the frame for "${frame.id}" shows a resource ${indexOf(shown)} it does not declare`);
       }
       // The picture the reader sees is a single-sample texture the backend blits
       // onto the canvas; a multisample attachment is a renderbuffer nothing copies
       // out of, so showing one is refused by name, the same words the WebGPU
       // backend uses. Its samples reach the canvas through the single-sample
       // resolve target instead.
-      const shownMultisample = shown !== undefined && textureSpecs.find((resource) => resource.name === shown && resource.samples);
+      const shownMultisample = shownSpec?.kind === 'texture' && shownSpec.samples;
       if (shownMultisample) {
-        throw new Error(`the frame for "${frame.id}" shows "${shown}", which keeps several samples a pixel`);
+        throw new Error(`the frame for "${frame.id}" shows resource ${indexOf(shown as TextureHandle)}, which keeps several samples a pixel`);
       }
       // A texture declared in a depth or stencil format is a renderbuffer this
       // backend tests against rather than a colour texture it draws into or samples
@@ -413,10 +412,18 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // keeping several samples a pixel is a third: a multisample renderbuffer
       // averaged into a single-sample resolve target (item 80). A frame the reader
       // sees is never a depth format and never multisampled, so the present above
-      // is a single-sample colour texture.
-      const colourSpecs = textureSpecs.filter((resource) => depthStencilOf(resource.format) === null && !resource.samples);
-      const multisampleSpecs = textureSpecs.filter((resource) => depthStencilOf(resource.format) === null && resource.samples);
-      const depthSpecs = textureSpecs.filter((resource) => depthStencilOf(resource.format) !== null);
+      // is a single-sample colour texture. Each kind carries the index it sits at in
+      // `frame.resources`, so a handle a pass or a present names resolves to the
+      // record built for it (item 87).
+      const colourSpecs: { index: number; spec: TextureResource }[] = [];
+      const multisampleSpecs: { index: number; spec: TextureResource }[] = [];
+      const depthSpecs: { index: number; spec: TextureResource }[] = [];
+      for (const [index, resource] of frame.resources.entries()) {
+        if (resource.kind !== 'texture') continue;
+        if (depthStencilOf(resource.format) !== null) depthSpecs.push({ index, spec: resource });
+        else if (resource.samples) multisampleSpecs.push({ index, spec: resource });
+        else colourSpecs.push({ index, spec: resource });
+      }
 
       // The static lifetime of §5: the linked program a shader compiles to, keyed
       // on the structure of its documents, so two passes drawing one pipeline link
@@ -506,7 +513,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         width: number;
         height: number;
       }
-      const textures = new Map<string, TextureRecord>();
+      const textures = new Map<number, TextureRecord>();
       const WRAPS: Record<SamplerResource['wrap'], number> = {
         clamp: gl.CLAMP_TO_EDGE,
         repeat: gl.REPEAT,
@@ -560,7 +567,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         }
       };
-      for (const spec of colourSpecs) {
+      for (const { index, spec } of colourSpecs) {
         const record: TextureRecord = {
           spec,
           handle: textureArena.allocate(() => gl.createTexture() as WebGLTexture),
@@ -571,7 +578,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           width: 0,
           height: 0,
         };
-        textures.set(spec.name, record);
+        textures.set(index, record);
         buildTexture(record);
       }
 
@@ -596,7 +603,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         width: number;
         height: number;
       }
-      const depthTargets = new Map<string, DepthRecord>();
+      const depthTargets = new Map<number, DepthRecord>();
       const buildDepth = (record: DepthRecord) => {
         const { width: across, height: down } = sizeAt(record.spec.size, { width, height });
         record.width = across;
@@ -604,7 +611,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         gl.bindRenderbuffer(gl.RENDERBUFFER, renderbufferArena.resolve(record.handle));
         gl.renderbufferStorage(gl.RENDERBUFFER, record.internal, across, down);
       };
-      for (const spec of depthSpecs) {
+      for (const { index, spec } of depthSpecs) {
         const kind = depthStencilOf(spec.format) as NonNullable<ReturnType<typeof depthStencilOf>>;
         const record: DepthRecord = {
           spec,
@@ -617,7 +624,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           width: 0,
           height: 0,
         };
-        depthTargets.set(spec.name, record);
+        depthTargets.set(index, record);
         buildDepth(record);
       }
 
@@ -642,7 +649,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         width: number;
         height: number;
       }
-      const multisampleColours = new Map<string, MultisampleRecord>();
+      const multisampleColours = new Map<number, MultisampleRecord>();
       const buildMultisample = (record: MultisampleRecord) => {
         const { width: across, height: down } = sizeAt(record.spec.size, { width, height });
         record.width = across;
@@ -653,10 +660,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, renderbufferArena.resolve(record.handle));
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       };
-      for (const spec of multisampleSpecs) {
+      for (const { index, spec } of multisampleSpecs) {
         const samples = spec.samples as number;
         if (samples > maxSamples) {
-          throw new Error(`the frame for "${frame.id}" keeps ${samples} samples of "${spec.name}", and this device keeps ${maxSamples}`);
+          throw new Error(`the frame for "${frame.id}" keeps ${samples} samples of resource ${index}, and this device keeps ${maxSamples}`);
         }
         const record: MultisampleRecord = {
           spec,
@@ -667,7 +674,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           width: 0,
           height: 0,
         };
-        multisampleColours.set(spec.name, record);
+        multisampleColours.set(index, record);
         buildMultisample(record);
       }
       // Whether any pass tests depth or masks with a stencil, so a frame with none —
@@ -685,24 +692,23 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // rather than naming whatever the context hands back next (item 10), and
       // freed on dispose. Its bytes are the first contents of a resident resource,
       // so they are counted through `arena.wrote` the way WebGPU counts geometry
-      // (item 22). Cached by the geometry's name, so two passes drawing one
-      // primitive upload it once. A geometry the frame does not declare, or one
+      // (item 22). Cached by the geometry's index (item 87), so two passes drawing
+      // one primitive upload it once. A geometry the frame does not declare, or one
       // whose index buffer it names but does not carry, is refused by name.
       const geometryHandles: Handle[] = [];
-      const geometryPlans = new Map<string, GL2Geometry>();
+      const geometryPlans = new Map<number, GL2Geometry>();
       // How many float components one vertex attribute carries, read off the
       // format the generator wrote the bytes under. WebGL 2 reads them as floats,
       // which is every attribute the `quad-grid` primitive carries; a byte or
       // integer attribute is a later primitive's and wants a row here first.
       const componentsOfFormat = (format: string) => Number(/x(\d)/.exec(format)?.[1] ?? '1');
-      const buildGeometry = (name: string): GL2Geometry => {
-        const cached = geometryPlans.get(name);
+      const buildGeometry = (handle: VertexHandle): GL2Geometry => {
+        const key = indexOf(handle);
+        const cached = geometryPlans.get(key);
         if (cached) return cached;
-        const vertices = frame.resources.find(
-          (resource): resource is VertexResource => resource.kind === 'vertices' && resource.name === name
-        );
-        if (!vertices) throw new Error(`the frame for "${frame.id}" draws "${name}", which is no geometry it declares`);
-        if (!vertices.data) throw new Error(`the geometry "${name}" on "${frame.id}" arrived with no vertices to draw`);
+        const vertices = resourceOf(frame, handle);
+        if (!vertices || vertices.kind !== 'vertices') throw new Error(`the frame for "${frame.id}" draws resource ${key}, which is no geometry it declares`);
+        if (!vertices.data) throw new Error(`the geometry ${key} on "${frame.id}" arrived with no vertices to draw`);
         const vertexHandle = arena.allocate(() => gl.createBuffer() as WebGLBuffer);
         geometryHandles.push(vertexHandle);
         const vertexBuffer = arena.resolve(vertexHandle);
@@ -711,13 +717,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         arena.wrote(vertices.data.byteLength);
         let index: GL2Geometry['index'];
         if (vertices.indices !== undefined) {
-          const indices = frame.resources.find(
-            (resource): resource is IndexResource => resource.kind === 'indices' && resource.name === vertices.indices
-          );
-          if (!indices) {
-            throw new Error(`the geometry "${name}" on "${frame.id}" orders itself by "${vertices.indices}", which it does not declare`);
+          const indices = resourceOf(frame, vertices.indices);
+          if (!indices || indices.kind !== 'indices') {
+            throw new Error(`the geometry ${key} on "${frame.id}" orders itself by resource ${indexOf(vertices.indices)}, which it does not declare`);
           }
-          if (!indices.data) throw new Error(`the geometry "${name}" on "${frame.id}" arrived with no indices to order it`);
+          if (!indices.data) throw new Error(`the geometry ${key} on "${frame.id}" arrived with no indices to order it`);
           const indexHandle = arena.allocate(() => gl.createBuffer() as WebGLBuffer);
           geometryHandles.push(indexHandle);
           const indexBuffer = arena.resolve(indexHandle);
@@ -740,9 +744,9 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           })),
           vertexCount: vertices.count,
           index,
-          mode: modeOfTopology(gl, vertices.topology, frame.id, name),
+          mode: modeOfTopology(gl, vertices.topology, frame.id, key),
         };
-        geometryPlans.set(name, plan);
+        geometryPlans.set(key, plan);
         return plan;
       };
 
@@ -757,7 +761,15 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       }
       interface Sampled {
         unit: number;
-        texture: string;
+        /** The texture this binding samples, by its handle: the record it binds is
+         * `textures.get(indexOf(texture))` (item 87). */
+        texture: ResourceHandle;
+        /** The GLSL sampler variable this binding feeds, which `getUniformLocation`
+         * looks up by name. It is a shader fact rather than resource identity — the
+         * `_group_G_binding_B` a translated shader declares its combined sampler
+         * under — so it is named from the binding's own group and binding, not from
+         * the resource the handle points at, which no longer carries a name (item 87). */
+        sampler: string;
       }
       interface PassPlan {
         program: WebGLProgram;
@@ -770,7 +782,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // to. `resolve` names the single-sample target a multisample attachment's
         // samples are averaged into at the end of the pass (item 80), absent for a
         // single-sample attachment.
-        targets: { resource: string; clear?: [number, number, number, number]; resolve?: string }[];
+        targets: { resource: TextureHandle; clear?: [number, number, number, number]; resolve?: TextureHandle }[];
         // The framebuffer a multiple-target pass draws through, carrying every
         // colour at a successive attachment point; null for a canvas or
         // single-attachment pass, which keeps the framebuffer item 46 gave it.
@@ -812,10 +824,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // resource, so they are counted through `arena.wrote` the way the geometry
       // (item 77) and the WebGPU backend count theirs (item 22).
       const perDrawHandles: Handle[] = [];
-      const perDrawGLBuffers = new Map<string, WebGLBuffer>();
-      for (const name of perDrawResources.keys()) {
-        const spec = frame.resources.find((resource): resource is BufferResource => resource.kind === 'buffer' && resource.name === name);
-        if (!spec) continue;
+      const perDrawGLBuffers = new Map<number, WebGLBuffer>();
+      for (const index of perDrawResources.keys()) {
+        const spec = frame.resources[index];
+        if (!spec || spec.kind !== 'buffer') continue;
         const handle = arena.allocate(() => gl.createBuffer() as WebGLBuffer);
         perDrawHandles.push(handle);
         const buffer = arena.resolve(handle);
@@ -824,7 +836,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           gl.bufferData(gl.UNIFORM_BUFFER, spec.data, gl.STATIC_DRAW);
           arena.wrote(spec.data.byteLength);
         }
-        perDrawGLBuffers.set(name, buffer);
+        perDrawGLBuffers.set(index, buffer);
       }
 
       const plans: PassPlan[] = [];
@@ -844,10 +856,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // colours, each texture attached at a successive colour point so the fragment
       // stage's output i lands in attachment i. Its textures are respecified at the
       // new size on a resize, so this is called again beside them there.
-      const attachTargets = (fbo: Handle, targets: { resource: string }[]) => {
+      const attachTargets = (fbo: Handle, targets: { resource: TextureHandle }[]) => {
         gl.bindFramebuffer(gl.FRAMEBUFFER, framebufferArena.resolve(fbo));
         targets.forEach((target, at) => {
-          const record = textures.get(target.resource) as TextureRecord;
+          const record = textures.get(indexOf(target.resource)) as TextureRecord;
           gl.framebufferTexture2D(
             gl.FRAMEBUFFER,
             gl.COLOR_ATTACHMENT0 + at,
@@ -869,7 +881,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       };
       for (const pass of frame.passes) {
-        const spec = frame.pipelines.find((candidate) => candidate.name === pass.pipeline);
+        const spec = frame.pipelines[indexOf(pass.pipeline)];
         if (!spec) throw new Error(`the frame for "${frame.id}" describes no pass this backend can draw`);
         // Compute is the reason WebGPU is here, so it is refused by name rather
         // than approximated. The pipeline is asked as well as the pass, because a
@@ -884,8 +896,8 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // one `drawArrays`/`drawElements` per draw counting instances alone; one
         // reading none covers the frame with the shared quad, and a draw walking a
         // buffer beside it is refused for want of geometry to walk.
-        const geometryName = spec.kind === 'render' ? spec.geometry : undefined;
-        if (geometryName === undefined) {
+        const geometryHandle = spec.kind === 'render' ? spec.geometry : undefined;
+        if (geometryHandle === undefined) {
           // Every draw is asked, since one that walks a buffer is refused however
           // many corners-draws sit beside it (item 26).
           if (!pass.draws.every(drawsCorners)) {
@@ -896,10 +908,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // carrying its own corner count, or one reading its counts out of a
           // buffer (item 28's indirect), has no place in it.
           if (pass.draws.some(drawsCorners)) {
-            throw new Error(`the frame for "${frame.id}" mixes its own corners into the geometry "${geometryName}", which it draws from one buffer`);
+            throw new Error(`the frame for "${frame.id}" mixes its own corners into the geometry ${indexOf(geometryHandle)}, which it draws from one buffer`);
           }
           if (pass.draws.some(drawsIndirectly)) {
-            throw new Error(`the frame for "${frame.id}" reads "${geometryName}"'s draw counts out of a buffer, which this backend does not`);
+            throw new Error(`the frame for "${frame.id}" reads resource ${indexOf(geometryHandle)}'s draw counts out of a buffer, which this backend does not`);
           }
         }
         const compiled = compileSpec(spec);
@@ -923,19 +935,23 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // An attachment a pass draws into is a single-sample colour texture or a
           // multisample renderbuffer (item 80); either is an attachment the frame
           // declared, and one it did not is refused by name.
-          const record = textures.get(attachment.resource) ?? multisampleColours.get(attachment.resource);
+          const record = textures.get(indexOf(attachment.resource)) ?? multisampleColours.get(indexOf(attachment.resource));
           if (!record || !record.spec.use.includes('attachment')) {
-            throw new Error(`the frame for "${frame.id}" draws into "${attachment.resource}", which is no attachment it declares`);
+            throw new Error(`the frame for "${frame.id}" draws into resource ${indexOf(attachment.resource)}, which is no attachment it declares`);
           }
         }
         const sampled: Sampled[] = spec.bindings
           .filter((binding: BindingSpec) => binding.reads === 'sample')
           .map((binding, unit) => {
-            const record = textures.get(binding.resource);
+            const record = textures.get(indexOf(binding.resource));
             if (!record || !record.spec.use.includes('sample')) {
-              throw new Error(`the frame for "${frame.id}" samples "${binding.resource}", which is no texture it reads`);
+              throw new Error(`the frame for "${frame.id}" samples resource ${indexOf(binding.resource)}, which is no texture it reads`);
             }
-            return { unit, texture: binding.resource };
+            // The texture is resolved by handle; the GL sampler uniform is bound by
+            // the GLSL variable name the shader declares it under, which is the
+            // binding's own `_group_G_binding_B` rather than the resource's identity
+            // (item 87).
+            return { unit, texture: binding.resource, sampler: `_group_${binding.group}_binding_${binding.binding}` };
           });
         // A pass writing several colours draws through a framebuffer of its own
         // carrying all of them; one or none keeps the single-texture framebuffer or
@@ -949,21 +965,21 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // WebGPU side with. The resolve target is a single-sample colour
         // attachment the frame declares. Averaging several samples across the many
         // targets of one pass is not in item 80's scope and is refused by name.
-        if (targets.length > 1 && targets.some((target) => multisampleColours.has(target.resource))) {
+        if (targets.length > 1 && targets.some((target) => multisampleColours.has(indexOf(target.resource)))) {
           throw new Error(`the frame for "${frame.id}" keeps several samples in one of a pass's several targets, which this backend does not average`);
         }
         for (const target of targets) {
-          const multisample = multisampleColours.get(target.resource);
+          const multisample = multisampleColours.get(indexOf(target.resource));
           if (multisample) {
             if (target.resolve === undefined) {
-              throw new Error(`the frame for "${frame.id}" keeps several samples a pixel in "${target.resource}" and averages them nowhere`);
+              throw new Error(`the frame for "${frame.id}" keeps several samples a pixel in resource ${indexOf(target.resource)} and averages them nowhere`);
             }
-            const into = textures.get(target.resolve);
+            const into = textures.get(indexOf(target.resolve));
             if (!into || !into.spec.use.includes('attachment')) {
-              throw new Error(`the frame for "${frame.id}" averages "${target.resource}" into "${target.resolve}", which is no attachment it declares`);
+              throw new Error(`the frame for "${frame.id}" averages resource ${indexOf(target.resource)} into resource ${indexOf(target.resolve)}, which is no attachment it declares`);
             }
           } else if (target.resolve !== undefined) {
-            throw new Error(`the frame for "${frame.id}" averages "${target.resource}" into "${target.resolve}" and it keeps one sample a pixel`);
+            throw new Error(`the frame for "${frame.id}" averages resource ${indexOf(target.resource)} into resource ${indexOf(target.resolve)} and it keeps one sample a pixel`);
           }
         }
         let mrtFbo: Handle | null = null;
@@ -981,9 +997,9 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // buffer cannot attach to the canvas.
         let depthPlan: PassPlan['depth'] = null;
         if (isRenderPass(pass) && pass.depth) {
-          const record = depthTargets.get(pass.depth.resource);
+          const record = depthTargets.get(indexOf(pass.depth.resource));
           if (!record) {
-            throw new Error(`the frame for "${frame.id}" tests against "${pass.depth.resource}", which is no depth or stencil it declares`);
+            throw new Error(`the frame for "${frame.id}" tests against resource ${indexOf(pass.depth.resource)}, which is no depth or stencil it declares`);
           }
           if (targets.length === 0) {
             throw new Error(`the frame for "${frame.id}" tests depth while drawing the frame directly, and a depth buffer cannot attach to the canvas`);
@@ -992,10 +1008,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // multisample colour target, and a multisample depth is out of item 80's
           // scope, so a depth pass drawing a multisample attachment is refused by
           // name rather than reaching the single-sample framebuffer lookup below.
-          if (multisampleColours.has(targets[0].resource)) {
-            throw new Error(`the frame for "${frame.id}" tests depth against the multisample target "${targets[0].resource}", which this backend does not`);
+          if (multisampleColours.has(indexOf(targets[0].resource))) {
+            throw new Error(`the frame for "${frame.id}" tests depth against the multisample target resource ${indexOf(targets[0].resource)}, which this backend does not`);
           }
-          const fbo = targets.length === 1 ? ((textures.get(targets[0].resource) as TextureRecord).fboHandle as Handle) : (mrtFbo as Handle);
+          const fbo = targets.length === 1 ? ((textures.get(indexOf(targets[0].resource)) as TextureRecord).fboHandle as Handle) : (mrtFbo as Handle);
           attachDepth(fbo, record);
           const tested = spec.kind === 'render' ? spec.depth : undefined;
           depthPlan = {
@@ -1019,7 +1035,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         const slice = perDrawBinding(spec);
         let perDrawPlan: GL2PerDraw | null = null;
         if (slice?.perDraw) {
-          const buffer = perDrawGLBuffers.get(slice.resource) as WebGLBuffer;
+          const buffer = perDrawGLBuffers.get(indexOf(slice.resource)) as WebGLBuffer;
           const offsets = pass.draws.map((draw) => (draw as { perDraw?: number }).perDraw ?? 0);
           for (const offset of offsets) {
             if (offset % perDrawAlignment !== 0) {
@@ -1044,7 +1060,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           sampled,
           // The vertex buffer of the shader's own geometry, built once and shared by
           // two passes drawing one primitive; null for a fullscreen corners pass.
-          geometry: geometryName === undefined ? null : buildGeometry(geometryName),
+          geometry: geometryHandle === undefined ? null : buildGeometry(geometryHandle),
           depth: depthPlan,
           perDraw: perDrawPlan,
         });
@@ -1168,10 +1184,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             // The pass's first target is a single-sample colour texture or a
             // multisample renderbuffer (item 80); both carry a framebuffer and a
             // size, so the draw reads either through the one `primary`.
-            const primaryName = plan.targets[0]?.resource;
-            const primaryMultisample = primaryName === undefined ? undefined : multisampleColours.get(primaryName);
+            const primaryHandle = plan.targets[0]?.resource;
+            const primaryMultisample = primaryHandle === undefined ? undefined : multisampleColours.get(indexOf(primaryHandle));
             const primary =
-              primaryName === undefined ? null : primaryMultisample ?? (textures.get(primaryName) as TextureRecord);
+              primaryHandle === undefined ? null : primaryMultisample ?? (textures.get(indexOf(primaryHandle)) as TextureRecord);
             const framebuffer =
               plan.targets.length === 0
                 ? null
@@ -1240,10 +1256,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             }
             gl.useProgram(plan.program);
             for (const read of plan.sampled) {
-              const source = textures.get(read.texture) as TextureRecord;
+              const source = textures.get(indexOf(read.texture)) as TextureRecord;
               gl.activeTexture(gl.TEXTURE0 + read.unit);
               gl.bindTexture(gl.TEXTURE_2D, textureArena.resolve(source.handle));
-              const location = gl.getUniformLocation(plan.program, read.texture);
+              const location = gl.getUniformLocation(plan.program, read.sampler);
               if (location) gl.uniform1i(location, read.unit);
             }
             drawGL2Frame({
@@ -1267,7 +1283,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             // then shows.
             const resolveOut = plan.targets[0]?.resolve;
             if (primaryMultisample && resolveOut !== undefined) {
-              const into = textures.get(resolveOut) as TextureRecord;
+              const into = textures.get(indexOf(resolveOut)) as TextureRecord;
               gl.bindFramebuffer(gl.READ_FRAMEBUFFER, framebufferArena.resolve(primaryMultisample.fboHandle));
               gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, framebufferArena.resolve(into.fboHandle as Handle));
               gl.blitFramebuffer(0, 0, primaryMultisample.width, primaryMultisample.height, 0, 0, into.width, into.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
@@ -1279,7 +1295,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // itself. A frame whose last pass drew the canvas directly names no
           // present and needs no blit.
           if (shown !== undefined) {
-            const record = textures.get(shown) as TextureRecord;
+            const record = textures.get(indexOf(shown)) as TextureRecord;
             if (record.fboHandle !== null) {
               gl.bindFramebuffer(gl.READ_FRAMEBUFFER, framebufferArena.resolve(record.fboHandle));
               gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);

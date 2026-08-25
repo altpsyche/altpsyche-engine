@@ -4,6 +4,7 @@ import { frameOf } from '@altpsyche/engine';
 import type { FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU } from './support/fake-gpu';
 import { loadFixture } from './support/fixture';
+import { texture } from '../graph/handles.js';
 
 /**
  * The compute preset as the build wrote it, drawn against the recording device.
@@ -98,7 +99,7 @@ describe('the compute preset the build wrote', () => {
 
   it('owns a texture the size of the picture in the format its source writes', () => {
     const { gpu } = drawn();
-    const picture = gpu.calls('createTexture').find((call) => call.label === 'picture');
+    const picture = gpu.calls('createTexture').find((call) => call.label === 'texture1');
     expect(picture?.size).toEqual([WIDTH, HEIGHT]);
     expect(picture?.format).toBe('rgba8unorm');
     // Written by the program, and readable because the frame says it is the
@@ -111,7 +112,7 @@ describe('the compute preset the build wrote', () => {
     const { gpu } = drawn();
     const copies = gpu.calls('copyTextureToTexture');
     expect(copies).toHaveLength(1);
-    expect(copies[0]).toMatchObject({ from: 'picture', to: 'frame' });
+    expect(copies[0]).toMatchObject({ from: 'texture1', to: 'frame' });
   });
 
   it('makes a frame target that may be copied into as well as out of', () => {
@@ -122,6 +123,6 @@ describe('the compute preset the build wrote', () => {
 
   it('has a description in the manifest at all, or every case here measures nothing', () => {
     expect(description.passes).toHaveLength(1);
-    expect(description.present).toBe('picture');
+    expect(description.present).toBe(texture(1));
   });
 });

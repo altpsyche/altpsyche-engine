@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { buffer, texture, uniform, vertices, indices, moduleHandle, pipelineHandle } from '../graph/handles.js';
 import type { BufferResource, FrameGraph } from '@altpsyche/engine';
 
 /**
@@ -41,7 +42,6 @@ fn shade(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
 
 const counts = (over: Partial<BufferResource> = {}): BufferResource => ({
   kind: 'buffer',
-  name: 'counts',
   bytes: 32,
   access: 'read-write',
   ...over,
@@ -54,41 +54,38 @@ const planned = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-indirect',
   authored: 'wgsl',
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     counts(),
-    { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['storage'] },
+    { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['storage'] },
   ],
   modules: [{ name: 'wgsl', wgsl: PLANS }],
   pipelines: [
     {
       kind: 'compute',
-      name: 'plan',
-      compute: { module: 'wgsl', entry: 'plan' },
+      compute: { module: moduleHandle(0), entry: 'plan' },
       bindings: [
-        { group: 0, binding: 0, resource: 'uniforms', visibility: ['compute'] },
-        { group: 0, binding: 1, resource: 'counts', visibility: ['compute'] },
+        { group: 0, binding: 0, resource: uniform(0), visibility: ['compute'] },
+        { group: 0, binding: 1, resource: buffer(1), visibility: ['compute'] },
       ],
       workgroup: [1, 1, 1],
     },
     {
       kind: 'compute',
-      name: 'paint',
-      compute: { module: 'wgsl', entry: 'paint' },
-      bindings: [{ group: 0, binding: 2, resource: 'picture', visibility: ['compute'] }],
+      compute: { module: moduleHandle(0), entry: 'paint' },
+      bindings: [{ group: 0, binding: 2, resource: texture(2), visibility: ['compute'] }],
       workgroup: [8, 8, 1],
     },
     {
       kind: 'render',
-      name: 'shade',
       vertex: 'fullscreen',
-      fragment: { module: 'wgsl', entry: 'shade' },
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      fragment: { module: moduleHandle(0), entry: 'shade' },
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
   passes: [
-    { pipeline: 'plan', groups: [1, 1, 1] },
-    { pipeline: 'paint', groups: { indirect: 'counts' } },
-    { pipeline: 'shade', draws: [{ indirect: 'counts' }] },
+    { pipeline: pipelineHandle(0), groups: [1, 1, 1] },
+    { pipeline: pipelineHandle(1), groups: { indirect: buffer(1) } },
+    { pipeline: pipelineHandle(2), draws: [{ indirect: buffer(1) }] },
   ],
   ...over,
 });
@@ -102,7 +99,6 @@ const ordered = (over: Partial<WgslFrameGraph> = {}): FrameGraph => {
       ...base.resources,
       {
         kind: 'vertices',
-        name: 'grid',
         stride: 16,
         attributes: [
           { location: 0, offset: 0, format: 'float32x2' },
@@ -110,20 +106,19 @@ const ordered = (over: Partial<WgslFrameGraph> = {}): FrameGraph => {
         ],
         topology: 'triangle-list',
         count: 9,
-        indices: 'gridIndices',
+        indices: indices(4),
         data: VERTICES,
       },
-      { kind: 'indices', name: 'gridIndices', format: 'uint16', count: 24, data: INDICES },
+      { kind: 'indices', format: 'uint16', count: 24, data: INDICES },
     ],
     pipelines: [
       ...base.pipelines.slice(0, 2),
       {
         kind: 'render',
-        name: 'shade',
         vertex: 'fullscreen',
-        fragment: { module: 'wgsl', entry: 'shade' },
-        geometry: 'grid',
-        bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+        fragment: { module: moduleHandle(0), entry: 'shade' },
+        geometry: vertices(3),
+        bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       },
     ],
     ...over,
@@ -144,7 +139,7 @@ describe('a pass whose count comes out of a buffer', () => {
     const program = backend.program(planned());
     program.draw();
 
-    expect(gpu.calls('dispatchWorkgroupsIndirect').map((call) => [call.buffer, call.offset])).toEqual([['counts', 0]]);
+    expect(gpu.calls('dispatchWorkgroupsIndirect').map((call) => [call.buffer, call.offset])).toEqual([['buffer1', 0]]);
     // The first pass still counts its own blocks, so a frame with one of each has
     // one call of each kind rather than both being read from a buffer.
     expect(gpu.calls('dispatchWorkgroups').map((call) => [call.x, call.y, call.z])).toEqual([[1, 1, 1]]);
@@ -155,7 +150,7 @@ describe('a pass whose count comes out of a buffer', () => {
     const program = backend.program(planned());
     program.draw();
 
-    expect(gpu.calls('drawIndirect').map((call) => [call.buffer, call.offset])).toEqual([['counts', 0]]);
+    expect(gpu.calls('drawIndirect').map((call) => [call.buffer, call.offset])).toEqual([['buffer1', 0]]);
     expect(gpu.calls('draw')).toEqual([]);
   });
 
@@ -164,19 +159,19 @@ describe('a pass whose count comes out of a buffer', () => {
     const program = backend.program(ordered());
     program.draw();
 
-    expect(gpu.calls('drawIndexedIndirect').map((call) => [call.buffer, call.offset])).toEqual([['counts', 0]]);
+    expect(gpu.calls('drawIndexedIndirect').map((call) => [call.buffer, call.offset])).toEqual([['buffer1', 0]]);
     expect(gpu.calls('drawIndirect')).toEqual([]);
     // Which vertices the card reads and how many of them it reads are two
     // questions, and only the second is in the buffer.
-    expect(gpu.calls('setVertexBuffer').map((call) => call.buffer)).toEqual(['grid']);
-    expect(gpu.calls('setIndexBuffer').map((call) => [call.buffer, call.format])).toEqual([['gridIndices', 'uint16']]);
+    expect(gpu.calls('setVertexBuffer').map((call) => call.buffer)).toEqual(['buffer3']);
+    expect(gpu.calls('setIndexBuffer').map((call) => [call.buffer, call.format])).toEqual([['buffer4', 'uint16']]);
   });
 
   it('asks for the buffer to be readable as counts as well as writable by the shader', () => {
     const { gpu, backend } = backendOver();
     backend.program(planned());
 
-    expect(gpu.calls('createBuffer').find((call) => call.label === 'counts')?.usage).toBe(
+    expect(gpu.calls('createBuffer').find((call) => call.label === 'buffer1' && (Number(call.usage) & GPUBufferUsage.STORAGE) !== 0)?.usage).toBe(
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.INDIRECT
     );
   });
@@ -186,14 +181,14 @@ describe('a pass whose count comes out of a buffer', () => {
     backend.program(
       planned({
         passes: [
-          { pipeline: 'plan', groups: [1, 1, 1] },
-          { pipeline: 'paint', groups: [1, 1, 1] },
-          { pipeline: 'shade', draws: [{ vertices: 3 }] },
+          { pipeline: pipelineHandle(0), groups: [1, 1, 1] },
+          { pipeline: pipelineHandle(1), groups: [1, 1, 1] },
+          { pipeline: pipelineHandle(2), draws: [{ vertices: 3 }] },
         ],
       })
     );
 
-    expect(gpu.calls('createBuffer').find((call) => call.label === 'counts')?.usage).toBe(
+    expect(gpu.calls('createBuffer').find((call) => call.label === 'buffer1' && (Number(call.usage) & GPUBufferUsage.STORAGE) !== 0)?.usage).toBe(
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
     );
   });
@@ -209,12 +204,12 @@ describe('what a count read out of a buffer is refused for', () => {
     refused(
       planned({
         passes: [
-          { pipeline: 'plan', groups: [1, 1, 1] },
-          { pipeline: 'paint', groups: { indirect: 'picture' } },
-          { pipeline: 'shade', draws: [{ vertices: 3 }] },
+          { pipeline: pipelineHandle(0), groups: [1, 1, 1] },
+          { pipeline: pipelineHandle(1), groups: { indirect: buffer(2) } },
+          { pipeline: pipelineHandle(2), draws: [{ vertices: 3 }] },
         ],
       }),
-      'the frame for "fixture-indirect" reads its counts from "picture", which is no buffer it declares'
+      'the frame for "fixture-indirect" reads its counts from resource 2, which is no buffer it declares'
     );
   });
 
@@ -223,12 +218,12 @@ describe('what a count read out of a buffer is refused for', () => {
       planned({
         resources: [planned().resources[0] as BufferResource, counts({ bytes: 8 }), planned().resources[2]!],
         passes: [
-          { pipeline: 'plan', groups: [1, 1, 1] },
-          { pipeline: 'paint', groups: { indirect: 'counts' } },
-          { pipeline: 'shade', draws: [{ vertices: 3 }] },
+          { pipeline: pipelineHandle(0), groups: [1, 1, 1] },
+          { pipeline: pipelineHandle(1), groups: { indirect: buffer(1) } },
+          { pipeline: pipelineHandle(2), draws: [{ vertices: 3 }] },
         ],
       }),
-      'the frame for "fixture-indirect" reads 12 bytes of counts from "counts", which is 8 bytes'
+      'the frame for "fixture-indirect" reads 12 bytes of counts from resource 1, which is 8 bytes'
     );
   });
 
@@ -237,12 +232,12 @@ describe('what a count read out of a buffer is refused for', () => {
       planned({
         resources: [planned().resources[0] as BufferResource, counts({ bytes: 12 }), planned().resources[2]!],
         passes: [
-          { pipeline: 'plan', groups: [1, 1, 1] },
-          { pipeline: 'paint', groups: [1, 1, 1] },
-          { pipeline: 'shade', draws: [{ indirect: 'counts' }] },
+          { pipeline: pipelineHandle(0), groups: [1, 1, 1] },
+          { pipeline: pipelineHandle(1), groups: [1, 1, 1] },
+          { pipeline: pipelineHandle(2), draws: [{ indirect: buffer(1) }] },
         ],
       }),
-      'the frame for "fixture-indirect" reads 16 bytes of counts from "counts", which is 12 bytes'
+      'the frame for "fixture-indirect" reads 16 bytes of counts from resource 1, which is 12 bytes'
     );
   });
 
@@ -256,7 +251,7 @@ describe('what a count read out of a buffer is refused for', () => {
           ...ordered().resources.slice(3),
         ],
       }),
-      'the frame for "fixture-indirect" reads 20 bytes of counts from "counts", which is 16 bytes'
+      'the frame for "fixture-indirect" reads 20 bytes of counts from resource 1, which is 16 bytes'
     );
   });
 });

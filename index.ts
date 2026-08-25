@@ -123,6 +123,35 @@ export type {
   WgslModule,
 } from './graph/types.js';
 
+// The authoring handles a graph is written in terms of (§8, item 87): a resource
+// is named by its index in `FrameGraph.resources`, a module by its index in
+// `modules`, a pipeline by its index in `pipelines`, each under a kind-branded
+// integer so a texture handle where a buffer one was wanted is a compile error
+// rather than a map miss at draw time. The constructors brand a plain index; the
+// types are what a reference field carries. This is the graph's own authoring
+// handle, not the arena's runtime `Handle` (below), which carries a generation.
+export {
+  buffer,
+  indices,
+  moduleHandle,
+  pipelineHandle,
+  sampler,
+  texture,
+  uniform,
+  vertices,
+} from './graph/handles.js';
+export type {
+  BufferHandle,
+  IndexHandle,
+  ModuleHandle,
+  PipelineHandle,
+  ResourceHandle,
+  SamplerHandle,
+  TextureHandle,
+  UniformHandle,
+  VertexHandle,
+} from './graph/handles.js';
+
 // A texture's size is a whole-size descriptor rather than a per-axis pair, the
 // §14 shape that replaced `Extent` (item 71). `{ scale: 1 }` follows the frame,
 // `{ scale: 0.5 }` is a half-resolution target, `{ width, height }` a fixed one.

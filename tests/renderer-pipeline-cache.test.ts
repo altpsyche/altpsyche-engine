@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { moduleHandle, pipelineHandle, uniform, vertices } from '../graph/handles.js';
 import type { FrameGraph, VertexResource } from '@altpsyche/engine';
 
 /**
@@ -33,7 +34,6 @@ fn shade() -> @location(0) vec4<f32> {
 
 const geometry = (data: Uint8Array<ArrayBuffer>): VertexResource => ({
   kind: 'vertices',
-  name: 'mesh',
   stride: 8,
   attributes: [{ location: 0, offset: 0, format: 'float32x2' }],
   topology: 'triangle-list',
@@ -44,22 +44,22 @@ const geometry = (data: Uint8Array<ArrayBuffer>): VertexResource => ({
 const meshFrame = (data: Uint8Array<ArrayBuffer>): FrameGraph => ({
   id: `mesh-${data[0]}`,
   authored: 'wgsl',
+  // uniforms=0, mesh=1 — named below by index.
   resources: [
-    { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+    { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     geometry(data),
   ],
   modules: [{ name: 'wgsl', wgsl: SOURCE }],
   pipelines: [
     {
       kind: 'render',
-      name: 'warp',
-      vertex: { module: 'wgsl', entry: 'warp' },
-      fragment: { module: 'wgsl', entry: 'shade' },
-      geometry: 'mesh',
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      vertex: { module: moduleHandle(0), entry: 'warp' },
+      fragment: { module: moduleHandle(0), entry: 'shade' },
+      geometry: vertices(1),
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: 'warp', draws: [{ vertices: 3 }] }],
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
 });
 
 function backendOver() {
@@ -89,7 +89,13 @@ describe('the pipeline cache shared across programs (item 63)', () => {
     // a program of its own all the same: it made its own vertex buffer and bind
     // group, so nothing of the first's resident data draws under it.
     expect(gpu.calls('createRenderPipeline')).toHaveLength(afterFirst);
-    const meshBuffers = gpu.calls('createBuffer').filter((call) => call.label === 'mesh');
+    // `mesh` sits at resource index 1, so its vertex buffer is labelled `buffer1`.
+    // The uniform block's own backing buffer takes the recorder's fallback label,
+    // which is `buffer1` for the first program too, so the vertex buffers are told
+    // apart from it by the VERTEX usage only they carry.
+    const meshBuffers = gpu
+      .calls('createBuffer')
+      .filter((call) => call.label === 'buffer1' && ((call.usage as number) & GPUBufferUsage.VERTEX) !== 0);
     expect(meshBuffers).toHaveLength(2);
     expect(gpu.calls('createBindGroup')).toHaveLength(2);
   });

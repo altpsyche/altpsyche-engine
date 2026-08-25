@@ -16,8 +16,9 @@
  */
 import { uniformBindingOf } from '../wgsl-binding.js';
 import { moduleOf } from '../graph/types.js';
+import { moduleHandle, pipelineHandle, uniform } from '../graph/handles.js';
+import type { ModuleHandle } from '../graph/handles.js';
 import type {
-  ResourceSpec,
   FrameGraph,
   GlslFrameGraph,
   RenderPipelineSpec,
@@ -38,11 +39,6 @@ export const WGSL_FRAGMENT_ENTRY = 'fragMain';
 /** The three corners of the triangle that covers the frame. Both backends supply
  * the positions and the count is here because the pass declares it. */
 const FULLSCREEN_VERTICES = 3;
-
-/** The name the one uniform resource of a frame carries. A binding names its
- * resource by this rather than by the variable name the source used, which is
- * `uniforms` in the hand-written base and `globalParams_0` in what Slang emits. */
-const UNIFORMS = 'uniforms';
 
 /** What a pipeline calls a WGSL document. It is one name for the file rather than
  * one per stage, because a WGSL shader is one file whatever it holds and a file
@@ -65,20 +61,21 @@ export function wgslDescription(code: string): FrameGraph {
   // read the resource is accepted by the driver while claiming a stage reads
   // something it does not.
   const at = uniformBindingOf(code);
+  // The uniform block is resource 0, the WGSL document module 0, the one pipeline
+  // pipeline 0 — each named below by its handle, the index it sits at here.
   return {
     authored: 'wgsl',
-    resources: [{ kind: 'uniform', name: UNIFORMS }],
+    resources: [{ kind: 'uniform' }],
     modules: [{ name: WGSL_DOCUMENT, wgsl: '' }],
     pipelines: [
       {
         kind: 'render',
-        name: ONE_PASS,
         vertex: 'fullscreen',
-        fragment: { module: WGSL_DOCUMENT, entry: WGSL_FRAGMENT_ENTRY },
-        bindings: at ? [{ group: at.group, binding: at.binding, resource: UNIFORMS, visibility: ['fragment'] }] : [],
+        fragment: { module: moduleHandle(0), entry: WGSL_FRAGMENT_ENTRY },
+        bindings: at ? [{ group: at.group, binding: at.binding, resource: uniform(0), visibility: ['fragment'] }] : [],
       },
     ],
-    passes: [{ pipeline: ONE_PASS, draws: [{ vertices: FULLSCREEN_VERTICES }] }],
+    passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: FULLSCREEN_VERTICES }] }],
   };
 }
 
@@ -91,20 +88,21 @@ export function wgslDescription(code: string): FrameGraph {
  * with a block index instead.
  */
 export function glslDescription(): FrameGraph {
+  // The uniform block is resource 0; the vertex document is module 0 and the
+  // fragment module 1; the one pipeline is pipeline 0 — each named by its handle.
   return {
     authored: 'glsl',
-    resources: [{ kind: 'uniform', name: UNIFORMS }],
+    resources: [{ kind: 'uniform' }],
     modules: [{ name: 'vertex', glsl: '' }, { name: 'fragment', glsl: '' }],
     pipelines: [
       {
         kind: 'render',
-        name: ONE_PASS,
-        vertex: { module: 'vertex', entry: 'main' },
-        fragment: { module: 'fragment', entry: 'main' },
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(1), entry: 'main' },
         bindings: [],
       },
     ],
-    passes: [{ pipeline: ONE_PASS, draws: [{ vertices: FULLSCREEN_VERTICES }] }],
+    passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: FULLSCREEN_VERTICES }] }],
   };
 }
 
@@ -139,7 +137,7 @@ export function frameOf(
   texts: Record<string, string>,
   block?: UniformSlot[],
   constants?: Record<string, number>,
-  generated?: Map<string, Uint8Array<ArrayBuffer>>
+  generated?: Map<number, Uint8Array<ArrayBuffer>>
 ): FrameGraph {
   const seen = new Set<string>();
   const repeated = description.modules.find((module) => {
@@ -153,16 +151,20 @@ export function frameOf(
   const missing = description.modules.find((module) => texts[module.name] === undefined);
   if (missing) throw new Error(`the description for "${id}" names a document "${missing.name}" with no text`);
 
-  const empty = description.resources.find(
-    (resource) => 'source' in resource && resource.source !== undefined && !generated?.get(resource.name)
+  // A generated resource carries an address rather than a name, so its bytes are
+  // keyed by the index it sits at in `resources` (item 87): the description names
+  // no picture, it names a resource at a position, and that position is the key a
+  // loader fills the bytes back under.
+  const emptyAt = description.resources.findIndex(
+    (resource, index) => 'source' in resource && resource.source !== undefined && !generated?.get(index)
   );
-  if (empty) throw new Error(`the description for "${id}" names a picture "${empty.name}" with no bytes`);
+  if (emptyAt >= 0) throw new Error(`the description for "${id}" names a generated resource ${emptyAt} with no bytes`);
 
   const positions = description.authored === 'wgsl' ? block : undefined;
 
-  const resources = description.resources.map((resource) => {
+  const resources = description.resources.map((resource, index) => {
     if (resource.kind === 'uniform' && positions) return { ...resource, block: positions } as UniformResource;
-    const bytes = 'source' in resource ? generated?.get(resource.name) : undefined;
+    const bytes = 'source' in resource ? generated?.get(index) : undefined;
     return bytes ? { ...resource, data: bytes } : resource;
   });
   const common = {
@@ -210,15 +212,14 @@ export const documentNames = (description: FrameGraph): string[] => [
   ...new Set(description.modules.map((module) => module.name)),
 ];
 
-/** The resources the build generated bytes for, which is what a loader fetches
- * bytes for, keyed later by name because bytes are named rather than addressed.
- * Reads the description alone, so it fetches nothing and resolves no path. */
-export const generatedResources = (
-  description: FrameGraph
-): (ResourceSpec & { name: string; source: string })[] =>
-  description.resources.filter(
-    (resource): resource is ResourceSpec & { name: string; source: string } =>
-      'source' in resource && resource.source !== undefined
+/** The resources the build generated bytes for, each as its index in the frame's
+ * `resources` and the address its bytes come from — what a loader fetches, keyed
+ * back by that index because a generated resource carries an address rather than a
+ * name (item 87). Reads the description alone, so it fetches nothing and resolves
+ * no path. */
+export const generatedResources = (description: FrameGraph): { index: number; source: string }[] =>
+  description.resources.flatMap((resource, index) =>
+    'source' in resource && resource.source !== undefined ? [{ index, source: resource.source }] : []
   );
 
 /**
@@ -236,7 +237,7 @@ export function assembleFrame(
   id: string,
   description: FrameGraph,
   texts: Map<string, string>,
-  generated: Map<string, Uint8Array<ArrayBuffer>>,
+  generated: Map<number, Uint8Array<ArrayBuffer>>,
   block?: UniformSlot[],
   constants?: Record<string, number>
 ): FrameGraph {
@@ -291,20 +292,26 @@ export function glslFrame(id: string, vertex: string, fragment: string): FrameGr
  */
 export function glslFrameOf(frame: WgslFrameGraph): GlslFrameGraph | null {
   // The baked GLSL of each entry a pipeline names, gathered off the source that
-  // carries it, keyed by the entry-point name the GLSL document takes.
+  // carries it, keyed by the entry-point name the GLSL document takes. Each entry
+  // name becomes one GLSL document, and a pipeline names its documents by the index
+  // that document lands at in the rebuilt `modules` list — so the entry names are
+  // collected in order here and mapped to handles below (item 87).
   const texts: Record<string, string> = {};
   let missing = false;
-  const bakedFor = (module: string, entry: string): string | undefined =>
+  const bakedFor = (module: ModuleHandle, entry: string): string | undefined =>
     // `frame` is a WGSL frame, so its documents are `WgslModule` and their `glsl` is
     // the entry-keyed bake; `moduleOf` widens to the module union, hence the narrow.
     (moduleOf(frame, module) as WgslModule | undefined)?.glsl?.[entry];
-  const take = (module: string, entry: string): void => {
+  const take = (module: ModuleHandle, entry: string): void => {
     const source = bakedFor(module, entry);
     if (source === undefined) missing = true;
     else texts[entry] = source;
   };
 
-  const pipelines: RenderPipelineSpec[] = [];
+  // Which entry points each render pipeline draws with, in frame order, so the
+  // pipelines are rebuilt after the module list is final and can name each document
+  // by its index in that list.
+  const entries: { vertex: string; fragment: string; from: RenderPipelineSpec }[] = [];
   for (const pipeline of frame.pipelines) {
     // A compute pipeline has no vertex or fragment and no place on WebGL 2; a
     // fullscreen WGSL frame supplies its corners from the backend, so the build bakes no
@@ -315,27 +322,37 @@ export function glslFrameOf(frame: WgslFrameGraph): GlslFrameGraph | null {
     }
     take(pipeline.vertex.module, pipeline.vertex.entry);
     take(pipeline.fragment.module, pipeline.fragment.entry);
-    pipelines.push({
-      ...pipeline,
-      vertex: { module: pipeline.vertex.entry, entry: 'main' },
-      fragment: { module: pipeline.fragment.entry, entry: 'main' },
-      // A GLSL program answers where each uniform block sits, so the block bindings
-      // drop — except a per-draw slice's, whose group and binding tell the per-draw
-      // block apart from the shared one and whose `perDraw` size is one record's.
-      bindings: pipeline.bindings.filter((binding) => binding.perDraw !== undefined),
-    });
+    entries.push({ vertex: pipeline.vertex.entry, fragment: pipeline.fragment.entry, from: pipeline });
   }
   if (missing) return null;
+
+  // The rebuilt document list, one GLSL document per entry point, and the handle
+  // each entry name resolves to — the index it sits at in that list.
+  const documentNames = Object.keys(texts);
+  const handleOfEntry = new Map<string, ModuleHandle>(documentNames.map((name, index) => [name, moduleHandle(index)]));
+  const modules = documentNames.map((name) => ({ name, glsl: texts[name] as string }));
+
+  const pipelines: RenderPipelineSpec[] = entries.map(({ vertex, fragment, from }) => ({
+    ...from,
+    vertex: { module: handleOfEntry.get(vertex) as ModuleHandle, entry: 'main' },
+    fragment: { module: handleOfEntry.get(fragment) as ModuleHandle, entry: 'main' },
+    // A GLSL program answers where each uniform block sits, so the block bindings
+    // drop — except a per-draw slice's, whose group and binding tell the per-draw
+    // block apart from the shared one and whose `perDraw` size is one record's.
+    bindings: from.bindings.filter((binding) => binding.perDraw !== undefined),
+  }));
 
   return {
     ...(frame.id !== undefined ? { id: frame.id } : {}),
     authored: 'glsl',
     // A GLSL frame's uniform resource carries no block positions: the linked program
-    // is asked where its members sit, so the WebGPU-computed layout drops here.
+    // is asked where its members sit, so the WebGPU-computed layout drops here. The
+    // resources carry through at the same indices, so every handle a binding or pass
+    // holds still names the same resource.
     resources: frame.resources.map((resource) =>
-      resource.kind === 'uniform' && resource.block ? { kind: 'uniform', name: resource.name } : resource
+      resource.kind === 'uniform' && resource.block ? { kind: 'uniform' } : resource
     ),
-    modules: Object.entries(texts).map(([name, glsl]) => ({ name, glsl })),
+    modules,
     pipelines,
     passes: frame.passes,
     ...(frame.requires !== undefined ? { requires: frame.requires } : {}),

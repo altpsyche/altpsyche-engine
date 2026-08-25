@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { uniform, moduleHandle, pipelineHandle } from '../graph/handles.js';
 import type { PassSpec, FrameGraph } from '@altpsyche/engine';
 
 /**
@@ -35,29 +36,27 @@ fn over(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
 }`;
 
 const both: PassSpec[] = [
-  { pipeline: 'under', draws: [{ vertices: 3 }] },
-  { pipeline: 'over', draws: [{ vertices: 3 }] },
+  { pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] },
+  { pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] },
 ];
 
 const holding = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-passes',
   authored: 'wgsl',
-  resources: [{ kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] }],
+  resources: [{ kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] }],
   modules: [{ name: 'wgsl', wgsl: SHADER }],
   pipelines: [
     {
       kind: 'render',
-      name: 'under',
       vertex: 'fullscreen',
-      fragment: { module: 'wgsl', entry: 'under' },
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      fragment: { module: moduleHandle(0), entry: 'under' },
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
     {
       kind: 'render',
-      name: 'over',
       vertex: 'fullscreen',
-      fragment: { module: 'wgsl', entry: 'over' },
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      fragment: { module: moduleHandle(0), entry: 'over' },
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
   passes: both,
@@ -81,7 +80,7 @@ describe('a description whose pass list changes between frames', () => {
     backend.program(holding()).draw();
 
     expect(gpu.calls('beginRenderPass')).toHaveLength(2);
-    expect(played(gpu)).toEqual([['under-bundle-0'], ['over-bundle-0']]);
+    expect(played(gpu)).toEqual([['pipeline0-bundle-0'], ['pipeline1-bundle-0']]);
   });
 
   it('turns a pass off, and the draw after runs one fewer without the program being remade', () => {
@@ -89,11 +88,11 @@ describe('a description whose pass list changes between frames', () => {
     const program = backend.program(holding());
     const built = gpu.calls('createShaderModule').length;
 
-    program.setPasses([{ pipeline: 'over', draws: [{ vertices: 3 }] }]);
+    program.setPasses([{ pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] }]);
     program.draw();
 
     expect(gpu.calls('beginRenderPass')).toHaveLength(1);
-    expect(played(gpu)).toEqual([['over-bundle-0']]);
+    expect(played(gpu)).toEqual([['pipeline1-bundle-0']]);
     // Nothing was compiled or made again: the modules, the pipelines and the
     // resources are the ones createProgram built.
     expect(gpu.calls('createShaderModule')).toHaveLength(built);
@@ -103,7 +102,7 @@ describe('a description whose pass list changes between frames', () => {
   it('turns a pass on for a pipeline the program built but no pass had used', () => {
     const { gpu, backend } = backendOver();
     // Both pipelines are built, only one is drawn to start with.
-    const program = backend.program(holding({ passes: [{ pipeline: 'under', draws: [{ vertices: 3 }] }] }));
+    const program = backend.program(holding({ passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }] }));
     program.draw();
     expect(gpu.calls('beginRenderPass')).toHaveLength(1);
 
@@ -113,7 +112,7 @@ describe('a description whose pass list changes between frames', () => {
     // The second draw adds the pass that was off, so two more passes ran and the
     // over pipeline drew for the first time without being made again.
     expect(gpu.calls('beginRenderPass')).toHaveLength(3);
-    expect(played(gpu)).toEqual([['under-bundle-0'], ['under-bundle-0'], ['over-bundle-0']]);
+    expect(played(gpu)).toEqual([['pipeline0-bundle-0'], ['pipeline0-bundle-0'], ['pipeline1-bundle-0']]);
     expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
   });
 
@@ -122,18 +121,18 @@ describe('a description whose pass list changes between frames', () => {
     const program = backend.program(holding());
 
     program.draw();
-    program.setPasses([{ pipeline: 'over', draws: [{ vertices: 3 }] }]);
+    program.setPasses([{ pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] }]);
     program.draw();
     program.setPasses(both);
     program.draw();
 
     // Two passes, then one, then two again, all on the resources built once.
     expect(played(gpu)).toEqual([
-      ['under-bundle-0'],
-      ['over-bundle-0'],
-      ['over-bundle-0'],
-      ['under-bundle-0'],
-      ['over-bundle-0'],
+      ['pipeline0-bundle-0'],
+      ['pipeline1-bundle-0'],
+      ['pipeline1-bundle-0'],
+      ['pipeline0-bundle-0'],
+      ['pipeline1-bundle-0'],
     ]);
   });
 
@@ -141,8 +140,8 @@ describe('a description whose pass list changes between frames', () => {
     const { backend } = backendOver();
     const program = backend.program(holding());
 
-    expect(() => program.setPasses([{ pipeline: 'ghost', draws: [{ vertices: 3 }] }])).toThrow(
-      'the frame names a pipeline "ghost" it does not carry'
+    expect(() => program.setPasses([{ pipeline: pipelineHandle(2), draws: [{ vertices: 3 }] }])).toThrow(
+      'the frame for "fixture-passes" runs pipeline 2, which it does not declare'
     );
   });
 });

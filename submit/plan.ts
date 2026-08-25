@@ -23,6 +23,8 @@ import type {
   VertexResource,
 } from '../graph/types.js';
 import { drawsCorners, drawsIndirectly, isRenderPass, resourceOf } from '../graph/types.js';
+import type { TextureHandle, VertexHandle } from '../graph/handles.js';
+import { indexOf } from '../graph/handles.js';
 import { frameOf } from '../toy/frame.js';
 import { validate } from '../graph/validate.js';
 import { sizeKey } from '../graph/refs.js';
@@ -46,7 +48,7 @@ export type PlannedPass = FramePlan[number];
  * replays every frame. Nothing here touches the card: each pass is checked
  * against its pipeline and against what earlier passes of the same frame have
  * written, so the loop that submits the frame does no lookups of its own. */
-export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) => DrawnGeometry) {
+export function planFramePasses(frame: FrameGraph, geometryOf: (handle: VertexHandle) => DrawnGeometry) {
   // Every rule about the graph itself lives in one place now, and this is where
   // the plan reads it before turning the graph into passes: a frame that would
   // draw wrong is refused here, in the words a build would use for the same
@@ -58,15 +60,17 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) =>
    * card in two separate calls, so it reports a disagreement between them
    * against whichever of the two arrived second and names neither the
    * description nor the pass. */
-  const depthOf = (pass: RenderPassSpec, spec: RenderPipelineSpec, filled: Set<string>) => {
+  const depthOf = (pass: RenderPassSpec, spec: RenderPipelineSpec, filled: Set<number>) => {
+    const pipe = indexOf(pass.pipeline);
     const tested = spec.depth;
     if (!pass.depth) {
-      if (tested) throw new Error(`the pass on "${spec.name}" tests depth and attaches nothing to keep it in`);
+      if (tested) throw new Error(`the pass on pipeline ${pipe} tests depth and attaches nothing to keep it in`);
       return undefined;
     }
     const named = pass.depth.resource;
+    const at = indexOf(named);
     if (!tested) {
-      throw new Error(`the pass on "${spec.name}" keeps depth in "${named}" and its pipeline tests none`);
+      throw new Error(`the pass on pipeline ${pipe} keeps depth in resource ${at} and its pipeline tests none`);
     }
     // Which halves the format keeps, read here for the clear-vs-filled rules
     // below. That each half the pipeline names is a half the format keeps —
@@ -77,25 +81,25 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) =>
     const keepsDepth = tested.format.startsWith('depth');
     const resource = resourceOf(frame, named);
     if (!resource || resource.kind !== 'texture') {
-      throw new Error(`the frame for "${frame.id}" keeps depth in "${named}", which is no texture it declares`);
+      throw new Error(`the frame for "${frame.id}" keeps depth in resource ${at}, which is no texture it declares`);
     }
     if (resource.format !== tested.format) {
       throw new Error(
-        `the pass on "${spec.name}" tests depth as ${tested.format} and keeps it in "${named}", which is ${resource.format}`
+        `the pass on pipeline ${pipe} tests depth as ${tested.format} and keeps it in resource ${at}, which is ${resource.format}`
       );
     }
     // A texture that never asked to be an attachment has no flag for it, and
-    // the card refuses the pass over a usage rather than over the name of the
+    // the card refuses the pass over a usage rather than over the handle of the
     // texture the description gave it.
     if (!resource.use.includes('attachment')) {
-      throw new Error(`the frame for "${frame.id}" keeps depth in "${named}", which is no attachment it declares`);
+      throw new Error(`the frame for "${frame.id}" keeps depth in resource ${at}, which is no attachment it declares`);
     }
     // Every attachment of one pass keeps the same number of samples a pixel,
     // the depth among them, and the card refuses the pass over the count
     // without saying which attachment disagreed with which pipeline.
     if ((resource.samples ?? 1) !== (spec.samples ?? 1)) {
       throw new Error(
-        `the pass on "${spec.name}" draws ${spec.samples ?? 1} samples a pixel and keeps depth in "${named}", which keeps ${resource.samples ?? 1}`
+        `the pass on pipeline ${pipe} draws ${spec.samples ?? 1} samples a pixel and keeps depth in resource ${at}, which keeps ${resource.samples ?? 1}`
       );
     }
     // An attachment with no clear value keeps what is in it, which is what a
@@ -103,18 +107,18 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) =>
     // pass wrote is a frame reading its own last one, which is a capability a
     // pair of textures exists for rather than something to arrive at by
     // leaving a value out.
-    if (keepsDepth && pass.depth.clear === undefined && !filled.has(named)) {
-      throw new Error(`the pass on "${spec.name}" keeps the depth in "${named}", which no earlier pass wrote`);
+    if (keepsDepth && pass.depth.clear === undefined && !filled.has(at)) {
+      throw new Error(`the pass on pipeline ${pipe} keeps the depth in resource ${at}, which no earlier pass wrote`);
     }
     // The mask follows the same rule, so the pass that marks empties it and
     // the pass drawn inside the mark keeps what the marking pass left. A pass
     // keeping a mask nothing has written would be drawn wherever the memory
     // happened to hold the reference.
-    if (keepsStencil && pass.depth.stencilClear === undefined && !filled.has(named)) {
-      throw new Error(`the pass on "${spec.name}" keeps the mask in "${named}", which no earlier pass wrote`);
+    if (keepsStencil && pass.depth.stencilClear === undefined && !filled.has(at)) {
+      throw new Error(`the pass on pipeline ${pipe} keeps the mask in resource ${at}, which no earlier pass wrote`);
     }
     return {
-      name: named,
+      handle: named,
       clear: pass.depth.clear,
       stencilClear: pass.depth.stencilClear,
       depthHalf: keepsDepth,
@@ -128,31 +132,33 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) =>
    * itself: it cannot be copied out of and no binding here declares a
    * multisampled read. */
   const resolved = (
-    spec: RenderPipelineSpec,
-    attachment: { resource: string; resolve?: string },
+    pipe: number,
+    attachment: { resource: TextureHandle; resolve?: TextureHandle },
     into: TextureResource
   ) => {
+    const src = indexOf(attachment.resource);
     if (into.samples === undefined) {
       if (attachment.resolve === undefined) return undefined;
       throw new Error(
-        `the pass on "${spec.name}" averages "${attachment.resource}" into "${attachment.resolve}" and it keeps one sample a pixel`
+        `the pass on pipeline ${pipe} averages resource ${src} into resource ${indexOf(attachment.resolve)} and it keeps one sample a pixel`
       );
     }
-    const name = attachment.resolve;
-    if (name === undefined) {
+    const handle = attachment.resolve;
+    if (handle === undefined) {
       throw new Error(
-        `the pass on "${spec.name}" keeps several samples a pixel in "${attachment.resource}" and averages them nowhere`
+        `the pass on pipeline ${pipe} keeps several samples a pixel in resource ${src} and averages them nowhere`
       );
     }
-    const resource = resourceOf(frame, name);
+    const dst = indexOf(handle);
+    const resource = resourceOf(frame, handle);
     if (!resource || resource.kind !== 'texture') {
       throw new Error(
-        `the frame for "${frame.id}" averages "${attachment.resource}" into "${name}", which is no texture it declares`
+        `the frame for "${frame.id}" averages resource ${src} into resource ${dst}, which is no texture it declares`
       );
     }
     if (!resource.use.includes('attachment')) {
       throw new Error(
-        `the frame for "${frame.id}" averages "${attachment.resource}" into "${name}", which is no attachment it declares`
+        `the frame for "${frame.id}" averages resource ${src} into resource ${dst}, which is no attachment it declares`
       );
     }
     // Same shape and same format, because averaging is a per-pixel read of the
@@ -162,10 +168,10 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) =>
     const shape = (resource: TextureResource) => `${sizeKey(resource.size)} ${resource.format}`;
     if (resource.samples !== undefined || shape(resource) !== shape(into)) {
       throw new Error(
-        `the pass on "${spec.name}" averages "${attachment.resource}" into "${name}", which is not the same picture keeping one sample`
+        `the pass on pipeline ${pipe} averages resource ${src} into resource ${dst}, which is not the same picture keeping one sample`
       );
     }
-    return name;
+    return handle;
   };
 
   /** Which textures one pass writes its colours into, looked up once here.
@@ -173,81 +179,84 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) =>
    * pipeline says it returns, and a card refuses the pass over the first
    * attachment that does not match without saying which description named
    * it. */
-  const coloursOf = (pass: RenderPassSpec, spec: RenderPipelineSpec, filled: Set<string>) => {
+  const coloursOf = (pass: RenderPassSpec, spec: RenderPipelineSpec, filled: Set<number>) => {
+    const pipe = indexOf(pass.pipeline);
     const written = spec.targets;
     if (!pass.colour) {
-      if (written) throw new Error(`the pass on "${spec.name}" writes ${written.length} colours and attaches none`);
+      if (written) throw new Error(`the pass on pipeline ${pipe} writes ${written.length} colours and attaches none`);
       // The frame the reader sees keeps one sample of each pixel, so there is
       // nothing for a pass drawing into it to average and no texture to
       // average it into.
       if (spec.samples) {
-        throw new Error(`the pass on "${spec.name}" draws ${spec.samples} samples a pixel into the frame`);
+        throw new Error(`the pass on pipeline ${pipe} draws ${spec.samples} samples a pixel into the frame`);
       }
       return undefined;
     }
     if (!written) {
       throw new Error(
-        `the pass on "${spec.name}" attaches ${pass.colour.length} textures and its pipeline writes the frame`
+        `the pass on pipeline ${pipe} attaches ${pass.colour.length} textures and its pipeline writes the frame`
       );
     }
     if (written.length !== pass.colour.length) {
       throw new Error(
-        `the pass on "${spec.name}" writes ${written.length} colours and attaches ${pass.colour.length} textures`
+        `the pass on pipeline ${pipe} writes ${written.length} colours and attaches ${pass.colour.length} textures`
       );
     }
     return pass.colour.map((attachment, index) => {
       const target = written[index] as { format: GPUTextureFormat };
+      const src = indexOf(attachment.resource);
       const resource = resourceOf(frame, attachment.resource);
       if (!resource || resource.kind !== 'texture') {
         throw new Error(
-          `the frame for "${frame.id}" writes colour into "${attachment.resource}", which is no texture it declares`
+          `the frame for "${frame.id}" writes colour into resource ${src}, which is no texture it declares`
         );
       }
       if (resource.format !== target.format) {
         throw new Error(
-          `the pass on "${spec.name}" writes colour ${index} as ${target.format} into "${attachment.resource}", which is ${resource.format}`
+          `the pass on pipeline ${pipe} writes colour ${index} as ${target.format} into resource ${src}, which is ${resource.format}`
         );
       }
       if (!resource.use.includes('attachment')) {
         throw new Error(
-          `the frame for "${frame.id}" writes colour into "${attachment.resource}", which is no attachment it declares`
+          `the frame for "${frame.id}" writes colour into resource ${src}, which is no attachment it declares`
         );
       }
-      if (attachment.clear === undefined && !filled.has(attachment.resource)) {
+      if (attachment.clear === undefined && !filled.has(src)) {
         throw new Error(
-          `the pass on "${spec.name}" keeps the colour in "${attachment.resource}", which no earlier pass wrote`
+          `the pass on pipeline ${pipe} keeps the colour in resource ${src}, which no earlier pass wrote`
         );
       }
       if ((resource.samples ?? 1) !== (spec.samples ?? 1)) {
         throw new Error(
-          `the pass on "${spec.name}" draws ${spec.samples ?? 1} samples a pixel into "${attachment.resource}", which keeps ${resource.samples ?? 1}`
+          `the pass on pipeline ${pipe} draws ${spec.samples ?? 1} samples a pixel into resource ${src}, which keeps ${resource.samples ?? 1}`
         );
       }
-      return { name: attachment.resource, clear: attachment.clear, resolve: resolved(spec, attachment, resource) };
+      return { handle: attachment.resource, clear: attachment.clear, resolve: resolved(pipe, attachment, resource) };
     });
   };
 
   // What an earlier pass of this frame has already written, which is what
   // separates a pass keeping the picture so far from one keeping whatever was
   // left in a texture by the frame before it.
-  const filled = new Set<string>();
+  const filled = new Set<number>();
   const read = (pass: RenderPassSpec, spec: RenderPipelineSpec, drawn: DrawnGeometry | undefined) => {
     const depth = depthOf(pass, spec, filled);
     const colour = coloursOf(pass, spec, filled);
-    if (depth) filled.add(depth.name);
-    for (const attachment of colour ?? []) filled.add(attachment.name);
+    if (depth) filled.add(indexOf(depth.handle));
+    for (const attachment of colour ?? []) filled.add(indexOf(attachment.handle));
     return { pass, spec, drawn, depth, colour };
   };
 
   return frame.passes.map((pass) => {
-    const spec = frame.pipelines.find((candidate) => candidate.name === pass.pipeline);
-    if (!spec) throw new Error(`the frame names a pipeline "${pass.pipeline}" it does not carry`);
+    const pipe = indexOf(pass.pipeline);
+    const spec = frame.pipelines[pipe];
+    if (!spec) throw new Error(`the frame names a pipeline ${pipe} it does not carry`);
     // The kind of pass is the pipeline's, and a pass carrying the other
     // kind's instruction is a description nothing could resolve: a draw
     // count means nothing to a compute pipeline and a dispatch means nothing
     // to a render one.
     if (isRenderPass(pass) !== (spec.kind === 'render')) {
-      throw new Error(`the pass on "${spec.name}" asks for the other kind of work than the pipeline does`);
+      throw new Error(`the pass on pipeline ${pipe} asks for the other kind of work than the pipeline does`);
     }
     if (!isRenderPass(pass) || spec.kind !== 'render') {
       return { pass, spec, drawn: undefined, depth: undefined, colour: undefined };
@@ -260,7 +269,7 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) =>
     // out of a buffer, or one covering the frame's corners, needs no such buffer.
     const instancesAlone = pass.draws.some((draw) => !drawsCorners(draw) && !drawsIndirectly(draw));
     if (instancesAlone && spec.geometry === undefined) {
-      throw new Error(`the pass on "${spec.name}" draws its pipeline's geometry and that pipeline reads none`);
+      throw new Error(`the pass on pipeline ${pipe} draws its pipeline's geometry and that pipeline reads none`);
     }
     // The pipeline's geometry is resolved once for the pass where it names any: an
     // instances-only or indexed-indirect draw walks it, and a corners draw ignores
@@ -308,11 +317,11 @@ export function planFromDescription(
   id: string,
   description: FrameGraph,
   texts: Record<string, string>,
-  geometryOf: (name: string) => DrawnGeometry,
+  geometryOf: (handle: VertexHandle) => DrawnGeometry,
   extras: {
     block?: UniformSlot[];
     constants?: Record<string, number>;
-    generated?: Map<string, Uint8Array<ArrayBuffer>>;
+    generated?: Map<number, Uint8Array<ArrayBuffer>>;
   } = {}
 ): FramePlan {
   const frame = frameOf(id, description, texts, extras.block, extras.constants, extras.generated);

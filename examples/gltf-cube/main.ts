@@ -37,14 +37,18 @@
  */
 import {
   Arena,
+  buffer,
   cost,
   createSurface,
+  indices,
   mat4,
+  moduleHandle,
   requestWebGPUDevice,
   sceneView,
   selectBackend,
   uniformBlockOf,
   vec3,
+  vertices,
   glslFrame,
   wgslFrame,
 } from '@altpsyche/engine';
@@ -208,15 +212,18 @@ fn shade(in: VsOut) -> @location(0) vec4<f32> {
 
 const MODULE: ModuleSpec = { name: 'scene', wgsl: SCENE_WGSL };
 
+// The resource layout `sceneView` lays these bindings out against (item 87): the
+// two `options.resources` entries are the cube geometry (resource 0) and its index
+// buffer (resource 1), then the shared `views` buffer (resource 2), then this one
+// group's object buffer (resource 3). Each binding names its resource by handle.
 const litPipeline: RenderPipelineSpec = {
   kind: 'render',
-  name: 'lit',
-  vertex: { module: 'scene', entry: 'project' },
-  fragment: { module: 'scene', entry: 'shade' },
-  geometry: 'cube',
+  vertex: { module: moduleHandle(0), entry: 'project' },
+  fragment: { module: moduleHandle(0), entry: 'shade' },
+  geometry: vertices(0),
   bindings: [
-    { group: 0, binding: 0, resource: 'objects', visibility: ['vertex'] },
-    { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+    { group: 0, binding: 0, resource: buffer(3), visibility: ['vertex'] },
+    { group: 0, binding: 1, resource: buffer(2), visibility: ['vertex'] },
   ],
 };
 
@@ -228,13 +235,12 @@ function optionsFor(mesh: Mesh): SceneViewOptions<Panel> {
     id: 'gltf-cube',
     authored: 'wgsl',
     modules: [MODULE],
-    pipelines: [{ pipeline: litPipeline, objects: { buffer: 'objects', pack: packLit } }],
+    pipelines: [{ name: 'lit', pipeline: litPipeline, objects: { buffer: 'objects', pack: packLit } }],
     materials: MATERIALS,
     requires: ['storage-buffer'],
     resources: [
       {
         kind: 'vertices',
-        name: 'cube',
         stride: VERTEX_STRIDE,
         attributes: [
           { location: 0, offset: 0, format: 'float32x3' },
@@ -242,10 +248,10 @@ function optionsFor(mesh: Mesh): SceneViewOptions<Panel> {
         ],
         topology: 'triangle-list',
         count: mesh.vertexCount,
-        indices: 'cube-index',
+        indices: indices(1),
         data: mesh.vertices,
       },
-      { kind: 'indices', name: 'cube-index', format: 'uint16', count: mesh.indexCount, data: mesh.indices },
+      { kind: 'indices', format: 'uint16', count: mesh.indexCount, data: mesh.indices },
     ],
     views: { buffer: 'views' },
   };

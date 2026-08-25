@@ -32,10 +32,10 @@ const SIZE = { width: 800, height: 600 };
  * and the uniform block is a layout fact the metric never touches. */
 function corpusFrame(id: string) {
   const { description, code, generated } = loadFixture(id);
-  const bytes = new Map<string, Uint8Array<ArrayBuffer>>();
-  for (const resource of description.resources) {
+  const bytes = new Map<number, Uint8Array<ArrayBuffer>>();
+  for (const [index, resource] of description.resources.entries()) {
     if (!('source' in resource) || !resource.source) continue;
-    bytes.set(resource.name, generated.get(resource.source)!);
+    bytes.set(index, generated.get(resource.source)!);
   }
   const texts = new Map(description.modules.map((module) => [module.name, code]));
   return assembleFrame(id, description, texts, bytes);

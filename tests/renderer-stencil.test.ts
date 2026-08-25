@@ -2,6 +2,7 @@ import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
+import { moduleHandle, pipelineHandle, texture, uniform } from '../graph/handles.js';
 import type { RenderPassSpec, RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
 
 /**
@@ -45,7 +46,6 @@ fn filling(shaded: Vertex) -> @location(0) vec4<f32> {
 
 const mask = (over: Partial<TextureResource> = {}): TextureResource => ({
   kind: 'texture',
-  name: 'mask',
   size: { scale: 1 },
   format: 'stencil8',
   use: ['attachment'],
@@ -57,29 +57,27 @@ const mask = (over: Partial<TextureResource> = {}): TextureResource => ({
 const masked = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-stencil',
   authored: 'wgsl',
-  resources: [{ kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] }, mask()],
+  resources: [{ kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] }, mask()],
   modules: [{ name: 'wgsl', wgsl: SHEETS }],
   pipelines: [
     {
       kind: 'render',
-      name: 'marking',
-      vertex: { module: 'wgsl', entry: 'corner' },
-      fragment: { module: 'wgsl', entry: 'marking' },
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      vertex: { module: moduleHandle(0), entry: 'corner' },
+      fragment: { module: moduleHandle(0), entry: 'marking' },
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       depth: { format: 'stencil8', stencil: 'mark' },
     },
     {
       kind: 'render',
-      name: 'filling',
-      vertex: { module: 'wgsl', entry: 'corner' },
-      fragment: { module: 'wgsl', entry: 'filling' },
-      bindings: [{ group: 0, binding: 0, resource: 'uniforms', visibility: ['fragment'] }],
+      vertex: { module: moduleHandle(0), entry: 'corner' },
+      fragment: { module: moduleHandle(0), entry: 'filling' },
+      bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       depth: { format: 'stencil8', stencil: 'inside' },
     },
   ],
   passes: [
-    { pipeline: 'marking', draws: [{ vertices: 3 }], depth: { resource: 'mask', stencilClear: 0 } },
-    { pipeline: 'filling', draws: [{ vertices: 3 }], depth: { resource: 'mask' } },
+    { pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], depth: { resource: texture(1), stencilClear: 0 } },
+    { pipeline: pipelineHandle(1), draws: [{ vertices: 3 }], depth: { resource: texture(1) } },
   ],
   ...over,
 });
@@ -146,7 +144,7 @@ describe('what each mode becomes on the card', () => {
     const { gpu, backend } = backendOver();
     const frame = masked();
     const pipelines = [{ ...(frame.pipelines[0] as RenderPipelineSpec), depth: undefined }];
-    backend.program(masked({ pipelines, passes: [{ pipeline: 'marking', draws: [{ vertices: 3 }] }] })).draw();
+    backend.program(masked({ pipelines, passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }] })).draw();
 
     expect(gpu.calls('setStencilReference')).toEqual([]);
   });
@@ -158,7 +156,7 @@ describe('the texture the mask is kept in', () => {
     backend.program(masked()).draw();
 
     expect(gpu.calls('beginRenderPass')[0]?.depth).toMatchObject({
-      view: 'mask.view',
+      view: 'texture1.view',
       stencilLoadOp: 'clear',
       stencilClearValue: 0,
       stencilStoreOp: 'store',
@@ -200,7 +198,7 @@ describe('the texture the mask is kept in', () => {
       },
     }));
     const passes = [
-      { ...(frame.passes[0] as RenderPassSpec), depth: { resource: 'mask', clear: 1, stencilClear: 0 } },
+      { ...(frame.passes[0] as RenderPassSpec), depth: { resource: texture(1), clear: 1, stencilClear: 0 } },
       frame.passes[1] as RenderPassSpec,
     ];
     backend
@@ -220,8 +218,8 @@ describe('what a description disagreeing with itself about a mask is refused wit
   it('refuses a mask nothing wrote and the pass keeps', () => {
     const frame = masked();
     refuses(
-      { passes: [{ ...(frame.passes[0] as RenderPassSpec), depth: { resource: 'mask' } }, frame.passes[1] as never] },
-      'keeps the mask in "mask", which no earlier pass wrote'
+      { passes: [{ ...(frame.passes[0] as RenderPassSpec), depth: { resource: texture(1) } }, frame.passes[1] as never] },
+      'keeps the mask in resource 1, which no earlier pass wrote'
     );
   });
 
@@ -268,7 +266,7 @@ describe('what a description disagreeing with itself about a mask is refused wit
     const frame = masked();
     refuses(
       { resources: [frame.resources[0] as never, mask({ use: ['sample'] })] },
-      'keeps depth in "mask", which is no attachment it declares'
+      'keeps depth in resource 1, which is no attachment it declares'
     );
   });
 });

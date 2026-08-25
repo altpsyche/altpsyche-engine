@@ -3209,7 +3209,7 @@ writes changes with this.
 
 ### 87. The graph and the backends move to authoring handles
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The second half of item 67: a graph that identifies every resource by an authoring
 handle rather than by `name: string`, and backends that resolve by that handle rather than by a map
@@ -3459,3 +3459,32 @@ source per render pipeline may itself be separable from adopting the `GlslPair` 
 curator meeting this once item 87 lands decides. **Reverse:** delete this item; item 81 reverts to
 `open` and its `Needs` stand. `carry`: the shader-source shape a consumer authors against changes
 with this.
+
+### 96. The uniform-block buffer carries a label of its own
+
+**Status.** open
+
+**Asks for.** A distinct trace label on the uniform block's backing buffer, so it no longer collides
+with a resource sitting at index 1. Item 87 made every resource buffer's device label `buffer${index}`
+([gpu/webgpu.ts](../gpu/webgpu.ts)), but the uniform block's own buffer is created unlabelled, so the
+recording double's fallback counter names it `buffer1` — the same label a `buffer`/`vertices` resource
+at index 1 already carries. The two are told apart today only by a usage-flag filter or a `.at(-1)`
+on the label match, scattered across the renderer tests (`renderer-indirect`, `renderer-queries`,
+`renderer-geometry`, `renderer-buffer`, `renderer-pipeline-cache`), which is brittle.
+
+**Done when.** The uniform block's backing buffer is created with a label no resource index can
+produce (e.g. `uniforms`), every test that reached it by the `buffer1`-plus-usage or `.at(-1)`
+disambiguation names it directly instead, the node suite and `type-check` are green, and the browser
+batch still agrees 15 of 15 (both backends label identically, so trace agreement is preserved by
+construction).
+
+**Needs.** item 87.
+
+**Found by review 2026-08-26, by the run that landed item 87.** Flagged in item 87's JOURNAL encoding
+row and by two of its migration subagents: the collision is a readability/robustness wart the
+name→handle label scheme introduced, not a correctness bug (trace agreement holds because the label
+is identical on both sides), so it was left as an accepted quirk rather than blocking item 87. **It is
+not a machine limit** — the work is a one-line label plus test cleanups. **Reverse:** delete this item;
+the tests keep their current usage/`.at(-1)` disambiguation. **What would change the answer:** item 16
+unifying authoring and runtime handles, or a broader pass over device labels, may relabel every
+resource and subsume this.
