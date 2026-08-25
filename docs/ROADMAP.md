@@ -1236,6 +1236,8 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 - **Naga is here for the asking.** `cargo`/`rustc` are on this machine and `cargo search naga-cli` returns `naga-cli = "30.0.1"` on crates.io, so `cargo install naga-cli` (its `--target glsl` writer is the WGSL→GLSL path this item needs) is a few minutes of compile away.
 - **Tint is not, and not by a route an unattended run may take.** Tint ships only inside Google's Dawn tree; it is published to neither npm (`@webgpu/tint` 404s; the `tint` npm package is an unrelated image-tinting library) nor crates.io. Building it needs `depot_tools` (`gclient`/`gn` both absent here) plus a `gclient sync` pulling gigabytes of Dawn's dependencies and an hours-long C++ build whose success is not guaranteed on this box — not reproducible work for a headless session, and heavier than the item's own "while turning back is cheap" contemplates.
 
+**Rescoped 2026-08-25: this item no longer blocks Phase 5.** It asked two questions at once — *is there a translator that carries this corpus* and *which of two is better* — and only the first blocks anything. The first is now item 75, runnable here today. This item keeps the comparison, stays lifted, and is no longer in any other item's `Needs`.
+
 **What would settle it.** An attended session (or a machine) carrying a working Tint binary — from a Dawn build or a trusted prebuilt — so both translators run the fifteen corpus WGSL presets to GLSL, each translator's failures are listed, and the choice is recorded with the three-number readings (item 44's shape) behind it. Naga's half is landable there in minutes; Tint's build is the whole of the cost, and it is a person's call to pay it, not an unattended run's. The corpus inputs already exist under `fixtures/source/` (`fixtures/capability-fixtures.ts` names all fifteen and `tests/support/fixture.ts`'s `sourcePath` resolves them), so nothing but the Tint binary blocks the reading.
 
 ### 41. The build-time translation path
@@ -1246,7 +1248,7 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 **Done when.** A scene-tier consumer on WebGL 2 downloads no translator, and a shader that will not translate **fails the build** rather than the page.
 
-**Needs.** item 40.
+**Needs.** item 75. **Not** item 40: what these need is a translator known to carry the corpus, which is item 75. Item 40 chooses between two and is a separate, heavier question — see item 75 for why the two were split.
 
 ### 42. The on-demand translator chunk
 
@@ -1256,7 +1258,7 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 **Done when.** A bundle analysis shows the translator absent from the first download, and the editing path still works.
 
-**Needs.** item 40.
+**Needs.** item 75. **Not** item 40: what these need is a translator known to carry the corpus, which is item 75. Item 40 chooses between two and is a separate, heavier question — see item 75 for why the two were split.
 
 ### 43. Refusal by named construct
 
@@ -1870,3 +1872,17 @@ the old auto-tracking is gone by design (§7, §14). See [JOURNAL.md](JOURNAL.md
 **Needs.** item 73.
 
 **Why it exists.** Item 73 fixes `bench:traffic` and gives it a runner, which closes that hole. It does not close the class: `gates/all.mjs` runs four of the nine files in `gates/`, and the reason `bench:traffic` went unread for 31 commits is that nothing pointed at it — not that it was broken. The next script added is in exactly the same position, and a list of what deliberately needs hardware is worth having written down rather than inferred from which files a gate happens to name.
+
+### 75. Naga alone, against the corpus
+
+**Status.** open
+
+**Asks for.** The fifteen corpus WGSL presets translated to GLSL by Naga, with every failure named. Not a comparison — one question: **can WGSL→GLSL carry this corpus at all?**
+
+**Done when.** Every one of the fifteen is run through `naga` to GLSL and the outcome recorded per preset — translated, or failed with the construct named. A findings document carries the readings. Naga arrives as a **dev-time tool**, never a runtime dependency: §17 decision 5 keeps runtime dependencies at zero and §9.1 puts the translator in the build or in a lazily-imported chunk, so a `dependencies` entry fails this item.
+
+**Needs.** Nothing. `cargo` and `rustc` are on this machine and `naga-cli 30.0.1` is on crates.io, both established by item 40's own lift note.
+
+**Why it is split from item 40.** Item 40 asked whether Naga or Tint is better, and that needs a Tint build — which means Dawn, `depot_tools`, and hours of C++, none of it reproducible in a headless session. But **Phase 5 does not need the better translator, it needs a working one.** Decision 2 puts the whole WebGL 2 story on translation; what falsifies it is *no translator carrying the corpus*, and Naga alone answers that. If Naga carries it, Phase 5 proceeds and the comparison becomes an optimisation nobody is blocked on. If Naga does not, that is decision 1 degrading to toy-tier-only by construction — the wall §15 wanted hit early, and Tint would be a long shot against a corpus Naga could not manage.
+
+**What its result must not be read as saying.** The corpus is fifteen fullscreen and compute presets. **"Naga carries the corpus" is not "Naga carries the scene tier."** Scene materials have vertex stages, per-draw buffer slices and depth state that the corpus barely exercises, and the presets that do exercise them are hand-written rather than producer-emitted. A green result here licenses items 41 and 42; it does not close item 44's cross-backend question or item 52's, and it says nothing about `orbit-shadow` translating. Record that limit beside the readings, or the next reader will take a viability check for a guarantee.
