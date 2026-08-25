@@ -1221,7 +1221,7 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 ### 40. Choose the translator
 
-**Status.** open
+**Status.** lifted to a machine (or attended run) with a Tint build
 
 **Asks for.** Naga against Tint, evaluated on this corpus rather than on reputation.
 
@@ -1230,6 +1230,13 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 **Needs.** Nothing.
 
 **Note.** This is where decision 2's risk is discovered or dismissed. The whole WebGL 2 story rests on one translator; if it cannot carry the scene tier, decision 1 degrades to toy-tier-only by construction rather than by choice. Hit that wall here, while turning back is cheap.
+
+**Why it was lifted, 2026-08-25.** The `Done when` is a conjunction — *both* translators run over the whole corpus — and only one of the two is obtainable on the machine the loop runs on. This is a comparison; it cannot be done half, and running Naga alone and calling it a choice would be quoting a number no gate produced for the losing side. **How established nothing here can:**
+
+- **Naga is here for the asking.** `cargo`/`rustc` are on this machine and `cargo search naga-cli` returns `naga-cli = "30.0.1"` on crates.io, so `cargo install naga-cli` (its `--target glsl` writer is the WGSL→GLSL path this item needs) is a few minutes of compile away.
+- **Tint is not, and not by a route an unattended run may take.** Tint ships only inside Google's Dawn tree; it is published to neither npm (`@webgpu/tint` 404s; the `tint` npm package is an unrelated image-tinting library) nor crates.io. Building it needs `depot_tools` (`gclient`/`gn` both absent here) plus a `gclient sync` pulling gigabytes of Dawn's dependencies and an hours-long C++ build whose success is not guaranteed on this box — not reproducible work for a headless session, and heavier than the item's own "while turning back is cheap" contemplates.
+
+**What would settle it.** An attended session (or a machine) carrying a working Tint binary — from a Dawn build or a trusted prebuilt — so both translators run the fifteen `source/*.wgsl` presets to GLSL, each translator's failures are listed, and the choice is recorded with the three-number readings (item 44's shape) behind it. Naga's half is landable there in minutes; Tint's build is the whole of the cost, and it is a person's call to pay it, not an unattended run's. The corpus inputs already exist under `source/` (`fixtures/capability-fixtures.ts` names all fifteen), so nothing but the Tint binary blocks the reading.
 
 ### 41. The build-time translation path
 
