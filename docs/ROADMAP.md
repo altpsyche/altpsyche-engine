@@ -1787,11 +1787,53 @@ than wrongly drawn). See [JOURNAL.md](JOURNAL.md).
 
 ### 52. The same scene graph on both backends
 
-**Status.** open
+**Status.** lifted decomposed into items 91, 92, 93
 
 **Done when.** `orbit-shadow` draws on WebGL 2 as well as WebGPU, and the difference between the two is reported by item 44's three numbers.
 
 **Needs.** item 35, item 48, item 50, item 77, item 78.
+
+**Lifted 2026-08-25: the same WGSL scene graph cannot reach WebGL 2, and the three things
+that would let it are named by no `Needs` here.** This is where §17 decision 1 gets its
+answer, and the answer read off the code is that "reduced scene tier" still costs work this
+item's predecessors did not do. `orbit-shadow` ships one WGSL scene (`target: 'wgsl'`,
+[examples/orbit-shadow/main.ts](../examples/orbit-shadow/main.ts) L269) and a *separate* GLSL
+fullscreen stand-in that draws a different picture on purpose (L34–L42, *"The two are not the
+same picture"*). Making the **one** graph draw on both backends — which is the title, not the
+stand-in — hits three walls, none of them a machine limit and none reachable through items 35,
+48, 50, 77 or 78:
+
+1. **Selection routes a `wgsl` frame to WebGPU only.** `SPEAKS` is a one-to-one map
+   `{ glsl: 'webgl2', wgsl: 'webgpu' }` ([gpu/select.ts](../gpu/select.ts) L56), so
+   `selectBackend` never offers the WGSL scene to WebGL 2. Decision 2's "WGSL only, translated
+   to GLSL" means a WGSL scene reaches WebGL 2 by *translation*, and no code wires the
+   translator (item 41's baked GLSL, which item 79's corpus gate re-points to by hand) into
+   selection. Separable, and pure over data — filed as **item 91**.
+2. **The scene's per-instance data is a read-only storage buffer, which WebGL 2 refuses.**
+   `sceneView` emits `objects` and `views` as `{ kind: 'buffer', access: 'read' }`
+   ([scene/scene-view.ts](../scene/scene-view.ts) L235), and `orbit-shadow` declares
+   `requires: ['storage-buffer']` (L278). WebGL 2 carries no `storage-buffer` capability
+   (`webgl2Capabilities` is `{ msaa }` plus optional `float-blend`, [gpu/select.ts](../gpu/select.ts)
+   L148) so `refusal` refuses the frame, and the backend refuses a `buffer` resource outright
+   (*"declares a … resource, and this backend has none"*, [gpu/webgl2.ts](../gpu/webgl2.ts) L257) —
+   GLSL ES 3.0 has no SSBO. Items 77/78 gave vertex geometry and texture upload; neither gives
+   the scene tier's per-instance transforms a raster path (instanced attributes, a UBO, or a
+   texture). Item 78's own note says as much: *"a resident buffer upload … is a distinct
+   capability … not filed here."* Separable — filed as **item 92**.
+3. **The three-number report needs both backends drawing real pixels**, which is item 44's
+   reading on a card or a browser (§17 note 3) and reachable only once 1 and 2 land. This
+   machine reaches only SwiftShader, `gate:card` never runs here, and `gate:browser` runs once
+   over the batch. Filed as **item 93**, which `Needs` items 91 and 92 and carries decision 1's
+   answer that this item's title names.
+
+The shed-`item 49` and gained-`77`/`78` analysis below was correct about the per-draw/instancing
+distinction and **blind to the storage buffer feeding those instances** — it verified instancing
+works on WebGL 2 (item 77) without checking that the buffer the instances index is drawable
+there, which it is not. That blind spot is exactly what this lift corrects. **Reverse:** set
+`Status` back to `open`, delete this paragraph and items 91/92/93; this item then again bundles
+routing, a storage-buffer raster path, and a cross-backend reading under one `Done when` with a
+`Needs` that names none of them — the state this lift corrects. `carry`: decision 1's answer
+(how far the WebGL 2 scene tier actually reaches) belongs in the consuming repository's log too.
 
 **Shed `item 49` on 2026-08-25, which is what makes this item reachable again.** Item 49 was
 lifted `needs decomposition` the same day, and `lifted` never satisfies a `Needs`, so this item —
@@ -1942,7 +1984,7 @@ items 53 and 55. **Reverse:** put `item 57` back into item 58's `Needs` and dele
 | gate | produced by |
 | --- | --- |
 | §14 complete | item 38 |
-| examples covering both tiers on both backends | items 7, 25, 30, 35, 36, 52 |
+| examples covering both tiers on both backends | items 7, 25, 30, 35, 36, 93 |
 | `cost()` budget published and green | items 21, 23, 31 |
 | device readings published | items 9, 57 |
 | **one consumer outside this org shipping something** | item 53 |
@@ -1954,7 +1996,7 @@ items 53 and 55. **Reverse:** put `item 57` back into item 58's `Needs` and dele
 | --- | --- | --- |
 | standing rows | 53, 55, 57 | registers and waits rather than tasks; each says so in its own entry |
 | reverted | 6 | a record of a mistake, kept rather than deleted per the status table |
-| work that moved | 38, 49, 66, 67, 68 | `lifted decomposed into …`; the work lives in the successor items, which are what this gate reads |
+| work that moved | 38, 49, 52, 66, 67, 68 | `lifted decomposed into …`; the work lives in the successor items, which are what this gate reads |
 | lifted to hardware | 31, 62 | **these must be read, not superseded.** A machine with a real graphics card closes them, and until one does, 1.0 is not declarable |
 
 Everything else above must be `done`.
@@ -3191,3 +3233,85 @@ rebuild ([gpu/renderer.ts](../gpu/renderer.ts)'s `programFor`/`programs` cache) 
 `Arena` plus pipeline-cache model, and the deletion would be a rename of the problem. **Reverse:**
 delete this item; item 68 reverts to `lifted needs decomposition`. `carry`: losing `ShaderProgram`
 changes the surface a consumer builds against.
+
+### 91. Selection routes a WGSL frame to WebGL 2 by translation
+
+**Status.** open
+
+**Asks for.** `selectBackend` offers a `wgsl` frame to WebGL 2 when a translated GLSL for it
+exists, rather than routing `wgsl` to WebGPU alone. Today `SPEAKS` is a one-to-one map
+`{ glsl: 'webgl2', wgsl: 'webgpu' }` ([gpu/select.ts](../gpu/select.ts) L56), so no WGSL graph
+can ever be drawn on WebGL 2 however capable that backend becomes — which contradicts decision 2
+("WGSL only, translated to GLSL": a WGSL scene reaches WebGL 2 by translation, not by being
+refused). The translator's output already exists (item 41's baked GLSL, `fixtures/source/glsl/`),
+and item 79's corpus gate re-points WGSL presets at it by hand; this item is that re-pointing
+made a selection rule rather than a gate's local trick.
+
+**Done when.** Given a device offering WebGL 2 but not WebGPU, `selectBackend` returns
+`{ backend: 'webgl2' }` for a `wgsl` frame whose translation is available, and a refusal naming
+the missing translation (not the missing backend) for one whose translation is not; a WGSL frame
+on a WebGPU device still selects WebGPU. A node test pins all three, since selection is pure over
+the graph and the device (§10). Whether the routed frame then *draws* is item 92's (the backend)
+and item 93's (the pixels).
+
+**Needs.** item 41, item 79.
+
+**Found by review 2026-08-25, lifting item 52.** Item 52 asks for the same scene graph on both
+backends but names no item that lets a WGSL graph reach WebGL 2 at all; this is the selection
+half of that gap, separable from the backend capability (item 92) and the cross-backend reading
+(item 93). **Reverse:** delete this item; item 52 reverts to naming a routing path nothing
+tracks. `carry`: how a WGSL graph selects WebGL 2 is a fact a consumer reads.
+
+### 92. WebGL 2 draws the scene tier's per-instance data without a storage buffer
+
+**Status.** open
+
+**Asks for.** The WebGL 2 backend draws a pass reading per-instance object data that the scene
+tier authors as a read-only storage buffer (`sceneView` emits `objects`/`views` as
+`{ kind: 'buffer', access: 'read' }`, [scene/scene-view.ts](../scene/scene-view.ts) L235), via a
+raster path GLSL ES 3.0 has — instanced vertex attributes, a uniform block, or a data texture.
+Today the backend refuses a `buffer` resource outright (*"declares a … resource, and this backend
+has none"*, [gpu/webgl2.ts](../gpu/webgl2.ts) L257) and `storage-buffer` is not among its
+capabilities ([gpu/select.ts](../gpu/select.ts) L148), because ES 3.0 has no SSBO. This is the
+"reduced scene tier" of decision 1 made real: a scene feature getting a raster path where the
+compute-tier expression of it is refused.
+
+**Done when.** A frame the scene tier emits — one instanced render pass indexing a read-only
+per-instance record by `instance_index` — draws on WebGL 2: the records reach the backend as
+bytes (the item 77/78 seam), a raster path binds them per instance, and the vertex/instance/draw
+counts `cost()` reports are issued. That the picture agrees is item 93's reading on a card or a
+browser (§17 note 3). The `requires: ['storage-buffer']` a scene declares today either maps to
+this raster path on WebGL 2 or is refused by name — what it may not do is claim to draw and
+silently drop the per-instance data.
+
+**Needs.** item 77.
+
+**Found by review 2026-08-25, lifting item 52.** Item 52's shed-49 analysis verified instancing
+works on WebGL 2 (item 77) but never checked that the storage buffer feeding those instances is
+drawable there; it is not. Item 78's note already flagged this as unfiled (*"a resident buffer
+upload … is a distinct capability … not filed here"*). Separable from the selection routing
+(item 91) and the pixel reading (item 93). **Reverse:** delete this item; item 52 reverts to
+naming a per-instance raster path nothing tracks. `carry`: whether the scene tier's storage
+buffers survive onto WebGL 2, and as what, is a capability a consumer reads.
+
+### 93. `orbit-shadow`'s two backends, compared by item 44's three numbers
+
+**Status.** open
+
+**Asks for.** The subject item 52 names: `orbit-shadow`'s **one** scene graph drawn on WebGL 2
+as well as WebGPU, with the difference between the two reported by item 44's three numbers
+(`hardJumps`, `maxDelta`, `differing`). This is where §17 decision 1 gets its answer — how far
+the WebGL 2 scene tier actually reaches, measured rather than asserted.
+
+**Done when.** A gate draws `orbit-shadow`'s scene graph through both backends on real contexts
+and prints item 44's three numbers over the two frames. **Reported, never asserted:** the numbers
+are a card's or a browser's, and this machine reaches only SwiftShader (§17 note 3), so the
+reading is taken where a card or the browser batch runs, not in an unattended node session.
+
+**Needs.** item 91, item 92.
+
+**Found by review 2026-08-25, lifting item 52.** This is item 52's `Done when` residual once the
+routing (item 91) and the backend capability (item 92) it silently required are filed and landed.
+It carries item 52's title and decision 1's answer forward, so the subject is tracked rather than
+dropped by the lift. **Reverse:** delete this item; item 52's cross-backend reading is tracked by
+nothing. `carry`: decision 1's answer belongs in the consuming repository's log.
