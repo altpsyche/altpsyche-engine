@@ -1603,7 +1603,7 @@ See [JOURNAL.md](JOURNAL.md).
 
 ### 49. WebGL 2: instancing and per-draw UBO ranges
 
-**Status.** open
+**Status.** lifted needs decomposition
 
 **Done when.** `instanced-cubes` draws here, at the same object count, with alignment respected.
 
@@ -1619,6 +1619,45 @@ written the exit criterion is already met by items 27+28 and lands nothing new. 
 corpus preset (`core-perdraw` draws a `quad-grid` and binds a storage buffer, both refused
 today) — needs the vertex-geometry path of **item 77**. Whoever takes this should also tighten
 the `Done when` past `instanced-cubes` to a preset that actually reads a vertex buffer.
+
+**Lifted 2026-08-25: this bundles two capabilities under a `Done when` that lands nothing,
+and its one suggested exercise vehicle cannot run on WebGL 2.** Three findings, each read from
+the code rather than inferred, settle that it cannot be worked as written without an
+unattended run inventing its own definition of done:
+
+1. **Its `Done when` is already met and lands nothing new** — which is not a looser reading
+   but this item's own words (the paragraph above). `instanced-cubes`' WebGL 2 arm is
+   `draws: [{ vertices: 3, instances: COUNT }]` ([examples/instanced-cubes/main.ts](../examples/instanced-cubes/main.ts)),
+   fullscreen corners drawn by one `drawArraysInstanced` (items 27+28), no `perDraw`, so
+   "alignment respected" is vacuous. Flipping the status to `done` on that basis would record
+   a completion that added no code.
+2. **The instancing half already landed under item 77.** `submit/gl2.ts`'s `drawGL2Frame`
+   issues `drawElementsInstanced`/`drawArraysInstanced` over a real vertex buffer, and
+   `gpu/webgl2.ts`'s geometry pass populates it — so instanced *geometry* of the shader's own
+   is drawn today. Nothing in "instancing" is left for this item; a re-filed instancing item
+   would already be satisfied by item 77.
+3. **The per-draw UBO half is real and separable, but has no corpus preset to exercise it.**
+   The executor arm exists from item 27 (`GL2PerDraw`, a `bindBufferRange` per draw in
+   [submit/gl2.ts](../submit/gl2.ts)), and the backend never populates it: `gpu/webgl2.ts`'s
+   `PassPlan` carries no `perDraw` and its `drawGL2Frame` call omits it. Wiring it is a
+   bounded change (read `Draw.perDraw`/`BindingSpec.perDraw` off the pass, allocate/point a
+   per-draw uniform buffer, hand `drawGL2Frame` the per-draw offsets). But the preset this
+   item's own note points at — `core-perdraw` — does **not** use that path: it binds a
+   read-only **storage buffer** indexed by `instance_index` (`buffers: [{ name: 'copies',
+   bytes: 64, content: 'copy-tints' }]`, [fixtures/capability-fixtures.ts](../fixtures/capability-fixtures.ts#L315)),
+   and WebGL 2 has no storage buffers (the `storage-buffer` capability §10 withholds from it),
+   so the backend refuses it on grounds this item cannot lift. No corpus preset exercises the
+   `Draw.perDraw` uniform-slice path on WebGL 2.
+
+**What is separable, for whoever re-files.** (a) *Instancing of geometry on WebGL 2* — already
+delivered by item 77; a re-filed item is a no-op or a fold into 77. (b) *Per-draw UBO ranges
+wired through the WebGL 2 backend* — the genuine remaining work, whose `Done when` must be
+chosen deliberately: either a **new** corpus preset that reads a per-draw uniform slice
+(distinct from `core-perdraw`'s storage buffer), or an explicit node-test-only scope with
+pixels deferred to item 79, the shape item 77 took. Both are decomposition calls a curator
+makes, not an unattended run. **Reverse:** set `Status` back to `open` and delete this note; the
+item returns to its pre-lift shape, with its `Done when` still vacuous and its per-draw preset
+still impossible on WebGL 2 — which is the state this lift records rather than the one it caused.
 
 ### 50. WebGL 2: mip generation
 
