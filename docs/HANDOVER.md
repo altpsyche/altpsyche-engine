@@ -19,16 +19,20 @@ The open front is the WebGL 2 backend growing past fullscreen-only: items 77, 78
 
     bash scripts/run-loop.sh 10 --worktree <name> --cap 45 --items <comma,list>
 
-**Four rules for running it.**
+**Five rules for running it.**
 
 1. **Always `--worktree`.** `main` stays parked and you review a branch, then rebase and
    fast-forward. Verify isolation once per run with
    `readlink /proc/$(pgrep -f run-loop.sh | tail -1)/cwd` — it must be the worktree.
-2. **Never put item 53 in `--items`.** It is "wait for a consumer who did not write this" and
+2. **Do not remove a worktree the moment a run reports done.** A session can outlive the
+   process that reported completion, and a removed worktree leaves its git commands resolving to
+   the main repository — which is how one commit landed on `main` on 2026-08-25 while its branch
+   never saw it. Check both: no `.loop/lock` in the worktree, and no `claude -p` process left.
+3. **Never put item 53 in `--items`.** It is "wait for a consumer who did not write this" and
    the prompt stops the whole run on it.
-3. **A high-numbered urgent item runs last**, because selection is lowest-number-first. Give it
+4. **A high-numbered urgent item runs last**, because selection is lowest-number-first. Give it
    its own single-item run.
-4. **Read the gate's raw output, not its summary.** Every run log has a
+5. **Read the gate's raw output, not its summary.** Every run log has a
    `----- what the gates themselves printed -----` section. `4 of 4` in prose is not a reading.
 
 **Review every commit before merging.** The loop's work has been solid; the failures have been

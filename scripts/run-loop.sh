@@ -108,6 +108,14 @@ done
 # ---------------------------------------------------------------------------
 # Isolated worktree mode, which is how several runs go at once
 # ---------------------------------------------------------------------------
+#
+# DO NOT REMOVE A WORKTREE THE MOMENT A RUN REPORTS DONE. A session can outlive the
+# process that reported completion, and a removed worktree leaves its git commands
+# resolving to the main repository instead — which is how one step's commit landed on
+# `main` on 2026-08-25 while the branch it belonged to never saw it. Check the lock is
+# gone AND no `claude` process remains before removing:
+#
+#   [ ! -f ../<worktree>/.loop/lock ] && ! pgrep -f 'claude -p' >/dev/null && git worktree remove ...
 
 if [ -n "$WORKTREE" ]; then
     DIR="$(dirname "$REPO")/$(basename "$REPO")-loops/$WORKTREE"
