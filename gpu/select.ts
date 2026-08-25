@@ -182,22 +182,37 @@ export function webgpuCapabilities(features: Iterable<string>): ReadonlySet<Capa
   return capabilities;
 }
 
+/** The capabilities a WebGL 2 context always has, whatever extensions it lists.
+ * `msaa` is guaranteed — WebGL 2 has multisampled renderbuffers — and
+ * `storage-buffer` is the "reduced scene tier" of §17 decision 1 made real
+ * (item 92): a scene's per-instance object data, authored as a read-only storage
+ * buffer, gets a raster path on this backend (a uniform block indexed by
+ * `gl_InstanceID`, GLSL ES 3.00's answer to a read-only `array<T>`), so a graph
+ * requiring `storage-buffer` for that reduced use is drawn rather than refused.
+ * The compute-tier expression of the same name — a *read-write* storage buffer a
+ * compute or fragment stage fills — has no ES 3.00 syntax and is refused by name
+ * at the backend ([gpu/webgl2.ts](./webgl2.ts)), which is the "or is refused by
+ * name" half of item 92: the capability lets selection through, the backend draws
+ * what it can and refuses by name what it cannot, rather than claiming to draw and
+ * dropping the data silently. */
+const WEBGL2_CORE: readonly Capability[] = ['msaa', 'storage-buffer'];
+
 /** The optional WebGL 2 capabilities and the extension name that grants each. The
- * list is short because WebGL 2 has none of §10's headline capabilities — no
- * compute, storage, indirect, timestamp or occlusion — and `float-blend` is the
- * one on this list an extension can turn on. */
+ * list is short because WebGL 2 has none of §10's other headline capabilities — no
+ * compute, storage texture, indirect, timestamp or occlusion — and `float-blend`
+ * is the one on this list an extension can turn on. */
 const WEBGL2_OPTIONAL: readonly [Capability, string][] = [['float-blend', 'EXT_float_blend']];
 
 /**
  * The §10 capabilities a WebGL 2 context has, read from the extensions it lists.
- * `msaa` is always present — WebGL 2 guarantees multisampled renderbuffers — and
- * the rest of §10's list is the WebGPU-only set the honest answer of §10 names, so
- * a graph requiring `compute` (or storage, indirect, timestamp, occlusion) is
+ * `msaa` and `storage-buffer` are always present (`WEBGL2_CORE`); the rest of
+ * §10's list is the WebGPU-only set the honest answer of §10 names, so a graph
+ * requiring `compute` (or storage texture, indirect, timestamp, occlusion) is
  * refused here by that name. Pure: it takes the extension names, not the context.
  */
 export function webgl2Capabilities(extensions: Iterable<string>): ReadonlySet<Capability> {
   const has = new Set(extensions);
-  const capabilities = new Set<Capability>(['msaa']);
+  const capabilities = new Set<Capability>(WEBGL2_CORE);
   for (const [capability, extension] of WEBGL2_OPTIONAL) if (has.has(extension)) capabilities.add(capability);
   return capabilities;
 }

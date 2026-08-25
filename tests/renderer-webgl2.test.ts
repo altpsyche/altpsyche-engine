@@ -335,14 +335,17 @@ describe('a description above the subset', () => {
     );
   });
 
-  it('refuses a buffer resource, since a storage buffer is a compute output', () => {
+  it('refuses a read-write storage buffer by name, since it has no compute to fill one (item 92)', () => {
+    // A read-write storage buffer is a compute or fragment-stage output this backend
+    // has no stage to fill. It is refused by name — the "or is refused by name" half
+    // of item 92 — where a read-only one gets the uniform-block raster path below.
     const { backend } = backendOver();
     const resources = [
       ...graph().resources,
       { kind: 'buffer' as const, bytes: 16, access: 'read-write' as const },
     ];
     expect(() => backend.program(glsl({ resources }))).toThrow(
-      'the frame for "fixture" declares a buffer resource, and this backend has none'
+      'the frame for "fixture" writes resource 1 as a storage buffer, and this backend has no compute to fill one'
     );
   });
 
@@ -929,6 +932,182 @@ describe('a pass drawing the shader own geometry (item 77)', () => {
     const mixed: FrameGraph = { ...frame, passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }, { instances: 3 }] }] };
     expect(() => backend.program(mixed)).toThrow(
       'the frame for "core-geometry" mixes its own corners into the geometry 1, which it draws from one buffer'
+    );
+  });
+});
+
+/**
+ * A frame the scene tier emits (item 92): one instanced render pass drawing a mesh
+ * once per object, each copy reading its own record out of a read-only storage
+ * buffer by `instance_index`, and a shared views buffer beside it — the shape
+ * `sceneView` builds ([scene/scene-view.ts](../scene/scene-view.ts)), authored the
+ * way the build assembles `core-material`. GLSL ES 3.00 has no storage buffer, so
+ * this backend takes the raster path of a uniform block indexed by `gl_InstanceID`:
+ * the whole buffer bound once per pass, the shader reading `objects[gl_InstanceID]`
+ * out of the array. Two read-only buffers — the per-object records and the shared
+ * views — so the driver reports two blocks the backend binds to points of their
+ * own, told apart by the `_group_G_binding_B` their members carry (item 87).
+ *
+ * The fake reports the two blocks the way a driver would (`gl.blocks`); what these
+ * assert is the backend's calls, not a compiled shader, exactly as items 46/77/78
+ * landed their WebGL 2 work through the node suite rather than a card. That the
+ * per-instance picture agrees is a card's or a browser's per item 93 (§17 note 3).
+ */
+const SCENE_VERTEX =
+  '#version 300 es\n' +
+  'layout(location=0) in vec2 position;\n' +
+  'struct Object { mat4 model; vec4 tint; };\n' +
+  'layout(std140) uniform Objects { Object _group_0_binding_0[64]; };\n' +
+  'layout(std140) uniform Views { mat4 _group_0_binding_1[2]; };\n' +
+  'void main(){\n' +
+  '  Object mine = _group_0_binding_0[gl_InstanceID];\n' +
+  '  gl_Position = _group_0_binding_1[0] * mine.model * vec4(position, 0.0, 1.0);\n' +
+  '}';
+
+const OBJECT_BYTES = 80;
+const SCENE_INSTANCES = 3;
+const OBJECTS_BYTES = OBJECT_BYTES * SCENE_INSTANCES;
+const VIEW_BYTES = 64;
+
+/** The two blocks the linked scene program reports, one per read-only buffer, each
+ * member qualified with the binding's `_group_G_binding_B` so `resolveBlocks` tells
+ * them apart and from the (here absent) shared block. */
+const withSceneBlocks = (gl: ReturnType<typeof createFakeGL>) => {
+  gl.blocks = [
+    { bytes: OBJECTS_BYTES, members: [{ name: 'Objects._group_0_binding_0[0].model', offset: 0 }] },
+    { bytes: VIEW_BYTES, members: [{ name: 'Views._group_0_binding_1[0]', offset: 0 }] },
+  ];
+};
+
+function sceneFrame(instances = SCENE_INSTANCES): FrameGraph {
+  const grid = GEOMETRY_PRIMITIVE['quad-grid'];
+  const made = grid.bytes(16, 16);
+  return {
+    id: 'core-material',
+    authored: 'glsl',
+    // per-object records 0, shared views 1, grid vertices 2, grid-index indices 3.
+    resources: [
+      { kind: 'buffer', bytes: OBJECTS_BYTES, access: 'read', data: new Uint8Array(OBJECTS_BYTES) },
+      { kind: 'buffer', bytes: VIEW_BYTES, access: 'read', data: new Uint8Array(VIEW_BYTES) },
+      {
+        kind: 'vertices',
+        stride: grid.stride,
+        attributes: grid.attributes,
+        topology: grid.topology,
+        count: made.vertexCount,
+        indices: indices(3),
+        data: made.vertices,
+      },
+      { kind: 'indices', format: grid.indexFormat, count: made.indexCount, data: made.indices },
+    ],
+    modules: [
+      { name: 'project', glsl: SCENE_VERTEX },
+      { name: 'shade', glsl: FRAGMENT },
+    ],
+    pipelines: [
+      {
+        kind: 'render',
+        vertex: { module: moduleHandle(0), entry: 'main' },
+        fragment: { module: moduleHandle(1), entry: 'main' },
+        geometry: vertices(2),
+        bindings: [
+          { group: 0, binding: 0, resource: buffer(0), visibility: ['vertex'] },
+          { group: 0, binding: 1, resource: buffer(1), visibility: ['vertex'] },
+        ],
+      },
+    ],
+    passes: [{ pipeline: pipelineHandle(0), draws: [{ instances }] }],
+  };
+}
+
+describe("the scene tier's per-instance read-only buffer (item 92)", () => {
+  const UNIFORM_BUFFER = 0x8a11;
+  const grid = GEOMETRY_PRIMITIVE['quad-grid'];
+  const made = grid.bytes(16, 16);
+
+  it('draws it where it refused a buffer before', () => {
+    const { backend } = backendOver(withSceneBlocks);
+    expect(() => backend.program(sceneFrame()).draw()).not.toThrow();
+  });
+
+  it('uploads the per-object records and the shared views as uniform buffers', () => {
+    const { gl, backend } = backendOver(withSceneBlocks);
+    backend.program(sceneFrame());
+    // Each read-only buffer reaches the card through UNIFORM_BUFFER — the raster
+    // path a storage buffer takes here — at the length the producer packed. The
+    // geometry rides ARRAY_BUFFER beside them, so these are the uniform uploads
+    // alone; no shared uniform block is reported, so the two lengths are the whole
+    // of the uniform-buffer traffic.
+    const uniformLengths = gl.of('bufferData').filter((entry) => entry.target === UNIFORM_BUFFER).map((entry) => entry.byteLength);
+    expect(uniformLengths).toContain(OBJECTS_BYTES);
+    expect(uniformLengths).toContain(VIEW_BYTES);
+  });
+
+  it('binds each read-only buffer whole to its own block point', () => {
+    const { gl, backend } = backendOver(withSceneBlocks);
+    backend.program(sceneFrame()).draw();
+    // Each block is told its point at link (uniformBlockBinding) and the whole
+    // buffer bound there before the draw (bindBufferBase). Points run from
+    // STORAGE_POINT_BASE=2, above the shared (0) and per-draw (1) points, one per
+    // read-only buffer in binding order: objects at 2, views at 3.
+    const linked = gl.of('uniformBlockBinding').map((entry) => entry.binding);
+    expect(linked).toContain(2);
+    expect(linked).toContain(3);
+    const bound = gl.of('bindBufferBase').map((entry) => entry.index);
+    expect(bound).toContain(2);
+    expect(bound).toContain(3);
+  });
+
+  it('draws the instances with one drawElementsInstanced, the count cost() reads off the same structure', () => {
+    const { gl, backend } = backendOver(withSceneBlocks);
+    backend.program(sceneFrame(5)).draw();
+    // One draw call reading the mesh's index count and the object count as its
+    // instance count — the same one draw the card makes however many instances it
+    // reads (item 28) — and it is the one draw cost() counts for the pass.
+    expect(gl.of('drawElementsInstanced')).toHaveLength(1);
+    expect(gl.of('drawElementsInstanced').at(-1)).toMatchObject({ count: made.indexCount, instances: 5 });
+    const draws = gl.of('drawElements').length + gl.of('drawElementsInstanced').length;
+    expect(draws).toBe(cost(sceneFrame(5), { width: 800, height: 600 }).draws);
+    expect(draws).toBe(1);
+  });
+
+  it('counts the records and views as resident bytes, none uploaded per frame', () => {
+    const { backend } = backendOver(withSceneBlocks);
+    // The quad the backend shares is written at construction; reset here so what is
+    // measured is this frame's own uploads. The per-object records, the shared
+    // views, and the geometry are all first contents of resident resources, counted
+    // through `arena.wrote` (item 22); nothing is uploaded per frame, since no
+    // shared uniform block is respecified.
+    backend.resetTraffic();
+    backend.program(sceneFrame());
+    const traffic = backend.traffic();
+    expect(traffic.written).toBe(OBJECTS_BYTES + VIEW_BYTES + made.vertices.byteLength + made.indices.byteLength);
+    expect(traffic.uploaded).toBe(0);
+  });
+
+  it('gives the per-object and views buffers back on dispose', () => {
+    const { gl, backend } = backendOver(withSceneBlocks);
+    backend.program(sceneFrame()).dispose();
+    // Two read-only storage buffers plus the two geometry buffers go back to the
+    // arena; no shared uniform block is reported, so those four are the whole of it.
+    expect(gl.of('deleteBuffer')).toHaveLength(4);
+  });
+
+  it('still refuses a read-write storage buffer among the scene buffers, by name', () => {
+    const { backend } = backendOver(withSceneBlocks);
+    // A read-write buffer bound beside the read-only ones is a compute or
+    // fragment-stage output this backend has no stage to fill: refused by name where
+    // its read-only siblings draw, so the reduced scene tier is honest about what it
+    // cannot carry rather than dropping the data silently.
+    const base = sceneFrame();
+    const withRW: FrameGraph = {
+      ...base,
+      resources: base.resources.map((resource, at) =>
+        at === 0 && resource.kind === 'buffer' ? { ...resource, access: 'read-write' as const } : resource
+      ),
+    };
+    expect(() => backend.program(withRW)).toThrow(
+      'the frame for "core-material" writes resource 0 as a storage buffer, and this backend has no compute to fill one'
     );
   });
 });

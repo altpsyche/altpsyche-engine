@@ -168,10 +168,11 @@ describe('a per-draw uniform slice on WebGL 2', () => {
     );
   });
 
-  it('still refuses a buffer no pipeline slices per draw, by name', () => {
-    // A buffer with no per-draw binding is a storage buffer this backend has no
-    // compute to fill, refused as before — the per-draw path widened what a buffer
-    // may be, not opened the door to every buffer.
+  it('still refuses a buffer no pipeline reads, by name', () => {
+    // A read-only buffer no binding names is one nothing draws through, refused by
+    // name — the per-draw path (item 27) and the storage-buffer raster path
+    // (item 92) each widened what a *bound* buffer may be, not opened the door to a
+    // buffer no pipeline reads.
     const { backend } = backendOver();
     const frame: FrameGraph = {
       id: 'storage',
@@ -194,6 +195,8 @@ describe('a per-draw uniform slice on WebGL 2', () => {
       ],
       passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
     };
-    expect(() => backend.program(frame)).toThrow('declares a buffer resource, and this backend has none');
+    expect(() => backend.program(frame)).toThrow(
+      'declares a buffer resource 1 no pipeline reads, and this backend keeps only the buffers its draws read'
+    );
   });
 });

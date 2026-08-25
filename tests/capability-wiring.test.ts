@@ -69,6 +69,16 @@ describe('resolve — selection first, refusal second', () => {
     expect(chosen(resolve(glslFrame, webgpuMachine))).toBe('webgl2');
   });
 
+  it('draws a scene requiring storage-buffer on WebGL 2 rather than refusing it (item 92)', () => {
+    // A GLSL scene declaring `requires: ['storage-buffer']` — the reduced scene
+    // tier's per-instance data — resolves to WebGL 2, which now has the capability
+    // via its uniform-block raster path, rather than being refused for want of a
+    // storage buffer. The read-write, compute-filled expression of the same name is
+    // refused by name at the backend, not here.
+    const scene = { id: 'panels', authored: 'glsl' as const, requires: ['storage-buffer'] as readonly Capability[] };
+    expect(chosen(resolve(scene, webgl2Machine))).toBe('webgl2');
+  });
+
   it('refuses a WGSL graph needing an optional capability the selected WebGPU device lacks, by name', () => {
     // A WebGPU device with no optional features: it speaks WGSL and is selected,
     // but a graph needing `timestamp` is refused against it by that name, not the
@@ -114,10 +124,16 @@ describe('capability derivation from a live device', () => {
     expect(caps.has('depth-clamp')).toBe(false);
   });
 
-  it('gives WebGL 2 msaa and none of the WebGPU-only capabilities', () => {
+  it('gives WebGL 2 msaa and storage-buffer, and none of the other WebGPU-only capabilities', () => {
     const caps = webgl2Capabilities([]);
     expect(caps.has('msaa')).toBe(true);
-    for (const only of ['compute', 'storage-buffer', 'storage-texture', 'indirect', 'timestamp', 'occlusion'] as const) {
+    // `storage-buffer` is the reduced scene tier of §17 decision 1 made real
+    // (item 92): a scene's read-only per-instance data gets a uniform-block raster
+    // path here, so a graph requiring it is drawn rather than refused — the
+    // read-write, compute-filled expression of the same name is refused by name at
+    // the backend, not by the capability.
+    expect(caps.has('storage-buffer')).toBe(true);
+    for (const only of ['compute', 'storage-texture', 'indirect', 'timestamp', 'occlusion'] as const) {
       expect(caps.has(only)).toBe(false);
     }
   });

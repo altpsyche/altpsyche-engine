@@ -83,61 +83,80 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string): WebG
 }
 
 /** The block binding point the frame's one shared uniform block is bound to, where
- * `setUniforms` writes its buffer, and the point a per-draw slice's block is bound
- * to, where each draw binds one record's range (item 27). GLSL ES 3.00 declares no
- * binding number for a block — the linked program answers with a block index — so
- * the two are assigned here rather than read off the source. */
+ * `setUniforms` writes its buffer; the point a per-draw slice's block is bound to,
+ * where each draw binds one record's range (item 27); and the first point a
+ * read-only storage buffer's block is bound to (item 92), where a whole buffer is
+ * bound once per pass. GLSL ES 3.00 declares no binding number for a block — the
+ * linked program answers with a block index — so the points are assigned here
+ * rather than read off the source. Storage points run upward from their base, one
+ * per read-only buffer a pipeline binds; they start above the per-draw point so a
+ * pipeline that somehow bound both would not collide, though no frame does. */
 const SHARED_POINT = 0;
 const PER_DRAW_POINT = 1;
+const STORAGE_POINT_BASE = 2;
+
+/** One uniform block a pipeline binds that is not the shared block: the member-name
+ * tag the build's GLSL qualifies it with (`_group_G_binding_B`, the binding's own
+ * group and binding), and the point this backend binds it to. A per-draw slice
+ * (item 27) and each read-only storage buffer (item 92) arrive as one of these, so
+ * `resolveBlocks` can tell every non-shared block from the shared one and from
+ * each other by the tag its members carry. */
+interface TaggedBlock {
+  tag: string;
+  point: number;
+}
 
 /**
- * The frame's shared uniform block resolved off the linked program, and the
- * per-draw block bound beside it where the pipeline slices one.
+ * The frame's shared uniform block resolved off the linked program, and every
+ * tagged block — a per-draw slice (item 27), a read-only storage buffer (item 92) —
+ * bound beside it to the point it was assigned.
  *
  * The driver decides where each block's members sit and which block index each is,
  * so guessing from the declaration order produces a frame that renders and is
- * wrong. A pipeline with a per-draw slice links two blocks — the frame's shared
- * uniforms and the per-draw record — and they are told apart by the member name
- * the build's GLSL carries: a block whose member is qualified with the per-draw
- * binding's `_group_G_binding_B` is the per-draw one. Each block is bound to its
- * own point,
- * and the shared block's members alone become the layout `setUniforms` writes, so a
- * per-draw member cannot land in the buffer the frame's values fill.
+ * wrong. A pipeline binding tagged blocks links them beside the frame's shared
+ * uniforms, and they are told apart by the member name the build's GLSL carries: a
+ * block whose member is qualified with a binding's `_group_G_binding_B` is that
+ * binding's block. Each block is bound to its own point, and the shared block's
+ * members alone become the layout `setUniforms` writes, so a tagged member cannot
+ * land in the buffer the frame's values fill.
  */
 function resolveBlocks(
   gl: WebGL2RenderingContext,
   program: WebGLProgram,
-  perDrawTag: string | null
-): { layout: Map<string, number> | null; size: number; perDraw: boolean } {
+  tagged: readonly TaggedBlock[]
+): { layout: Map<string, number> | null; size: number } {
   const blocks = gl.getProgramParameter(program, gl.ACTIVE_UNIFORM_BLOCKS) as number;
-  if (blocks === 0) return { layout: null, size: 0, perDraw: false };
+  if (blocks === 0) return { layout: null, size: 0 };
   const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS) as number;
   const indices = Array.from({ length: count }, (_, i) => i);
   const names = indices.map((i) => gl.getActiveUniform(program, i)?.name ?? '');
   const offsets = (gl.getActiveUniforms(program, indices, gl.UNIFORM_OFFSET) as number[]) ?? [];
   const blockOf = (gl.getActiveUniforms(program, indices, gl.UNIFORM_BLOCK_INDEX) as number[]) ?? [];
-  // The per-draw block index is the one holding a member whose name carries the
-  // per-draw binding's group and binding; the shared block is any other one. A
-  // frame with no per-draw slice has only the shared block.
-  let perDrawBlock = -1;
-  if (perDrawTag) {
+  // Each tagged block is the one holding a member whose name carries that binding's
+  // tag, bound to the point the binding was assigned. GLSL ES 3.00 has no binding
+  // qualifier, so each block is told its point here.
+  const taggedBlocks = new Set<number>();
+  for (const { tag, point } of tagged) {
     for (let i = 0; i < count; i++) {
-      if ((blockOf[i] ?? -1) >= 0 && names[i]?.includes(perDrawTag)) {
-        perDrawBlock = blockOf[i] as number;
+      if ((blockOf[i] ?? -1) >= 0 && names[i]?.includes(tag)) {
+        const block = blockOf[i] as number;
+        gl.uniformBlockBinding(program, block, point);
+        taggedBlocks.add(block);
         break;
       }
     }
   }
+  // The shared block is any block none of the tags claimed. A frame with no tagged
+  // block — a plain fullscreen toy — has only this one.
   let sharedBlock = -1;
   for (let i = 0; i < count; i++) {
-    if ((blockOf[i] ?? -1) >= 0 && blockOf[i] !== perDrawBlock) {
-      sharedBlock = blockOf[i] as number;
+    const block = blockOf[i] ?? -1;
+    if (block >= 0 && !taggedBlocks.has(block)) {
+      sharedBlock = block;
       break;
     }
   }
-  // GLSL ES 3.00 has no binding qualifier, so each block is told its point here.
   if (sharedBlock >= 0) gl.uniformBlockBinding(program, sharedBlock, SHARED_POINT);
-  if (perDrawBlock >= 0) gl.uniformBlockBinding(program, perDrawBlock, PER_DRAW_POINT);
   let layout: Map<string, number> | null = null;
   let size = 0;
   if (sharedBlock >= 0) {
@@ -153,7 +172,31 @@ function resolveBlocks(
     }
     size = gl.getActiveUniformBlockParameter(program, sharedBlock, gl.UNIFORM_BLOCK_DATA_SIZE) as number;
   }
-  return { layout, size, perDraw: perDrawBlock >= 0 };
+  return { layout, size };
+}
+
+/** The read-only storage buffers a render pipeline binds (item 92): each binding
+ * that names a `buffer` resource and is not a per-draw slice, paired with the
+ * `_group_G_binding_B` tag its block carries and the point this backend binds it
+ * to. A scene pipeline binds two — its per-object records and the shared views —
+ * so the points run from `STORAGE_POINT_BASE` in binding order. Pure over the
+ * frame, so the compile step and the draw step derive the same points from it. */
+function storageBindings(
+  spec: RenderPipelineSpec,
+  frame: FrameGraph
+): { resource: number; tag: TaggedBlock }[] {
+  const out: { resource: number; tag: TaggedBlock }[] = [];
+  for (const binding of spec.bindings) {
+    if (binding.perDraw !== undefined) continue;
+    const index = indexOf(binding.resource);
+    const resource = frame.resources[index];
+    if (resource?.kind !== 'buffer') continue;
+    out.push({
+      resource: index,
+      tag: { tag: `_group_${binding.group}_binding_${binding.binding}`, point: STORAGE_POINT_BASE + out.length },
+    });
+  }
+  return out;
 }
 
 /** The ceilings this report reads, by the names the specification gives them.
@@ -191,15 +234,18 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
   if (!gl) return null;
 
   // One arena for the backend's whole life. Every buffer this backend allocates —
-  // the quad it shares across programs and the uniform block each program owns —
-  // is allocated and freed through here, so a handle to a deleted buffer is caught
+  // the quad it shares across programs, the uniform block each program owns, the
+  // per-draw slices (item 27) and the read-only storage buffers (item 92) — is
+  // allocated and freed through here, so a handle to a deleted buffer is caught
   // rather than naming whatever the context hands back next.
-  // A frame this backend takes declares no page-readable buffer — a storage buffer
-  // is refused by capability, so a compute pass or a query never writes one here —
-  // so a readback through the arena's §9 door (item 89) has nothing to hand back
-  // and answers with no bytes, the true answer the way `readBuffer` answers with no
-  // words rather than refusing the question. When a WebGL 2 path does want a real
-  // buffer read back, this is where a `gl.getBufferSubData` copy would go.
+  // The buffers this backend keeps are all inputs it uploads once and reads: a
+  // read-write storage buffer is refused by name, and this backend has no compute
+  // stage or query to write one, so nothing here ever fills a buffer the page then
+  // reads back. A readback through the arena's §9 door (item 89) therefore has
+  // nothing to hand back and answers with no bytes, the true answer the way
+  // `readBuffer` answers with no words rather than refusing the question. When a
+  // WebGL 2 path does want a real buffer read back, this is where a
+  // `gl.getBufferSubData` copy would go.
   const readNoBuffer = async (_buffer: WebGLBuffer, _range: Range | undefined): Promise<ArrayBuffer> => new ArrayBuffer(0);
   const arena = new Arena<WebGLBuffer>((buffer) => gl.deleteBuffer(buffer), readNoBuffer);
 
@@ -319,6 +365,21 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // by name below rather than dropped silently.
       const perDrawAlignment = gl.getParameter(gl.UNIFORM_BUFFER_OFFSET_ALIGNMENT) as number;
 
+      // The read-only storage buffers this frame's render pipelines bind — the scene
+      // tier's per-object records and its shared views, each authored as a
+      // `{ kind: 'buffer', access: 'read' }` a WGSL shader indexes by
+      // `instance_index` (item 92). GLSL ES 3.00 has no storage buffer, so each one
+      // takes the raster path of a uniform block indexed by `gl_InstanceID`: the
+      // whole buffer is bound once per pass, and the shader reads its own record out
+      // of the array. It is a second buffer kind this backend keeps beside the
+      // per-draw slice; a *read-write* storage buffer stays refused by name below,
+      // since only a compute or fragment stage this backend has not got fills one.
+      const storageResources = new Set<number>();
+      for (const spec of frame.pipelines) {
+        if (spec.kind !== 'render') continue;
+        for (const { resource } of storageBindings(spec, frame)) storageResources.add(resource);
+      }
+
       // The resource kinds this backend keeps: the frame's one uniform block, the
       // samplers that say how a texture is read between its pixels, a colour texture
       // a pass draws and a later pass samples (the multi-pass shape of item 46), and
@@ -333,18 +394,33 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       const samplerSpecs = frame.resources.filter((resource): resource is SamplerResource => resource.kind === 'sampler');
       for (const [index, resource] of frame.resources.entries()) {
         // The uniform block, the samplers, and the vertex/index buffers of the
-        // shader's own geometry (item 77) are the resource kinds this backend keeps;
-        // a storage buffer is a compute output and stays refused below.
+        // shader's own geometry (item 77) are the resource kinds this backend keeps.
         if (resource.kind === 'uniform' || resource.kind === 'sampler') continue;
         if (resource.kind === 'vertices' || resource.kind === 'indices') continue;
-        // A per-draw uniform buffer is the one buffer this backend keeps (item 27):
-        // it is bound one slice at a time by a dynamic offset, which this backend
-        // has where it has no storage buffer. Every other buffer is a storage
-        // buffer a compute stage fills, refused by name.
-        if (resource.kind === 'buffer' && perDrawResources.has(index)) continue;
-        if (resource.kind !== 'texture') {
-          throw new Error(`the frame for "${frame.id}" declares a ${resource.kind} resource, and this backend has none`);
+        // A buffer is kept where it is one a raster path can read: a per-draw slice
+        // bound by a dynamic offset (item 27), or a read-only storage buffer bound
+        // whole as a uniform block a shader indexes by `gl_InstanceID` (item 92). A
+        // read-write storage buffer is a compute or fragment-stage output this
+        // backend has no stage to fill, refused by name — the "or is refused by
+        // name" half of item 92, so a scene's per-instance data is drawn where it
+        // can be and refused where it cannot rather than claiming to draw and
+        // dropping it. A buffer no pipeline reads is refused too: this backend keeps
+        // only the buffers its draws read.
+        if (resource.kind === 'buffer') {
+          if (perDrawResources.has(index)) continue;
+          if (resource.access === 'read-write') {
+            throw new Error(
+              `the frame for "${frame.id}" writes resource ${index} as a storage buffer, and this backend has no compute to fill one`
+            );
+          }
+          if (storageResources.has(index)) continue;
+          throw new Error(
+            `the frame for "${frame.id}" declares a buffer resource ${index} no pipeline reads, and this backend keeps only the buffers its draws read`
+          );
         }
+        // Everything but a texture has been kept or refused by name above, so what
+        // remains here is a texture the frame draws, samples or tests against — the
+        // narrower texture refusals follow.
         if (resource.use.includes('storage')) {
           throw new Error(
             `the frame for "${frame.id}" writes resource ${index} as a storage texture, and this backend has no compute to fill one`
@@ -480,12 +556,15 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             // Which door the values go through is decided by what the program has,
             // not by what the frame claims, so a compiler that changes its mind
             // about emitting a block cannot leave a shader silently unfed. A
-            // pipeline slicing a per-draw buffer links a second block beside the
-            // shared one, told apart by the `_group_G_binding_B` its member name
-            // carries for the per-draw binding's group and binding.
+            // pipeline slicing a per-draw buffer (item 27) or binding a read-only
+            // storage buffer (item 92) links a block beside the shared one, told
+            // apart by the `_group_G_binding_B` its member name carries for that
+            // binding's group and binding.
             const slice = perDrawBinding(spec);
-            const perDrawTag = slice ? `_group_${slice.group}_binding_${slice.binding}` : null;
-            const resolved = resolveBlocks(gl, linked, perDrawTag);
+            const tagged: TaggedBlock[] = [];
+            if (slice) tagged.push({ tag: `_group_${slice.group}_binding_${slice.binding}`, point: PER_DRAW_POINT });
+            for (const storage of storageBindings(spec, frame)) tagged.push(storage.tag);
+            const resolved = resolveBlocks(gl, linked, tagged);
             return {
               program: linked,
               layout: resolved.layout,
@@ -815,6 +894,12 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // point its block is bound to, one record's width, and the offset each draw
         // reads its slice from.
         perDraw: GL2PerDraw | null;
+        // The read-only storage buffers this pass binds whole before its draw
+        // (item 92): each the resolved GL buffer and the point its uniform-block
+        // form is bound to with `bindBufferBase`, so the shader reads its record out
+        // of the array by `gl_InstanceID`. Empty for a pass reading no storage
+        // buffer, which is every fullscreen toy.
+        storage: { buffer: WebGLBuffer; point: number }[];
       }
 
       // The per-draw uniform buffers, each allocated through the backend's buffer
@@ -837,6 +922,29 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           arena.wrote(spec.data.byteLength);
         }
         perDrawGLBuffers.set(index, buffer);
+      }
+
+      // The read-only storage buffers (item 92), allocated and uploaded exactly the
+      // way the per-draw buffers above are — through the backend's buffer arena
+      // (item 10), once with the records the producer packed, their bytes counted
+      // through `arena.wrote` as the first contents of a resident resource (item 22).
+      // A scene's per-object buffer carries a record per copy the shader reads by
+      // `gl_InstanceID`, the shared views buffer one matrix per view; both reach the
+      // card as bytes here, bound whole per pass below.
+      const storageHandles: Handle[] = [];
+      const storageGLBuffers = new Map<number, WebGLBuffer>();
+      for (const index of storageResources) {
+        const spec = frame.resources[index];
+        if (!spec || spec.kind !== 'buffer') continue;
+        const handle = arena.allocate(() => gl.createBuffer() as WebGLBuffer);
+        storageHandles.push(handle);
+        const buffer = arena.resolve(handle);
+        gl.bindBuffer(gl.UNIFORM_BUFFER, buffer);
+        if (spec.data) {
+          gl.bufferData(gl.UNIFORM_BUFFER, spec.data, gl.STATIC_DRAW);
+          arena.wrote(spec.data.byteLength);
+        }
+        storageGLBuffers.set(index, buffer);
       }
 
       const plans: PassPlan[] = [];
@@ -1046,6 +1154,18 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           }
           perDrawPlan = { buffer, binding: PER_DRAW_POINT, size: slice.perDraw.size, offsets };
         }
+        // The read-only storage buffers this pass binds whole before its draw
+        // (item 92), each resolved to its GL buffer and the point `resolveBlocks`
+        // bound its uniform-block form to at compile — the same points
+        // `storageBindings` derives here, so the two steps agree. A pass reading
+        // none (every fullscreen toy) carries an empty list and binds nothing.
+        const storagePlan =
+          spec.kind === 'render'
+            ? storageBindings(spec, frame).map((storage) => ({
+                buffer: storageGLBuffers.get(storage.resource) as WebGLBuffer,
+                point: storage.tag.point,
+              }))
+            : [];
         plans.push({
           program: compiled.program,
           attribute: compiled.attribute,
@@ -1063,6 +1183,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           geometry: geometryHandle === undefined ? null : buildGeometry(geometryHandle),
           depth: depthPlan,
           perDraw: perDrawPlan,
+          storage: storagePlan,
         });
       }
 
@@ -1262,6 +1383,12 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
               const location = gl.getUniformLocation(plan.program, read.sampler);
               if (location) gl.uniform1i(location, read.unit);
             }
+            // The read-only storage buffers this pass reads (item 92), each bound
+            // whole to the point its uniform-block form was linked at, so the shader
+            // reads its per-instance record out of the array by `gl_InstanceID`. The
+            // whole buffer is bound once here, unlike the per-draw slice the executor
+            // binds a range of before each draw (item 27).
+            for (const store of plan.storage) gl.bindBufferBase(gl.UNIFORM_BUFFER, store.point, store.buffer);
             drawGL2Frame({
               gl,
               program: plan.program,
@@ -1304,11 +1431,13 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           }
         },
 
-        // A frame this backend takes declares no buffer the page fills, since a
-        // storage buffer is refused above, so there is never a buffer here to write
-        // or read. A caller asking either does nothing and reads nothing rather
-        // than being refused, so the same call over either backend does nothing
-        // wrong on the one with no such buffers.
+        // The buffers this backend keeps are inputs it uploads once (a per-draw
+        // slice, a read-only storage buffer): a frame declares none the page fills
+        // and reads back at runtime, since a read-write storage buffer is refused
+        // above and there is no compute stage or query to fill one. A caller asking
+        // to write or read a buffer does nothing and reads nothing rather than being
+        // refused, so the same call over either backend does nothing wrong on the
+        // one with no such buffers.
         writeBuffer() {},
 
         async readBuffer() {
@@ -1332,6 +1461,9 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // The per-draw uniform buffers go back to the buffer arena beside them
           // (item 27).
           for (const handle of perDrawHandles) arena.free(handle);
+          // The read-only storage buffers go back to the buffer arena beside the
+          // per-draw ones (item 92).
+          for (const handle of storageHandles) arena.free(handle);
           for (const record of textures.values()) {
             textureArena.free(record.handle);
             if (record.fboHandle !== null) framebufferArena.free(record.fboHandle);

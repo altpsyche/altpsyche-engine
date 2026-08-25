@@ -3355,7 +3355,7 @@ tracks. `carry`: how a WGSL graph selects WebGL 2 is a fact a consumer reads.
 
 ### 92. WebGL 2 draws the scene tier's per-instance data without a storage buffer
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The WebGL 2 backend draws a pass reading per-instance object data that the scene
 tier authors as a read-only storage buffer (`sceneView` emits `objects`/`views` as
@@ -3384,6 +3384,47 @@ upload … is a distinct capability … not filed here"*). Separable from the se
 (item 91) and the pixel reading (item 93). **Reverse:** delete this item; item 52 reverts to
 naming a per-instance raster path nothing tracks. `carry`: whether the scene tier's storage
 buffers survive onto WebGL 2, and as what, is a capability a consumer reads.
+
+**How it landed.** The raster path chosen is a **uniform block indexed by `gl_InstanceID`**, GLSL
+ES 3.00's answer to a read-only `array<T>`: each `{ kind: 'buffer', access: 'read' }` a render
+pipeline binds ([scene/scene-view.ts](../scene/scene-view.ts) L251 emits both the per-object
+records and the shared views this way) is uploaded once as a uniform buffer and bound whole with
+`bindBufferBase` before the pass, and the shader reads its own record out of the array by
+`gl_InstanceID`. Three changes carry it: (1) [gpu/select.ts](../gpu/select.ts) adds `storage-buffer`
+to WebGL 2's core capabilities, so a scene declaring `requires: ['storage-buffer']` is drawn rather
+than refused — the "maps to this raster path" half; (2) [gpu/webgl2.ts](../gpu/webgl2.ts) keeps a
+read-only storage buffer a pipeline binds where it refused every buffer but a per-draw slice
+before, allocating and uploading it through the buffer arena (item 10), counting its bytes through
+`arena.wrote` as resident (item 22), and binding it as a uniform block whose point `resolveBlocks`
+assigns above the shared (0) and per-draw (1) points — `resolveBlocks` generalised from one
+per-draw tag to a list of tagged blocks (per-draw and each storage buffer), told apart by the
+`_group_G_binding_B` their members carry (item 87); (3) a **read-write** storage buffer stays
+refused by name (*"writes resource N as a storage buffer, and this backend has no compute to fill
+one"*) — the "or is refused by name" half, since only a compute or fragment stage this backend has
+not got fills one. The instanced draw itself is item 28's arm unchanged: one
+`drawElementsInstanced` reading the object count, the one draw `cost()` counts for the pass. A
+buffer no pipeline reads is refused too, keeping the backend to the buffers its draws read.
+
+**What the gates could see, and what they could not.** [tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts)
+drives a hand-authored GLSL frame built the way the build assembles `core-material` — a `quad-grid`
+mesh drawn once per object, each copy reading an 80-byte record out of a read-only `objects` buffer
+by `gl_InstanceID`, a shared `views` buffer beside it — through the node fast suite rather than the
+dead corpus loader (item 64), as items 46/77/78 landed. It asserts both buffers reach the card as
+uniform buffers at the lengths the producer packed, each bound whole to its own block point (2 and
+3) told to the linked program at link, one `drawElementsInstanced` issues the object count as its
+instance count and equals `cost()`'s `draws`, the records and views are counted as resident
+(`{ written: records+views+geometry, uploaded: 0 }`) not per-frame, the four buffers are freed on
+dispose, and a read-write buffer among them is refused by name. What no gate here can see is that
+the per-instance picture is byte-correct on a card: the fake ([tests/support/fake-gl.ts](../tests/support/fake-gl.ts))
+records calls, not pixels, and reports the two blocks a driver would rather than compiling the
+GLSL; `gate:browser` was not run. **The WGSL→raster-path bridge is not this item's:** a WGSL
+scene's `var<storage, read>` still has no baked GLSL for WebGL 2 — the translate gate
+([gates/translate.mjs](../gates/translate.mjs) L94) skips a `BUFFER_STORAGE` construct by design
+(§17 decision 6: no GLSL→WGSL, and naga's GLSL frontend is its weakest part), recording it as a
+`storage-buffer` refusal. This item lands the *backend* raster path and its capability, proven with
+hand-authored GLSL exactly as every prior WebGL 2 item; drawing `orbit-shadow`'s own WGSL scene
+through it — which needs that bridge, and its byte agreement per item 44 — is item 93's, which
+`Needs` this item. See [JOURNAL.md](JOURNAL.md).
 
 ### 93. `orbit-shadow`'s two backends, compared by item 44's three numbers
 
