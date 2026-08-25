@@ -33,12 +33,16 @@ export interface GL2PerDraw {
  * byte offset), how many vertices it holds, and the index buffer that orders them
  * where the primitive carries one. A pass carrying this reads it rather than the
  * fullscreen quad, and draws `drawElements` where an index buffer is present and
- * `drawArrays` where it is not. */
+ * `drawArrays` where it is not. `mode` is the GL draw mode the geometry's declared
+ * `topology` maps to (item 83) — the backend resolves it once off the vertex
+ * resource, so a strip is stepped through as a strip rather than as a triangle
+ * list. */
 export interface GL2Geometry {
   buffer: WebGLBuffer;
   stride: number;
   attributes: readonly { location: number; components: number; offset: number }[];
   vertexCount: number;
+  mode: number;
   index?: { buffer: WebGLBuffer; type: number; count: number };
 }
 
@@ -109,14 +113,19 @@ export function drawGL2Frame(exec: GL2FrameExecution): void {
       // The count is the geometry's — its index count where it is ordered, its
       // vertex count where it is drawn straight through — and one draw call reads
       // its instance count, so a draw covering many copies is one
-      // `drawElementsInstanced`/`drawArraysInstanced` (item 28).
+      // `drawElementsInstanced`/`drawArraysInstanced` (item 28). The mode is the
+      // one the geometry's declared topology maps to (item 83), so a strip draws
+      // as a strip rather than as a triangle list of the same vertices.
       if (geometry.index) {
-        if (copies === undefined) gl.drawElements(gl.TRIANGLES, geometry.index.count, geometry.index.type, 0);
-        else gl.drawElementsInstanced(gl.TRIANGLES, geometry.index.count, geometry.index.type, 0, copies);
-      } else if (copies === undefined) gl.drawArrays(gl.TRIANGLES, 0, geometry.vertexCount);
-      else gl.drawArraysInstanced(gl.TRIANGLES, 0, geometry.vertexCount, copies);
+        if (copies === undefined) gl.drawElements(geometry.mode, geometry.index.count, geometry.index.type, 0);
+        else gl.drawElementsInstanced(geometry.mode, geometry.index.count, geometry.index.type, 0, copies);
+      } else if (copies === undefined) gl.drawArrays(geometry.mode, 0, geometry.vertexCount);
+      else gl.drawArraysInstanced(geometry.mode, 0, geometry.vertexCount, copies);
       return;
     }
+    // The fullscreen corners are the backend's own quad, a triangle list by
+    // construction (item 83: `gl.TRIANGLES` here is the quad's own topology, not a
+    // declared geometry's read as one).
     if (copies === undefined) gl.drawArrays(gl.TRIANGLES, 0, count);
     else gl.drawArraysInstanced(gl.TRIANGLES, 0, count, copies);
   });

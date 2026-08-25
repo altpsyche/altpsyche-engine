@@ -41,6 +41,34 @@ import { reflect } from '../toy/reflect.js';
  * twice, and there is no geometry here beyond filling the screen. */
 const FULLSCREEN_TRIANGLE = new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]);
 
+/**
+ * The GL draw mode a declared `topology` steps the vertices through (item 83),
+ * so the WebGL 2 backend draws the shape the geometry declares rather than a
+ * triangle list of whatever it was handed. WebGPU passes `topology` straight to
+ * the pipeline (`primitive.topology`, [gpu/webgpu.ts](./webgpu.ts)); this is
+ * WebGL 2's side of the same fact, and every member of `GPUPrimitiveTopology`
+ * maps to one GL constant, so there is nothing this backend refuses here. The
+ * `default` throws by name rather than silently drawing triangles, which is the
+ * refusal the item allows for a topology this backend could not draw — a guard
+ * that only fires if the union grows a member with no GL mode.
+ */
+function modeOfTopology(gl: WebGL2RenderingContext, topology: GPUPrimitiveTopology, frameId: string, geometryName: string): number {
+  switch (topology) {
+    case 'point-list':
+      return gl.POINTS;
+    case 'line-list':
+      return gl.LINES;
+    case 'line-strip':
+      return gl.LINE_STRIP;
+    case 'triangle-list':
+      return gl.TRIANGLES;
+    case 'triangle-strip':
+      return gl.TRIANGLE_STRIP;
+    default:
+      throw new Error(`the geometry "${geometryName}" on "${frameId}" declares topology "${topology as string}", which this backend does not draw`);
+  }
+}
+
 function compile(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
   if (!shader) throw new Error('the context refused to make a shader');
@@ -536,6 +564,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           })),
           vertexCount: vertices.count,
           index,
+          mode: modeOfTopology(gl, vertices.topology, frame.id, name),
         };
         geometryPlans.set(name, plan);
         return plan;

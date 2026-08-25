@@ -796,6 +796,40 @@ describe('a pass drawing the shader own geometry (item 77)', () => {
     });
   });
 
+  it('draws under the GL mode the declared topology maps to, not always TRIANGLES (item 83)', () => {
+    const TRIANGLE_STRIP = 0x0005;
+    const { gl, backend } = backendOver();
+    // The same grid, re-declared as a triangle strip. A strip must reach the card
+    // as TRIANGLE_STRIP: drawn as a triangle list of the same vertices it is a
+    // different, wrong picture, which is the silent divergence item 83 closes.
+    const base = geometryFrame(3);
+    const strip: FrameGraph = {
+      ...base,
+      resources: base.resources.map((resource) =>
+        resource.kind === 'vertices' ? { ...resource, topology: 'triangle-strip' } : resource
+      ),
+    };
+    backend.program(strip).draw();
+    expect(gl.of('drawElementsInstanced')).toHaveLength(1);
+    expect(gl.of('drawElementsInstanced').at(-1)).toMatchObject({ mode: TRIANGLE_STRIP });
+  });
+
+  it('refuses a topology it has no GL mode for, naming the topology (item 83)', () => {
+    const { backend } = backendOver();
+    const base = geometryFrame();
+    const bogus: FrameGraph = {
+      ...base,
+      resources: base.resources.map((resource) =>
+        // A topology outside GPUPrimitiveTopology, cast past the type to prove the
+        // default arm refuses by name rather than silently drawing triangles.
+        resource.kind === 'vertices' ? { ...resource, topology: 'fan' as never } : resource
+      ),
+    };
+    expect(() => backend.program(bogus).draw()).toThrow(
+      'the geometry "grid" on "core-geometry" declares topology "fan", which this backend does not draw'
+    );
+  });
+
   it('issues the draw count cost() reads off the same structure', () => {
     const { gl, backend } = backendOver();
     backend.program(geometryFrame()).draw();

@@ -30,7 +30,14 @@ const CONSTANTS = {
   UNIFORM_BUFFER: 0x8a11,
   STATIC_DRAW: 0x88e4,
   DYNAMIC_DRAW: 0x88e8,
+  // The draw modes a declared topology maps to (item 83): WebGL 2 draws all five
+  // members of GPUPrimitiveTopology, so a strip reaches the card as a strip rather
+  // than a triangle list of the same vertices.
+  POINTS: 0x0000,
+  LINES: 0x0001,
+  LINE_STRIP: 0x0003,
   TRIANGLES: 0x0004,
+  TRIANGLE_STRIP: 0x0005,
   FLOAT: 0x1406,
   // The index widths a drawn primitive is ordered by (item 77): `quad-grid` writes
   // uint16, so `drawElements` reads its indices as `UNSIGNED_SHORT`.

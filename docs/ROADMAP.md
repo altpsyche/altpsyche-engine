@@ -2909,7 +2909,7 @@ paragraph.
 
 ### 83. WebGL 2 draws the topology the geometry declares
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The WebGL 2 geometry path reads `VertexResource.topology` instead of drawing every
 geometry as a triangle list. [submit/gl2.ts](../submit/gl2.ts) L114–L117 passes `gl.TRIANGLES` to
@@ -2939,6 +2939,32 @@ the same class of narrowing as the FLOAT-only attribute read item 77 recorded in
 of exactly the kind §15 puts first and alone, and item 52 asks for the same scene graph on both
 backends. **Reverse:** delete this item; the WebGL 2 path reverts to drawing every topology as a
 triangle list with nothing tracking it.
+
+**How it landed.** `GL2Geometry` ([submit/gl2.ts](../submit/gl2.ts)) gains a `mode` field
+and its four `gl.TRIANGLES` draw calls read it instead — `drawElements`,
+`drawElementsInstanced`, `drawArrays`, `drawArraysInstanced` all now take
+`geometry.mode`. The only `gl.TRIANGLES` left in the file is the fullscreen corners quad,
+a triangle list by the backend's own construction rather than a declared geometry read as
+one. The mode is resolved once in [gpu/webgl2.ts](../gpu/webgl2.ts)'s `buildGeometry` off
+`VertexResource.topology` through a new `modeOfTopology`, a total switch over
+`GPUPrimitiveTopology`: `point-list`→POINTS, `line-list`→LINES, `line-strip`→LINE_STRIP,
+`triangle-list`→TRIANGLES, `triangle-strip`→TRIANGLE_STRIP. Every member maps, so this
+backend refuses no topology in practice; the switch's `default` throws **by name** — `the
+geometry "grid" on "core-geometry" declares topology "fan", which this backend does not
+draw` — the refusal the item allows, firing only if the union grows a member with no GL
+mode. WebGPU already honoured topology (`primitive.topology`,
+[gpu/webgpu.ts](../gpu/webgpu.ts) L1523), so this closes the divergence where WebGL 2 drew
+a strip as a list. [tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts) pins
+both: a grid re-declared `triangle-strip` reaches the recording double as `drawElements
+Instanced` with `mode` TRIANGLE_STRIP (0x0005), and a topology outside the union is refused
+by name. The fake context ([tests/support/fake-gl.ts](../tests/support/fake-gl.ts)) gained
+the four non-triangle GL mode constants it lacked. **What the gates could not see:** that
+the strip's *picture* is right on a card — the node suite reads the draw mode off the
+recording double, not pixels, and `gate:browser` was not run in the unattended session;
+the corpus cannot exercise it either, since `GeometryPrimitive` is the one-member union
+`quad-grid` which is `triangle-list` (item 83's filing note). The export surface did not
+move (`mode` is a field on an already-hidden type), so `gate:pack` was not required. See
+[JOURNAL.md](JOURNAL.md).
 
 ### 84. WebGL 2 stops leaking vertex attribute arrays between passes
 
