@@ -1401,7 +1401,7 @@ See [JOURNAL.md](JOURNAL.md).
 
 ### 45. The widened list
 
-**Status.** open
+**Status.** done
 
 **Asks for.** One file naming any preset that cannot be byte-exact, with its cause, its date and its readings. Four rules: absence means exact; it is not settable at the preset; **its length is asserted and is currently zero**; the gate prints it every run.
 
@@ -1410,6 +1410,37 @@ See [JOURNAL.md](JOURNAL.md).
 **Needs.** item 44.
 
 **Note.** A bar widened by the person it was blocking is relief, not evidence. There is a measured case: a gate once passed a shader at an average channel distance of 19.0 against a bar of 24 while 822,426 of 1,440,000 channels sat over the per-channel tolerance of 8.
+
+**How it landed.** [gates/widened.mjs](../gates/widened.mjs) holds `WIDENED`, the one
+file the list lives in, empty and expected to stay so, beside the four rules the
+amendment prescribes. **Rule 1 (not settable at the preset)** is a fact about
+`CapabilityFixture`: it carries no `exact`/`diverges`/`tolerance`/`skip` field, so a
+preset author hitting a divergence has no line to relieve their own pain in — the
+only way to exempt a preset is a diff to this shared list;
+[tests/widened.test.ts](../tests/widened.test.ts) asserts every fixture is free of
+those fields. **Rule 2 (length asserted, currently zero)** is the load-bearing one:
+`expect(WIDENED.length).toBe(0)` in the node suite, so growing the list reddens that
+line and must update it in the same reviewed diff. **Rule 3 (the gate prints it every
+run)** is `printWidened`, which [gates/card.mjs](../gates/card.mjs) calls after the
+corpus loop whether the list is empty or not — the correct home, since cross-backend
+byte-exactness is only measurable where two backends' pixels meet, which is the card
+gate. **Rule 4 (a cause, not a symptom)** is `checkWidened`/`symptomShaped`: a cause
+that names only a divergence verb and a backend with no mechanism — the amendment's
+own `differs on WebGL 2` — is refused by name, at the gate rather than only at a
+reviewer's eye, and the card gate runs `checkWidened` over every entry against the
+loaded corpus so a symptom-shaped cause or an id naming no preset reddens it. The
+symptom detector is an honest first-line filter for the canonical shapes, not a
+decider of every borderline case; rule 2's reviewed diff remains the real guard, as
+the module and the JOURNAL row both say. The export surface did not move (a gate file,
+a test, and a card-gate edit; no door name added), so `gate:pack` was not required.
+
+**What the gates could not see.** `printWidened` and `checkWidened` are pure, and the
+node suite pins their output and every refusal — but the card gate actually printing
+the list on two real backends' pixels was not exercised: `gate:card` never runs
+unattended (SwiftShader on every headless launch, §17 note 3) and `gate:browser` was
+not run this session. The list is empty, so there is no per-preset comparison to run
+against it yet regardless; wiring `WIDENED` into a per-preset cross-backend comparison
+waits on a WebGL 2 backend drawing the corpus (items 46–52). See [JOURNAL.md](JOURNAL.md).
 
 ### 46. WebGL 2: multiple passes
 

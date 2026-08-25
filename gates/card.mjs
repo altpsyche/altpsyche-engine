@@ -32,6 +32,7 @@ import http from 'node:http';
 import { rmSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { CARD_ARGS, CHROME, bundleForPage, loadCorpus } from './lib.mjs';
+import { WIDENED, checkWidened, printWidened } from './widened.mjs';
 
 const W = Number(process.env.W ?? 800);
 const H = Number(process.env.H ?? 600);
@@ -277,6 +278,22 @@ for (const { id, frame, values, entry } of corpus) {
 await browser.close();
 server.close();
 rmSync(staging, { recursive: true, force: true });
+
+// The widened list, printed every run whether it is empty or not (item 45, rule 3):
+// the presets that cannot be byte-exact across the two backends, with cause and
+// readings. Absence means exact, so an empty list says every preset is held strict.
+// Each entry is validated against the loaded corpus, so a symptom-shaped cause or an
+// id naming no preset reddens this gate rather than surviving to a reviewer.
+console.log('');
+const isPreset = (/** @type {string} */ id) => corpus.some((one) => one.id === id);
+for (const entry of WIDENED) {
+  try {
+    checkWidened(entry, isPreset);
+  } catch (e) {
+    say(false, `the widened list  ${String(/** @type {any} */ (e).message || e)}`);
+  }
+}
+printWidened();
 
 console.log(`\n${failures ? `${failures} failed` : 'the card draws this library’s whole corpus'}`);
 process.exitCode = failures ? 1 : 0;
