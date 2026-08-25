@@ -1145,7 +1145,15 @@ not read them, and re-pinning every line number is not this move's job. See
 
 ### 38. The mechanical §14 renames
 
-**Status.** lifted needs decomposition
+**Status.** lifted decomposed into items 66, 67, 68, 69, 70, 71, 72
+
+**Status corrected 2026-08-25.** It read `lifted needs decomposition`, which was wrong by the time
+it was read: every row this item ever held now lives in one of the seven items named above, and its
+own text below walks through all three cuts that put them there. Nothing was waiting on a
+decomposer. What the stale label did cost is real — item 56 named `item 38` in its `Needs`, and
+`lifted` never satisfies a `Needs`, so item 56 sat blocked on an item with no work left in it.
+Item 56 now names the items that actually carry §14's remainder. **Reverse:** set `Status` back to
+`lifted needs decomposition`, delete this paragraph, and restore `**Needs.** item 38.` on item 56.
 
 **Asks for.** The rows of [RoadToPureEngine.md](RoadToPureEngine.md) §14 that are renames and nothing else: `ShaderFrame` to `FrameGraph`, `setArtefact` to `setGraph`, `artefact` to `graph` or `variant`, `Extent` to `{ scale } | { width, height }`, `Dispatch` to `groups`, and `ModuleSpec.overrides` to `constants`. The README and both design documents follow.
 
@@ -1895,7 +1903,15 @@ not do the work could check once and for all. Same treatment as items 53 and 57.
 
 **Done when.** A deprecated export warns once per session and appears struck through in an editor.
 
-**Needs.** item 38. Required by 1.0, not before.
+**Needs.** item 70, item 81. Required by 1.0, not before.
+
+**Repointed 2026-08-25, off the spent item 38.** It named `item 38`, which is `lifted` and has no
+work left in it — every row it held moved to items 66 through 72 — so this item was blocked on
+nothing. What it actually wants is that the names have stopped moving before deprecations are
+declared against them: item 70 landed §14's four genuine renames, and item 81 is the last of §14
+that changes a name a consumer writes. Item 82 is deliberately **not** named — it deletes
+`readBuffer` rather than renaming anything, and a deletion does not need the deprecation mechanism
+to exist first. **Reverse:** restore `**Needs.** item 38.` and delete this paragraph.
 
 ### 57. Device readings accumulate
 
@@ -2231,7 +2247,15 @@ so `gate:pack` was not required.
 
 ### 67. `FrameDescription` folds into the graph, on handles
 
-**Status.** lifted needs decomposition
+**Status.** lifted decomposed into items 86, 87
+
+**Decomposed 2026-08-25** into the two halves this item's own lift note separated: item 86 is the
+fold, keeping string names, and item 87 is the handle migration. The note asked for exactly that —
+"a decomposition into a fold item (a) and one or more handle-migration items (b), each with its own
+`Done when` and the `Needs` chain that actually feeds it". It is one handle item rather than
+several because the graph and the backends cannot move separately: the backends read the graph, so
+a reference that becomes a handle in `graph/types.ts` stops compiling in `gpu/` in the same commit.
+**Reverse:** set `Status` back to `lifted needs decomposition` and delete items 86 and 87.
 
 **Asks for.** The two shapes become one: a graph carrying resident handles and transient descriptors, per §8, with `FrameDescription` gone.
 
@@ -2254,7 +2278,17 @@ so `gate:pack` was not required.
 
 ### 68. `submit(graph)` exists, and `ShaderProgram` goes
 
-**Status.** lifted needs decomposition
+**Status.** lifted decomposed into items 88, 89, 90
+
+**Decomposed 2026-08-25** along the seam this item's own lift note found: the addition is modest
+and the deletion is what collides, so item 88 adds `submit(graph, { into })` beside `ShaderProgram`
+and changes nothing else, and item 90 deletes the interface. Item 89 sits between them because the
+collision the note named — `readBuffer`'s removal being item 66's, now item 82's — needs a readback
+door that is not `ShaderProgram`, and §9 puts it on the arena. The note's open question, "whether
+`submit(graph)` as the door primitive precedes or follows item 67", is answered: item 88 precedes
+it and item 90 follows it, so the primitive can land now while the deletion waits on the graph
+being a re-submittable value. **Reverse:** set `Status` back to `lifted needs decomposition` and
+delete items 88, 89 and 90.
 
 **Asks for.** The top-level primitive §17 decision 7 names — `submit(graph, { into })` — with the surface and the host reaching the card through it, and the `ShaderProgram` interface deleted behind it.
 
@@ -2844,7 +2878,14 @@ capability the consuming repository's decision log does not turn on.
 
 **Done when.** `readBuffer` survives nowhere, and **both of the consumers it has today still read their words through the replacement** — [gates/times.mjs](../gates/times.mjs) still prints an elapsed row per timed pass, and [gates/surface.mjs](../gates/surface.mjs) still reads a buffer either side of a rewrite. A removal that drops either reading has deleted item 54's deliverable rather than §14's vacuous answer.
 
-**Needs.** item 67, item 68. **Both are `lifted`, so this item is not reachable**, and that is the true state rather than a gap in the queue: §9's readback home is `Arena.read(handle, range)`, [resource/arena.ts](../resource/arena.ts) has no `read`, and giving it one is the handles-and-fold work those two items own. Naming a reachable dependency this item does not have is exactly how a run would build on something that was never landed.
+**Needs.** item 89.
+
+**Repointed 2026-08-25, when items 67 and 68 were decomposed.** It named those two because §9's
+readback home is `Arena.read(handle, range)` and giving the arena a `read` was buried inside them.
+Item 89 is now that door on its own, so this item names one reachable dependency instead of two
+lifted ones. It is still not reachable today — item 89 needs item 88 — but the chain now ends in
+work somebody can start. **Reverse:** restore `**Needs.** item 67, item 68.` and delete this
+paragraph.
 
 **Why the removal is not free, which item 66 assumed it was.** With item 51's capability wiring landed, a WebGL 2 program never receives a graph that declares a storage buffer — [gpu/webgl2.ts](../gpu/webgl2.ts) says so in place — so the vacuous arm is unreachable by construction and §14's stated reason for the row holds. What does not follow is that the *method* can go: it is the only path from a buffer's words to a caller, and item 54 pointed a benchmark and a browser gate at it. The row is right about the vacuous answer and silent about the readback, and this item is where both are settled together.
 
@@ -2954,3 +2995,133 @@ pixels would not show that a draw read its own slice. The alignment the ranges r
 device's `minUniformBufferOffsetAlignment`, which is a reading rather than a constant. **Reverse:**
 delete this item; the per-draw path reverts to being tracked only by item 49's lift note, which is
 a record rather than a queue entry.
+
+### 86. `FrameDescription` folds into `FrameGraph`, names kept
+
+**Status.** open
+
+**Asks for.** The first half of item 67: one graph type where there are two shapes today, with
+string names left exactly as they are. `FrameDescription` ([graph/types.ts](../graph/types.ts)
+L454) is the pre-fetch build shape — it carries `documents: DocumentSpec[]`, names only, where
+`FrameGraph` carries `modules: ModuleSpec[]`, name plus fetched code, and it lacks `id`,
+`uniforms` and `requires`. `frameOf` ([toy/frame.ts](../toy/frame.ts) L131) is the one translation
+between them.
+
+**Done when.** `FrameDescription` survives nowhere, `frameOf` no longer translates between two
+shapes, and the browser batch still agrees 15 of 15 — which is what a fold must not move.
+
+**Needs.** item 70.
+
+**Why it is separable, and why it goes first.** Item 67's lift note established that the fold and
+the handle migration neither require each other nor share a criterion: the fold is doable *keeping
+string names*, and the migration is doable *keeping the two shapes separate*. The fold goes first
+because it halves the surface the migration then has to move. **Reverse:** delete this item; item
+67 reverts to `lifted needs decomposition`. `carry`: the manifest contract the consuming repository
+writes changes with this.
+
+### 87. The graph and the backends move to authoring handles
+
+**Status.** open
+
+**Asks for.** The second half of item 67: a graph that identifies every resource by an authoring
+handle rather than by `name: string`, and backends that resolve by that handle rather than by a map
+lookup. Today `graph/types.ts` carries 15 `name: string` fields and every reference is a string —
+`BindingSpec.resource`, `RenderPassSpec.depth.resource` and `colour[].resource`/`.resolve`/
+`.timed`/`.visible`, `FrameGraph.present`/`swap`, `VertexResource.indices`,
+`RenderPipelineSpec.geometry`, every `.source`, `pass.pipeline` — and the two backends hold 22
+`Map<string, …>` between them ([gpu/webgpu.ts](../gpu/webgpu.ts) 15,
+[gpu/webgl2.ts](../gpu/webgl2.ts) 7).
+
+**The handle is the authoring handle, not the arena's.** `graph/handles.ts` already brands them
+(`Handle<'buffer'>`, `Handle<'texture'>`, …). It cannot be the arena's runtime handle: a graph is a
+pure JSON value built before any device exists — `graph/` imports nothing and stays serializable
+and worker-sendable per §7 rule 1 — while an arena handle is minted at allocation and carries a
+generation. The cast from one to the other belongs in `FrameResources`, which is the seam items 16,
+17 and 18 each deferred to "Stage 2".
+
+**Done when.** No resource is keyed or referenced by string in `graph/types.ts`, the backends
+resolve resources by handle with no `Map<string, …>` left on the build path, and the browser batch
+agrees 15 of 15.
+
+**Needs.** item 17, item 70, item 86.
+
+**It is one item and not two, and it is the one item here that is not behaviour-preserving by
+construction.** The graph and the backends cannot move separately: the backends read the graph, so
+a reference that becomes a handle in `graph/types.ts` stops compiling in `gpu/` in the same commit.
+And unlike the renames of items 70, 71 and 72, this rewrites resolution logic rather than swapping
+symbols — **an index-for-name mix-up is invisible to the node suite**, which is rewritten alongside
+the code it checks, so the browser batch's 15-of-15 trace agreement is the only gate that can catch
+one. Whoever takes this should run `gate:browser` before claiming it, not after. **Reverse:** delete
+this item; item 67 reverts to `lifted needs decomposition`. `carry`: the manifest contract changes
+with this.
+
+### 88. `submit(graph, { into })` exists, beside `ShaderProgram`
+
+**Status.** open
+
+**Asks for.** The top-level primitive §17 decision 7 names, added and nothing removed. There is no
+`submit` export anywhere today; the surface already sits at `renderer.draw(graph, uniforms)`, which
+item 68's lift note found is close to it, so the primitive itself is a modest addition. `{ into }`
+is where the frame lands, per decision 7 — the caller's, not the library's.
+
+**Done when.** `submit` is exported from [index.ts](../index.ts), the surface and the host reach
+the card through it rather than around it, `ShaderProgram` is untouched, and the browser batch
+agrees 15 of 15.
+
+**Needs.** item 70.
+
+**Why the addition is its own item.** Item 68 bundled the addition with deleting `ShaderProgram`,
+and its lift note found the deletion is what collides — with item 66's `readBuffer` row, now item
+82's — while "the primitive itself is a modest addition". Splitting them lets the door gain
+`submit` now and the interface go when the things hanging off it have homes. **Reverse:** delete
+this item; item 68 reverts to `lifted needs decomposition`. `carry`: `submit(graph, { into })` is a
+new door name a consumer builds against.
+
+### 89. `Arena.read`, and a readback door that is not `ShaderProgram`
+
+**Status.** open
+
+**Asks for.** The readback §9 puts on the arena — `read(h: BufferHandle, range?): Promise<ArrayBuffer>` —
+and the two callers that read a buffer's words today routed through it.
+[resource/arena.ts](../resource/arena.ts) has no `read`, and the only path from a buffer's words to
+a caller is `ShaderProgram.readBuffer(name)`, which is what item 82 removes and what item 90 needs
+gone.
+
+**Done when.** The arena resolves a buffer readback by handle, and both of `readBuffer`'s consumers
+read through the new door instead — [gates/times.mjs](../gates/times.mjs) still prints an elapsed
+row per timed pass, and [gates/surface.mjs](../gates/surface.mjs) still reads a buffer either side
+of a rewrite. `readBuffer` may still exist at this point; removing it is item 82's.
+
+**Needs.** item 88.
+
+**Why it sits between the addition and the deletion.** Item 68's lift note named the collision —
+deleting `ShaderProgram` removes `readBuffer` as a side effect, which is another item's deliverable
+— and item 66's lift added the cost: since item 54, `readBuffer` has two live consumers, so its
+removal deletes a landed item's readings unless a door exists first. This is that door. It needs
+item 88 because a readback wants a handle, and `submit` is what hands the caller something that is
+not a `ShaderProgram`. **Reverse:** delete this item; item 82 reverts to naming items 67 and 68.
+
+### 90. `ShaderProgram` is deleted
+
+**Status.** open
+
+**Asks for.** The deletion half of item 68: nothing constructs a `ShaderProgram`, and the interface
+is gone from [graph/types.ts](../graph/types.ts). §14 says it "becomes `Arena` + pipeline cache +
+`submit`" — the first two exist, item 88 adds the third.
+
+**Done when.** `ShaderProgram` survives nowhere, nothing in `gpu/` returns one, and the browser
+batch agrees 15 of 15.
+
+**Needs.** item 82, item 87, item 88.
+
+**Why it needs all three.** Item 88 builds the primitive, because deleting the interface without it
+leaves the library with no path to the card. Item 82 removes `readBuffer`, so this deletion is not
+silently doing another item's work — the collision item 68 was lifted for. Item 87 is the softer
+entanglement its lift note recorded: the stateful methods with no production consumer
+(`writeBuffer`, `readBuffer`, `setPasses`) dissolve into "re-submit a mutated graph" only if a graph
+is a cheap, self-contained, re-submittable value on stable resource identity, which is what the
+handle migration makes it. Without item 87 a `submit(graph)` keeps today's string-keyed per-call
+rebuild ([gpu/renderer.ts](../gpu/renderer.ts)'s `programFor`/`programs` cache) rather than §14's
+`Arena` plus pipeline-cache model, and the deletion would be a rename of the problem. **Reverse:**
+delete this item; item 68 reverts to `lifted needs decomposition`. `carry`: losing `ShaderProgram`
+changes the surface a consumer builds against.
