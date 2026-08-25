@@ -370,10 +370,7 @@ void main() {
   colour = vec4(col, 1.0);
 }`;
 
-const glslFrameOf = glslFrame('orbit-shadow', GLSL_VERTEX, GLSL_FRAGMENT, [
-  { name: 'viewport', type: 'vec2' },
-  { name: 'seconds', type: 'float' },
-]);
+const glslFrameOf = glslFrame('orbit-shadow', GLSL_VERTEX, GLSL_FRAGMENT);
 
 // The cost of the scene is a fact about its structure — two passes, one instanced
 // draw each — the same on any machine, so it is worth printing whichever backend

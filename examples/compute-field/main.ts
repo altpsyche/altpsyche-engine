@@ -70,12 +70,6 @@ fn paint(@builtin(global_invocation_id) cell: vec3<u32>) {
     textureStore(picture, vec2<i32>(i32(cell.x), i32(cell.y)), vec4<f32>(shade, 1.0));
 }`;
 
-// The uniforms a page feeds by name, which is what a control panel is drawn from.
-const UNIFORMS = [
-  { name: 'u_time', type: 'float' },
-  { name: 'u_resolution', type: 'vec2' },
-];
-
 // The block one run of the program covers, which is what the group count is worked
 // out against; it matches the source's own `@workgroup_size(8, 8)`.
 const WORKGROUP: [number, number, number] = [8, 8, 1];
@@ -153,7 +147,6 @@ function frameAt(pixels: { width: number; height: number }) {
       'compute-field',
       descriptionAt(groupsCovering(pixels.width, pixels.height)),
       { [WGSL_DOCUMENT]: SOURCE },
-      UNIFORMS,
       uniformBlockOf(SOURCE)
     ),
     requires: ['compute', 'storage-texture'] as readonly Capability[],

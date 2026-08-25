@@ -19,12 +19,7 @@ const BLOCK = [
   { name: 'u_resolution', offset: 8, size: 8 },
 ];
 
-const UNIFORMS = [
-  { name: 'u_time', type: 'float' },
-  { name: 'u_resolution', type: 'vec2' },
-];
-
-const graph = (): FrameGraph => wgslFrame('consumer-fixture', CODE, BLOCK, UNIFORMS);
+const graph = (): FrameGraph => wgslFrame('consumer-fixture', CODE, BLOCK);
 
 describe('a consumer reaches the engine through its one entry point', () => {
   it('builds a renderer and draws a frame through the package door', async () => {

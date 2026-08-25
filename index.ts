@@ -66,6 +66,7 @@ export {
   wgslDescription,
   wgslFrame,
 } from './toy/frame.js';
+export { reflect, missing, type Uniform } from './toy/reflect.js';
 export {
   componentsOf,
   drawsCorners,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
-import { ONE_PASS, wgslFrame } from '@altpsyche/engine';
+import { ONE_PASS, missing, wgslFrame } from '@altpsyche/engine';
 import type { FrameGraph, TextureResource } from '@altpsyche/engine';
 import type { UniformSlot } from '@altpsyche/engine';
 import { createFakeGPU, paddedFrame } from './support/fake-gpu';
@@ -35,16 +35,11 @@ const CODE = `struct Uniforms { u_time: f32, u_resolution: vec2<f32> };
  * pixel position. */
 const NO_BLOCK = '@fragment fn fragMain() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }';
 
-const UNIFORMS = [
-  { name: 'u_time', type: 'float' },
-  { name: 'u_resolution', type: 'vec2' },
-];
-
 /** The one-pass description of the fixture, built the way the build builds one,
  * so what these assert is the backend rather than a shape written here. */
 const graph = (
   over: { code?: string; uniformBlock?: UniformSlot[]; constants?: Record<string, number> } = {}
-): FrameGraph => wgslFrame('fixture', over.code ?? CODE, over.uniformBlock ?? BLOCK, UNIFORMS, over.constants);
+): FrameGraph => wgslFrame('fixture', over.code ?? CODE, over.uniformBlock ?? BLOCK, over.constants);
 
 /** A backend over a recording device, with the trace it writes to. */
 function backendOver({ connected = false } = {}) {
@@ -270,10 +265,11 @@ describe('the uniform block it fills', () => {
     expect([...gpu.written()!]).toEqual([1, 0, 0, 0]);
   });
 
-  it('answers which of the names it was given the block has no place for', () => {
-    const { backend } = backendOver();
-    const program = backend.program(graph());
-    expect(program.unreached(['u_time', 'u_resolution', 'u_dive'])).toEqual(['u_dive']);
+  it('answers which of the names it was given the source declares no place for', () => {
+    // Read from the source by `reflect`, not off a compiled program (item 69):
+    // the WGSL struct declares u_time and u_resolution, so u_dive is the one the
+    // source has no place for, and no backend is built to answer it.
+    expect(missing(graph(), ['u_time', 'u_resolution', 'u_dive'])).toEqual(['u_dive']);
   });
 });
 
@@ -517,7 +513,6 @@ fn computeMain(@builtin(global_invocation_id) at: vec3<u32>) {
 const computeFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-compute',
   target: 'wgsl',
-  uniforms: UNIFORMS,
   resources: [
     { kind: 'uniform', name: 'uniforms', block: BLOCK },
     { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['storage'] },
@@ -761,7 +756,6 @@ const GRAIN = new Uint8Array(4 * 4 * 4).map((_, at) => Math.floor(at / 16) + 1);
 const sampledFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-sampled',
   target: 'wgsl',
-  uniforms: UNIFORMS,
   resources: [
     { kind: 'uniform', name: 'uniforms', block: BLOCK },
     {

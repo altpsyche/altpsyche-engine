@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGL2Backend } from '../gpu/webgl2';
-import { glslFrame } from '@altpsyche/engine';
+import { glslFrame, missing } from '@altpsyche/engine';
 import type { RenderPipelineSpec, FrameGraph } from '@altpsyche/engine';
 import { bottomUpFrame, createFakeGL } from './support/fake-gl';
 
@@ -10,9 +10,11 @@ import { bottomUpFrame, createFakeGL } from './support/fake-gl';
  *
  * The interesting part of this backend is that it asks the linked program where
  * everything is instead of working it out from the source. A compiler gathers
- * uniforms into a block or leaves them loose, and it removes one no line reads,
- * so the source and the program disagree by design and only the program can say
- * how. These hold what the backend does with each answer.
+ * uniforms into a block or leaves them loose, so only the program can say where a
+ * value lands, and these hold what the backend does with each answer. What each
+ * uniform was *declared as* is no longer asked of the program, though: `reflect`
+ * reads that off the source (item 69), so the fixtures below declare their
+ * uniforms in the GLSL they hand over rather than in a list beside it.
  *
  * The context is a stand-in because jsdom gives none at all. It is held by
  * `backends.mjs` drawing the corpus on a real one rather than by a trace
@@ -22,15 +24,18 @@ import { bottomUpFrame, createFakeGL } from './support/fake-gl';
 const VERTEX = '#version 300 es\nin vec3 position;\nvoid main(){gl_Position=vec4(position,1.0);}';
 const FRAGMENT = '#version 300 es\nprecision highp float;\nout vec4 c;\nvoid main(){c=vec4(1.0);}';
 
-const UNIFORMS = [
-  { name: 'u_time', type: 'float' },
-  { name: 'u_resolution', type: 'vec2' },
-];
+/** A fragment declaring one loose `int` uniform, so `reflect` reads its type off
+ * the source the way item 61's int-through-uniform1i decision needs. */
+const FRAGMENT_INT =
+  '#version 300 es\nprecision highp float;\nuniform int u_frame;\nout vec4 c;\nvoid main(){c=vec4(float(u_frame));}';
+/** A fragment declaring an `int` and a `float`, for the mixed cases. */
+const FRAGMENT_MIXED =
+  '#version 300 es\nprecision highp float;\nuniform int u_frame;\nuniform float u_time;\nout vec4 c;\nvoid main(){c=vec4(u_time*float(u_frame));}';
 
 /** The one-pass description of the fixture, built the way the build builds one,
  * so what these assert is the backend rather than a shape written here. */
 const graph = (over: { vertex?: string; fragment?: string } = {}): FrameGraph =>
-  glslFrame('fixture', over.vertex ?? VERTEX, over.fragment ?? FRAGMENT, UNIFORMS);
+  glslFrame('fixture', over.vertex ?? VERTEX, over.fragment ?? FRAGMENT);
 
 function backendOver(setup: (gl: ReturnType<typeof createFakeGL>) => void = () => {}) {
   const gl = createFakeGL();
@@ -274,7 +279,7 @@ describe('where the values go', () => {
     // keeps its default of 0 and the shader runs off a number nobody handed it.
     // The declared type is what decides the call; the value 4 alone cannot say
     // whether the source wants a float or an int (item 61).
-    const intUniform = glslFrame('fixture', VERTEX, FRAGMENT, [{ name: 'u_frame', type: 'int' }]);
+    const intUniform = glslFrame('fixture', VERTEX, FRAGMENT_INT);
     const { gl, backend } = backendOver();
     backend.program(intUniform).setUniforms({ u_frame: 4 });
 
@@ -283,10 +288,7 @@ describe('where the values go', () => {
   });
 
   it('feeds an int alongside a float, each through its own loose call', () => {
-    const mixed = glslFrame('fixture', VERTEX, FRAGMENT, [
-      { name: 'u_frame', type: 'int' },
-      { name: 'u_time', type: 'float' },
-    ]);
+    const mixed = glslFrame('fixture', VERTEX, FRAGMENT_MIXED);
     const { gl, backend } = backendOver();
     backend.program(mixed).setUniforms({ u_frame: 4, u_time: 3 });
 
@@ -299,10 +301,7 @@ describe('where the values go', () => {
     // has the same defect by a different route: 4 written as a float is a bit
     // pattern the driver reads back as ~5.6e-45. The int lands through the
     // block's Int32Array view instead, while a float member beside it does not.
-    const mixed = glslFrame('fixture', VERTEX, FRAGMENT, [
-      { name: 'u_frame', type: 'int' },
-      { name: 'u_time', type: 'float' },
-    ]);
+    const mixed = glslFrame('fixture', VERTEX, FRAGMENT_MIXED);
     const { gl, backend } = backendOver((fake) => {
       fake.block = [
         { name: 'u_frame', offset: 0 },
@@ -330,22 +329,29 @@ describe('where the values go', () => {
   });
 });
 
-describe('which names the program never got', () => {
-  it('answers off the block where there is one', () => {
-    const { backend } = backendOver((fake) => {
-      fake.block = [{ name: 'u_time', offset: 0 }];
-      fake.blockBytes = 4;
-    });
-
-    expect(backend.program(graph()).unreached(['u_time', 'u_gone'])).toEqual(['u_gone']);
+describe('which names the source declares no place for', () => {
+  // Read off the source by `reflect`, not off a linked program (item 69): no
+  // backend is built to answer it, so these need no fake device.
+  it('answers off a declared block member', () => {
+    const declaring =
+      '#version 300 es\nprecision highp float;\nuniform Uniforms { float u_time; };\nout vec4 c;\nvoid main(){c=vec4(u_time);}';
+    expect(missing(glslFrame('fixture', VERTEX, declaring), ['u_time', 'u_gone'])).toEqual(['u_gone']);
   });
 
-  it('answers off the locations where the uniforms are loose', () => {
-    const { backend } = backendOver((fake) => {
-      fake.missing = ['u_gone'];
-    });
+  it('answers off a loose declaration', () => {
+    const declaring =
+      '#version 300 es\nprecision highp float;\nuniform float u_time;\nout vec4 c;\nvoid main(){c=vec4(u_time);}';
+    expect(missing(glslFrame('fixture', VERTEX, declaring), ['u_time', 'u_gone'])).toEqual(['u_gone']);
+  });
 
-    expect(backend.program(graph()).unreached(['u_time', 'u_gone'])).toEqual(['u_gone']);
+  it('counts a declared-but-unread uniform as present, where the old query read the program that dropped it', () => {
+    // The compiled-program query this replaced asked a linked program, which
+    // removes a uniform no line reads; `reflect` reads the declaration, so a
+    // declared uniform the compiler would drop is present here (item 69's
+    // documented divergence — the answer a page drawing controls wants).
+    const unread =
+      '#version 300 es\nprecision highp float;\nuniform float u_unread;\nout vec4 c;\nvoid main(){c=vec4(1.0);}';
+    expect(missing(glslFrame('fixture', VERTEX, unread), ['u_unread'])).toEqual([]);
   });
 });
 

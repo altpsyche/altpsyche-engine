@@ -24,7 +24,6 @@ function frame(over: {
   return {
     id: 'cost-fixture',
     target: 'wgsl',
-    uniforms: [],
     resources: over.resources ?? [{ kind: 'uniform', name: 'uniforms' }],
     modules: [{ name: 'wgsl', code: '' }],
     pipelines: over.pipelines ?? [

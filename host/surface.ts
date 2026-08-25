@@ -54,9 +54,6 @@ export interface Surface {
    * took.
    */
   setGraph(next: FrameGraph): string | null;
-  /** Which of the names the graph on screen declares the program has nowhere
-   * to put, which is empty while there is nothing drawing. */
-  unreached(names: string[]): string[];
   /** In CSS pixels. What the drawing buffer becomes is this times the resolved
    * density, which is the only place that multiplication happens. */
   resize(width: number, height: number): void;
@@ -238,17 +235,6 @@ export async function createSurface(
         return String((e as Error).message ?? e);
       }
     },
-    unreached(names) {
-      if (!renderer || lost) return [];
-      try {
-        return renderer.unreached(current, names);
-      } catch {
-        // A source that will not compile has no program to ask, and the caller
-        // already has the refusal from the draw that failed.
-        return [];
-      }
-    },
-
     resize(w, h) {
       width = w;
       height = h;

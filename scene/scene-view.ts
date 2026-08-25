@@ -105,11 +105,6 @@ export interface SceneViewOptions<V> {
    * uniform block a page feeds, the geometry the vertex stage reads, samplers,
    * static textures. Absent for pipelines that bind only the scene buffers. */
   resources?: ResourceSpec[];
-  /** The names and types a page feeds by name, carried onto the frame unchanged.
-   * The per-view and per-object matrices are not here — they are baked into the
-   * scene buffers as data, so the graph fully determines the picture and a snapshot
-   * diff shows a scene change (item 34). */
-  uniforms?: { name: string; type: string }[];
   /** The device capabilities the frame depends on, read by `refusal` (item 24).
    * Absent for a scene that needs only what every backend shares. */
   requires?: readonly Capability[];
@@ -309,7 +304,6 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
       const frame: FrameGraph = {
         id: options.id,
         target: options.target,
-        uniforms: options.uniforms ?? [],
         resources: [
           ...(options.resources ?? []),
           ...objectResources,

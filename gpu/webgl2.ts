@@ -18,6 +18,7 @@ import { Arena } from '../resource/arena.js';
 import { drawGL2Frame } from '../submit/gl2.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
 import { validate } from '../graph/validate.js';
+import { reflect } from '../toy/reflect.js';
 
 /** A single triangle covering the frame. Two triangles would draw the diagonal
  * twice, and there is no geometry here beyond filling the screen. */
@@ -262,10 +263,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // and the uniform keeps its default of 0, so the shader animates off a
       // number nobody delivered (item 61). The value's JavaScript shape cannot
       // say this — 3 is 3 whether the source wants a float or an int — so the
-      // declared type is captured here, off the field §14 retires from the graph;
-      // when `FrameGraph.uniforms` goes (item 38), this type moves to the
-      // binding or the pipeline with it.
-      const declaredType = new Map(frame.uniforms.map((uniform) => [uniform.name, uniform.type]));
+      // declared type is read from the source by `reflect` (item 69), which for a
+      // GLSL frame reports each uniform's own GLSL type (`int`, `float`), rather
+      // than off a `FrameGraph.uniforms` field a producer maintained by hand.
+      const declaredType = new Map(reflect(frame).map((uniform) => [uniform.name, uniform.type]));
       const isInt = (name: string) => declaredType.get(name) === 'int';
 
       // The resident lifetime: one uniform buffer this program writes its values
@@ -326,14 +327,6 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             else if (componentsOf('vec3') === value.length) gl.uniform3fv(location, value);
             else gl.uniform4fv(location, value);
           }
-        },
-
-        // A block member is named in the layout the linked program reported, and a
-        // loose uniform has a location or has none. Both are the compiler's
-        // answer rather than the source's: a uniform no line reads is removed
-        // from the program while the declaration stays in the file.
-        unreached(names: string[]) {
-          return names.filter((name) => (layout ? !layout.has(name) : gl.getUniformLocation(program, name) === null));
         },
 
         draw(into?: GPUTexture) {

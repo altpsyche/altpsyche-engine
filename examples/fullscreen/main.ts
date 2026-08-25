@@ -36,10 +36,7 @@ void main() {
 
 const canvas = document.querySelector('canvas') as HTMLCanvasElement;
 
-const frame = glslFrame('fullscreen', VERTEX, FRAGMENT, [
-  { name: 'uTime', type: 'float' },
-  { name: 'iResolution', type: 'vec3' },
-]);
+const frame = glslFrame('fullscreen', VERTEX, FRAGMENT);
 
 const surface = await createSurface(canvas, frame, {
   // The clock is the one value that changes; the resolution is read off the

@@ -30,7 +30,7 @@ import type { UniformSlot } from './graph/types.js';
  * kept here so the library carries no dependency on the site's content layer. The
  * two are held apart by their own tests, so a drift on either side fails a test.
  */
-function wgslUniformFields(source: string): { name: string; type: string }[] {
+export function wgslUniformFields(source: string): { name: string; type: string }[] {
   const text = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
   const binding = /var\s*<\s*uniform\s*>\s*\w+\s*:\s*(\w+)/.exec(text);

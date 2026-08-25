@@ -47,12 +47,8 @@ const BLOCK = [
   { name: 'u_time', offset: 0, size: 4 },
   { name: 'u_resolution', offset: 8, size: 8 },
 ];
-const UNIFORMS = [
-  { name: 'u_time', type: 'float' },
-  { name: 'u_resolution', type: 'vec2' },
-];
 
-const graph = (): FrameGraph => wgslFrame('consumer-check', CODE, BLOCK, UNIFORMS);
+const graph = (): FrameGraph => wgslFrame('consumer-check', CODE, BLOCK);
 
 async function main(): Promise<void> {
   const failures: string[] = [];

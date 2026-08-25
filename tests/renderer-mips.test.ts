@@ -46,10 +46,6 @@ const grain = (over: Partial<TextureResource> = {}): TextureResource => ({
 const laddered = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-mips',
   target: 'wgsl',
-  uniforms: [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     grain(),

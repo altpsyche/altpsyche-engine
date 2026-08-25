@@ -31,7 +31,6 @@ const SIZE = { width: 800, height: 600 };
  * declares. No block is passed because `cost()` reads none — it counts structure,
  * and the uniform block is a layout fact the metric never touches. */
 function corpusFrame(id: string) {
-  const one = CAPABILITY_FIXTURES.find((fixture) => fixture.id === id)!;
   const { description, code, generated } = loadFixture(id);
   const bytes = new Map<string, Uint8Array<ArrayBuffer>>();
   for (const resource of description.resources) {
@@ -39,8 +38,7 @@ function corpusFrame(id: string) {
     bytes.set(resource.name, generated.get(resource.source)!);
   }
   const texts = new Map(description.documents.map((document) => [document.name, code]));
-  const uniforms = one.uniforms.map((uniform) => ({ name: uniform.name, type: uniform.type }));
-  return assembleFrame(id, description, texts, bytes, uniforms);
+  return assembleFrame(id, description, texts, bytes);
 }
 
 /**

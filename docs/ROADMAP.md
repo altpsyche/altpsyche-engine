@@ -1752,7 +1752,7 @@ so `gate:pack` was not required.
 
 ### 69. `reflect()` replaces the compiled-program queries
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `unreached()` and `ShaderFrame.uniforms` replaced by a source-level `reflect()` in `toy/`, and the methods removed from the backend interface.
 
@@ -1761,6 +1761,43 @@ so `gate:pack` was not required.
 **Needs.** item 70.
 
 **Why it is its own item.** It swaps a runtime query on a compiled program for static analysis of a source, which is a different answer arrived at a different way — a compiler removing an unread uniform is exactly what `unreached()` was for, and `reflect()` cannot see it. Whether that difference matters is the work.
+
+**How it landed.** [toy/reflect.ts](../toy/reflect.ts) holds `reflect(frame): Uniform[]` and the
+one-line derivation `missing(frame, names)` over it, both exported through the door (`reflect`,
+`missing`, the `Uniform` type; **56 door names** where there were 54, `gate:pack` green). `reflect`
+reads the uniforms off the frame's module source: a WGSL frame through the existing
+`wgslUniformFields` (exported from [wgsl-layout.ts](../wgsl-layout.ts) for this), a GLSL frame
+through a loose-and-block reader; the WGSL spellings are mapped to the common vocabulary GLSL
+already writes (`f32`→`float`, `vec2<f32>`→`vec2`, `i32`→`int`), so a WGSL frame and a GLSL frame
+answer alike, and both halves of a GLSL pair are read with the first spelling of a name winning.
+**Neither name survives as code:** `ShaderProgram.unreached` is gone from the interface
+([graph/types.ts](../graph/types.ts)) and from both backends' implementations, `FrameRenderer.unreached`
+and `Surface.unreached` are gone, and `FrameGraph.uniforms` is deleted from the type — the only
+`unreached`/`uniforms`-field tokens left are prose in the reflect docstrings and this item, naming
+what was replaced. The one production reader of the old field, WebGL 2's `declaredType`
+(int-through-`uniform1i`, item 61), now reads `reflect(frame)`, which for a GLSL frame reports each
+uniform's own GLSL type. **The migration touched ~35 files:** the `uniforms` argument came off
+`frameOf`/`assembleFrame`/`wgslFrame`/`glslFrame`/`planFromDescription` and its ~57 call sites, the
+field came off every `FrameGraph` literal in the tests and off the three scene golden snapshots
+(regenerated, a 30-line deletion confined to the `uniforms` block — decision 8's regenerable
+fixtures), and the now-dead `SceneViewOptions.uniforms` (which fed the removed field) went with it.
+`tests/reflect.test.ts` pins the WGSL and GLSL readings, the merge/dedupe, the vocabulary mapping,
+and the divergence; the WebGL 2 fixtures now declare their uniforms in the GLSL they hand over
+rather than in a list beside it. `npm test` 713 green, `type-check` clean, `gate:pack` green.
+
+**What the difference is, since the item asked.** `reflect` reads the declaration, so a
+declared-but-unread uniform is **present** where `unreached` — reading a linked program a GLSL
+compiler had stripped it from — counted it absent. For the toy tier the two agree: a WGSL compiler
+strips no block member (which is why the WebGPU backend already answered `unreached` off the
+computed layout, not off the program), and the corpus is WGSL. The divergence is only a
+hand-authored GLSL source declaring a uniform it never reads, and `reflect`'s answer is the one a
+page drawing controls wants — it feeds a control whether or not this frame's code path reads it.
+**What the cheap gates could not see:** the browser batch's "15 of 15 traces agreeing" was not run
+(held for the closing session). It is behaviour-preserving for that batch by construction — the
+corpus is WGSL drawn on WebGPU, whose draw path never called `unreached` (a query, now removed) and
+whose types came from the computed block, not from the deleted field; `reflect` enters only the
+WebGL 2 `declaredType` path, and WebGL 2 draws no WGSL corpus preset until translation (items
+41/42). See [JOURNAL.md](JOURNAL.md).
 
 ### 70. The four genuine §14 renames
 

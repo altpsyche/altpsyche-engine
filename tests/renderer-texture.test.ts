@@ -27,7 +27,6 @@ function drawn(): ReturnType<typeof createFakeGPU> {
     'core-texture',
     description,
     { wgsl: code },
-    [{ name: 'u_time', type: 'float' }],
     [
       { name: 'u_time', offset: 0, size: 4 },
       { name: 'u_resolution', offset: 8, size: 8 },

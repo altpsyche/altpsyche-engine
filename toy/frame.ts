@@ -132,7 +132,6 @@ export function frameOf(
   id: string,
   description: FrameDescription,
   texts: Record<string, string>,
-  uniforms: { name: string; type: string }[],
   block?: UniformSlot[],
   constants?: Record<string, number>,
   generated?: Map<string, Uint8Array<ArrayBuffer>>
@@ -159,7 +158,6 @@ export function frameOf(
   return {
     id,
     target: description.target,
-    uniforms,
     resources: description.resources.map((resource) => {
       if (resource.kind === 'uniform' && positions) return { ...resource, block: positions } as UniformResource;
       const bytes = 'source' in resource ? generated?.get(resource.name) : undefined;
@@ -213,7 +211,6 @@ export function assembleFrame(
   description: FrameDescription,
   texts: Map<string, string>,
   generated: Map<string, Uint8Array<ArrayBuffer>>,
-  uniforms: { name: string; type: string }[],
   block?: UniformSlot[],
   constants?: Record<string, number>
 ): FrameGraph {
@@ -221,7 +218,6 @@ export function assembleFrame(
     id,
     description,
     Object.fromEntries(description.documents.map((document) => [document.name, texts.get(document.name) as string])),
-    uniforms,
     block,
     constants,
     generated
@@ -235,18 +231,12 @@ export function wgslFrame(
   id: string,
   code: string,
   block: UniformSlot[],
-  uniforms: { name: string; type: string }[],
   constants?: Record<string, number>
 ): FrameGraph {
-  return frameOf(id, wgslDescription(code), { [WGSL_DOCUMENT]: code }, uniforms, block, constants);
+  return frameOf(id, wgslDescription(code), { [WGSL_DOCUMENT]: code }, block, constants);
 }
 
 /** One GLSL pair as a frame, for the same callers. */
-export function glslFrame(
-  id: string,
-  vertex: string,
-  fragment: string,
-  uniforms: { name: string; type: string }[]
-): FrameGraph {
-  return frameOf(id, glslDescription(), { vertex, fragment }, uniforms);
+export function glslFrame(id: string, vertex: string, fragment: string): FrameGraph {
+  return frameOf(id, glslDescription(), { vertex, fragment });
 }

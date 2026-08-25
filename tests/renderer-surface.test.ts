@@ -34,15 +34,10 @@ const BLOCK = [
 
 const CODE = '@fragment fn fragMain() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }';
 
-const UNIFORMS = [
-  { name: 'u_time', type: 'float' },
-  { name: 'u_resolution', type: 'vec2' },
-];
-
 /** The one-pass description of the fixture, built the way the build builds one,
  * so what these assert is the renderer rather than a shape written here. */
 const graph = (over: { id?: string; code?: string } = {}): FrameGraph =>
-  wgslFrame(over.id ?? 'fixture', over.code ?? CODE, BLOCK, UNIFORMS);
+  wgslFrame(over.id ?? 'fixture', over.code ?? CODE, BLOCK);
 
 /** The animation frame, driven by hand. The browser's own would make every test
  * below a wait, and what these measure is which frames were drawn rather than
@@ -195,10 +190,9 @@ describe('swapping the shader without taking the canvas with it', () => {
     expect(gpu.calls('draw')).toHaveLength(drawn);
   });
 
-  it('reports which declared names the program has nowhere to put', async () => {
-    const { surface } = await surfaceOver();
-    expect(surface.unreached(['u_time', 'u_nowhere'])).toEqual(['u_nowhere']);
-  });
+  // Which declared names a shader has no place for is no longer a surface method:
+  // it is read off the source by `reflect`/`missing` (item 69), covered in
+  // tests/reflect.test.ts, and needs no live surface to answer.
 });
 
 describe('resizing', () => {

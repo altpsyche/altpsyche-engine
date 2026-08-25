@@ -108,10 +108,6 @@ const SURFACE_ONLY: SceneViewOptions<Panel> = {
   modules: [MODULE],
   pipelines: [{ pipeline: SURFACE, objects: { buffer: 'objects', pack: packPanel } }],
   materials: MATERIALS,
-  uniforms: [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   views: { buffer: 'views' },
 };
 
@@ -124,10 +120,6 @@ const SURFACE_AND_GLOW: SceneViewOptions<Panel> = {
     { pipeline: GLOW, objects: { buffer: 'glowObjects', pack: packPanel } },
   ],
   materials: MATERIALS,
-  uniforms: [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   views: { buffer: 'views' },
 };
 

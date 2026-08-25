@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createFrameRenderer, PROGRAM_CACHE_LIMIT } from '@altpsyche/engine';
-import { wgslFrame } from '@altpsyche/engine';
+import { missing, wgslFrame } from '@altpsyche/engine';
 import type { FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU, paddedFrame } from './support/fake-gpu';
 
@@ -25,15 +25,10 @@ const BLOCK = [
 
 const CODE = '@fragment fn fragMain() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }';
 
-const UNIFORMS = [
-  { name: 'u_time', type: 'float' },
-  { name: 'u_resolution', type: 'vec2' },
-];
-
 /** The one-pass description of the fixture, built the way the build builds one,
  * so what these assert is the renderer rather than a shape written here. */
 const graph = (over: { id?: string; code?: string } = {}): FrameGraph =>
-  wgslFrame(over.id ?? 'fixture', over.code ?? CODE, BLOCK, UNIFORMS);
+  wgslFrame(over.id ?? 'fixture', over.code ?? CODE, BLOCK);
 
 /** A renderer over a recording device, with the trace it writes to. */
 async function rendererOver({ connected = false } = {}) {
@@ -120,8 +115,8 @@ describe('the programs it keeps', () => {
       { name: 'u_time', offset: 0, size: 4 },
       { name: 'u_resolution', offset: 16, size: 8 },
     ];
-    const one = wgslFrame('same', CODE, BLOCK, UNIFORMS);
-    const other = wgslFrame('same', CODE, otherBlock, UNIFORMS);
+    const one = wgslFrame('same', CODE, BLOCK);
+    const other = wgslFrame('same', CODE, otherBlock);
     expect(one.id).toBe(other.id);
     expect(one.modules).toEqual(other.modules);
     expect(one.resources).not.toEqual(other.resources);
@@ -139,11 +134,16 @@ describe('the programs it keeps', () => {
     expect(gpu.calls('createRenderPipeline')).toHaveLength(1);
   });
 
-  it('builds the program to answer what the shader declares and nothing reads', async () => {
-    const { gpu, renderer } = await rendererOver();
-
-    expect(renderer.unreached(graph(), ['u_time', 'u_nowhere'])).toEqual(['u_nowhere']);
-    expect(gpu.calls('createRenderPipeline')).toHaveLength(1);
+  it('answers what the shader declares and nothing reads from the source, building no program', async () => {
+    const { gpu } = await rendererOver();
+    // `reflect` reads the declaration off the source (item 69), so the question
+    // is answered without a program: the struct declares u_time, so u_nowhere is
+    // the name it has no place for, and no pipeline is compiled to say so.
+    const declaring = graph({
+      code: 'struct U { u_time: f32 }\n@group(0) @binding(0) var<uniform> u: U;\n@fragment fn fragMain() -> @location(0) vec4<f32> { return vec4<f32>(u.u_time); }',
+    });
+    expect(missing(declaring, ['u_time', 'u_nowhere'])).toEqual(['u_nowhere']);
+    expect(gpu.calls('createRenderPipeline')).toHaveLength(0);
   });
 });
 

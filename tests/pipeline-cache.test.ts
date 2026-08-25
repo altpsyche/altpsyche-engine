@@ -171,7 +171,6 @@ describe('the structure key', () => {
     const frame = (access: 'read' | 'read-write'): Parameters<typeof pipelineStructureOf>[0] => ({
       id: 'shared-spec',
       target: 'wgsl',
-      uniforms: [],
       modules: [{ name: 'wgsl', code: 'fn main() {}' }],
       resources: [{ kind: 'buffer', name: 'data', access, bytes: 16 }],
       pipelines: [spec],
@@ -186,10 +185,6 @@ describe('the structure key', () => {
 
 describe('the program key that supersedes item 2', () => {
   const CODE = '@fragment fn fragMain() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }';
-  const UNIFORMS = [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ];
   const BLOCK = [
     { name: 'u_time', offset: 0, size: 4 },
     { name: 'u_resolution', offset: 8, size: 8 },
@@ -204,8 +199,8 @@ describe('the program key that supersedes item 2', () => {
       { name: 'u_time', offset: 0, size: 4 },
       { name: 'u_resolution', offset: 16, size: 8 },
     ];
-    const one = wgslFrame('same', CODE, BLOCK, UNIFORMS);
-    const other = wgslFrame('same', CODE, otherBlock, UNIFORMS);
+    const one = wgslFrame('same', CODE, BLOCK);
+    const other = wgslFrame('same', CODE, otherBlock);
     expect(one.id).toBe(other.id);
     expect(one.modules).toEqual(other.modules);
 
@@ -213,7 +208,7 @@ describe('the program key that supersedes item 2', () => {
   });
 
   it('is one string for a frame keyed twice, so the live loop builds it once', () => {
-    const frame = wgslFrame('fixture', CODE, BLOCK, UNIFORMS);
+    const frame = wgslFrame('fixture', CODE, BLOCK);
     expect(frameKey(frame)).toBe(frameKey(frame));
   });
 
@@ -223,7 +218,7 @@ describe('the program key that supersedes item 2', () => {
     // in the key compactly rather than as a per-index object, but exactly: a single
     // byte changed is a different key.
     const withData = (byte: number) => {
-      const frame = wgslFrame('bytes', CODE, BLOCK, UNIFORMS);
+      const frame = wgslFrame('bytes', CODE, BLOCK);
       return {
         ...frame,
         resources: [
@@ -248,7 +243,7 @@ describe('the program key that supersedes item 2', () => {
     // The frame's own pipeline, resolved to a structure, keys the same whether it
     // is asked for once or twice — the derivation is a function of the frame, so
     // the backend building the pipeline and the cache keying it agree.
-    const frame = wgslFrame('fixture', CODE, BLOCK, UNIFORMS);
+    const frame = wgslFrame('fixture', CODE, BLOCK);
     const derived = pipelineStructureOf(frame, frame.pipelines[0]);
     expect(structureKey(derived)).toBe(structureKey(pipelineStructureOf(frame, frame.pipelines[0])));
   });

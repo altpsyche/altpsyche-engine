@@ -44,7 +44,6 @@ const geometry = (data: Uint8Array<ArrayBuffer>): VertexResource => ({
 const meshFrame = (data: Uint8Array<ArrayBuffer>): FrameGraph => ({
   id: `mesh-${data[0]}`,
   target: 'wgsl',
-  uniforms: [{ name: 'u_time', type: 'float' }],
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     geometry(data),

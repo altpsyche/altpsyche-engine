@@ -26,10 +26,6 @@ const SIZE = { width: 800, height: 600 };
 const wgslCubes: FrameGraph = {
   id: 'instanced-cubes',
   target: 'wgsl',
-  uniforms: [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     {
@@ -66,10 +62,6 @@ const wgslCubes: FrameGraph = {
 const glslCubes: FrameGraph = {
   id: 'instanced-cubes',
   target: 'glsl',
-  uniforms: [
-    { name: 'uTime', type: 'float' },
-    { name: 'uResolution', type: 'vec2' },
-  ],
   resources: [{ kind: 'uniform', name: 'uniforms' }],
   modules: [
     { name: 'vertex', code: '' },

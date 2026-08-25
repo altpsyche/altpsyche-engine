@@ -38,6 +38,7 @@ const SHIPPING = [
   'graph/refusal.ts',
   'graph/attachments.ts',
   'toy/frame.ts',
+  'toy/reflect.ts',
   'trace/frame-coverage.ts',
   'trace/trace.ts',
   'gpu/renderer.ts',

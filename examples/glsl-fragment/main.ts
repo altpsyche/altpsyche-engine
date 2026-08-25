@@ -39,10 +39,7 @@ void main() {
 
 const canvas = document.querySelector('canvas') as HTMLCanvasElement;
 
-const frame = glslFrame('glsl-fragment', VERTEX, FRAGMENT, [
-  { name: 'viewport', type: 'vec2' },
-  { name: 'seconds', type: 'float' },
-]);
+const frame = glslFrame('glsl-fragment', VERTEX, FRAGMENT);
 
 const surface = await createSurface(canvas, frame, {
   uniforms: (elapsedSeconds) => ({

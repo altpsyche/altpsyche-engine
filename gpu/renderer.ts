@@ -46,10 +46,6 @@ export interface FrameRenderer {
    * an XR layer's target the compositor consumes, drawn without a read-back
    * stall (item 29). Absent, the frame lands only in the target and the canvas. */
   draw(shader: FrameGraph, uniforms: Record<string, UniformValue>, into?: GPUTexture): void;
-  /** Which of the names this frame declares the compiled program has nowhere to
-   * put. The program is built if it has not been drawn yet, since compiling is
-   * the only thing that can answer it and the result is kept either way. */
-  unreached(shader: FrameGraph, names: string[]): string[];
   /** What the device behind this backend says about itself, which is every
    * ceiling it names and every optional part of its API it has. It is here
    * because a caller deciding whether a frame is drawable at all reads a ceiling
@@ -184,10 +180,6 @@ export async function createFrameRenderer(
 
     draw(shader, uniforms, into) {
       drawOne(shader, uniforms, into);
-    },
-
-    unreached(shader, names) {
-      return programFor(shader).unreached(names);
     },
 
     report() {

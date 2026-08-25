@@ -476,10 +476,10 @@ export interface FrameDescription {
 export interface FrameGraph {
   id: string;
   target: ShaderTarget;
-  /** The names and types a caller may feed. A page draws its controls from the
-   * manifest and hands the values back by name, and none of that cares how many
-   * passes read them. */
-  uniforms: { name: string; type: string }[];
+  /** The names and types a caller may feed are no longer written down here: they
+   * are read from the source by `reflect(frame)` (item 69), because a source and
+   * a list beside it can drift, and a page draws its controls from the reading
+   * rather than from a field a producer maintained by hand. */
   /** The optional device capabilities this frame depends on, absent for a frame
    * that needs only what every backend shares. It is what `refusal(graph, device)`
    * reads a graph against a device's `capabilities` for (item 24), and where it
@@ -563,13 +563,6 @@ export interface ShaderProgram {
    * business: loose uniforms in one dialect, one block of bytes in the other,
    * and the caller writes the same call either way. */
   setUniforms(values: Record<string, UniformValue>): void;
-  /** Which of these names the compiled program has nowhere to put. A GLSL
-   * compiler removes a uniform no line reads, so a name the source declares can
-   * be missing from the program built out of it, and a value written to it goes
-   * nowhere while every call still succeeds. Only the compiled program can
-   * answer this, which is why it is asked here rather than worked out from the
-   * source. */
-  unreached(names: string[]): string[];
   /**
    * Draws the frame, and where `into` is given lands the finished picture in
    * that caller-supplied texture as well.

@@ -29,7 +29,6 @@ function frame(over: { pipelines: PipelineSpec[]; passes: PassSpec[] } & Partial
   return {
     id: 'attachments-fixture',
     target: 'wgsl',
-    uniforms: [],
     resources: over.resources ?? [],
     modules: [{ name: 'wgsl', code: '' }],
     present: over.present,

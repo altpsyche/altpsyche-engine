@@ -1104,13 +1104,6 @@ export function createWebGPUBackend(
           );
         },
 
-        // A field is in the block or it is not, and a WGSL compiler does not
-        // remove one for going unread, so this answers the same question the
-        // GLSL side does and answers it from the layout that was computed.
-        unreached(names: string[]) {
-          return names.filter((name) => !at.has(name));
-        },
-
         draw(into?: GPUTexture) {
           const texture = surface();
           // A texture that follows the frame is rebuilt at the new size and what

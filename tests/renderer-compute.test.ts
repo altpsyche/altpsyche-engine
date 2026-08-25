@@ -36,7 +36,6 @@ function drawn(): { gpu: ReturnType<typeof createFakeGPU>; frame: FrameGraph } {
     'core-compute',
     description,
     { wgsl: code },
-    [{ name: 'u_time', type: 'float' }],
     [
       { name: 'u_time', offset: 0, size: 4 },
       { name: 'u_resolution', offset: 8, size: 8 },
@@ -75,7 +74,7 @@ describe('the compute preset the build wrote', () => {
     const gpu = createFakeGPU();
     const backend = createWebGPUBackend(gpu.canvas, gpu.device);
     if (!backend) throw new Error('the fake canvas gave no WebGPU context');
-    const frame = frameOf('core-compute', description, { wgsl: code }, [{ name: 'u_time', type: 'float' }], [
+    const frame = frameOf('core-compute', description, { wgsl: code }, [
       { name: 'u_time', offset: 0, size: 4 },
       { name: 'u_resolution', offset: 8, size: 8 },
     ]);

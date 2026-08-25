@@ -42,10 +42,6 @@ const held = (over: Partial<BufferResource> = {}): BufferResource => ({
 const frameOf = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-queries',
   target: 'wgsl',
-  uniforms: [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   resources: [{ kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] }, held()],
   modules: [{ name: 'wgsl', code: SOURCE }],
   pipelines: [

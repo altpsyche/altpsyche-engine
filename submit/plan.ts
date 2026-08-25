@@ -309,7 +309,6 @@ export function planFromDescription(
   id: string,
   description: FrameDescription,
   texts: Record<string, string>,
-  uniforms: { name: string; type: string }[],
   geometryOf: (name: string) => DrawnGeometry,
   extras: {
     block?: UniformSlot[];
@@ -317,6 +316,6 @@ export function planFromDescription(
     generated?: Map<string, Uint8Array<ArrayBuffer>>;
   } = {}
 ): FramePlan {
-  const frame = frameOf(id, description, texts, uniforms, extras.block, extras.constants, extras.generated);
+  const frame = frameOf(id, description, texts, extras.block, extras.constants, extras.generated);
   return planFramePasses(frame, geometryOf);
 }

@@ -39,10 +39,6 @@ const counts = (over: Partial<BufferResource> = {}): BufferResource => ({
 const holding = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-buffer',
   target: 'wgsl',
-  uniforms: [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   resources: [{ kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] }, counts()],
   modules: [{ name: 'wgsl', code: WRITES }],
   pipelines: [

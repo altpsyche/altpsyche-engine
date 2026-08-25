@@ -55,10 +55,6 @@ const kept = (over: Partial<TextureResource> = {}): TextureResource => ({
 const tiltedFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-depth',
   target: 'wgsl',
-  uniforms: [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   resources: [{ kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] }, kept()],
   modules: [{ name: 'wgsl', code: SURFACES }],
   pipelines: [

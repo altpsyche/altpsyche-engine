@@ -68,10 +68,6 @@ const OPTIONS: SceneViewOptions<Panel> = {
   modules: [MODULE],
   pipelines: [{ pipeline: PIPELINE, objects: { buffer: 'objects', pack: packPanel } }],
   materials: MATERIALS,
-  uniforms: [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   views: { buffer: 'views' },
 };
 
@@ -174,7 +170,7 @@ describe('sceneView turns a world and its cameras into a frame with no GPU', () 
     }
   });
 
-  it('carries the caller resources and uniforms and the present target onto the frame', () => {
+  it('carries the caller resources and the present target onto the frame', () => {
     const withExtras = sceneView(new Arena<Uint8Array>(() => undefined as never), {
       ...OPTIONS,
       resources: [{ kind: 'uniform', name: 'uniforms' }],
@@ -182,7 +178,6 @@ describe('sceneView turns a world and its cameras into a frame with no GPU', () 
       present: 'picture',
     });
     const frame = withExtras.graph(TWO_PANELS, [CAMERA]);
-    expect(frame.uniforms).toEqual(OPTIONS.uniforms);
     expect(frame.resources.find((r) => r.name === 'uniforms')?.kind).toBe('uniform');
     expect(frame.requires).toEqual(['depth-clamp']);
     expect(frame.present).toBe('picture');

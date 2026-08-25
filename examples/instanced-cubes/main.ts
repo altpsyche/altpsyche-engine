@@ -190,10 +190,6 @@ const wgslFrame = frameOf(
   'instanced-cubes',
   WGSL_DESCRIPTION,
   { [WGSL_DOCUMENT]: WGSL_SOURCE },
-  [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   uniformBlockOf(WGSL_SOURCE),
   undefined,
   new Map([['cube', VERTICES]])
@@ -256,11 +252,7 @@ const GLSL_DESCRIPTION: FrameDescription = {
 const glslFrame = frameOf(
   'instanced-cubes',
   GLSL_DESCRIPTION,
-  { vertex: GLSL_VERTEX, fragment: GLSL_FRAGMENT },
-  [
-    { name: 'uTime', type: 'float' },
-    { name: 'uResolution', type: 'vec2' },
-  ]
+  { vertex: GLSL_VERTEX, fragment: GLSL_FRAGMENT }
 );
 
 const canvas = document.querySelector('canvas') as HTMLCanvasElement;

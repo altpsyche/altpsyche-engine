@@ -43,7 +43,6 @@ function assembled(): FrameGraph {
       ['shade', FRAGMENT],
     ]),
     new Map(),
-    [{ name: 'u_time', type: 'float' }],
     [{ name: 'u_time', offset: 0, size: 4 }]
   );
 }
@@ -103,7 +102,6 @@ describe('a description whose documents do not carry distinct names', () => {
         collision,
         new Map([['shade', FRAGMENT]]),
         new Map(),
-        [{ name: 'u_time', type: 'float' }],
         [{ name: 'u_time', offset: 0, size: 4 }]
       )
     ).toThrowError(/name-collision.*shade|shade.*name-collision/);
@@ -112,7 +110,7 @@ describe('a description whose documents do not carry distinct names', () => {
   it('names both the id and the repeated name literally', () => {
     let message = '';
     try {
-      assembleFrame('name-collision', collision, new Map([['shade', FRAGMENT]]), new Map(), [], []);
+      assembleFrame('name-collision', collision, new Map([['shade', FRAGMENT]]), new Map(), []);
     } catch (error) {
       message = (error as Error).message;
     }

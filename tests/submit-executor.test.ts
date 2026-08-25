@@ -27,10 +27,6 @@ import { drawGL2Frame } from '../submit/gl2';
  * handed and its calls can be read without a backend around it.
  */
 
-const UNIFORMS = [
-  { name: 'u_time', type: 'float' },
-  { name: 'u_resolution', type: 'vec2' },
-];
 
 const WGSL = `struct Uniforms { u_time: f32, u_resolution: vec2<f32> };
 @binding(0) @group(0) var<uniform> uniforms: Uniforms;
@@ -41,11 +37,11 @@ const BLOCK: UniformSlot[] = [
   { name: 'u_resolution', offset: 8, size: 8 },
 ];
 
-const wgsl = (): FrameGraph => wgslFrame('fixture', WGSL, BLOCK, UNIFORMS);
+const wgsl = (): FrameGraph => wgslFrame('fixture', WGSL, BLOCK);
 
 const VERTEX = '#version 300 es\nin vec3 position;\nvoid main(){gl_Position=vec4(position,1.0);}';
 const FRAGMENT = '#version 300 es\nprecision highp float;\nout vec4 c;\nvoid main(){c=vec4(1.0);}';
-const glsl = (): FrameGraph => glslFrame('fixture', VERTEX, FRAGMENT, UNIFORMS);
+const glsl = (): FrameGraph => glslFrame('fixture', VERTEX, FRAGMENT);
 
 describe('every WebGPU draw goes through submit/execute', () => {
   it('submits the frame the executor recorded, once', () => {

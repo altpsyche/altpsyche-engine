@@ -33,7 +33,6 @@ const SLOT = 256;
 const perDrawFrame = (draws: DrawSpec[], count: number, over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-perdraw',
   target: 'wgsl',
-  uniforms: [],
   resources: [
     // The per-draw buffer: one record per draw, laid out at 256-byte slots. It
     // arrives with its first contents, which is what a producer of transforms

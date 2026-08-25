@@ -299,10 +299,7 @@ fn fragMain(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
   return vec4<f32>(vec3<f32>(0.05, 0.06, 0.09) + 0.06 * pulse * vec3<f32>(uv.x, uv.y, 1.0), 1.0);
 }`;
 
-const waitingFrame = wgslFrame('gltf-cube-loading', WAIT_WGSL, uniformBlockOf(WAIT_WGSL), [
-  { name: 'u_time', type: 'float' },
-  { name: 'u_resolution', type: 'vec2' },
-]);
+const waitingFrame = wgslFrame('gltf-cube-loading', WAIT_WGSL, uniformBlockOf(WAIT_WGSL));
 
 // The WebGL 2 stand-in: a raymarched cube, because that backend has no scene tier of
 // its own until Phase 5 (items 46–49). It still fetches the asset below, so the load
@@ -353,10 +350,7 @@ void main() {
   colour = vec4(col, 1.0);
 }`;
 
-const glslStandIn = glslFrame('gltf-cube', GLSL_VERTEX, GLSL_FRAGMENT, [
-  { name: 'viewport', type: 'vec2' },
-  { name: 'seconds', type: 'float' },
-]);
+const glslStandIn = glslFrame('gltf-cube', GLSL_VERTEX, GLSL_FRAGMENT);
 
 // Ask for a WebGPU card first; a WebGL 2 context is offered wherever the canvas gives
 // one. Which the device offers picks which arm draws.

@@ -17,11 +17,6 @@ import type { DrawnGeometry } from '../submit/plan';
  * reached for a frame that draws its backend's own corners.
  */
 
-const UNIFORMS = [
-  { name: 'u_time', type: 'float' },
-  { name: 'u_resolution', type: 'vec2' },
-];
-
 const BLOCK = [
   { name: 'u_time', offset: 0, size: 4 },
   { name: 'u_resolution', offset: 8, size: 8 },
@@ -45,7 +40,7 @@ describe('planFromDescription is the one seam a description reaches the new path
   it('plans a WGSL description into the same passes the two steps produce by hand', () => {
     const description = wgslDescription(WGSL);
     const byHand = planFramePasses(
-      frameOf('fixture', description, { [WGSL_DOCUMENT]: WGSL }, UNIFORMS, BLOCK),
+      frameOf('fixture', description, { [WGSL_DOCUMENT]: WGSL }, BLOCK),
       noGeometry
     );
 
@@ -53,7 +48,6 @@ describe('planFromDescription is the one seam a description reaches the new path
       'fixture',
       description,
       { [WGSL_DOCUMENT]: WGSL },
-      UNIFORMS,
       noGeometry,
       { block: BLOCK }
     );
@@ -66,9 +60,9 @@ describe('planFromDescription is the one seam a description reaches the new path
   it('plans a GLSL pair the same way, carrying both documents across', () => {
     const description = glslDescription();
     const texts = { vertex: VERTEX, fragment: FRAGMENT };
-    const byHand = planFramePasses(frameOf('fixture', description, texts, UNIFORMS), noGeometry);
+    const byHand = planFramePasses(frameOf('fixture', description, texts), noGeometry);
 
-    const throughSeam = planFromDescription('fixture', description, texts, UNIFORMS, noGeometry);
+    const throughSeam = planFromDescription('fixture', description, texts, noGeometry);
 
     expect(throughSeam).toEqual(byHand);
     expect(throughSeam).toHaveLength(1);
@@ -78,7 +72,7 @@ describe('planFromDescription is the one seam a description reaches the new path
     const description = wgslDescription(WGSL);
     // A document the loader never fetched text for is a description frameOf
     // refuses; the seam refuses it there rather than planning an empty module.
-    expect(() => planFromDescription('unfetched', description, {}, UNIFORMS, noGeometry, { block: BLOCK })).toThrow(
+    expect(() => planFromDescription('unfetched', description, {}, noGeometry, { block: BLOCK })).toThrow(
       'names a document'
     );
   });
