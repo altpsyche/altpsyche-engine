@@ -1145,7 +1145,7 @@ not read them, and re-pinning every line number is not this move's job. See
 
 ### 38. The mechanical §14 renames
 
-**Status.** open
+**Status.** lifted needs decomposition
 
 **Asks for.** The rows of [RoadToPureEngine.md](RoadToPureEngine.md) §14 that are renames and nothing else: `ShaderFrame` to `FrameGraph`, `setArtefact` to `setGraph`, `artefact` to `graph` or `variant`, `Extent` to `{ scale } | { width, height }`, `Dispatch` to `groups`, and `ModuleSpec.overrides` to `constants`. The README and both design documents follow.
 
@@ -1162,6 +1162,15 @@ not read them, and re-pinning every line number is not this move's job. See
 | `unreached()` and `ShaderFrame.uniforms` to `reflect()` | swaps a runtime query on a compiled program for static source reflection, and removes methods from the backend interface | 69 |
 
 **The lesson is about the queue rather than the renames.** §14 is a *design* table: it says where names are going, and it is right about that. It is not a work breakdown, and treating a table row as an item is what produced two stops. A row earns an item when someone has read the tree and knows what it costs.
+
+**Lifted 2026-08-25, the third cut, because two of the six it kept are not renames either.** The second cut removed three architectural rows; it left `Extent` and `Dispatch` in, and both are refactors wearing a rename's clothes by the same test the second cut used — read against the tree, not taken from §14's "mechanical" label:
+
+| row | why it is not a rename | item |
+| --- | --- | --- |
+| `Extent = number \| 'frame'` to `{ scale } \| { width, height }` | `TextureResource.size` is a per-axis pair `[Extent, Extent]`; the target is a whole-size object, so the field's shape changes, not its name. Every use in the tree does map 1:1 (`['frame','frame']` → `{ scale: 1 }`, `[64,64]` → `{ width: 64, height: 64 }` — no mixed `[n,'frame']` anywhere), so it is behaviour-preservable, but it rewrites the shape `item 67` migrates and belongs beside it | 71 |
+| `Dispatch = … \| 'frame'` to `groups: [n,n,n] \| { indirect }` | the target **drops** `'frame'` and `{ over }`, whose group counts `gpu/webgpu.ts` computes from the runtime frame size; making the name not survive means moving that computation to producers — a capability change, which contradicts this item's own "no behaviour changed". Used today by `core-compute`, `core-storage-pingpong`, `compute-field` and many tests | 72 |
+
+**The four rows that are genuine renames** — `ShaderFrame` to `FrameGraph`, `setArtefact` to `setGraph`, `artefact` to `graph`/`variant`, and `ModuleSpec.overrides` to `constants` — are separable and doable now against the tree. They carry across to **item 70**, which is what items 66, 67, 68 and 69 now name in place of this one: what they needed from this item was those four names landed, and a `lifted` item never satisfies a `Needs`. The number 38 is not reused, per the address rule.
 
 ### 39. The layer rules become tests
 
@@ -1585,7 +1594,7 @@ rather than left in the row.
 
 **Done when.** Neither name survives anywhere, and §14's table is fully spent.
 
-**Needs.** item 38, item 51.
+**Needs.** item 70, item 51.
 
 **Why it exists.** Item 38 asked for every row of §14 at once, in Phase 4. Two of those rows depend on Phase 5 work that item 38's `Needs` never named — `readBuffer`'s removal on item 51's capability wiring, and the `ShaderSource` union on the arena shape that arrives with translation. A run stopped on the contradiction instead of satisfying the criterion loosely, which is the behaviour the queue is meant to produce.
 
@@ -1599,7 +1608,7 @@ rather than left in the row.
 
 **Done when.** No resource is keyed by a string name in `graph/types.ts`, `FrameDescription` is absent, and the browser batch still agrees 15 of 15.
 
-**Needs.** item 17, item 38.
+**Needs.** item 17, item 70. Folding `TextureResource` off `name`-keying is where `Extent`'s shape change (item 71) naturally lands; take item 71 with this item or leave it to it, but do not restate its rule in two places.
 
 **Why it is its own item.** §14 lists this as a rename and it is a migration. `graph/types.ts` keys every resource by `name: string` today, and item 17's own journal row defers the move to `Ref` and `Handle`. Likely also a change to the manifest contract the consuming repository writes, so it is a `carry`.
 
@@ -1611,7 +1620,7 @@ rather than left in the row.
 
 **Done when.** `submit` is exported from the door, nothing constructs a `ShaderProgram`, and the browser batch agrees 15 of 15.
 
-**Needs.** item 38.
+**Needs.** item 70.
 
 **Why it is its own item.** §14 says `ShaderProgram` "becomes `Arena` + pipeline cache + `submit`". The first two exist; the third does not — there is no `submit(graph)` export anywhere. Deleting the interface without building the primitive leaves the library with no path to the card.
 
@@ -1623,6 +1632,42 @@ rather than left in the row.
 
 **Done when.** Neither name survives, no backend carries a reflection method, and a toy-tier caller gets the same answer from `reflect()` that `unreached()` gave.
 
-**Needs.** item 38.
+**Needs.** item 70.
 
 **Why it is its own item.** It swaps a runtime query on a compiled program for static analysis of a source, which is a different answer arrived at a different way — a compiler removing an unread uniform is exactly what `unreached()` was for, and `reflect()` cannot see it. Whether that difference matters is the work.
+
+### 70. The four genuine §14 renames
+
+**Status.** open
+
+**Asks for.** The four rows of [RoadToPureEngine.md](RoadToPureEngine.md) §14 that are renames and nothing else, verified against the tree: `ShaderFrame` to `FrameGraph`, `setArtefact` to `setGraph`, `artefact` to `graph` (or `variant` where a quality level is meant), and `ModuleSpec.overrides` to `constants`. The README and both design documents follow.
+
+**Done when.** None of those four names survives, and no behaviour changed with them — the browser batch still reports 15 of 15 traces agreeing, which is what a rename must not move.
+
+**Needs.** item 37.
+
+**Why it exists.** It is item 38 minus the two rows that turned out not to be renames. Item 38 asked for six; `Extent` (item 71) is a structural shape change on `TextureResource.size` and `Dispatch` (item 72) drops runtime variants whose logic lives in the backend, so neither can be a name-only change. This carries the four that are, and items 66, 67, 68 and 69 name it in place of item 38, since a `lifted` item never satisfies a `Needs`. See item 38's lift note and [JOURNAL.md](JOURNAL.md).
+
+### 71. `Extent` becomes a whole-size descriptor
+
+**Status.** open
+
+**Asks for.** The §14 row `Extent = number | 'frame'` to `{ scale } | { width, height }`: a texture's size stops being a per-axis pair and becomes one descriptor that can say half-resolution, which the old type could not. `graph/refs.ts` already carries the target shape as `TransientSize`; this brings the resident `TextureResource.size` to it and deletes `Extent`.
+
+**Done when.** `Extent` survives nowhere, `TextureResource.size` is a `{ scale } | { width, height }`, every current use maps with no picture change (the browser batch still agrees 15 of 15), and a test shows a `{ scale: 0.5 }` transient resolves to half the frame — the expressiveness the old type lacked.
+
+**Needs.** item 37.
+
+**Why it exists.** Split out of item 38 on 2026-08-25: §14 lists it under renames but it changes a field's shape, not its name. Verified behaviour-preservable — no use in the tree mixes a fixed axis with `'frame'`, so `['frame','frame']` maps to `{ scale: 1 }` and `[w,h]` to `{ width, height }` — but it rewrites the shape item 67 migrates off string keys, so it lands with item 67 or immediately beside it; whichever takes it, the rule for a transient's size lives in one place.
+
+### 72. `Dispatch` loses its runtime variants for `groups`
+
+**Status.** open
+
+**Asks for.** The §14 row `Dispatch = … | 'frame'` to `groups: [n,n,n] | { indirect }`: the `'frame'` and `{ over: <texture> }` variants go, and a producer computes the group count from the size it knows rather than the backend computing it at draw time.
+
+**Done when.** `Dispatch`'s `'frame'` and `{ over }` variants survive nowhere, the compute field is `groups`, the backend no longer derives a group count from the frame size (that logic having moved to the producer that had the size), and the compute corpus presets draw the same picture — the browser batch still agrees 15 of 15.
+
+**Needs.** item 37.
+
+**Why it exists.** Split out of item 38 on 2026-08-25: it is the one row of the six that cannot be a rename even in principle. `gpu/webgpu.ts`'s `blocks()` turns `'frame'` into `[width, height]` and `{ over }` into a named texture's size at draw time; removing those variants relocates that computation across the §7 layer boundary into producers, which is a behaviour change, not a name change. `core-compute`, `core-storage-pingpong`, `compute-field` and several tests author the dropped variants today, so the work includes teaching each to emit concrete `groups`.
