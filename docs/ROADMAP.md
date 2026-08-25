@@ -1361,13 +1361,43 @@ no door name added), so `gate:pack` was not required. See [JOURNAL.md](JOURNAL.m
 
 ### 44. The three-number cross-backend comparison
 
-**Status.** open
+**Status.** done
 
 **Asks for.** Hard jumps per frame, counted independently per frame and compared as counts rather than as a diff of the two frames; maximum per-channel delta; channels differing at all.
 
 **Done when.** All three are reported on every comparison, and **a per-channel average is no longer a primary reading** — it cannot tell small error spread thin from a picture cut into visible blocks, which is exactly the 7,537-against-292 case recorded in decision 4's amendment.
 
 **Needs.** item 41.
+
+**How it landed.** [gates/compare.mjs](../gates/compare.mjs) holds `compareFrames(a, b, width,
+height)`, a pure function over two RGBA byte frames returning exactly the three numbers §17's
+amendment prescribes and **no average**: `hardJumps: { a, b }` (a pixel more than `HARD_JUMP`
+= 40 from its left neighbour on any colour channel, counted **independently per frame** and
+returned as two counts rather than a diff of the two frames), `maxDelta` (the worst single
+per-channel delta between the frames, which an average buries), and `differing` (colour
+channels apart at all — the only one of the three that can say "identical", at zero), beside
+`channels` so `differing` reads as a fraction. Alpha is not compared. The card gate's control
+comparison ([gates/card.mjs](../gates/card.mjs)) now calls this function — bundled into its
+page through `bundleForPage`, so the gate measures the same function the node suite tests
+rather than a restatement of it — and prints all three numbers every run whether it passes or
+not. The gate's pass bar is unchanged (`maxDelta <= TOLERANCE`, the prior `over === 0` on
+tolerance 8, preserved rather than tightened since a card cannot be re-measured here); the
+retired reading was `over`, a channels-over-tolerance count, and there was no per-channel
+average in the code to retire — the amendment's average is the *primary reading* the metric
+must not become, which `compareFrames` now guarantees by construction (it computes no mean).
+
+**What the gates could not see.** `compareFrames` is pure arithmetic over two byte frames and
+runs entirely in the node suite ([tests/compare.test.ts](../tests/compare.test.ts), 739 node
+tests green, was 738; `type-check` green, `gates/compare.mjs` covered by `checkJs` and its
+`window` type added to [gates/globals.d.ts](../gates/globals.d.ts)). The test reproduces both
+measured cases of the amendment: a one-pixel spike every tenth pixel gives 0 hard jumps against
+198 while a mean stays under 3 (the 7,537-against-292 shape), and 60% of channels apart by 19
+gives `differing` over 800,000 of 1,440,000 while `maxDelta` is only 19 (the 822,426 shape a
+widened average bar would pass). What no gate here can see is the card gate actually calling it
+on two real backends' pixels — `gate:card` never runs unattended (SwiftShader on every headless
+launch, §17 note 3) and `gate:browser` was not run this session. The export surface did not move
+(a gate helper, a test, and a gate edit; no door name added), so `gate:pack` was not required.
+See [JOURNAL.md](JOURNAL.md).
 
 ### 45. The widened list
 

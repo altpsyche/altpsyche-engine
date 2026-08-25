@@ -50,6 +50,9 @@ const { bundle, staging } = bundleForPage({
   // `missing` replaced the program's own `unreached` at item 69; a source reading
   // rather than a question put to the built pipeline.
   'index.ts': ['missing'],
+  // The cross-backend comparison, bundled so the gate calls exactly the function
+  // the node suite tests rather than a restatement of it (item 44).
+  'gates/compare.mjs': ['compareFrames'],
 });
 
 const server = http.createServer((_request, response) => {
@@ -110,7 +113,7 @@ const CONTROL = {
 };
 
 const control = await page.evaluate(
-  async ({ sources, W, H, TOLERANCE }) => {
+  async ({ sources, W, H }) => {
     const adapter = /** @type {GPUAdapter} */ (await navigator.gpu.requestAdapter());
     const device = await adapter.requestDevice();
     const format = 'rgba8unorm';
@@ -197,22 +200,25 @@ const control = await page.evaluate(
     const fromGL = new Uint8Array(W * H * 4);
     for (let y = 0; y < H; y++) fromGL.set(raw.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
 
-    let over = 0;
-    let worst = 0;
-    for (let i = 0; i < fromGPU.length; i++) {
-      if (i % 4 === 3) continue;
-      const apart = Math.abs(fromGPU[i] - fromGL[i]);
-      if (apart > worst) worst = apart;
-      if (apart > TOLERANCE) over++;
-    }
-    return { over, worst, channels: (fromGPU.length / 4) * 3 };
+    // The three numbers of §17's amendment to decision 4, and no average: hard
+    // jumps per frame (compared as counts), the worst single channel, and the
+    // channels differing at all. `window.compareFrames` is the same function the
+    // node suite exercises, bundled in above.
+    return window.compareFrames(fromGPU, fromGL, W, H);
   },
-  { sources: CONTROL, W, H, TOLERANCE }
+  { sources: CONTROL, W, H }
 );
 
+// The clean-pass signal is `differing === 0` in the limit, but two hardware
+// compilers fold one gradient's arithmetic close rather than equal, so the pass
+// bar is the worst single channel within `TOLERANCE`. All three numbers are
+// printed whether it passes or not, since a seam nobody prints is a seam nobody
+// looks at, and the average that would have buried it is gone.
 say(
-  !control.error && control.over === 0,
-  `the two agree exactly on a gradient  ${control.error ?? `${control.over} of ${control.channels.toLocaleString('en-US')} channels over ${TOLERANCE}, worst ${control.worst}`}`
+  !control.error && control.maxDelta <= TOLERANCE,
+  control.error ??
+    `the two agree on a gradient  hard jumps ${control.hardJumps.a} against ${control.hardJumps.b}, ` +
+      `worst ${control.maxDelta}, ${control.differing.toLocaleString('en-US')} of ${control.channels.toLocaleString('en-US')} channels differ`
 );
 
 // Every fixture through this library's own backend, on the card. A frame of

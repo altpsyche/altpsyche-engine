@@ -21,6 +21,7 @@ import type * as Door from '../index.js';
 import type { createWebGPUBackend } from '../gpu/webgpu.js';
 import type { vec3 } from '../scene/maths.js';
 import type { readFrameCoverage } from '../trace/frame-coverage.js';
+import type { compareFrames } from './compare.js';
 
 declare global {
   interface Window {
@@ -35,6 +36,7 @@ declare global {
     createWebGPUBackend: typeof createWebGPUBackend;
     vec3: typeof vec3;
     readFrameCoverage: typeof readFrameCoverage;
+    compareFrames: typeof compareFrames;
   }
 }
 
