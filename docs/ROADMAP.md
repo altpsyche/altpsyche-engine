@@ -2426,6 +2426,12 @@ gains one"*) while its exit criterion never forces it. This item is that path, n
 the three that need it can depend on it. **Reverse:** delete this item; the three items revert
 to naming a prerequisite nothing tracks, which is the state this filing corrects.
 
+**Its `Done when` needs a gate that does not exist, recorded 2026-08-25 by the batch run over
+items 43–54.** "Draws on WebGL 2" reads as a `gate:browser` claim, and no browser gate
+constructs `createWebGL2Backend` — that harness gap is **item 79**, filed with this note.
+Item 79 `Needs` this item for a preset worth drawing; this item needs item 79 for anywhere to
+check it. Landing either alone leaves the pair unread, so whichever goes second closes both.
+
 ### 78. WebGL 2 uploads resident texture content
 
 **Status.** open
@@ -2453,3 +2459,39 @@ that path. It is deliberately texture content only; a resident *buffer* upload (
 storage buffer the page fills) is a distinct capability the corpus's `core-perdraw`/`core-*`
 storage presets exercise, refused on other grounds too (storage) and not filed here.
 **Reverse:** delete this item; items 50 and 52 revert to naming a prerequisite nothing tracks.
+
+---
+
+### 79. A browser gate draws through the WebGL 2 backend
+
+**Status.** open
+
+**Asks for.** One gate under `npm run gate:browser` that constructs `createWebGL2Backend`
+against a real `webgl2` context and draws a frame through it. No gate does today. The corpus
+gate bundles `createWebGL2Backend` into its page ([gates/corpus.mjs](../gates/corpus.mjs) line
+30) and never calls it: the loop throws on any fixture whose `language` is not `wgsl` and then
+records `"<id> WebGL 2  written in WGSL, which has no GLSL to draw"` unconditionally, so the
+WebGL 2 column is fifteen skips by construction rather than by outcome. The card gate does
+reach a real `webgl2` context, but hand-builds one program from the translator's GLSL and
+issues a single `drawArrays(TRIANGLES, 0, 3)` ([gates/card.mjs](../gates/card.mjs) lines
+167–193) — it compares the *translation's* pixels, never the backend's, and constructs only
+`createWebGPUBackend`.
+
+**Done when.** A `gate:browser` gate builds a frame through `createWebGL2Backend` on a real
+`webgl2` context and asserts something about the pixels it produced — at minimum that a
+one-pass fullscreen frame lights the buffer — and the corpus gate's WebGL 2 column reports a
+draw rather than a skip for at least one preset. A software renderer is enough: this item asks
+that the backend's own draw path *execute* in a browser, not that its picture agree with
+WebGPU's, which is item 44's reading on a card (§17 note 3).
+
+**Needs.** item 77.
+
+**Found 2026-08-25 by the batch gate run over items 43–54.** Every WebGL 2 item in the queue
+(46, 47, 48, 49, 50, 52, 77, 78) defers its pixel claim to "`gate:browser`/`gate:card` later",
+and the batch showed that neither gate can take it as built: the backend's draw path has never
+run outside `tests/support/fake-gl.ts`, which records calls and no pixels. Item 77 is the
+`Needs` because the corpus presets those items name draw `quad-grid` geometry, which the
+backend still refuses — but the gap this item closes is the harness's, not the backend's, and
+it outlives item 77: without it, item 77's own `Done when` ("draws on WebGL 2") has no gate to
+be checked by either. **Reverse:** delete this item; the WebGL 2 items revert to naming a
+gate that cannot run them.
