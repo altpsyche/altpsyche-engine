@@ -39,6 +39,7 @@
     "test": "vitest run",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "example": "node examples/run.mjs",
+    "translate": "node gates/translate.mjs",
     "device-report": "node gates/device-report.mjs",
     "bench:traffic": "node gates/traffic.mjs",
     "prepack": "npm run build",

@@ -1,0 +1,214 @@
+{
+  "generatedBy": "gates/translate.mjs",
+  "translator": "naga-cli 30.0.1",
+  "profile": "es300",
+  "presets": {
+    "core-depth": {
+      "entries": {
+        "away": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nstruct Pictures {\n    vec4 picture;\n    vec4 distance_;\n};\nconst float LEAN = 0.6;\nconst float SPAN = 0.85;\nconst float DISTANCE = 2.0;\nconst float TURN_RATE = 0.15;\nconst float CELLS = 16.0;\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\n\nSurface placed(vec2 corner_2, vec2 place_2, float lean) {\n    vec4 at = vec4(0.0);\n    vec2 flat_ = (corner_2 * SPAN);\n    vec3 leaning = vec3(flat_.x, (flat_.y * cos(lean)), (flat_.y * sin(lean)));\n    float _e15 = _group_0_binding_0_vs.u_time;\n    float swing = (_e15 * TURN_RATE);\n    vec3 turned = vec3(((leaning.x * cos(swing)) + (leaning.z * sin(swing))), leaning.y, ((leaning.z * cos(swing)) - (leaning.x * sin(swing))));\n    mat4x4 _e36 = _group_0_binding_0_vs.u_place;\n    at = (_e36 * vec4(turned.x, turned.y, (turned.z - DISTANCE), 1.0));\n    float _e48 = at.x;\n    float _e52 = _group_0_binding_0_vs.u_resolution.y;\n    float _e57 = _group_0_binding_0_vs.u_resolution.x;\n    at.x = ((_e48 * _e52) / _e57);\n    vec4 _e59 = at;\n    return Surface(_e59, place_2);\n}\n\nfloat lines(vec2 place_3) {\n    vec2 cells = (place_3 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    Surface _e3 = placed(corner, place, LEAN);\n    gl_Position = _e3.at;\n    _vs2fs_location0 = _e3.place;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n"
+        },
+        "toward": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nstruct Pictures {\n    vec4 picture;\n    vec4 distance_;\n};\nconst float LEAN = 0.6;\nconst float SPAN = 0.85;\nconst float DISTANCE = 2.0;\nconst float TURN_RATE = 0.15;\nconst float CELLS = 16.0;\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\n\nSurface placed(vec2 corner_2, vec2 place_2, float lean) {\n    vec4 at = vec4(0.0);\n    vec2 flat_ = (corner_2 * SPAN);\n    vec3 leaning = vec3(flat_.x, (flat_.y * cos(lean)), (flat_.y * sin(lean)));\n    float _e15 = _group_0_binding_0_vs.u_time;\n    float swing = (_e15 * TURN_RATE);\n    vec3 turned = vec3(((leaning.x * cos(swing)) + (leaning.z * sin(swing))), leaning.y, ((leaning.z * cos(swing)) - (leaning.x * sin(swing))));\n    mat4x4 _e36 = _group_0_binding_0_vs.u_place;\n    at = (_e36 * vec4(turned.x, turned.y, (turned.z - DISTANCE), 1.0));\n    float _e48 = at.x;\n    float _e52 = _group_0_binding_0_vs.u_resolution.y;\n    float _e57 = _group_0_binding_0_vs.u_resolution.x;\n    at.x = ((_e48 * _e52) / _e57);\n    vec4 _e59 = at;\n    return Surface(_e59, place_2);\n}\n\nfloat lines(vec2 place_3) {\n    vec2 cells = (place_3 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    vec2 corner_1 = _p2vs_location0;\n    vec2 place_1 = _p2vs_location1;\n    Surface _e3 = placed(corner_1, place_1, -0.6);\n    gl_Position = _e3.at;\n    _vs2fs_location0 = _e3.place;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n"
+        },
+        "farther": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nstruct Pictures {\n    vec4 picture;\n    vec4 distance_;\n};\nconst float LEAN = 0.6;\nconst float SPAN = 0.85;\nconst float DISTANCE = 2.0;\nconst float TURN_RATE = 0.15;\nconst float CELLS = 16.0;\n\nsmooth in vec2 _vs2fs_location0;\nlayout(location = 0) out vec4 _fs2p_location0;\nlayout(location = 1) out vec4 _fs2p_location1;\n\nfloat lines(vec2 place_3) {\n    vec2 cells = (place_3 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded = Surface(gl_FragCoord, _vs2fs_location0);\n    vec3 body = mix(vec3(0.06, 0.13, 0.3), vec3(0.18, 0.42, 0.72), shaded.place.y);\n    float _e17 = lines(shaded.place);\n    vec3 lit = mix(body, vec3(0.85, 0.92, 1.0), (_e17 * 0.5));\n    Pictures _tmp_return = Pictures(vec4(lit, 1.0), vec4(vec3(shaded.at.z), 1.0));\n    _fs2p_location0 = _tmp_return.picture;\n    _fs2p_location1 = _tmp_return.distance_;\n    return;\n}\n\n"
+        },
+        "nearer": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nstruct Pictures {\n    vec4 picture;\n    vec4 distance_;\n};\nconst float LEAN = 0.6;\nconst float SPAN = 0.85;\nconst float DISTANCE = 2.0;\nconst float TURN_RATE = 0.15;\nconst float CELLS = 16.0;\n\nsmooth in vec2 _vs2fs_location0;\nlayout(location = 0) out vec4 _fs2p_location0;\nlayout(location = 1) out vec4 _fs2p_location1;\n\nfloat lines(vec2 place_3) {\n    vec2 cells = (place_3 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded_1 = Surface(gl_FragCoord, _vs2fs_location0);\n    vec3 body = mix(vec3(0.55, 0.24, 0.1), vec3(0.95, 0.7, 0.28), shaded_1.place.y);\n    float _e17 = lines(shaded_1.place);\n    vec3 lit = mix(body, vec3(1.0, 0.96, 0.88), (_e17 * 0.5));\n    Pictures _tmp_return = Pictures(vec4(lit, 0.55), vec4(vec3(shaded_1.at.z), 1.0));\n    _fs2p_location0 = _tmp_return.picture;\n    _fs2p_location1 = _tmp_return.distance_;\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-draw-list": {
+      "entries": {
+        "surface": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_view;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n    vec3 shade;\n};\nconst float CELLS = 16.0;\n\nsmooth in vec2 _vs2fs_location0;\nsmooth in vec3 _vs2fs_location1;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded = Surface(gl_FragCoord, _vs2fs_location0, _vs2fs_location1);\n    float _e7 = lines(shaded.place);\n    vec3 lit = mix(shaded.shade, vec3(0.95, 0.97, 1.0), (_e7 * 0.5));\n    _fs2p_location0 = vec4(lit, 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-geometry": {
+      "entries": {
+        "warp": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nuniform uint naga_vs_first_instance;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Shaded {\n    vec4 at;\n    vec2 place;\n    float lift;\n};\nconst float STEP = 0.7;\nconst float SPAN = 0.3;\nconst float RIDGE = 0.22;\nconst float TURN = 6.2831855;\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\nsmooth out float _vs2fs_location1;\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    uint copy = (uint(gl_InstanceID) + naga_vs_first_instance);\n    float _e8 = _group_0_binding_0_vs.u_time;\n    float phase = (((place.x * TURN) + _e8) + float(copy));\n    float lift = ((sin(phase) * RIDGE) * place.y);\n    float sideways = ((float(copy) * STEP) - STEP);\n    vec2 at = vec2(((corner.x * SPAN) + sideways), ((corner.y * SPAN) + lift));\n    Shaded _tmp_return = Shaded(vec4(at, 0.0, 1.0), place, lift);\n    gl_Position = _tmp_return.at;\n    _vs2fs_location0 = _tmp_return.place;\n    _vs2fs_location1 = _tmp_return.lift;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n"
+        },
+        "shade": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Shaded {\n    vec4 at;\n    vec2 place;\n    float lift;\n};\nconst float STEP = 0.7;\nconst float SPAN = 0.3;\nconst float RIDGE = 0.22;\nconst float TURN = 6.2831855;\n\nsmooth in vec2 _vs2fs_location0;\nsmooth in float _vs2fs_location1;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nvoid main() {\n    Shaded shaded = Shaded(gl_FragCoord, _vs2fs_location0, _vs2fs_location1);\n    vec2 cells = (shaded.place * 16.0);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    float line = (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n    float warmth = clamp((((shaded.lift / RIDGE) * 0.5) + 0.5), 0.0, 1.0);\n    vec3 body = mix(vec3(0.1, 0.18, 0.38), vec3(0.95, 0.72, 0.35), warmth);\n    _fs2p_location0 = vec4(mix(body, vec3(1.0), (line * 0.6)), 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-material": {
+      "entries": {
+        "surface": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_view;\n};\nstruct Object {\n    mat4x4 model;\n    vec3 tint;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n    vec3 shade;\n};\nconst float CELLS = 16.0;\n\nsmooth in vec2 _vs2fs_location0;\nsmooth in vec3 _vs2fs_location1;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded = Surface(gl_FragCoord, _vs2fs_location0, _vs2fs_location1);\n    float _e7 = lines(shaded.place);\n    vec3 lit = mix(shaded.shade, vec3(0.95, 0.97, 1.0), (_e7 * 0.5));\n    _fs2p_location0 = vec4(lit, 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-mips": {
+      "entries": {
+        "fragMain": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nconst float STEPS = 6.0;\nconst float TILES = 3.0;\nconst float DRIFT = 0.04;\n\nlayout(std140) uniform Uniforms_block_0Fragment { Uniforms _group_0_binding_0_fs; };\n\nuniform highp sampler2D _group_0_binding_1_fs;\n\nlayout(location = 0) out vec4 _fs2p_location0;\n\nvoid main() {\n    vec4 at = gl_FragCoord;\n    vec2 _e4 = _group_0_binding_0_fs.u_resolution;\n    vec2 across = (at.xy / _e4);\n    float level = (across.x * STEPS);\n    float _e14 = _group_0_binding_0_fs.u_time;\n    vec2 slid = vec2(((across.x * TILES) + (_e14 * DRIFT)), (across.y * TILES));\n    vec4 _e24 = textureLod(_group_0_binding_1_fs, vec2(slid), level);\n    vec3 read = _e24.xyz;\n    float toStep = (abs((fract(level) - 0.5)) * 2.0);\n    float mark = smoothstep(0.97, 1.0, toStep);\n    vec3 tinted = (read * vec3(0.72, 0.86, 1.0));\n    _fs2p_location0 = vec4(mix(tinted, vec3(1.0, 0.86, 0.55), (mark * 0.55)), 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-multisample": {
+      "entries": {
+        "lean": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float LEAN = 0.55;\nconst float SPAN = 0.6;\nconst float DISTANCE = 2.0;\nconst float TURN_RATE = 0.15;\nconst float CELLS = 8.0;\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    vec4 at = vec4(0.0);\n    vec2 flat_ = (corner * SPAN);\n    vec3 leaning = vec3(flat_.x, (flat_.y * 0.8525245), (flat_.y * 0.52268726));\n    float _e14 = _group_0_binding_0_vs.u_time;\n    float swing = (_e14 * TURN_RATE);\n    vec3 turned = vec3(((leaning.x * cos(swing)) + (leaning.z * sin(swing))), leaning.y, ((leaning.z * cos(swing)) - (leaning.x * sin(swing))));\n    mat4x4 _e35 = _group_0_binding_0_vs.u_place;\n    at = (_e35 * vec4(turned.x, turned.y, (turned.z - DISTANCE), 1.0));\n    float _e47 = at.x;\n    float _e51 = _group_0_binding_0_vs.u_resolution.y;\n    float _e56 = _group_0_binding_0_vs.u_resolution.x;\n    at.x = ((_e47 * _e51) / _e56);\n    vec4 _e58 = at;\n    Surface _tmp_return = Surface(_e58, place);\n    gl_Position = _tmp_return.at;\n    _vs2fs_location0 = _tmp_return.place;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n"
+        },
+        "shade": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float LEAN = 0.55;\nconst float SPAN = 0.6;\nconst float DISTANCE = 2.0;\nconst float TURN_RATE = 0.15;\nconst float CELLS = 8.0;\n\nsmooth in vec2 _vs2fs_location0;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded = Surface(gl_FragCoord, _vs2fs_location0);\n    vec3 body = mix(vec3(0.1, 0.36, 0.62), vec3(0.62, 0.86, 1.0), shaded.place.y);\n    float _e17 = lines(shaded.place);\n    vec3 lit = mix(body, vec3(1.0, 1.0, 1.0), (_e17 * 0.4));\n    _fs2p_location0 = vec4(lit, 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-perdraw": {
+      "entries": {
+        "shade": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Copy {\n    vec3 tint;\n    float lift;\n};\nstruct Shaded {\n    vec4 at;\n    vec2 place;\n    vec3 tint;\n};\nconst float STEP = 0.7;\nconst float SPAN = 0.3;\nconst float TURN = 6.2831855;\n\nsmooth in vec2 _vs2fs_location0;\nsmooth in vec3 _vs2fs_location1;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nvoid main() {\n    Shaded shaded = Shaded(gl_FragCoord, _vs2fs_location0, _vs2fs_location1);\n    vec2 cells = (shaded.place * 16.0);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    float line = (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n    _fs2p_location0 = vec4(mix(shaded.tint, vec3(1.0), (line * 0.6)), 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-report": {
+      "entries": {
+        "front": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n    float u_cover;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float SPAN = 0.8;\nconst float NEAR = 1.6;\nconst float FAR = 2.6;\nconst float ASIDE = 2.2;\nconst float DRIFT = 0.12;\nconst float CELLS = 12.0;\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\n\nSurface placed(vec2 corner_2, vec2 place_2, float away, float slide) {\n    vec4 at = vec4(0.0);\n    vec2 flat_ = (corner_2 * SPAN);\n    float _e8 = _group_0_binding_0_vs.u_time;\n    float rise = (sin((_e8 * DRIFT)) * 0.1);\n    mat4x4 _e16 = _group_0_binding_0_vs.u_place;\n    at = (_e16 * vec4((flat_.x + slide), (flat_.y + rise), -(away), 1.0));\n    float _e28 = at.x;\n    float _e32 = _group_0_binding_0_vs.u_resolution.y;\n    float _e37 = _group_0_binding_0_vs.u_resolution.x;\n    at.x = ((_e28 * _e32) / _e37);\n    vec4 _e39 = at;\n    return Surface(_e39, place_2);\n}\n\nfloat lines(vec2 place_3) {\n    vec2 cells = (place_3 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.09, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    float _e5 = _group_0_binding_0_vs.u_cover;\n    Surface _e10 = placed(corner, place, NEAR, ((1.0 - _e5) * ASIDE));\n    gl_Position = _e10.at;\n    _vs2fs_location0 = _e10.place;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n"
+        },
+        "behind": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n    float u_cover;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float SPAN = 0.8;\nconst float NEAR = 1.6;\nconst float FAR = 2.6;\nconst float ASIDE = 2.2;\nconst float DRIFT = 0.12;\nconst float CELLS = 12.0;\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\n\nSurface placed(vec2 corner_2, vec2 place_2, float away, float slide) {\n    vec4 at = vec4(0.0);\n    vec2 flat_ = (corner_2 * SPAN);\n    float _e8 = _group_0_binding_0_vs.u_time;\n    float rise = (sin((_e8 * DRIFT)) * 0.1);\n    mat4x4 _e16 = _group_0_binding_0_vs.u_place;\n    at = (_e16 * vec4((flat_.x + slide), (flat_.y + rise), -(away), 1.0));\n    float _e28 = at.x;\n    float _e32 = _group_0_binding_0_vs.u_resolution.y;\n    float _e37 = _group_0_binding_0_vs.u_resolution.x;\n    at.x = ((_e28 * _e32) / _e37);\n    vec4 _e39 = at;\n    return Surface(_e39, place_2);\n}\n\nfloat lines(vec2 place_3) {\n    vec2 cells = (place_3 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.09, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    vec2 corner_1 = _p2vs_location0;\n    vec2 place_1 = _p2vs_location1;\n    Surface _e4 = placed(corner_1, place_1, FAR, 0.0);\n    gl_Position = _e4.at;\n    _vs2fs_location0 = _e4.place;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n"
+        },
+        "nearer": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n    float u_cover;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float SPAN = 0.8;\nconst float NEAR = 1.6;\nconst float FAR = 2.6;\nconst float ASIDE = 2.2;\nconst float DRIFT = 0.12;\nconst float CELLS = 12.0;\n\nsmooth in vec2 _vs2fs_location0;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat lines(vec2 place_3) {\n    vec2 cells = (place_3 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.09, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded = Surface(gl_FragCoord, _vs2fs_location0);\n    vec3 body = mix(vec3(0.55, 0.24, 0.1), vec3(0.95, 0.7, 0.28), shaded.place.y);\n    float _e17 = lines(shaded.place);\n    _fs2p_location0 = vec4(mix(body, vec3(1.0, 0.96, 0.88), (_e17 * 0.5)), 1.0);\n    return;\n}\n\n"
+        },
+        "farther": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n    float u_cover;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float SPAN = 0.8;\nconst float NEAR = 1.6;\nconst float FAR = 2.6;\nconst float ASIDE = 2.2;\nconst float DRIFT = 0.12;\nconst float CELLS = 12.0;\n\nsmooth in vec2 _vs2fs_location0;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat lines(vec2 place_3) {\n    vec2 cells = (place_3 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.09, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded_1 = Surface(gl_FragCoord, _vs2fs_location0);\n    vec3 body = mix(vec3(0.06, 0.13, 0.3), vec3(0.18, 0.42, 0.72), shaded_1.place.y);\n    float _e17 = lines(shaded_1.place);\n    _fs2p_location0 = vec4(mix(body, vec3(0.85, 0.92, 1.0), (_e17 * 0.5)), 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-scene": {
+      "entries": {
+        "project": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_view;\n    mat4x4 u_model;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float CELLS = 16.0;\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    vec4 at = vec4(0.0);\n    mat4x4 _e4 = _group_0_binding_0_vs.u_view;\n    mat4x4 _e7 = _group_0_binding_0_vs.u_model;\n    at = ((_e4 * _e7) * vec4(corner.x, corner.y, 0.0, 1.0));\n    float _e18 = at.x;\n    float _e22 = _group_0_binding_0_vs.u_resolution.y;\n    float _e27 = _group_0_binding_0_vs.u_resolution.x;\n    at.x = ((_e18 * _e22) / _e27);\n    vec4 _e29 = at;\n    Surface _tmp_return = Surface(_e29, place);\n    gl_Position = _tmp_return.at;\n    _vs2fs_location0 = _tmp_return.place;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n"
+        },
+        "surface": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_view;\n    mat4x4 u_model;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float CELLS = 16.0;\n\nsmooth in vec2 _vs2fs_location0;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded = Surface(gl_FragCoord, _vs2fs_location0);\n    vec3 body = mix(vec3(0.1, 0.16, 0.34), vec3(0.36, 0.62, 0.92), shaded.place.y);\n    float _e17 = lines(shaded.place);\n    vec3 lit = mix(body, vec3(0.9, 0.95, 1.0), (_e17 * 0.5));\n    _fs2p_location0 = vec4(lit, 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-stencil": {
+      "entries": {
+        "shape": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float SPAN = 0.75;\nconst float DISTANCE = 1.8;\nconst float TURN_RATE = 0.35;\nconst float RINGS = 9.0;\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    vec4 at = vec4(0.0);\n    vec2 flat_ = (corner * SPAN);\n    float _e6 = _group_0_binding_0_vs.u_time;\n    float swing = (_e6 * TURN_RATE);\n    vec3 turned = vec3((flat_.x * cos(swing)), flat_.y, (flat_.x * sin(swing)));\n    mat4x4 _e19 = _group_0_binding_0_vs.u_place;\n    at = (_e19 * vec4(turned.x, turned.y, (turned.z - DISTANCE), 1.0));\n    float _e31 = at.x;\n    float _e35 = _group_0_binding_0_vs.u_resolution.y;\n    float _e40 = _group_0_binding_0_vs.u_resolution.x;\n    at.x = ((_e31 * _e35) / _e40);\n    vec4 _e42 = at;\n    Surface _tmp_return = Surface(_e42, place);\n    gl_Position = _tmp_return.at;\n    _vs2fs_location0 = _tmp_return.place;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n"
+        },
+        "marking": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float SPAN = 0.75;\nconst float DISTANCE = 1.8;\nconst float TURN_RATE = 0.35;\nconst float RINGS = 9.0;\n\nsmooth in vec2 _vs2fs_location0;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nvoid main() {\n    Surface shaded = Surface(gl_FragCoord, _vs2fs_location0);\n    float edge = min(min(shaded.place.x, (1.0 - shaded.place.x)), min(shaded.place.y, (1.0 - shaded.place.y)));\n    _fs2p_location0 = vec4((vec3(0.04, 0.05, 0.09) + vec3((smoothstep(0.06, 0.0, edge) * 0.18))), 1.0);\n    return;\n}\n\n"
+        },
+        "filling": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_place;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float SPAN = 0.75;\nconst float DISTANCE = 1.8;\nconst float TURN_RATE = 0.35;\nconst float RINGS = 9.0;\n\nlayout(std140) uniform Uniforms_block_0Fragment { Uniforms _group_0_binding_0_fs; };\n\nlayout(location = 0) out vec4 _fs2p_location0;\n\nvoid main() {\n    vec4 at_1 = gl_FragCoord;\n    vec2 _e4 = _group_0_binding_0_fs.u_resolution;\n    float _e11 = _group_0_binding_0_fs.u_resolution.y;\n    vec2 middle = ((at_1.xy - (_e4 * 0.5)) / vec2(_e11));\n    float _e19 = _group_0_binding_0_fs.u_time;\n    float bands = fract(((length(middle) * RINGS) - (_e19 * 0.25)));\n    vec3 warm = mix(vec3(0.98, 0.57, 0.24), vec3(0.99, 0.88, 0.62), bands);\n    vec3 cool = mix(vec3(0.18, 0.42, 0.72), vec3(0.62, 0.85, 0.98), bands);\n    _fs2p_location0 = vec4(mix(cool, warm, smoothstep(0.2, 0.8, bands)), 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-target": {
+      "entries": {
+        "warp": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Shaded {\n    vec4 at;\n    vec2 place;\n    float lift;\n};\nconst float SPAN = 0.72;\nconst float RIDGE = 0.26;\nconst float TURN = 6.2831855;\nconst float CELLS = 24.0;\nconst float REACH = 0.55;\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\nsmooth out float _vs2fs_location1;\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    float _e7 = _group_0_binding_0_vs.u_time;\n    float phase = ((place.x * TURN) + _e7);\n    float lift = ((sin(phase) * RIDGE) * place.y);\n    vec2 at_1 = vec2((corner.x * SPAN), ((corner.y * SPAN) + lift));\n    Shaded _tmp_return = Shaded(vec4(at_1, 0.0, 1.0), place, lift);\n    gl_Position = _tmp_return.at;\n    _vs2fs_location0 = _tmp_return.place;\n    _vs2fs_location1 = _tmp_return.lift;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n"
+        },
+        "paint": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Shaded {\n    vec4 at;\n    vec2 place;\n    float lift;\n};\nconst float SPAN = 0.72;\nconst float RIDGE = 0.26;\nconst float TURN = 6.2831855;\nconst float CELLS = 24.0;\nconst float REACH = 0.55;\n\nsmooth in vec2 _vs2fs_location0;\nsmooth in float _vs2fs_location1;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nvoid main() {\n    Shaded shaded = Shaded(gl_FragCoord, _vs2fs_location0, _vs2fs_location1);\n    vec2 cells = (shaded.place * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    float line = (1.0 - smoothstep(0.0, 0.06, min(toEdge, (1.0 - toEdge))));\n    float warmth = clamp((((shaded.lift / RIDGE) * 0.5) + 0.5), 0.0, 1.0);\n    vec3 body = mix(vec3(0.08, 0.16, 0.34), vec3(0.34, 0.62, 0.84), warmth);\n    _fs2p_location0 = vec4(mix(body, vec3(0.92, 0.97, 1.0), (line * 0.55)), 1.0);\n    return;\n}\n\n"
+        },
+        "grade": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Shaded {\n    vec4 at;\n    vec2 place;\n    float lift;\n};\nconst float SPAN = 0.72;\nconst float RIDGE = 0.26;\nconst float TURN = 6.2831855;\nconst float CELLS = 24.0;\nconst float REACH = 0.55;\n\nlayout(std140) uniform Uniforms_block_0Fragment { Uniforms _group_0_binding_0_fs; };\n\nuniform highp sampler2D _group_0_binding_1_fs;\n\nlayout(location = 0) out vec4 _fs2p_location0;\n\nvoid main() {\n    vec4 at = gl_FragCoord;\n    vec2 _e4 = _group_0_binding_0_fs.u_resolution;\n    vec2 across = (at.xy / _e4);\n    vec4 _e8 = texture(_group_0_binding_1_fs, vec2(across));\n    vec3 drawn = _e8.xyz;\n    float luminance = dot(drawn, vec3(0.299, 0.587, 0.114));\n    vec3 harder = clamp(mix(vec3(luminance), drawn, 1.6), vec3(0.0), vec3(1.0));\n    vec3 tinted = (harder * vec3(1.06, 0.98, 0.88));\n    float fromMiddle = (length((across - vec2(0.5))) / 0.70710677);\n    float shade = (1.0 - (smoothstep(REACH, 1.0, fromMiddle) * 0.85));\n    _fs2p_location0 = vec4((tinted * shade), 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
+    "core-texture": {
+      "entries": {
+        "fragMain": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nconst vec3 DEEP = vec3(0.03, 0.05, 0.14);\nconst vec3 BRIGHT = vec3(0.98, 0.78, 0.42);\n\nlayout(std140) uniform Uniforms_block_0Fragment { Uniforms _group_0_binding_0_fs; };\n\nuniform highp sampler2D _group_0_binding_1_fs;\n\nlayout(location = 0) out vec4 _fs2p_location0;\n\nvoid main() {\n    vec4 pixel = gl_FragCoord;\n    vec2 _e4 = _group_0_binding_0_fs.u_resolution;\n    vec2 at = (pixel.xy / _e4);\n    float _e9 = _group_0_binding_0_fs.u_resolution.x;\n    float _e13 = _group_0_binding_0_fs.u_resolution.y;\n    vec2 shape = vec2((_e9 / _e13), 1.0);\n    vec2 lookup = ((at * shape) * 3.0);\n    float _e22 = _group_0_binding_0_fs.u_time;\n    float drift = (_e22 * 0.035);\n    vec4 _e32 = texture(_group_0_binding_1_fs, vec2(((lookup * 0.5) + vec2(drift, -(drift)))));\n    float push = _e32.x;\n    vec4 _e42 = texture(_group_0_binding_1_fs, vec2(((lookup + (vec2(push, push) * 0.14)) - vec2(drift))));\n    float flow = _e42.x;\n    float level = clamp((((flow - 0.5) * 1.9) + 0.5), 0.0, 1.0);\n    _fs2p_location0 = vec4(mix(DEEP, BRIGHT, level), 1.0);\n    return;\n}\n\n"
+        }
+      }
+    }
+  },
+  "refused": {
+    "core-compute": [
+      {
+        "entry": "paint",
+        "stage": "compute",
+        "capability": "compute"
+      }
+    ],
+    "core-draw-list": [
+      {
+        "entry": "project",
+        "stage": "vertex",
+        "capability": "storage-buffer"
+      }
+    ],
+    "core-indirect": [
+      {
+        "entry": "plan",
+        "stage": "compute",
+        "capability": "compute"
+      },
+      {
+        "entry": "paint",
+        "stage": "compute",
+        "capability": "compute"
+      },
+      {
+        "entry": "shade",
+        "stage": "fragment",
+        "capability": "storage-texture"
+      }
+    ],
+    "core-material": [
+      {
+        "entry": "project",
+        "stage": "vertex",
+        "capability": "storage-buffer"
+      }
+    ],
+    "core-perdraw": [
+      {
+        "entry": "warp",
+        "stage": "vertex",
+        "capability": "storage-buffer"
+      }
+    ],
+    "core-state": [
+      {
+        "entry": "step",
+        "stage": "compute",
+        "capability": "compute"
+      },
+      {
+        "entry": "shade",
+        "stage": "fragment",
+        "capability": "storage-texture"
+      }
+    ]
+  }
+}

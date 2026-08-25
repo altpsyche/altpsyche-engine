@@ -14,7 +14,11 @@ const dir = path.join(import.meta.dirname, '..', 'fixtures', 'source');
 
 describe('the fixture corpus', () => {
   it('has an entry for every source and a source for every entry', () => {
-    const onDisk = readdirSync(dir).sort();
+    // Only the `.wgsl` sources; `source/glsl/` holds the build-time GLSL bake
+    // (item 41), which is generated output rather than a corpus source.
+    const onDisk = readdirSync(dir)
+      .filter((f) => f.endsWith('.wgsl'))
+      .sort();
     const declared = CAPABILITY_FIXTURES.map((one) => one.source).sort();
     expect(declared).toEqual(onDisk);
   });

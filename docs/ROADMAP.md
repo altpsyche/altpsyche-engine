@@ -1242,13 +1242,34 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 ### 41. The build-time translation path
 
-**Status.** open
+**Status.** done
 
 **Asks for.** Every shipped material and every corpus preset translated once by a build step, the result carried in `ShaderSource.glsl`.
 
 **Done when.** A scene-tier consumer on WebGL 2 downloads no translator, and a shader that will not translate **fails the build** rather than the page.
 
 **Needs.** item 75. **Not** item 40: what these need is a translator known to carry the corpus, which is item 75. Item 40 chooses between two and is a separate, heavier question — see item 75 for why the two were split.
+
+**How it landed.** [gates/translate.mjs](../gates/translate.mjs) is the build step (`npm run
+translate`): it reads the fifteen corpus WGSL presets, finds every entry point, and translates each
+to **GLSL ES 3.00** — WebGL 2's profile — with naga, a dev-time tool that never ships (§17 decision
+5 keeps `dependencies` at `{}`). Of the 34 entry points, **25 translate and are baked**; the other
+9 are refused before translation because WebGL 2 lacks the capability — 4 compute stages, 3 vertex
+stages reading a storage buffer, 2 fragment stages reading a storage texture — the exact es300
+breakdown item 75 recorded, mapped to the `compute`/`storage-buffer`/`storage-texture` names §10 and
+`refusal()` use. **A shader that will not translate for any other reason fails the build**, the step
+exiting non-zero with naga's message so the construct is named (demonstrated against a real naga
+refusal; the fail/skip/bake classifier is pinned in the node suite without naga). The bake travels
+in [fixtures/source/glsl/corpus.generated.json](../fixtures/source/glsl/corpus.generated.json) — the
+concrete "result carried" — so a running page reads GLSL, not the translator, which is the "downloads
+no translator" half: the translator is a build-time tool and nothing shipped names it
+([tests/translate-build.test.ts](../tests/translate-build.test.ts) asserts no shipped source or
+`dependencies` entry does). **Scope, and what the gates could not see:** the corpus is fixtures (not
+shipped) and this library ships no producer material with embedded WGSL yet, so the bake lives beside
+the corpus rather than in `dist`; §9's `ShaderSource`/`GlslPair` type is not in the code and the
+Done-when does not need it; the runtime WebGL 2 backend does not yet consume the bake (items 46–52),
+and that the baked GLSL draws the same picture on a card is item 44's, unrun here. See
+[JOURNAL.md](JOURNAL.md).
 
 ### 42. The on-demand translator chunk
 
