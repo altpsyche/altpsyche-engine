@@ -5,6 +5,7 @@ import ts from 'typescript';
 import { Arena } from '../resource/arena';
 import {
   type Camera,
+  cost,
   type Material,
   type MaterialDraw,
   type ModuleSpec,
@@ -327,6 +328,151 @@ describe('sceneView holds its buffers in the arena across frames', () => {
     view.graph(onePanel, [CAMERA]);
     expect(freed).toBe(1);
     expect(arena.traffic()).toEqual({ written: OBJECT_BYTES, uploaded: MODEL_BYTES });
+  });
+});
+
+describe('sceneView declares a shared depth attachment so solids order by depth, not draw order (item 65)', () => {
+  // Two pipelines, one per object, each depth-testing: a `less` compare that writes
+  // the depth it passes. Each reads its own objects buffer, both share the views
+  // buffer, and both test into the one depth attachment sceneView declares.
+  const NEAR: RenderPipelineSpec = {
+    kind: 'render',
+    name: 'near',
+    vertex: { module: 'scene', entry: 'project' },
+    fragment: { module: 'scene', entry: 'shade' },
+    bindings: [
+      { group: 0, binding: 0, resource: 'nearObjects', visibility: ['vertex'] },
+      { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+    ],
+    depth: { format: 'depth24plus', compare: 'less', write: true },
+  };
+  const FAR: RenderPipelineSpec = {
+    ...NEAR,
+    name: 'far',
+    bindings: [
+      { group: 0, binding: 0, resource: 'farObjects', visibility: ['vertex'] },
+      { group: 0, binding: 1, resource: 'views', visibility: ['vertex'] },
+    ],
+  };
+  const SOLIDS: Record<string, Material<Panel>> = {
+    front: { pipeline: 'near', values: { tint: [1, 0, 0] } },
+    back: { pipeline: 'far', values: { tint: [0, 0, 1] } },
+  };
+  // 'front' sits nearer the camera (a smaller distance along -z) than 'back', so a
+  // correct picture shows the red front over the blue back from this camera whatever
+  // order the two pipelines' passes run in.
+  const SOLIDS_SCENE: Scene = {
+    entities: [
+      { id: 'front', material: 'front', transform: { position: vec3(0, 0, -2), rotation: mat4.rotationX(0), scale: vec3(0.8, 0.8, 0.8) } },
+      { id: 'back', material: 'back', transform: { position: vec3(0, 0, -4), rotation: mat4.rotationX(0), scale: vec3(0.8, 0.8, 0.8) } },
+    ],
+  };
+  // Removing the depth means removing it in both places at once — the shared
+  // attachment and each pipeline's compare/write — or the graph is one `plan.ts`
+  // refuses (a pipeline testing depth with no attachment to keep it in). So the
+  // flat case strips `depth` off the pipelines too, leaving a valid draw-order graph.
+  const flatten = (pipeline: RenderPipelineSpec): RenderPipelineSpec => {
+    const { depth: _dropped, ...rest } = pipeline;
+    return rest;
+  };
+  const optionsFor = (order: RenderPipelineSpec[], withDepth: boolean): SceneViewOptions<Panel> => ({
+    id: 'solids',
+    target: 'wgsl',
+    modules: [MODULE],
+    pipelines: order.map((pipeline) => ({
+      pipeline: withDepth ? pipeline : flatten(pipeline),
+      objects: { buffer: pipeline.name === 'near' ? 'nearObjects' : 'farObjects', pack: packPanel },
+    })),
+    materials: SOLIDS,
+    views: { buffer: 'views' },
+    ...(withDepth ? { depth: { texture: 'depth', format: 'depth24plus' as const } } : {}),
+  });
+
+  const build = (order: RenderPipelineSpec[], withDepth: boolean) =>
+    sceneView(new Arena<Uint8Array>(() => undefined as never), optionsFor(order, withDepth)).graph(SOLIDS_SCENE, [CAMERA]);
+
+  it('emits one frame-sized depth attachment the passes share, cleared once and loaded after', () => {
+    // Listed near-first, so painter order alone would draw the far object last and
+    // over the near one — the case depth exists to fix.
+    const frame = build([NEAR, FAR], true);
+
+    const depth = frame.resources.find((r) => r.name === 'depth');
+    expect(depth?.kind).toBe('texture');
+    if (depth?.kind !== 'texture') return;
+    expect(depth.size).toEqual(['frame', 'frame']);
+    expect(depth.format).toBe('depth24plus');
+    expect(depth.use).toEqual(['attachment']);
+    // A transient: no first contents of its own, so item 1 discards the store no
+    // pass reads and `cost()` counts its bytes as transient.
+    expect(depth.source).toBeUndefined();
+    expect(depth.data).toBeUndefined();
+
+    // Every pass names the one shared attachment; the first clears it, every later
+    // pass loads it (names no clear) so each surface tests against what came before.
+    const depths = frame.passes.map((pass) => (isRenderPass(pass) ? pass.depth : undefined));
+    expect(depths).toEqual([{ resource: 'depth', clear: 1 }, { resource: 'depth' }]);
+  });
+
+  it('carries a depth compare and write on each emitted pipeline', () => {
+    const frame = build([NEAR, FAR], true);
+    for (const spec of frame.pipelines) {
+      expect(spec.kind === 'render' && spec.depth).toEqual({ format: 'depth24plus', compare: 'less', write: true });
+    }
+  });
+
+  it('emits the same depth-tested graph whatever order the objects sit in — the test resolves order, not the graph', () => {
+    // Near-first and far-first list the passes in opposite orders; with depth, both
+    // emit the shared attachment and both test into it, so the picture is the depth's
+    // to decide rather than the pass order's. The only difference is which pass runs
+    // first, and depth makes that not decide the picture.
+    const nearFirst = build([NEAR, FAR], true);
+    const farFirst = build([FAR, NEAR], true);
+    for (const frame of [nearFirst, farFirst]) {
+      expect(frame.resources.some((r) => r.name === 'depth' && r.kind === 'texture')).toBe(true);
+      const depths = frame.passes.map((pass) => (isRenderPass(pass) ? pass.depth : undefined));
+      expect(depths).toEqual([expect.objectContaining({ resource: 'depth', clear: 1 }), { resource: 'depth' }]);
+    }
+    // The pass order does flip with the list order — depth is what makes that flip
+    // stop mattering to the picture.
+    expect(nearFirst.passes.map((p) => (isRenderPass(p) ? p.pipeline : undefined))).toEqual(['near', 'far']);
+    expect(farFirst.passes.map((p) => (isRenderPass(p) ? p.pipeline : undefined))).toEqual(['far', 'near']);
+  });
+
+  it("counts the depth's one load and one store in cost(), against a scene with the depth removed", () => {
+    const size = { width: 800, height: 600 };
+    const withDepth = cost(build([NEAR, FAR], true), size);
+    // The shared depth: the first pass clears it (no load) but its depth is stored
+    // for the second pass to test against, and the second pass loads it (no clear)
+    // and discards it, nothing reading it after — one depth load and one depth store.
+    // The two colour stores are the frame target each pass presents into.
+    expect(withDepth.attachmentLoads).toBe(1);
+    expect(withDepth.attachmentStores).toBe(3);
+    // Its transient bytes are the frame-sized depth24plus target, four bytes a pixel.
+    expect(withDepth.transientBytes).toBe(4 * 800 * 600);
+
+    // With the depth removed the graph carries no depth attachment and its passes
+    // name none, so the near-over-far ordering falls back to draw order — the
+    // regression this attachment exists to prevent. The depth load and the depth
+    // store both vanish from the cost, and the frame declares no transient.
+    const flat = build([NEAR, FAR], false);
+    expect(flat.resources.some((r) => r.name === 'depth')).toBe(false);
+    expect(flat.passes.every((pass) => isRenderPass(pass) && pass.depth === undefined)).toBe(true);
+    const noDepth = cost(flat, size);
+    expect(noDepth.attachmentLoads).toBe(0);
+    expect(noDepth.attachmentStores).toBe(2);
+    expect(noDepth.transientBytes).toBe(0);
+  });
+
+  it('refuses a depth target that shares a name with a scene buffer, at construction, by name', () => {
+    expect(() =>
+      sceneView(new Arena<Uint8Array>(() => undefined as never), optionsFor([NEAR, FAR], false)).graph(SOLIDS_SCENE, [CAMERA])
+    ).not.toThrow();
+    expect(() =>
+      sceneView(new Arena<Uint8Array>(() => undefined as never), {
+        ...optionsFor([NEAR, FAR], true),
+        depth: { texture: 'views', format: 'depth24plus' },
+      })
+    ).toThrow(/names the buffer "views" twice/);
   });
 });
 

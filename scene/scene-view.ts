@@ -44,10 +44,12 @@ import { mat4 } from './maths.js';
 import type {
   BufferResource,
   ModuleSpec,
+  RenderPassSpec,
   RenderPipelineSpec,
   ResourceSpec,
   ShaderFrame,
   ShaderTarget,
+  TextureResource,
 } from '../graph/types.js';
 
 /**
@@ -116,6 +118,23 @@ export interface SceneViewOptions<V> {
    * given, shared across every pass. A single-view scene is one matrix; the shader
    * indexes by view where it draws more than one. */
   views: { buffer: string };
+  /** The transient depth target the scene's passes share, absent for a flat scene
+   * that needs no depth test. When present, `sceneView` declares one frame-sized
+   * depth texture, has the first pass clear it and every later pass load it, and
+   * attaches it to every pass — so a scene of solid objects draws the near one over
+   * the far one whatever order the passes run, the depth test resolving what
+   * painter order cannot. It is one shared attachment cleared once rather than per
+   * pass, because a per-pass clear would throw away the depth an earlier pass wrote
+   * and the passes would order by draw order again.
+   *
+   * Each pipeline declares its own `depth` compare and write (a shadow pass may
+   * test without writing): this is the attachment those declarations test into,
+   * and `format` must be the format the pipelines name — a pipeline testing a
+   * format the attachment does not keep is refused by name at `submit/plan.ts`.
+   * `clear` is what the first pass empties the depth to, defaulting to 1, the far
+   * end of the range the card normalises depth into, so a first surface at any
+   * distance passes against an empty attachment. */
+  depth?: { texture: string; format: GPUTextureFormat; clear?: number };
   /** Which resource holds the picture once the passes have run, absent where the
    * last pass drew into the frame's own colour target. */
   present?: string;
@@ -167,7 +186,14 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
   // have the second fill clobber the first's records within a frame: a silent wrong
   // picture, refused here by name where the options are fixed rather than left to
   // surprise a frame. (§3 row 2's class of defect, caught at construction.)
-  const names = [...options.pipelines.map((group) => group.objects.buffer), options.views.buffer];
+  const names = [
+    ...options.pipelines.map((group) => group.objects.buffer),
+    options.views.buffer,
+    // The shared depth target is a resource keyed by name like the buffers, so it
+    // must not share a name with one of them either — a resource-name collision is
+    // the same silent wrong picture, caught at construction.
+    ...(options.depth ? [options.depth.texture] : []),
+  ];
   const clash = names.find((name, at) => names.indexOf(name) !== at);
   if (clash !== undefined) {
     throw new Error(`sceneView "${options.id}" names the buffer "${clash}" twice; each scene buffer needs its own name`);
@@ -251,16 +277,45 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
       const objectResources = groups.map((group) =>
         resident(group.objects.buffer, concatBytes(batches.get(group.pipeline.name)!.map(group.objects.pack)))
       );
-      const passes: ShaderFrame['passes'] = groups.map((group) => ({
-        pipeline: group.pipeline.name,
-        draws: [{ instances: batches.get(group.pipeline.name)!.length }],
-      }));
+      // The shared depth target, one frame-sized transient the passes test against.
+      // The first pass clears it and every later one loads it, so the whole scene
+      // depth-tests against one buffer cleared once — which is what lets a near
+      // surface a later pass draws win over a far one an earlier pass drew, whatever
+      // order the passes run. A texture with no first contents of its own, so
+      // `cost()` counts it as transient and item 1 discards the store no pass reads.
+      const depthTarget: TextureResource | undefined = options.depth && {
+        kind: 'texture',
+        name: options.depth.texture,
+        size: ['frame', 'frame'],
+        format: options.depth.format,
+        use: ['attachment'],
+      };
+      const passes: ShaderFrame['passes'] = groups.map((group, at): RenderPassSpec => {
+        const pass: RenderPassSpec = {
+          pipeline: group.pipeline.name,
+          draws: [{ instances: batches.get(group.pipeline.name)!.length }],
+        };
+        if (options.depth) {
+          // The first pass clears the shared depth; every later pass loads it (names
+          // no clear), so each surface tests against what the passes before it left.
+          pass.depth =
+            at === 0
+              ? { resource: options.depth.texture, clear: options.depth.clear ?? 1 }
+              : { resource: options.depth.texture };
+        }
+        return pass;
+      });
 
       const frame: ShaderFrame = {
         id: options.id,
         target: options.target,
         uniforms: options.uniforms ?? [],
-        resources: [...(options.resources ?? []), ...objectResources, viewsBuffer],
+        resources: [
+          ...(options.resources ?? []),
+          ...objectResources,
+          viewsBuffer,
+          ...(depthTarget ? [depthTarget] : []),
+        ],
         modules: options.modules,
         pipelines: groups.map((group) => group.pipeline),
         passes,

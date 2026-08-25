@@ -1629,7 +1629,7 @@ reference the GC would have dropped when the program did. See [JOURNAL.md](JOURN
 
 ### 65. `sceneView` declares a depth attachment
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The scene producer emits a frame that depth-tests: a transient depth target the passes share and clear, and each render pipeline declaring its depth compare and write, so a scene of solid objects draws correctly from any camera angle.
 
@@ -1652,6 +1652,39 @@ gap). The machinery exists — item 17 lets a graph declare a transient depth ta
 producer to emit what a hand-written frame already can, not new backend work. It is the scene
 tier's `Done when`-visible correctness rather than a demo polish, which is why it is queued
 rather than left in the row.
+
+**How it landed.** `sceneView` gains one option — `depth?: { texture, format, clear? }`
+([scene/scene-view.ts](../scene/scene-view.ts)) — and emits from it exactly what a
+hand-written frame already can (item 30's `instanced-cubes`): one frame-sized transient
+depth `TextureResource` (`size: ['frame','frame']`, `use: ['attachment']`, no first
+contents of its own), attached to **every** pass. The passes **share and clear** it the
+way `submit/plan.ts` and `graph/attachments.ts` read a shared attachment — the first pass
+carries `{ resource, clear }` (clear defaulting to 1, the far end of the depth range), every
+later pass carries `{ resource }` (load) so each surface tests against what the passes
+before it left, rather than each pass emptying the depth the last one wrote. The producer
+does not touch the pipelines: each pipeline declares its own `depth` compare and write (the
+caller's, since the pipeline is `ScenePipeline.pipeline`), and the emitted attachment is
+what those declarations test into — a pipeline testing a format the attachment does not keep
+is refused by name at `plan.ts`, and a pipeline testing depth with the option absent is
+refused there too, so the two are used together by construction. The depth texture's name
+joins the construction-time buffer-name clash check, since it is a resource keyed by name
+like the scene buffers.
+
+**What the gates showed and could not.** [tests/scene-view.test.ts](../tests/scene-view.test.ts)
+asserts the `Done when` as written: the emitted graph carries the shared depth attachment
+(cleared once, loaded after), each emitted pipeline keeps its `{ compare: 'less', write:
+true }`, and `cost()` counts one depth load and one depth store (`attachmentLoads` 1,
+`attachmentStores` 3, `transientBytes` the frame-sized `depth24plus` target) against a
+depth-removed scene that counts neither (`0`/`2`/`0`) — the regression the same test names.
+The near-over-far picture is asserted structurally, order-independent (near-first and
+far-first list the passes oppositely yet both emit the depth-tested graph), because that a
+card draws the near solid over the far one is pixel-identical to correct depth testing by
+construction — the same attachment `instanced-cubes` draws from — and only a browser or card
+can show the pixels. `gate:browser` was not run in this unattended session and no corpus
+preset carries a `sceneView` depth attachment yet; see [JOURNAL.md](JOURNAL.md). 698 node
+tests green (was 693 before the five added here), `type-check` green; the export surface did
+not move (an optional field on the already-exported `SceneViewOptions`, no door name added),
+so `gate:pack` was not required.
 
 ### 66. The last two §14 renames, once the capability wiring exists
 
