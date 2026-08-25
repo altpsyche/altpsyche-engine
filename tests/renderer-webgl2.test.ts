@@ -189,17 +189,6 @@ describe('a description above the subset', () => {
     ).toThrow('the frame for "fixture" runs compute work, and WebGL 2 has no compute stage');
   });
 
-  it('refuses a pipeline writing more than one colour at once, which is item 47', () => {
-    const { backend } = backendOver();
-    const several = {
-      ...(graph().pipelines[0] as RenderPipelineSpec),
-      targets: [{ format: 'rgba8unorm' as const }, { format: 'rgba8unorm' as const }],
-    };
-    expect(() => backend.program(glsl({ pipelines: [several] }))).toThrow(
-      'the frame for "fixture" writes 2 colours at once, and this backend writes one'
-    );
-  });
-
   it('refuses a pipeline that tests depth, since one surface covering the frame has nothing behind it', () => {
     const { backend } = backendOver();
     const tested = {
@@ -568,6 +557,125 @@ describe('a graph of more than one pass (item 46)', () => {
     // Two textures (scene, shown) and their framebuffers freed through the arenas.
     expect(gl.of('deleteTexture')).toHaveLength(2);
     expect(gl.of('deleteFramebuffer')).toHaveLength(2);
+  });
+});
+
+/**
+ * A single pass writing `n` colour attachments, authored the way a producer of a
+ * G-buffer would: one fragment declaring `n` outputs, `n` frame-sized attachment
+ * textures, and a pipeline whose `targets` and pass whose `colour` both carry the
+ * `n` of them. Item 47 draws several colours at once where item 46 drew one.
+ */
+function manyTargets(n: number): FrameGraph {
+  const names = Array.from({ length: n }, (_ignored, at) => `g${at}`);
+  const outputs = names.map((_name, at) => `layout(location=${at}) out vec4 c${at};`).join('\n');
+  const writes = names.map((_name, at) => `c${at}=vec4(${at}.0);`).join('');
+  return {
+    id: 'gbuffer',
+    target: 'glsl',
+    resources: [
+      { kind: 'uniform', name: 'uniforms' },
+      ...names.map((name) => ({
+        kind: 'texture' as const,
+        name,
+        size: { scale: 1 } as const,
+        format: 'rgba8unorm' as const,
+        use: ['attachment' as const],
+      })),
+    ],
+    modules: [
+      { name: 'vertex', code: VERTEX },
+      { name: 'paint', code: `#version 300 es\nprecision highp float;\n${outputs}\nvoid main(){${writes}}` },
+    ],
+    pipelines: [
+      {
+        kind: 'render',
+        name: 'gather',
+        vertex: { module: 'vertex', entry: 'main' },
+        fragment: { module: 'paint', entry: 'main' },
+        targets: names.map(() => ({ format: 'rgba8unorm' as const })),
+        bindings: [],
+      },
+    ],
+    passes: [
+      {
+        pipeline: 'gather',
+        draws: [{ vertices: 3 }],
+        colour: names.map((name, at) => ({ resource: name, clear: [at / 10, 0, 0, 1] as [number, number, number, number] })),
+      },
+    ],
+  };
+}
+
+describe('a pass writing several colours at once (item 47)', () => {
+  const COLOR = 0x1800;
+  const COLOR_ATTACHMENT0 = 0x8ce0;
+
+  it('draws a graph writing three attachments, one framebuffer carrying all three', () => {
+    const { gl, backend } = backendOver();
+    backend.program(manyTargets(3)).draw();
+
+    // Each attachment texture is attached to a single-attachment framebuffer of
+    // its own at build (item 46, point 0 each), then all three to the pass's own
+    // framebuffer at three successive colour points — so the last three are the
+    // multiple-target attach, and the fragment stage's outputs are named to them by
+    // drawBuffers rather than everything past the first being thrown away.
+    expect(gl.of('framebufferTexture2D').map((entry) => entry.attachment)).toEqual([
+      COLOR_ATTACHMENT0,
+      COLOR_ATTACHMENT0,
+      COLOR_ATTACHMENT0,
+      COLOR_ATTACHMENT0,
+      COLOR_ATTACHMENT0 + 1,
+      COLOR_ATTACHMENT0 + 2,
+    ]);
+    expect(gl.of('drawBuffers').at(-1)!.buffers).toEqual([
+      COLOR_ATTACHMENT0,
+      COLOR_ATTACHMENT0 + 1,
+      COLOR_ATTACHMENT0 + 2,
+    ]);
+    // And the pass drew once, having wired all three targets.
+    expect(gl.of('drawArrays')).toHaveLength(1);
+  });
+
+  it('clears each attachment through its own colour point, so two clear to different values', () => {
+    const { gl, backend } = backendOver();
+    backend.program(manyTargets(3)).draw();
+    // clearColor empties every draw buffer to one colour; clearBufferfv empties one
+    // point, so three attachments cleared to three values need three of them.
+    expect(gl.of('clearBufferfv').map((entry) => ({ point: entry.drawbuffer, value: entry.values }))).toEqual([
+      { point: 0, value: [0, 0, 0, 1] },
+      { point: 1, value: [0.1, 0, 0, 1] },
+      { point: 2, value: [0.2, 0, 0, 1] },
+    ]);
+    expect(gl.of('clearBufferfv').every((entry) => entry.buffer === COLOR)).toBe(true);
+  });
+
+  it('refuses a fourth attachment beyond the device it draws on, naming the ceiling it broke', () => {
+    // The device reports three draw buffers, so a pass writing four is refused by
+    // name rather than drawing three and dropping the fourth silently.
+    const { backend } = backendOver((fake) => {
+      fake.limits = { MAX_DRAW_BUFFERS: 3 };
+    });
+    expect(() => backend.program(manyTargets(4))).toThrow(
+      'the frame for "gbuffer" writes 4 colours at once, and this device draws to 3'
+    );
+  });
+
+  it('draws that same fourth attachment where the device draws to four', () => {
+    // The specification's floor is four, which the fake reports, so the count the
+    // line above refused now draws — the refusal is the device's ceiling, not a
+    // fixed one.
+    const { gl, backend } = backendOver();
+    expect(() => backend.program(manyTargets(4)).draw()).not.toThrow();
+    expect(gl.of('drawBuffers').at(-1)!.buffers).toHaveLength(4);
+  });
+
+  it('gives every framebuffer it made back when it is done, the pass framebuffer included', () => {
+    const { gl, backend } = backendOver();
+    backend.program(manyTargets(3)).dispose();
+    // Three per-texture framebuffers and the one the pass drew through: four freed.
+    expect(gl.of('deleteFramebuffer')).toHaveLength(4);
+    expect(gl.of('deleteTexture')).toHaveLength(3);
   });
 });
 

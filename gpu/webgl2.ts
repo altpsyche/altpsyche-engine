@@ -345,13 +345,47 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         attribute: number;
         vertices: number[];
         instances: (number | undefined)[];
-        target: string | null;
-        clear?: [number, number, number, number];
+        // The colours this pass writes, in the fragment stage's output order:
+        // empty for a pass drawing the canvas, one for a single attachment, several
+        // for multiple render targets (item 47). `clear` is what each is emptied to.
+        targets: { resource: string; clear?: [number, number, number, number] }[];
+        // The framebuffer a multiple-target pass draws through, carrying every
+        // colour at a successive attachment point; null for a canvas or
+        // single-attachment pass, which keeps the framebuffer item 46 gave it.
+        mrtFbo: Handle | null;
         sampled: Sampled[];
       }
       const plans: PassPlan[] = [];
       let blockLayoutMap: Map<string, number> | null = null;
       let blockSize = 0;
+      // The most colour attachments this device draws to at once — the smaller of
+      // the two ceilings that bound it, since drawing to N attachments needs both N
+      // draw buffers and N colour attachment points. A pass writing more than this
+      // is refused by name with the ceiling it broke (item 47); a single-attachment
+      // or canvas pass never approaches it. Read here rather than cached so a device
+      // reporting a lower ceiling than the specification's floor is honoured.
+      const targetLimit = Math.min(
+        gl.getParameter(gl.MAX_DRAW_BUFFERS) as number,
+        gl.getParameter(gl.MAX_COLOR_ATTACHMENTS) as number
+      );
+      // A multiple-target pass draws through a framebuffer carrying all its
+      // colours, each texture attached at a successive colour point so the fragment
+      // stage's output i lands in attachment i. Its textures are respecified at the
+      // new size on a resize, so this is called again beside them there.
+      const attachTargets = (fbo: Handle, targets: { resource: string }[]) => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebufferArena.resolve(fbo));
+        targets.forEach((target, at) => {
+          const record = textures.get(target.resource) as TextureRecord;
+          gl.framebufferTexture2D(
+            gl.FRAMEBUFFER,
+            gl.COLOR_ATTACHMENT0 + at,
+            gl.TEXTURE_2D,
+            textureArena.resolve(record.handle),
+            0
+          );
+        });
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      };
       for (const pass of frame.passes) {
         const spec = frame.pipelines.find((candidate) => candidate.name === pass.pipeline);
         if (!spec) throw new Error(`the frame for "${frame.id}" describes no pass this backend can draw`);
@@ -368,12 +402,6 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         if (!pass.draws.every(drawsCorners)) {
           throw new Error(`the frame for "${frame.id}" draws geometry of its own, and this backend has no buffer for it`);
         }
-        // One colour a pass writes is the attachment it draws into (item 47 lifts
-        // this to several); a pipeline returning more than one is refused rather
-        // than having all but the first thrown away, which draws and is wrong.
-        if (spec.targets && spec.targets.length > 1) {
-          throw new Error(`the frame for "${frame.id}" writes ${spec.targets.length} colours at once, and this backend writes one`);
-        }
         // Depth and stencil are item 48; a pipeline testing depth is refused by
         // name until then, asked of the pipeline because the state and the
         // attachment are declared apart and the pipeline is the half that says
@@ -386,15 +414,19 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           blockLayoutMap = compiled.layout;
           blockSize = compiled.size;
         }
-        // Where this pass draws: the one texture its colour attaches, or the frame
-        // the reader sees where it names none. A colour naming a texture the frame
-        // never declared an attachment, or more than one, is refused by name.
-        const colour = isRenderPass(pass) ? pass.colour : undefined;
-        if (colour && colour.length > 1) {
-          throw new Error(`the frame for "${frame.id}" writes ${colour.length} colours at once, and this backend writes one`);
+        // The colours this pass writes, in the fragment stage's output order: the
+        // textures it draws into, or the frame the reader sees where it names none
+        // (item 46). More than the device draws to at once is refused by name with
+        // the ceiling it broke, rather than every colour past the first being
+        // thrown away, which draws and is wrong (item 47).
+        const colour = (isRenderPass(pass) ? pass.colour : undefined) ?? [];
+        const wanted = Math.max(colour.length, spec.targets?.length ?? 0);
+        if (wanted > targetLimit) {
+          throw new Error(
+            `the frame for "${frame.id}" writes ${wanted} colours at once, and this device draws to ${targetLimit}`
+          );
         }
-        const attachment = colour?.[0];
-        if (attachment) {
+        for (const attachment of colour) {
           const record = textures.get(attachment.resource);
           if (!record || !record.spec.use.includes('attachment')) {
             throw new Error(`the frame for "${frame.id}" draws into "${attachment.resource}", which is no attachment it declares`);
@@ -409,6 +441,15 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             }
             return { unit, texture: binding.resource };
           });
+        // A pass writing several colours draws through a framebuffer of its own
+        // carrying all of them; one or none keeps the single-texture framebuffer or
+        // the canvas it had (item 46), so only a multiple-target pass allocates one.
+        const targets = colour.map((attachment) => ({ resource: attachment.resource, clear: attachment.clear }));
+        let mrtFbo: Handle | null = null;
+        if (targets.length > 1) {
+          mrtFbo = framebufferArena.allocate(() => gl.createFramebuffer() as WebGLFramebuffer);
+          attachTargets(mrtFbo, targets);
+        }
         plans.push({
           program: compiled.program,
           attribute: compiled.attribute,
@@ -418,8 +459,8 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // instance a plain `drawArrays`.
           vertices: pass.draws.map((draw) => (draw as { vertices: number }).vertices),
           instances: pass.draws.map((draw) => (draw as { instances?: number }).instances),
-          target: attachment ? attachment.resource : null,
-          clear: attachment?.clear,
+          targets,
+          mrtFbo,
           sampled,
         });
       }
@@ -514,23 +555,41 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // target of the wrong size.
           if (built.width !== width || built.height !== height) {
             for (const record of textures.values()) if (record.follows) buildTexture(record);
+            // A texture respecified at the new size is re-attached to its own
+            // framebuffer inside `buildTexture`; a multiple-target pass's framebuffer
+            // holds the same textures at several points, so it is re-attached here
+            // beside them (item 47).
+            for (const plan of plans) if (plan.mrtFbo !== null) attachTargets(plan.mrtFbo, plan.targets);
             built.width = width;
             built.height = height;
           }
-          // Each pass in turn draws into its target — a texture's framebuffer, or
-          // the canvas where it names none — clearing it first where the pass says
-          // so, and sampling any earlier pass's texture bound to a unit. This is
-          // the multi-pass loop items 47 to 52 extend (item 46).
+          // Each pass in turn draws into its target — a texture's framebuffer, the
+          // canvas where it names none, or its own framebuffer carrying several
+          // colours (item 47) — clearing it first where the pass says so, and
+          // sampling any earlier pass's texture bound to a unit. This is the
+          // multi-pass loop items 48 to 52 extend (item 46).
           for (const plan of plans) {
-            const record = plan.target === null ? null : (textures.get(plan.target) as TextureRecord);
-            gl.bindFramebuffer(
-              gl.FRAMEBUFFER,
-              record && record.fboHandle !== null ? framebufferArena.resolve(record.fboHandle) : null
-            );
-            const passWidth = record ? record.width : width;
-            const passHeight = record ? record.height : height;
-            if (plan.clear) {
-              gl.clearColor(plan.clear[0], plan.clear[1], plan.clear[2], plan.clear[3]);
+            const primary = plan.targets[0] ? (textures.get(plan.targets[0].resource) as TextureRecord) : null;
+            const framebuffer =
+              plan.targets.length === 0
+                ? null
+                : plan.targets.length === 1
+                  ? framebufferArena.resolve((primary as TextureRecord).fboHandle as Handle)
+                  : framebufferArena.resolve(plan.mrtFbo as Handle);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+            const passWidth = primary ? primary.width : width;
+            const passHeight = primary ? primary.height : height;
+            if (plan.targets.length > 1) {
+              // The fragment stage's output i is written to colour point i, and each
+              // attachment is cleared through its own point so two targets can clear
+              // to different colours where one `clearColor` could not.
+              gl.drawBuffers(plan.targets.map((_target, at) => gl.COLOR_ATTACHMENT0 + at));
+              plan.targets.forEach((target, at) => {
+                if (target.clear) gl.clearBufferfv(gl.COLOR, at, target.clear);
+              });
+            } else if (plan.targets[0]?.clear) {
+              const clear = plan.targets[0].clear;
+              gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
               gl.clear(gl.COLOR_BUFFER_BIT);
             }
             gl.useProgram(plan.program);
@@ -592,6 +651,9 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             textureArena.free(record.handle);
             if (record.fboHandle !== null) framebufferArena.free(record.fboHandle);
           }
+          // A multiple-target pass allocated a framebuffer of its own (item 47); it
+          // goes back to the arena beside the per-texture ones.
+          for (const plan of plans) if (plan.mrtFbo !== null) framebufferArena.free(plan.mrtFbo);
           for (const program of new Set(plans.map((plan) => plan.program))) gl.deleteProgram(program);
         },
       };

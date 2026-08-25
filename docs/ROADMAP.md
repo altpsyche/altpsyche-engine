@@ -1485,11 +1485,41 @@ on every headless launch, §17 note 3). So *that a two-pass graph draws* is by c
 
 ### 47. WebGL 2: multiple render targets
 
-**Status.** open
+**Status.** done
 
 **Done when.** A graph writing three attachments draws, and a fourth beyond the device's limit is refused by name.
 
 **Needs.** item 46.
+
+**How it landed.** The WebGL 2 backend ([gpu/webgl2.ts](../gpu/webgl2.ts)) draws a pass
+writing several colours at once where item 46 drew one. A pass with more than one colour
+attachment allocates a framebuffer of its own through the existing framebuffer arena and
+attaches each colour texture at a successive point (`COLOR_ATTACHMENT0 + i`); `draw()` binds
+that framebuffer, names the fragment stage's output `i` to point `i` with `gl.drawBuffers`,
+and clears each attachment through its own point with `gl.clearBufferfv(gl.COLOR, i, value)`
+so two targets can clear to different colours where one `clearColor` could not. A canvas or
+single-attachment pass is untouched — it keeps the framebuffer item 46 gave it (its own
+per-texture one, or none), so no existing trace moved and only a multiple-target pass builds
+one of these; the pass framebuffer is re-attached on a resize beside the textures it holds,
+and freed to the arena on dispose. The two item-46 refusals that rejected "more than one
+colour" — one on the pipeline's `targets`, one on the pass's `colour` — are replaced by one
+device-bounded refusal: the count is checked against `min(MAX_DRAW_BUFFERS,
+MAX_COLOR_ATTACHMENTS)` read off the context, and a pass writing more is refused by name with
+the ceiling it broke (`the frame for "gbuffer" writes 4 colours at once, and this device draws
+to 3`).
+
+**What the gates could see, and what they could not.** The node fake
+([tests/support/fake-gl.ts](../tests/support/fake-gl.ts), now carrying `drawBuffers`,
+`clearBufferfv` and a per-test ceiling override) proves a three-attachment graph attaches
+three textures to the pass framebuffer at three successive points, names them with
+`drawBuffers`, clears each through its own point, draws once, and frees the pass framebuffer on
+dispose; and that a pass writing one more colour than the device reports is refused by name
+with the ceiling ([tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts)). **What no
+gate here could see is that the resulting several-target picture is correct on a card:** the
+fake records calls, not pixels; `gate:browser` was not run in the unattended session and
+`gate:card` never runs here (SwiftShader on every headless launch, §17 note 3). So *that a
+multiple-target graph draws the right pixels* is by construction plus `gate:browser`/`gate:card`
+later, as every prior WebGL 2 item here has been. See [JOURNAL.md](JOURNAL.md).
 
 ### 48. WebGL 2: depth and stencil
 

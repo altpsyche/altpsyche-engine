@@ -55,6 +55,9 @@ const CONSTANTS = {
   COLOR_ATTACHMENT0: 0x8ce0,
   FRAMEBUFFER_COMPLETE: 0x8cd5,
   COLOR_BUFFER_BIT: 0x4000,
+  // The buffer kind `clearBufferfv` empties, for a multiple-target pass clearing
+  // each attachment through its own colour point (item 47).
+  COLOR: 0x1800,
 };
 
 /** The ceilings the report asks this context for, by the names the specification
@@ -121,6 +124,11 @@ export interface FakeGL {
   /** What the extension list comes back as. Empty stands for a context with
    * nothing optional, which is a real context rather than a broken one. */
   extensions: string[];
+  /** Ceiling values a test overrides, by name. A device reporting a lower limit
+   * than the specification's floor is what the multiple-target refusal reads
+   * (item 47): set `MAX_DRAW_BUFFERS` here to make a given attachment count the
+   * one that goes over. A name absent here answers with its floor above. */
+  limits: Record<string, number>;
 }
 
 export function createFakeGL({ context = true } = {}): FakeGL {
@@ -137,6 +145,7 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     lostContext: 0,
     ceilings: CEILINGS.map(([name]) => name),
     extensions: ['EXT_color_buffer_float', 'OES_texture_float_linear'],
+    limits: {},
   } as unknown as FakeGL;
 
   /** Each ceiling by the number the context answers it under, so a report reading
@@ -155,7 +164,8 @@ export function createFakeGL({ context = true } = {}): FakeGL {
 
     getParameter: (pname: number) => {
       const answer = answers.get(pname);
-      return answer && state.ceilings.includes(answer[0]) ? answer[1] : null;
+      if (!answer || !state.ceilings.includes(answer[0])) return null;
+      return state.limits[answer[0]] ?? answer[1];
     },
     getSupportedExtensions: () => state.extensions,
 
@@ -280,6 +290,12 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     ) => record('blitFramebuffer', { sx1, sy1, dx1, dy1, mask, filter }),
     clearColor: (r: number, g: number, b: number, a: number) => record('clearColor', { r, g, b, a }),
     clear: (mask: number) => record('clear', { mask }),
+    // A multiple-target pass names the fragment stage's output i to colour point i
+    // and clears each attachment through its own point (item 47). The fake keeps no
+    // pixels, so these record what the backend asked for.
+    drawBuffers: (buffers: number[]) => record('drawBuffers', { buffers: [...buffers] }),
+    clearBufferfv: (buffer: number, drawbuffer: number, values: number[]) =>
+      record('clearBufferfv', { buffer, drawbuffer, values: [...values] }),
 
     getExtension: (name: string) =>
       name === 'WEBGL_lose_context'
