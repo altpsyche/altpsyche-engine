@@ -965,13 +965,36 @@ type-check green. See [JOURNAL.md](JOURNAL.md).
 
 ### 34. Golden graph snapshots
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A producer's output graph, snapshotted as JSON.
 
 **Done when.** Every scene preset carries a snapshot, and a change to `sceneView` shows as a text diff with no GPU, no browser and no picture to squint at.
 
 **Needs.** item 32.
+
+**How it landed.** [fixtures/scene-presets.ts](../fixtures/scene-presets.ts) holds the
+scene presets `sceneView` is snapshotted against — `panels` (one pipeline, one view),
+`stereo-panels` (the same world under two cameras, so the `views: Camera[]` list bakes
+two view-projection matrices, item 32), and `spanning` (two pipelines, one instanced
+pass each in the producer's listed order, item 33) — each a deterministic world, camera
+set and `SceneViewOptions`, built on a fresh arena so no preset's snapshot depends on a
+buffer a previous one left resident. [tests/scene-snapshots.test.ts](../tests/scene-snapshots.test.ts)
+runs each preset's graph through a JSON serializer and writes it to a golden file with
+vitest's `toMatchFileSnapshot` (one golden per preset under `tests/snapshots/scene/`, e.g.
+[tests/snapshots/scene/panels.json](../tests/snapshots/scene/panels.json)), so a change to
+`sceneView` that moves any preset's emitted graph fails the run until the golden is
+regenerated deliberately (`vitest run -u`) — decision 8's "golden snapshots are
+regenerable fixtures", literal JSON a reviewer reads as a text diff. A resource's baked
+`data` (a `Uint8Array` of the bytes a backend would upload) is rendered as the `f32`
+values it stands for — every scene buffer holds world matrices and colours — so a moved
+object or a changed colour shows as a changed number rather than a wall of bytes. A
+coverage test asserts the golden files on disk are exactly the presets, so a new preset
+cannot land unsnapshotted and a removed one cannot leave a stale golden (the rule
+`tests/cost-corpus.test.ts` holds over the cost table). No GPU, no browser: the graph is
+CPU-only data, identical on any machine, which is the producer/backend split item 32
+established. The export surface did not move (fixtures and tests only), so `gate:pack`
+was not required; 682 node tests green (+4), type-check green. See [JOURNAL.md](JOURNAL.md).
 
 ### 35. `examples/orbit-shadow`
 

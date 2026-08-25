@@ -1,0 +1,208 @@
+{
+  "id": "spanning",
+  "target": "wgsl",
+  "uniforms": [
+    {
+      "name": "u_time",
+      "type": "float"
+    },
+    {
+      "name": "u_resolution",
+      "type": "vec2"
+    }
+  ],
+  "resources": [
+    {
+      "kind": "buffer",
+      "name": "objects",
+      "bytes": 80,
+      "access": "read",
+      "data": {
+        "f32": [
+          0.6000000238418579,
+          0,
+          0,
+          0,
+          0,
+          0.6000000238418579,
+          0,
+          0,
+          0,
+          0,
+          0.6000000238418579,
+          0,
+          -0.5,
+          0,
+          -3,
+          1,
+          0.8999999761581421,
+          0.44999998807907104,
+          0.30000001192092896,
+          0
+        ]
+      }
+    },
+    {
+      "kind": "buffer",
+      "name": "glowObjects",
+      "bytes": 160,
+      "access": "read",
+      "data": {
+        "f32": [
+          0.6000000238418579,
+          0,
+          0,
+          0,
+          0,
+          0.6000000238418579,
+          0,
+          0,
+          0,
+          0,
+          0.6000000238418579,
+          0,
+          0.5,
+          0,
+          -3,
+          1,
+          1,
+          1,
+          0.6000000238418579,
+          0,
+          0.4000000059604645,
+          0,
+          0,
+          0,
+          0,
+          0.4000000059604645,
+          0,
+          0,
+          0,
+          0,
+          0.4000000059604645,
+          0,
+          0,
+          0.5,
+          -3,
+          1,
+          1,
+          1,
+          0.6000000238418579,
+          0
+        ]
+      }
+    },
+    {
+      "kind": "buffer",
+      "name": "views",
+      "bytes": 64,
+      "access": "read",
+      "data": {
+        "f32": [
+          1.7320507764816284,
+          0,
+          0,
+          0,
+          0,
+          1.7320507764816284,
+          0,
+          0,
+          0,
+          0,
+          -1.0909091234207153,
+          -1,
+          0,
+          0,
+          -0.5454545617103577,
+          0
+        ]
+      }
+    }
+  ],
+  "modules": [
+    {
+      "name": "scene",
+      "code": "// authored once, fed by the producer"
+    }
+  ],
+  "pipelines": [
+    {
+      "kind": "render",
+      "name": "surface",
+      "vertex": {
+        "module": "scene",
+        "entry": "project"
+      },
+      "fragment": {
+        "module": "scene",
+        "entry": "shade"
+      },
+      "bindings": [
+        {
+          "group": 0,
+          "binding": 0,
+          "resource": "objects",
+          "visibility": [
+            "vertex"
+          ]
+        },
+        {
+          "group": 0,
+          "binding": 1,
+          "resource": "views",
+          "visibility": [
+            "vertex"
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "render",
+      "name": "glow",
+      "vertex": {
+        "module": "scene",
+        "entry": "project"
+      },
+      "fragment": {
+        "module": "scene",
+        "entry": "bloom"
+      },
+      "bindings": [
+        {
+          "group": 0,
+          "binding": 0,
+          "resource": "glowObjects",
+          "visibility": [
+            "vertex"
+          ]
+        },
+        {
+          "group": 0,
+          "binding": 1,
+          "resource": "views",
+          "visibility": [
+            "vertex"
+          ]
+        }
+      ]
+    }
+  ],
+  "passes": [
+    {
+      "pipeline": "surface",
+      "draws": [
+        {
+          "instances": 1
+        }
+      ]
+    },
+    {
+      "pipeline": "glow",
+      "draws": [
+        {
+          "instances": 2
+        }
+      ]
+    }
+  ]
+}
