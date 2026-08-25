@@ -43,8 +43,9 @@ import {
   resourceOf,
   uniformResourceOf,
 } from '../graph/types.js';
+import type { FrameTraffic } from '../graph/types.js';
 import { Arena } from '../resource/arena.js';
-import type { FrameTraffic, Handle } from '../resource/arena.js';
+import type { Handle } from '../resource/arena.js';
 import { planFramePasses } from '../submit/plan.js';
 import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
 import { runFrame, issueDraws } from '../submit/execute.js';

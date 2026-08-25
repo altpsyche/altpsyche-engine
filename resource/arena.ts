@@ -25,6 +25,8 @@
  * difference out of here.
  */
 
+import type { FrameTraffic } from '../graph/types.js';
+
 /** The brand that stops a plain number being passed where a handle is wanted and
  * a handle's arithmetic being done by anyone but the arena. It is erased at
  * runtime — a handle is a number — and exists only so the compiler refuses a
@@ -34,26 +36,6 @@ declare const HANDLE: unique symbol;
 /** A branded integer naming one live resource in an arena. */
 export type Handle = number & { readonly [HANDLE]: true };
 
-/** How many bytes have crossed into resident resources since the last reset, in
- * the two categories decision 9 keeps apart: `written` once into a resource's
- * first contents, `uploaded` per frame or on demand into one already made. They
- * are reported side by side and never summed — a frame uploading 40 MB and
- * drawing three things has a resident problem, not a per-frame one, and one
- * merged number would hide which. This is the resident-lifetime reading the graph
- * does not carry, so it lives here rather than in `cost()`, per
- * [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §12 point 6 and §17
- * decision 9 (item 22). */
-export interface FrameTraffic {
-  /** Bytes written once into a resident resource's first contents: geometry a
-   * frame carries, a buffer's initial data, the fullscreen quad. Counted where
-   * the write is made, once per resource rather than per frame. */
-  written: number;
-  /** Bytes uploaded into a resident resource already made: a uniform block a page
-   * feeds every frame, replacing what was there. Counted where the upload lands,
-   * so a queued upload against a handle a resize then frees is refused and never
-   * counted. */
-  uploaded: number;
-}
 
 /** How many slots a handle's index addresses, which is also the multiplier the
  * generation sits above. Index below, generation above, packed by multiplication

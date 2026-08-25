@@ -219,3 +219,145 @@ describe('what the publish build emits is what this check calls shipping', () =>
     ).toEqual({ shippedButNotEmitted: [], emittedButNotShipping: [] });
   });
 });
+
+/**
+ * The four layer rules of §7 and §17 decision 7, kept by a walk rather than by
+ * intention. RoadToPureEngine.md §7 says of each that it is "enforceable and worth
+ * enforcing in tests/import-graph.test.ts", and decision 7 says the same of the
+ * loop rule: "so the promise is a test rather than a discipline". Each rule below
+ * is green on the tree today and goes red the moment its edge is drawn — verified
+ * once per rule when it landed, recorded in JOURNAL.md.
+ */
+
+/** The `.ts` files directly inside one folder, absolute. */
+function filesIn(dir: string): string[] {
+  const at = resolve(ROOT, dir);
+  return readdirSync(at)
+    .filter((name) => name.endsWith('.ts'))
+    .map((name) => resolve(at, name));
+}
+
+/** The first path segment of a shipping file, which is the layer it belongs to. */
+const layerOf = (file: string): string => relative(ROOT, file).split('/')[0] as string;
+
+describe('graph/ imports nothing outside itself (§7 rule 1)', () => {
+  it('names any edge from a graph/ module to a file outside graph/ or to a package', () => {
+    // graph/ is types plus pure functions over them, and importing nothing is what
+    // makes a graph serializable, comparable, snapshot-testable and sendable to a
+    // worker — the property item 34's golden snapshots and cost()/validate()/refusal()
+    // all rest on. A single type-only edge to resource/ (FrameTraffic) is what item
+    // 39 severed by moving that interface into graph/types.ts.
+    const graphDir = resolve(ROOT, 'graph');
+    const strays: string[] = [];
+    for (const file of filesIn('graph')) {
+      for (const edge of edgesOf(file)) {
+        const target = resolveSpec(file, edge.spec);
+        if ('external' in target) {
+          strays.push(`${rel(file)} imports the package "${target.external}"`);
+        } else if (dirname(target.file) !== graphDir) {
+          strays.push(`${rel(file)} imports ${rel(target.file)}, which is outside graph/`);
+        }
+      }
+    }
+    expect(strays, strays.join('\n')).toEqual([]);
+  });
+});
+
+describe('a producer imports neither gpu/ nor submit/ (§7 rule 2)', () => {
+  it('names any producer edge into a backend or the executor', () => {
+    // A producer (toy/, scene/) turns a model into a graph and takes an Arena as a
+    // parameter; it never reaches a device. So the whole scene tier is unit-testable
+    // with no card, and its output is a value you can diff.
+    const forbidden = new Set(['gpu', 'submit']);
+    const reaches: string[] = [];
+    for (const file of [...filesIn('toy'), ...filesIn('scene')]) {
+      for (const edge of edgesOf(file)) {
+        const target = resolveSpec(file, edge.spec);
+        if ('file' in target && forbidden.has(layerOf(target.file))) {
+          reaches.push(`${rel(file)} imports ${rel(target.file)}`);
+        }
+      }
+    }
+    expect(reaches, reaches.join('\n')).toEqual([]);
+  });
+});
+
+/** The layers that must run off the main thread — in a worker, in Node against the
+ * double, into a target a WebXR session hands them. host/ is the only DOM, trace/
+ * and index.ts sit beside it, and everything else is below it. */
+const BELOW_HOST = ['graph', 'gpu', 'resource', 'pipeline', 'submit', 'toy', 'scene'];
+
+/** Type names that name a DOM object that does not exist off the main thread. A
+ * canvas is deliberately absent: `HTMLCanvasElement | OffscreenCanvas` is how the
+ * backends accept a surface without requiring the DOM one, and the check below
+ * allows `HTMLCanvasElement` only where an `OffscreenCanvas` sits beside it. */
+const DOM_TYPES = new Set([
+  'HTMLCanvasElement',
+  'HTMLElement',
+  'HTMLImageElement',
+  'HTMLVideoElement',
+  'Window',
+  'Document',
+  'Element',
+]);
+
+/** DOM references in type position that would make a file require the DOM to exist.
+ * Type position, because §7 rule 3's own example of the violation is "a signature
+ * that demands an `HTMLCanvasElement`", and because the word `document` is a shader
+ * document all over these files in value position — a value scan could not tell the
+ * two apart, a type scan needs no such disambiguation. */
+function domTypeOffendersIn(file: string): string[] {
+  const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+  const offenders: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName) && DOM_TYPES.has(node.typeName.text)) {
+      const name = node.typeName.text;
+      const union = node.parent;
+      const pairedWithOffscreen =
+        name === 'HTMLCanvasElement' &&
+        ts.isUnionTypeNode(union) &&
+        union.types.some((t) => ts.isTypeReferenceNode(t) && ts.isIdentifier(t.typeName) && t.typeName.text === 'OffscreenCanvas');
+      if (!pairedWithOffscreen) offenders.push(`${rel(file)} names the DOM type ${name} in a signature`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return offenders;
+}
+
+describe('nothing below host/ requires a DOM object to exist (§7 rule 3)', () => {
+  it('names any below-host signature that demands a DOM object', () => {
+    const emitted = emittedByTheBuild();
+    const offenders: string[] = [];
+    for (const file of emitted) {
+      if (BELOW_HOST.includes(layerOf(file))) offenders.push(...domTypeOffendersIn(file));
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+});
+
+describe('host/loop.ts imports only the package door (§17 decision 7)', () => {
+  it('names any import in host/loop.ts that is not the package door', () => {
+    // decision 7: engine.loop(fn) is a convenience over submit(graph), so host/loop.ts
+    // may import only the package's own public exports — the door, index.ts, or the
+    // package by name. That keeps loop from holding any logic submit lacks. The file
+    // does not exist yet (it arrives with submit(graph), item 68); this check stands
+    // ready so the promise is a test the moment loop.ts lands, not a discipline.
+    const loop = resolve(ROOT, 'host/loop.ts');
+    const door = resolve(ROOT, 'index.ts');
+    const offenders: string[] = [];
+    if (existsSync(loop)) {
+      for (const edge of edgesOf(loop)) {
+        const target = resolveSpec(loop, edge.spec);
+        if ('external' in target) {
+          if (target.external !== '@altpsyche/engine') {
+            offenders.push(`host/loop.ts imports the package "${target.external}", not the door`);
+          }
+        } else if (target.file !== door) {
+          offenders.push(`host/loop.ts imports ${rel(target.file)}, not the package door`);
+        }
+      }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+});

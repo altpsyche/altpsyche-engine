@@ -1174,7 +1174,7 @@ not read them, and re-pinning every line number is not this move's job. See
 
 ### 39. The layer rules become tests
 
-**Status.** open
+**Status.** done
 
 **Asks for.** [tests/import-graph.test.ts](../tests/import-graph.test.ts) enforces §7: `graph/` imports nothing, no producer imports `gpu/` or `submit/`, nothing below `host/` requires a DOM object, and **`host/loop.ts` imports only the package's own public exports.**
 
@@ -1183,6 +1183,33 @@ not read them, and re-pinning every line number is not this move's job. See
 **Needs.** item 37.
 
 **Note.** That last rule is what makes decision 7's promise mechanical: a written commitment that `loop` holds no logic `submit` lacks decays, and an import rule does not.
+
+**How it landed.** [tests/import-graph.test.ts](../tests/import-graph.test.ts) gains four
+describe blocks, one per rule, each walking the parse tree rather than matching text.
+**Rule 1** (`graph/` imports nothing outside itself) was **violated** before this item:
+`graph/types.ts` imported `FrameTraffic` from `resource/arena.js`, the one cross-layer edge
+in all of `graph/`, flagged in item 37's [JOURNAL.md](JOURNAL.md) row as this item's to
+sever. `FrameTraffic` is a pure data interface and part of the `Backend` contract, which
+already lives in `graph/types.ts`, so it moved there and the arena now imports it from
+`graph/` — the allowed direction, since `resource/` is below `graph/`. It is not a door
+export, so the surface did not move. **Rule 2** (no producer imports `gpu/` or `submit/`)
+and **rule 3** (nothing below `host/` requires a DOM object) held already: producers reach
+only `graph/` and `resource/` (an `Arena` parameter), and every backend canvas signature is
+`HTMLCanvasElement | OffscreenCanvas`, which accepts a worker surface rather than requiring
+the DOM one. Rule 3 checks DOM types in **signature position**, because §7 rule 3's own
+example of the violation is "a signature that demands an `HTMLCanvasElement`" and because the
+word `document` is a shader document all over these files in value position — a value scan
+could not tell the two apart. **Rule 4** (`host/loop.ts` imports only the package door) guards
+a file that does not exist yet — the loop arrives with `submit(graph)`, item 68 — so its live
+check passes vacuously and stands ready for when the file lands, which is decision 7's "a test
+rather than a discipline". **Each rule was verified to fail when broken, once:** a stray
+`resource/` import in `graph/validate.ts` (rule 1), a `gpu/webgpu.js` import in `toy/frame.ts`
+(rule 2), stripping `OffscreenCanvas` off a `gpu/webgl2.ts` canvas param (rule 3), and a
+`host/loop.ts` importing `gpu/renderer.js` (rule 4) each turned the suite red, and each was
+reverted. **What the cheap gates could not see:** nothing here — these are node tests reading
+the tree's own import edges and AST, which is exactly what runs. 686 node tests green (was
+682), `type-check` green; the door did not move (`FrameTraffic` was never on it), so
+`gate:pack` was not required. See [JOURNAL.md](JOURNAL.md).
 
 ---
 

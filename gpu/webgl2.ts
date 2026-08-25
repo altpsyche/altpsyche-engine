@@ -12,10 +12,9 @@
  * frame on every reader's device so that a build script can screenshot after the
  * fact. A caller that wants pixels draws and reads in the same step instead.
  */
-import type { Backend, DeviceReport, ShaderFrame, ShaderProgram, UniformValue } from '../graph/types.js';
+import type { Backend, DeviceReport, FrameTraffic, ShaderFrame, ShaderProgram, UniformValue } from '../graph/types.js';
 import { componentsOf, drawsCorners, isRenderPass, moduleOf } from '../graph/types.js';
 import { Arena } from '../resource/arena.js';
-import type { FrameTraffic } from '../resource/arena.js';
 import { drawGL2Frame } from '../submit/gl2.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
 import { validate } from '../graph/validate.js';

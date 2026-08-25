@@ -10,7 +10,6 @@
  * is the wrong method.**
  */
 
-import type { FrameTraffic } from '../resource/arena.js';
 import type { Capability } from './capability.js';
 
 export type BackendName = 'webgl2' | 'webgpu';
@@ -651,6 +650,26 @@ export interface DeviceReport {
   /** The optional parts of the API this device has, sorted so two runs of one
    * machine print the same order. */
   features: string[];
+}
+
+/** The two categories of resident-lifetime traffic a `Backend` reports, kept side
+ * by side and never summed — a frame uploading 40 MB and drawing three things has
+ * a resident problem, not a per-frame one, and one merged number would hide which.
+ * This is the resident-lifetime reading the graph does not carry, but its shape is
+ * part of the `Backend` contract, so it lives here in `graph/` (which imports
+ * nothing, per §7 rule 1) rather than in `resource/`, and the arena imports it
+ * from here. Per [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §12 point 6
+ * and §17 decision 9 (item 22). */
+export interface FrameTraffic {
+  /** Bytes written once into a resident resource's first contents: geometry a
+   * frame carries, a buffer's initial data, the fullscreen quad. Counted where
+   * the write is made, once per resource rather than per frame. */
+  written: number;
+  /** Bytes uploaded into a resident resource already made: a uniform block a page
+   * feeds every frame, replacing what was there. Counted where the upload lands,
+   * so a queued upload against a handle a resize then frees is refused and never
+   * counted. */
+  uploaded: number;
 }
 
 export interface Backend {
