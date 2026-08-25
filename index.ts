@@ -40,6 +40,15 @@ export { requestWebGPUDevice } from './gpu/webgpu-device.js';
 export { selectBackend } from './gpu/select.js';
 export type { BackendSelection, DeviceOffer } from './gpu/select.js';
 
+// Selection and refusal as one reading (item 51): `resolve(frame, device)` routes
+// a graph to a backend by its language and then reads its `requires` against that
+// backend's capabilities, so a WGSL compute graph on a WebGL 2 machine is told it
+// needs `compute` rather than shown a black rectangle. `webgpuCapabilities` and
+// `webgl2Capabilities` turn a live device's reported features into the §10 set the
+// reading is against, so the capabilities are the device's own rather than guessed.
+export { resolve, webgpuCapabilities, webgl2Capabilities } from './gpu/select.js';
+export type { DeviceProfile } from './gpu/select.js';
+
 // A one-shot reading of what this device is — which backend was selected, whether
 // WebGPU was reported, whether an adapter was returned, whether it then survived a
 // few frames of on-screen compositing, the renderer string, an assertion the

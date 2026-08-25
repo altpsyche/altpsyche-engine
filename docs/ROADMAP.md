@@ -1594,13 +1594,49 @@ item 44` half is a card's or a browser's, as every WebGL 2 item's pixel-agreemen
 
 ### 51. Capability declaration wired end to end
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `graph.requires` against `device.capabilities`, feeding selection first and refusal second, per §10.
 
 **Done when.** A compute graph on a WebGL 2 machine produces a message a page can print, naming compute; and every backend method that would have thrown is absent rather than throwing.
 
 **Needs.** item 8, item 46.
+
+**How it landed.** [gpu/select.ts](../gpu/select.ts) gains `resolve(frame, device)`, the
+one reading §10 lays out — selection first, refusal second — beside `selectBackend`, which
+it composes with `refusal` (item 24). It takes a `DeviceProfile` (`{ webgpu, webgl2 }`, each
+a `ReadonlySet<Capability>` where the backend is on offer or `null` where it is not — a
+`DeviceOffer` carrying *why* an offered backend might still not draw a graph it could
+build): the graph's language routes it to a backend across what is offered, and the graph's
+`requires` are read against that backend's capabilities. A graph a backend speaks and has
+the capabilities for returns that backend; one whose backend lacks a needed capability
+returns the refusal naming the capability. **Where selection comes back empty** — no offered
+backend speaks the graph's language — the answer is still a capability refusal wherever the
+graph declares a requirement an offered backend lacks, so **a WGSL compute graph on a WebGL 2
+machine is told it needs `compute`**, not merely that no adapter came back. The capabilities
+are the device's own: `webgpuCapabilities(features)` maps a WebGPU device's reported features
+to §10's names (compute, storage, indirect, occlusion, msaa always; timestamp, float-blend,
+depth-clamp, bgra-storage from their features), and `webgl2Capabilities(extensions)` gives
+WebGL 2 its `msaa` and none of the WebGPU-only set (float-blend from `EXT_float_blend`). Both
+are pure, pinned in [tests/capability-wiring.test.ts](../tests/capability-wiring.test.ts)
+from the feature/extension names rather than a device. **No backend method that would have
+thrown was needed or added:** capability is data in `graph.requires` and the derived device
+set, so `resolve` reads two records and returns a message, and the test asserts the
+compute-on-WebGL-2 case returns rather than throws. The four names go on the door (`resolve`,
+`webgpuCapabilities`, `webgl2Capabilities`, `DeviceProfile`); `gate:pack` green. The
+`compute-field` example now builds its `DeviceProfile` from the live adapter's features and
+the context's extensions and calls `resolve`, replacing the hand-wired `new Set(['msaa'])`
+and by-hand selection-then-refusal it carried while this item was open.
+
+**What the gates could not see.** `resolve` and the two derivations are pure and run entirely
+in the node suite (773 green). What no gate here exercises is the derivation reading a *real*
+device — `webgpuCapabilities(device.features)` on an actual adapter, `webgl2Capabilities` on a
+real context's extension list — and the example drawing on a card or printing its refusal in a
+browser: `gate:card`/`gate:browser` were not run (SwiftShader on every headless launch, §17
+note 3). The mapping from feature names to capabilities is by the WebGPU/WebGL specifications,
+not measured here; a device reporting a feature name this list does not carry would leave that
+optional capability out of the set (the safe direction — a graph needing it is refused rather
+than wrongly drawn). See [JOURNAL.md](JOURNAL.md).
 
 ### 52. The same scene graph on both backends
 

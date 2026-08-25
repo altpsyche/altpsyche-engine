@@ -9,13 +9,14 @@
  * `storage-texture`, declared on the frame's `requires`.
  *
  * On a WebGL 2 machine those capabilities are absent, so the frame cannot draw.
- * The example does what §10 lays out — selection first, then refusal — by hand,
- * because the end-to-end wiring of `graph.requires` against `device.capabilities`
- * is item 51 and is not in the library yet: `selectBackend` answers which backend
- * draws this across what the device offers, and only when that comes back empty is
- * `refusal` read for the message a page prints instead of showing a black
+ * `resolve(frame, device)` does what §10 lays out — selection first, then refusal
+ * — in one reading (item 51): it routes the graph to a backend by its language and
+ * reads its `requires` against that backend's capabilities, and where nothing can
+ * draw it, it returns the message a page prints instead of showing a black
  * rectangle. It names the capability rather than the backend, so a reader learns
- * what is missing rather than only that something is.
+ * what is missing rather than only that something is. The capabilities are the
+ * device's own — `webgl2Capabilities`/`webgpuCapabilities` read them off the live
+ * context and adapter — rather than a set this example guessed.
  *
  * Like every example it reaches the library through the one door and nothing under
  * it. It authors the frame from the raw description surface — `frameOf`, the types,
@@ -25,13 +26,14 @@
 import {
   frameOf,
   uniformBlockOf,
-  refusal,
-  selectBackend,
+  resolve,
+  webgl2Capabilities,
+  webgpuCapabilities,
   requestWebGPUDevice,
   createSurface,
   WGSL_DOCUMENT,
 } from '@altpsyche/engine';
-import type { Capability, FrameDescription } from '@altpsyche/engine';
+import type { Capability, DeviceProfile, FrameDescription } from '@altpsyche/engine';
 
 // The compute source: a plasma written one pixel at a time. The uniform block is
 // the clock and the picture's size, gathered into one struct behind the uniform
@@ -155,25 +157,23 @@ function frameAt(pixels: { width: number; height: number }) {
 
 const frame = frameAt(devicePixels());
 
-// What core WebGL 2 has of the ten capabilities §10 names. It guarantees
-// multisampled renderbuffers and nothing else on this list — no compute and no
-// storage textures. This set is hand-wired here only because item 51, which feeds
-// a live backend's own `device.capabilities` to selection and refusal, is not
-// landed yet; when it is, this example reads the real report rather than this.
-const WEBGL2_CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>(['msaa']);
-
 // Ask for a WebGPU card first, because whether asking returns one is the fact
-// selection reads — a browser can report the API and then hand back nothing. A
-// WebGL 2 context is offered wherever the canvas gives one; this example never
-// draws through it, but its presence is what makes selection a choice rather than
-// a foregone refusal.
+// selection reads — a browser can report the API and then hand back nothing. The
+// device's capabilities are read off what actually came back: a WebGPU adapter's
+// features, a WebGL 2 context's extensions, each mapped to §10's names by the
+// library rather than guessed here. A backend that is not on offer is `null`.
 const device = await requestWebGPUDevice();
-const offer = {
-  webgpu: device !== null,
-  webgl2: canvas.getContext('webgl2') !== null,
+const gl = canvas.getContext('webgl2');
+const profile: DeviceProfile = {
+  webgpu: device ? webgpuCapabilities(device.features) : null,
+  webgl2: gl ? webgl2Capabilities(gl.getSupportedExtensions() ?? []) : null,
 };
 
-const selection = selectBackend(frame, offer);
+// One reading: which backend draws this, or the message that names what is
+// missing. On a WebGPU machine the WGSL frame's `compute`/`storage-texture` are
+// present and it draws; on a WebGL 2 machine they are absent and `resolve` returns
+// the refusal naming them, which the page prints.
+const selection = resolve(frame, profile);
 
 if ('backend' in selection && selection.backend === 'webgpu' && device) {
   // WebGPU drew the frame: the compute pass writes the storage texture and the
@@ -205,16 +205,11 @@ if ('backend' in selection && selection.backend === 'webgpu' && device) {
     surface.start();
   }
 } else {
-  // Selection came back empty, which on a WebGL 2 machine is a WGSL frame with no
-  // WebGPU adapter. Now — and only now, per §10 — read `refusal` for the message
-  // that names the capabilities the device lacks, and print it rather than leaving
-  // a black rectangle. Its null answer (a device that had them all) cannot arise
-  // on this arm, so the selection refusal is the fallback that keeps the message
-  // non-empty whatever the device.
-  const message =
-    refusal(frame, { backend: 'webgl2', capabilities: WEBGL2_CAPABILITIES }) ??
-    ('refusal' in selection ? selection.refusal : 'this frame cannot be drawn here');
-  showMessage(message);
+  // Nothing on offer can draw this — on a WebGL 2 machine, a WGSL compute frame
+  // whose `compute`/`storage-texture` the device lacks. `resolve` already read the
+  // capabilities against the graph, so its refusal names them; print that rather
+  // than leaving a black rectangle.
+  showMessage('refusal' in selection ? selection.refusal : 'this frame cannot be drawn here');
 }
 
 /** Show a line of text over the canvas, which is what a refusal reads as: the

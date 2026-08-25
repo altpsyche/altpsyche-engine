@@ -20,6 +20,8 @@
  * syntax for.
  */
 import type { BackendName, FrameGraph, ShaderTarget } from '../graph/types.js';
+import type { Capability } from '../graph/capability.js';
+import { refusal } from '../graph/refusal.js';
 
 /**
  * What this device offers, gathered once before any backend is chosen.
@@ -77,4 +79,119 @@ export function selectBackend(frame: Pick<FrameGraph, 'target'>, offer: DeviceOf
   const offered = backend === 'webgpu' ? offer.webgpu : offer.webgl2;
   if (offered) return { backend };
   return { refusal: `no backend can draw a ${frame.target} frame: ${MISSING[backend]}` };
+}
+
+/**
+ * What each backend can do, as the capability set §10 reads a graph's `requires`
+ * against — `null` where the backend is not on offer, a set where it is. This is
+ * `DeviceOffer` with the reason a backend might still not draw a graph it could
+ * build: the language routes the graph to a backend (selection), and the
+ * capabilities say whether that backend has what the graph declared it needs
+ * (refusal). Both facts come from the live browser and are gathered once, the way
+ * `DeviceOffer` is, so `resolve` below is a pure reading testable on any machine.
+ */
+export interface DeviceProfile {
+  /** WebGPU's capabilities where an adapter returned one, `null` where none did. */
+  webgpu: ReadonlySet<Capability> | null;
+  /** WebGL 2's capabilities where a context could be had, `null` where none could. */
+  webgl2: ReadonlySet<Capability> | null;
+}
+
+/** The capabilities every WebGPU device has, whatever optional features it adds:
+ * compute, storage buffers and textures, indirect draw and dispatch, occlusion
+ * queries and 4× multisampling are core to the API, so a graph needing only these
+ * is never refused by a WebGPU device. */
+const WEBGPU_CORE: readonly Capability[] = [
+  'compute',
+  'storage-buffer',
+  'storage-texture',
+  'indirect',
+  'occlusion',
+  'msaa',
+];
+
+/** The optional WebGPU capabilities and the `GPUFeatureName` that grants each, so
+ * the mapping from a device's reported features to §10's names lives in one place
+ * rather than being read off a feature string at a call site. */
+const WEBGPU_OPTIONAL: readonly [Capability, string][] = [
+  ['timestamp', 'timestamp-query'],
+  ['float-blend', 'float32-blendable'],
+  ['depth-clamp', 'depth-clip-control'],
+  ['bgra-storage', 'bgra8unorm-storage'],
+];
+
+/**
+ * The §10 capabilities a WebGPU device has, read from the features it reports.
+ * Pure: it takes the feature names — `device.features`, an iterable of strings —
+ * and returns the capability set, so the mapping is testable without a device.
+ */
+export function webgpuCapabilities(features: Iterable<string>): ReadonlySet<Capability> {
+  const has = new Set(features);
+  const capabilities = new Set<Capability>(WEBGPU_CORE);
+  for (const [capability, feature] of WEBGPU_OPTIONAL) if (has.has(feature)) capabilities.add(capability);
+  return capabilities;
+}
+
+/** The optional WebGL 2 capabilities and the extension name that grants each. The
+ * list is short because WebGL 2 has none of §10's headline capabilities — no
+ * compute, storage, indirect, timestamp or occlusion — and `float-blend` is the
+ * one on this list an extension can turn on. */
+const WEBGL2_OPTIONAL: readonly [Capability, string][] = [['float-blend', 'EXT_float_blend']];
+
+/**
+ * The §10 capabilities a WebGL 2 context has, read from the extensions it lists.
+ * `msaa` is always present — WebGL 2 guarantees multisampled renderbuffers — and
+ * the rest of §10's list is the WebGPU-only set the honest answer of §10 names, so
+ * a graph requiring `compute` (or storage, indirect, timestamp, occlusion) is
+ * refused here by that name. Pure: it takes the extension names, not the context.
+ */
+export function webgl2Capabilities(extensions: Iterable<string>): ReadonlySet<Capability> {
+  const has = new Set(extensions);
+  const capabilities = new Set<Capability>(['msaa']);
+  for (const [capability, extension] of WEBGL2_OPTIONAL) if (has.has(extension)) capabilities.add(capability);
+  return capabilities;
+}
+
+/**
+ * Selection first, refusal second (§10), as one reading over a graph and a device.
+ *
+ * The graph's language routes it to a backend across what the device offers
+ * (`selectBackend`); the graph's `requires` are then read against that backend's
+ * capabilities (`refusal`). A graph a backend both speaks and has the capabilities
+ * for returns that backend; a graph whose backend lacks a capability it needs
+ * returns the refusal naming the capability rather than the backend it could have
+ * drawn on.
+ *
+ * Where selection comes back empty — no offered backend speaks the graph's
+ * language — the answer is still a capability refusal wherever the graph declares
+ * a requirement an offered backend lacks, because the capability is the fact a
+ * caller can act on (§10): a WGSL compute graph on a WebGL 2 machine is told it
+ * needs `compute`, not merely that no WebGPU adapter came back. Only where no
+ * offered backend is missing a required capability does the bare language refusal
+ * stand. **No backend method is consulted and none throws:** capability lives in
+ * the graph's `requires` and the device's reported features as data, so this is a
+ * reading over two records, which is the whole of §17 decision 2.
+ */
+export function resolve(
+  frame: Pick<FrameGraph, 'id' | 'target' | 'requires'>,
+  device: DeviceProfile
+): BackendSelection {
+  const offer: DeviceOffer = { webgpu: device.webgpu !== null, webgl2: device.webgl2 !== null };
+  const selection = selectBackend(frame, offer);
+  if ('backend' in selection) {
+    // The selected backend is on offer, so its entry is a set rather than null.
+    const capabilities = selection.backend === 'webgpu' ? device.webgpu! : device.webgl2!;
+    const named = refusal(frame, { backend: selection.backend, capabilities });
+    return named ? { refusal: named } : selection;
+  }
+  // Selection empty. Name the missing capability of an offered backend where the
+  // graph requires one it lacks, preferring the richer backend so the message
+  // names what the graph needs rather than which adapter did not come back.
+  for (const backend of ['webgpu', 'webgl2'] as const) {
+    const capabilities = device[backend];
+    if (!capabilities) continue;
+    const named = refusal(frame, { backend, capabilities });
+    if (named) return { refusal: named };
+  }
+  return selection;
 }
