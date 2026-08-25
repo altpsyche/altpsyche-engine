@@ -221,9 +221,10 @@ describe('the contents a caller writes in', () => {
 // `readBuffer` is gone (item 82); a caller reads a buffer's words back through the
 // arena's own `read` door (§9, item 89), naming the buffer by the arena handle the
 // program hands out for its index. `arena` and `bufferHandle` are the readback
-// bridge, kept off the public `Backend`/`ShaderProgram` types (item 90 dismantles
-// that surface), so a caller reaches them through a cast the way the timestamp gate
-// does. This exercises the same WebGPU staging copy `readBuffer` routed through.
+// bridge, kept off the public `Backend` type and off the drawable shape `program`
+// returns (item 90 deleted the `ShaderProgram` interface that named it), so a
+// caller reaches them through a cast the way the timestamp gate does. This
+// exercises the same WebGPU staging copy `readBuffer` routed through.
 const readWords = async (
   backend: unknown,
   program: unknown,

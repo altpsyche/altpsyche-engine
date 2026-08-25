@@ -3319,7 +3319,7 @@ public `Backend`/`ShaderProgram` types and removed when item 16 unifies handles 
 
 ### 90. `ShaderProgram` is deleted
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The deletion half of item 68: nothing constructs a `ShaderProgram`, and the interface
 is gone from [graph/types.ts](../graph/types.ts). §14 says it "becomes `Arena` + pipeline cache +
@@ -3341,6 +3341,29 @@ rebuild ([gpu/renderer.ts](../gpu/renderer.ts)'s `programFor`/`programs` cache) 
 `Arena` plus pipeline-cache model, and the deletion would be a rename of the problem. **Reverse:**
 delete this item; item 68 reverts to `lifted needs decomposition`. `carry`: losing `ShaderProgram`
 changes the surface a consumer builds against.
+
+**How it landed.** The `ShaderProgram` interface left [graph/types.ts](../graph/types.ts) and its
+type export left [index.ts](../index.ts); `grep -rn ShaderProgram` over `*.ts`/`*.mjs` now finds only
+past-tense records of the deletion, no surviving symbol. Nothing in `gpu/` returns one:
+`Backend.program`'s return type is described **inline** on the `Backend` interface — `setUniforms`,
+`draw`, `writeBuffer`, `setPasses`, `dispose` — and both backends' `program()` methods dropped their
+`: ShaderProgram` annotation and infer the composed object, so the drawable is reached only through
+`submit`/`FrameRenderer`, never as a named vocabulary type a consumer builds against. This is the
+§14 deliverable "ShaderProgram deleted"; the string-keyed-rebuild half §14 also names was already
+gone (arena, item 10; shared pipeline cache, item 63; `submit`, item 88), so this deletion is not
+the rename its own why-note warned of when item 87 was still open. **What is *not* done here, and
+why:** §14's fuller "becomes … `submit`" also has `writeBuffer`/`setPasses` dissolving into
+"re-submit a mutated graph". They cannot dissolve in this item because the node suite pins both as
+**live contract** ([tests/renderer-buffer.test.ts](../tests/renderer-buffer.test.ts) writes a buffer
+between draws, [tests/renderer-passes.test.ts](../tests/renderer-passes.test.ts) re-plans passes),
+and [gates/surface.mjs](../gates/surface.mjs) exercises `writeBuffer` on a card — so removing them is
+its own change, filed as **item 98**, and they remain as inline-typed methods. `npm test` 845 pass;
+`npm run type-check` clean; `npm run gate:pack` 11/11, 69 runtime names on the door (a deleted
+type-only export is no runtime name, so the count is unchanged; the `.d.ts` surface did shrink and
+`gate:pack` compiles it). **What the gates could not see:** the done-when's "browser batch agrees 15
+of 15". This change is type-level only — no runtime call, byte, or trace changed — so the batch is
+*expected* identical, but only `gate:browser` proves it and this unattended run did not run it (it
+runs once over the whole batch in a closing session). See [JOURNAL.md](JOURNAL.md).
 
 ### 91. Selection routes a WGSL frame to WebGL 2 by translation
 
@@ -3602,3 +3625,33 @@ refusal by name in the plain sense. What moved is *where* the refusal lives, out
 into the backend, and that is the thing §10 exists to prevent. **It matters most for item 93**,
 whose thousand-object scene is the first graph large enough to want a read-write path.
 **Reverse:** delete this item; WebGL 2 keeps declaring a capability it half has.
+
+### 98. `writeBuffer` and `setPasses` dissolve into re-submitting a mutated graph
+
+**Status.** open
+
+**Asks for.** The remaining half of §14's "`ShaderProgram` … becomes `Arena` + pipeline cache +
+`submit`". Item 90 deleted the interface but kept two of its methods as inline-typed methods on the
+object `Backend.program` returns, because the node suite pins them as live contract: `writeBuffer`
+(replace a buffer's bytes between draws) and `setPasses` (re-plan which passes run between draws).
+§14 and item 68's lift note both say these "dissolve into re-submit a mutated graph" once a graph is
+a cheap, re-submittable value on stable handles — which item 87 made it. This item makes that real:
+a page that today calls `program.writeBuffer(handle, bytes)` or `program.setPasses(list)` instead
+builds the next graph and re-submits it, and the two methods leave both backends.
+
+**Done when.** Neither `writeBuffer` nor `setPasses` survives on the object `Backend.program`
+returns, on either backend; the three consumers that drive them today —
+[tests/renderer-buffer.test.ts](../tests/renderer-buffer.test.ts),
+[tests/renderer-passes.test.ts](../tests/renderer-passes.test.ts), and
+[gates/surface.mjs](../gates/surface.mjs)'s rewrite — reach the same picture by re-submitting a
+changed graph rather than mutating a held program; and the browser batch agrees 15 of 15.
+
+**Needs.** item 90.
+
+**Filed 2026-08-26 by item 90.** Item 90's `Done when` named neither method, and both are pinned as
+live contract by tests that would fail if they simply vanished, so their removal is a separable
+change with its own consumer rewrites — not something to smuggle into the interface deletion. The
+`Backend.program` return type carries a note pointing here. **Reverse:** delete this item; the two
+methods stay as inline-typed methods on the drawable and §14's dissolution stays unfinished with
+nothing tracking it. `carry`: whether a consumer mutates a held program or re-submits a graph is a
+fact a consumer builds against.

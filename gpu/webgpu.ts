@@ -26,7 +26,6 @@ import type {
   SamplerResource,
   FrameGraph,
   StencilMode,
-  ShaderProgram,
   TextureResource,
   UniformValue,
   VertexResource,
@@ -165,13 +164,13 @@ export function createWebGPUBackend(
   if (!context) return null;
 
   // How this arena reads a resident buffer back off the card, handed to the arena
-  // so the readback lives on the arena (§9, item 89) rather than on a
-  // `ShaderProgram` method. The buffer the handle names is copied into a MAP_READ
+  // so the readback lives on the arena (§9, item 89) rather than on a program
+  // method. The buffer the handle names is copied into a MAP_READ
   // staging buffer of its own — a buffer a shader writes cannot be mapped, and
   // mapping the frame's own would take it from the next frame — mapped, copied out
   // of the mapping (its memory is gone the moment it is unmapped), and the staging
   // slot returned at once. Allocated and freed through this same arena, so the
-  // staging buffer is a resident of the moment. A `ShaderProgram.readBuffer`
+  // staging buffer is a resident of the moment. A program `readBuffer` method
   // copied this inline before item 82 removed it; the readback is the arena's now.
   const readResidentBuffer = async (resource: GpuResource, range: Range | undefined): Promise<ArrayBuffer> => {
     const source = resource as GPUBuffer;
@@ -411,7 +410,7 @@ export function createWebGPUBackend(
       arena.resetTraffic();
     },
 
-    program(frame: FrameGraph): ShaderProgram {
+    program(frame: FrameGraph) {
       if (frame.authored !== 'wgsl') throw new Error(`WebGPU was handed a ${frame.authored} frame to draw`);
 
       // The static lifetime of §5, owned by the pipeline cache rather than compiled
@@ -529,7 +528,7 @@ export function createWebGPUBackend(
         const buffers = new Map<number, GPUBuffer>();
         // The arena handle each page-or-card buffer was allocated under, kept by the
         // resource's index so a readback can name one by handle through the arena's
-        // own `read` (§9, item 89) rather than through a `ShaderProgram` method. Only
+        // own `read` (§9, item 89) rather than through a program method. Only
         // the buffers a readback could ever name — the `buffer`-kind resources a
         // compute pass or a query fills — are recorded here; geometry and the
         // uniform block are not read this way.
@@ -1174,11 +1173,11 @@ export function createWebGPUBackend(
       }
 
       // Held in a variable rather than returned as a literal because it carries
-      // one method beyond the `ShaderProgram` interface — `bufferHandle`, the
-      // item-89 readback bridge the timing and surface gates reach — and the
-      // public interface is deliberately left unchanged (that surface is item 90's
-      // to dismantle, not this item's to grow). A widened local is assignable to
-      // `ShaderProgram` with the extra method along for the ride.
+      // one method beyond the drawable shape `Backend.program` declares —
+      // `bufferHandle`, the item-89 readback bridge the timing and surface gates
+      // reach. Item 90 deleted the `ShaderProgram` interface this used to widen;
+      // the shape is now described inline on `Backend.program` and a widened local
+      // is assignable to it with the extra method along for the ride.
       const program = {
         setUniforms(feed: Record<string, UniformValue>) {
           for (const [name, value] of Object.entries(feed)) {

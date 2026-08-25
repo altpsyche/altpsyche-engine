@@ -84,7 +84,7 @@ export class Arena<T> {
    * arena made without one has no `read`, and calling it says so rather than
    * returning empty bytes that would read as a real answer. This is the §9
    * readback door (item 89): a buffer's words leave the card through here, not
-   * through a `ShaderProgram` method. */
+   * through a program method. */
   constructor(
     private readonly disposeOf: (resource: T) => void,
     private readonly readBack?: (resource: T, range: Range | undefined) => Promise<ArrayBuffer>

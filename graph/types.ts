@@ -619,62 +619,6 @@ export function moduleOf(frame: FrameGraph, handle: ModuleHandle): ModuleSpec | 
   return frame.modules[indexOf(handle)];
 }
 
-export interface ShaderProgram {
-  /** Values by the names the shader declares. Where they land is the backend's
-   * business: loose uniforms in one dialect, one block of bytes in the other,
-   * and the caller writes the same call either way. */
-  setUniforms(values: Record<string, UniformValue>): void;
-  /**
-   * Draws the frame, and where `into` is given lands the finished picture in
-   * that caller-supplied texture as well.
-   *
-   * `into` is where a frame lands when the caller owns the texture it goes in —
-   * an XR layer's target, or a texture a capture reads back afterwards — copied
-   * on the frame's own encoder so the whole frame is still submitted once.
-   * Absent, the frame lands in the backend's own target and the canvas, exactly
-   * as before. It is a `GPUTexture`, which is a WebGPU thing: a backend whose
-   * target is not one refuses a given `into` by name, the same class of caller
-   * mistake as a frame of the wrong target, since a caller holding a `GPUTexture`
-   * has already chosen the backend it came from (§17 decision 7, item 29). */
-  draw(into?: GPUTexture): void;
-  /**
-   * Replaces the contents of one buffer this frame declares, between one frame
-   * and the next.
-   *
-   * The uniform block is fed this way every draw, and this is the same thing for
-   * a buffer that is not the block: the description says the buffer exists and the
-   * running page hands it later numbers, the way `setUniforms` hands the block
-   * later numbers. Bytes rather than words, because a buffer the page fills holds
-   * whatever the shader reads out of it, floats as often as counts, and the build
-   * writes its first contents as bytes for the same reason.
-   *
-   * Only a buffer the build gave first contents can be replaced. A buffer the card
-   * fills for itself, one a compute pass writes or a query resolves into, is the
-   * card's own and is refused here by name, because it was never made able to take
-   * bytes from this side.
-   */
-  writeBuffer(handle: BufferHandle, data: Uint8Array<ArrayBuffer>): void;
-  /**
-   * Replaces which passes this program runs, between one frame and the next,
-   * without remaking anything the program owns.
-   *
-   * A description changes over time by its passes changing: a frame runs one pass
-   * this second and two the next, so a page turns a pass on or off the way it
-   * feeds the block later numbers with `setUniforms` or a buffer later bytes with
-   * `writeBuffer`. The modules, the pipelines and the resources are the frame's
-   * for its whole life and are not touched here, so a pass may only name a
-   * pipeline the program was built with. Naming one it was not is refused here by
-   * name, the same as writing a buffer the card fills for itself.
-   *
-   * This changes which passes run, not what a pass is made of and not which
-   * resources exist. Adding a resource is a rebuild, since a texture's usage and a
-   * buffer's layout are decided when the program is made, so a description that
-   * grows a resource is a new program rather than a call here.
-   */
-  setPasses(passes: PassSpec[]): void;
-  dispose(): void;
-}
-
 /**
  * What a device says about itself: the ceilings it will not go past, and the
  * optional pieces of its API it has.
@@ -755,8 +699,39 @@ export interface Backend {
    * lifetime now lives in its own module (`resource/`, `pipeline/`, `submit/`) and
    * this only composes them, per [RoadToPureEngine.md](../docs/RoadToPureEngine.md)
    * §5 and [ROADMAP.md](../docs/ROADMAP.md) item 15.
+   *
+   * What it hands back is the composed frame, not a named vocabulary type: item 90
+   * deleted the `ShaderProgram` interface §14 called "three lifetimes in a trench
+   * coat", so the drawable is described inline here and reached only through
+   * `submit`/`FrameRenderer`, never as an exported type a consumer builds against.
+   * The shape is what a running frame is fed and drawn by — `setUniforms`, `draw`,
+   * and `dispose` on every path; `writeBuffer` and `setPasses` for a frame the page
+   * mutates between draws. Their §14 fate — dissolving into "re-submit a mutated
+   * graph" — is item 98's, not this deletion's; the node suite pins both as live
+   * contract today ([tests/renderer-buffer.test.ts](../tests/renderer-buffer.test.ts),
+   * [tests/renderer-passes.test.ts](../tests/renderer-passes.test.ts)).
    */
-  program(frame: FrameGraph): ShaderProgram;
+  program(frame: FrameGraph): {
+    /** Values by the names the shader declares. Where they land is the backend's
+     * business: loose uniforms in one dialect, one block of bytes in the other,
+     * and the caller writes the same call either way. */
+    setUniforms(values: Record<string, UniformValue>): void;
+    /** Draws the frame, and where `into` is given lands the finished picture in
+     * that caller-supplied texture as well — an XR layer's target, or a texture a
+     * capture reads back. Absent, the frame lands in the backend's own target and
+     * the canvas. A backend whose target is not a `GPUTexture` refuses a given
+     * `into` by name (§17 decision 7, item 29). */
+    draw(into?: GPUTexture): void;
+    /** Replaces the contents of one buffer this frame declares, between one frame
+     * and the next. Only a buffer the build gave first contents can be replaced; a
+     * buffer the card fills for itself is refused here by name. */
+    writeBuffer(handle: BufferHandle, data: Uint8Array<ArrayBuffer>): void;
+    /** Replaces which passes this program runs, between one frame and the next,
+     * without remaking anything the program owns. A pass may only name a pipeline
+     * the program was built with; naming one it was not is refused here by name. */
+    setPasses(passes: PassSpec[]): void;
+    dispose(): void;
+  };
   resize(width: number, height: number): void;
   /** Reads the frame back as RGBA, top row first on both backends. WebGL hands
    * it back bottom row first and that is corrected here, because a caller

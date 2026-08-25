@@ -111,7 +111,6 @@ export type {
   ResourceSpec,
   SamplerResource,
   FrameGraph,
-  ShaderProgram,
   ShaderTarget,
   StencilMode,
   TextureResource,

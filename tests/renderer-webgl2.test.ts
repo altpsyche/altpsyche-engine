@@ -1646,7 +1646,7 @@ describe('what it gives back when it is done', () => {
 describe('the words a caller asks it for', () => {
   it('answers with none, since this backend keeps no buffer a page reads back', async () => {
     // Not a refusal. A caller reads a buffer back through the arena's own `read`
-    // door now (§9, item 89) — `ShaderProgram.readBuffer` is gone (item 82) — and
+    // door now (§9, item 89) — the program's `readBuffer` method is gone (item 82) — and
     // this backend's arena reader (`readNoBuffer`) hands back no bytes whatever the
     // handle names, so the same read over either backend gets an empty reading from
     // the one that keeps no such numbers without knowing which backend it holds.

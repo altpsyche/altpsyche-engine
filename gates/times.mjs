@@ -15,7 +15,7 @@
 // and RoadToPureEngine.md's readings-not-a-matrix). The queries "already work and
 // are read by nothing" — this is the nothing that now reads them. The pair is read
 // back through the arena's own `read` door by handle (§9, item 89), not through a
-// `ShaderProgram` method; each timestamp is a little-endian u64 (two words), and
+// program method; each timestamp is a little-endian u64 (two words), and
 // the elapsed nanoseconds is the second minus the first.
 //
 // **Only where the device supports them.** A device without the optional
@@ -123,12 +123,12 @@ if (!timed) {
   console.log(`${'-'.repeat(labelWidth)}  | -----------`);
   for (const { label, buffer } of timedPasses) {
     // Read through the arena's own `read` door by handle (item 89), not through a
-    // `ShaderProgram` method: the buffer the pass resolved its timestamp pair into
-    // is named by its arena handle, and `read` copies the bytes back. Words rather
-    // than bytes because a timestamp is a count the card wrote itself. `arena` and
-    // `bufferHandle` are the readback bridge, kept off the public `Backend`/
-    // `ShaderProgram` types on purpose (item 90 dismantles that surface), so the
-    // gate reaches them through a cast.
+    // program method: the buffer the pass resolved its timestamp pair into is named
+    // by its arena handle, and `read` copies the bytes back. Words rather than bytes
+    // because a timestamp is a count the card wrote itself. `arena` and
+    // `bufferHandle` are the readback bridge, kept off the public `Backend` type and
+    // off the drawable shape `program` returns (item 90 deleted the `ShaderProgram`
+    // interface that named it), so the gate reaches them through a cast.
     const bytes = await /** @type {any} */ (backend).arena.read(/** @type {any} */ (program).bufferHandle(buffer));
     const pair = new Uint32Array(bytes);
     const nanos = elapsedNanos(pair);

@@ -20,7 +20,6 @@ import type {
   FrameGraph,
   RenderPipelineSpec,
   SamplerResource,
-  ShaderProgram,
   StencilMode,
   TextureResource,
   UniformValue,
@@ -336,7 +335,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       arena.resetTraffic();
     },
 
-    program(frame: FrameGraph): ShaderProgram {
+    program(frame: FrameGraph) {
       if (frame.authored !== 'glsl') throw new Error(`WebGL 2 was handed a ${frame.authored} frame to draw`);
       // Every rule about the graph is checked in one place; the WebGL 2 path does
       // not reach `submit/plan.ts`, so it reads the same function directly (item

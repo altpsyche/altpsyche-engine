@@ -4,7 +4,7 @@ import { uniformBlockOf } from '@altpsyche/engine';
 
 /**
  * The source-level reflection that replaced two compiled-program queries —
- * `ShaderProgram.unreached` and the hand-written `FrameGraph.uniforms` list
+ * a program's `unreached` query and the hand-written `FrameGraph.uniforms` list
  * (ROADMAP item 69). It reads what a shader takes off the source, so it answers
  * without a device and cannot drift from a list beside the code.
  */

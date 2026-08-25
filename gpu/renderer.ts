@@ -76,9 +76,11 @@ export interface SubmitOptions {
  *
  * It reaches the card through `FrameRenderer.draw`, the interface that already
  * owns the backend, so the primitive adds a name and a landing target and takes
- * nothing away: `ShaderProgram` is untouched and the readback door is elsewhere
- * (the arena's, per §9), because a frame that lands and a buffer that is read are
- * two lifetimes and this is only the first.
+ * nothing away: the drawable is composed the same way and the readback door is
+ * elsewhere (the arena's, per §9), because a frame that lands and a buffer that is
+ * read are two lifetimes and this is only the first. When item 88 added this
+ * primitive the `ShaderProgram` interface still stood beside it; item 90 has since
+ * deleted that interface, and `submit` is now the only named door onto the card.
  */
 export function submit(
   renderer: FrameRenderer,

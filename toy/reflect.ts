@@ -3,8 +3,8 @@
  * compiled program.
  *
  * This replaces two runtime queries that a program could only answer once it was
- * built: `ShaderProgram.unreached`, which asked the linked program which declared
- * names it had nowhere to put, and `FrameGraph.uniforms`, the name-and-type list
+ * built: a program's `unreached` query, which asked the linked program which
+ * declared names it had nowhere to put, and `FrameGraph.uniforms`, the name-and-type list
  * a producer wrote down beside the source for a page to draw its controls from.
  * Both are the same fact — what a shader takes and what it calls each one — and a
  * fact about a source is answered from the source, not from a program built out

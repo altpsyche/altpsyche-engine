@@ -564,11 +564,12 @@ const gpuResults = await gpuPage.evaluate(
       program.setUniforms({ u_time: 1, u_resolution: [200, 100] });
       program.draw();
       // Read through the arena's own `read` door by handle (item 89), not through
-      // a `ShaderProgram` method: the buffer is named by its arena handle and
-      // `read` copies its bytes back, which the words are then read out of. `arena`
-      // and `bufferHandle` are the readback bridge, kept off the public `Backend`/
-      // `ShaderProgram` types on purpose (item 90 dismantles that surface), so the
-      // gate reaches them through a cast.
+      // a program method: the buffer is named by its arena handle and `read` copies
+      // its bytes back, which the words are then read out of. `arena` and
+      // `bufferHandle` are the readback bridge, kept off the public `Backend` type
+      // and off the drawable shape `program` returns (item 90 deleted the
+      // `ShaderProgram` interface that named it), so the gate reaches them through a
+      // cast.
       const readCopies = async () =>
         new Uint32Array(
           await /** @type {any} */ (rewriteBackend).arena.read(/** @type {any} */ (program).bufferHandle(copiesHandle))
