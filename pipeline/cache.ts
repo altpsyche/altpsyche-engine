@@ -55,12 +55,29 @@ export interface PipelineStructure {
    * it reads none. Stride and the attributes' locations, offsets and formats, the
    * three facts the card takes when the pipeline is made. */
   vertex?: { stride: number; attributes: VertexResource['attributes'] };
+  /** What each binding points at, resolved to the facts the card bakes into the
+   * bind-group layout: the resource's kind, and — for the kinds whose layout entry
+   * turns on more than kind — the buffer's access and the texture's format and use.
+   * Resolved here rather than left as the binding's resource *name* on `spec`
+   * because a cache shared across programs keys two frames' pipelines together, and
+   * two frames naming one binding over resources of different kinds build different
+   * layouts from one otherwise-identical spec — the name alone would collapse them
+   * and hand the second frame a layout built for the first's resource. A binding
+   * whose resource the frame does not declare resolves to kind alone left absent,
+   * the same leniency `stagesOf` keeps: the throw belongs where the layout is built
+   * against the card, not where its key is taken. Optional so a structure built by
+   * hand for a test — a string standing in for a compiled pipeline — need not carry
+   * one; `pipelineStructureOf` always resolves it, empty where a pipeline binds
+   * nothing, so every structure the backend keys through carries the field. */
+  bindings?: { group: number; binding: number; kind?: string; access?: string; format?: string; use?: string }[];
   /** The pipeline specification itself, carrying every remaining structural fact:
    * formats and blend on `targets`, the depth and stencil state on `depth`, the
    * sample count on `samples`, the workgroup size on a compute pipeline, and the
-   * binding layout the groups are built against. Its module *names* are here too,
-   * which is harmless: the codes above are what make two identically-named but
-   * differently-bodied modules key apart. */
+   * bindings' own per-binding facts — `reads`, `perDraw`, visibility. Its module
+   * *names* are here too, which is harmless: the codes above are what make two
+   * identically-named but differently-bodied modules key apart, and `bindings`
+   * above is what makes two identically-specced but differently-resourced layouts
+   * key apart. */
   spec: PipelineSpec;
 }
 
@@ -88,12 +105,37 @@ function vertexOf(frame: ShaderFrame, spec: PipelineSpec): PipelineStructure['ve
   return { stride: geometry.stride, attributes: geometry.attributes };
 }
 
+/** What each binding's resource is, resolved to the facts a layout is built from
+ * so the resolved kind rather than the name it points at keys the pipeline. A
+ * binding pointing at a resource the frame does not declare carries its group and
+ * binding alone, left for the layout build to throw on rather than thrown on here. */
+function bindingsOf(frame: ShaderFrame, spec: PipelineSpec): NonNullable<PipelineStructure['bindings']> {
+  return spec.bindings.map((at) => {
+    const fact: NonNullable<PipelineStructure['bindings']>[number] = { group: at.group, binding: at.binding };
+    const resource = resourceOf(frame, at.resource);
+    if (!resource) return fact;
+    fact.kind = resource.kind;
+    if (resource.kind === 'buffer') fact.access = resource.access;
+    if (resource.kind === 'texture') {
+      fact.format = resource.format;
+      fact.use = resource.use.join(',');
+    }
+    return fact;
+  });
+}
+
 /** The structure a frame's pipeline depends on, resolved from the frame. This is
  * where the module that owns pipeline structure decides what a pipeline is made
  * of, so a backend building one and this cache keying one agree by construction
  * rather than by two lists that could drift. */
 export function pipelineStructureOf(frame: ShaderFrame, spec: PipelineSpec): PipelineStructure {
-  return { kind: spec.kind, stages: stagesOf(frame, spec), vertex: vertexOf(frame, spec), spec };
+  return {
+    kind: spec.kind,
+    stages: stagesOf(frame, spec),
+    vertex: vertexOf(frame, spec),
+    bindings: bindingsOf(frame, spec),
+    spec,
+  };
 }
 
 /** A canonical string for a structure. Deterministic for the plain data a
@@ -106,11 +148,36 @@ export function structureKey(structure: PipelineStructure): string {
   return JSON.stringify(structure);
 }
 
+/** How many distinct pipeline structures one backend's shared cache keeps compiled
+ * at once. A pipeline is card memory the backend does not free until it lets it go,
+ * so a cache shared across every program the backend builds — the scene tier's many
+ * programs sharing one material's pipeline over different meshes — would grow that
+ * memory by one structure every time a new structure is seen were it never bounded.
+ * The editing path is where new structures accumulate (a source recompiled on every
+ * keystroke is a new structure each time); this is the window of recent structures
+ * their reuse can still reach before eviction frees the stalest. It sits above the
+ * renderer's `PROGRAM_CACHE_LIMIT` so a program cache full of distinct programs, each
+ * carrying a pipeline of its own, does not evict a pipeline a still-warm program
+ * holds. A card holds the pipeline as long as any live program references it whatever
+ * this evicts; the bound governs reuse, not liveness. */
+export const PIPELINE_CACHE_LIMIT = 64;
+
 /**
  * The cache. Content-addressed: a structure keys to a handle, and a request
  * carrying a structure already seen returns that handle without building a second
- * pipeline. A handle is an index into the slots the builds landed in, so resolving
- * one is an array read and the brand is what keeps a plain number out.
+ * pipeline. A handle is an integer the brand keeps a plain number from standing in
+ * for, resolved through a map rather than an index so an eviction can drop a slot
+ * without shifting the handles around it.
+ *
+ * Bounded (item 63). One cache is shared across every program a backend builds, so
+ * two programs whose frames differ only in resident data share the one pipeline
+ * their structures key to — but sharing across an unbounded lifetime is unbounded
+ * card memory, so a cache built with a `bound` frees the least-recently-requested
+ * structure when a new one would push it past that bound. A request that hits an
+ * existing structure counts as touching it, so the pipeline drawn every frame is
+ * never the one evicted. `onEvict` is where a backend whose pipeline needs an
+ * explicit free (a `WebGLProgram`) hands it back; a backend whose pipeline the GC
+ * reclaims (a `GPURenderPipeline`) passes none and eviction is a dropped reference.
  *
  * Generic over what a build returns, because the two backends compile different
  * objects — a `GPURenderPipeline` or a `GPUComputePipeline` on one, a linked
@@ -118,11 +185,28 @@ export function structureKey(structure: PipelineStructure): string {
  * the way the arena holds whichever resource without knowing it.
  */
 export class PipelineCache<T> {
-  /** What each handle resolves to, in the order the builds landed. */
-  private readonly slots: T[] = [];
+  /** What each handle resolves to. A map rather than an array so eviction can
+   * remove one without renumbering the handles that outlive it. */
+  private readonly held = new Map<PipelineHandle, T>();
   /** Which handle a structure already built, so a repeat request returns it rather
-   * than building a second. */
+   * than building a second. Its insertion order is recency: a touched key is
+   * re-inserted to the back, so the front is always the stalest and eviction takes
+   * it from there. */
   private readonly byKey = new Map<string, PipelineHandle>();
+  /** The next handle to mint, bumped once per build and never reused, so a handle
+   * an eviction dropped never resolves to a later structure that took its place. */
+  private minted = 0;
+  private readonly bound: number;
+  private readonly onEvict?: (value: T) => void;
+
+  /** `bound` caps how many distinct structures stay compiled at once, defaulting to
+   * no bound — a program-scoped cache lives and dies with its one program and needs
+   * none. `onEvict` frees a pipeline the cache is dropping, for a backend whose
+   * pipeline the GC does not reclaim on its own. */
+  constructor(options: { bound?: number; onEvict?: (value: T) => void } = {}) {
+    this.bound = options.bound ?? Infinity;
+    this.onEvict = options.onEvict;
+  }
 
   /** Returns the handle the structure is cached under, building it through `make`
    * the first time a structure is seen and returning the same handle every time
@@ -131,28 +215,52 @@ export class PipelineCache<T> {
   request(structure: PipelineStructure, make: () => T): PipelineHandle {
     const key = structureKey(structure);
     const held = this.byKey.get(key);
-    if (held !== undefined) return held;
-    const handle = this.slots.length as PipelineHandle;
-    this.slots.push(make());
+    if (held !== undefined) {
+      // Touched, so it moves to the back of the recency order and the stalest
+      // stays at the front where eviction takes it.
+      this.byKey.delete(key);
+      this.byKey.set(key, held);
+      return held;
+    }
+    const handle = this.minted++ as PipelineHandle;
+    this.held.set(handle, make());
     this.byKey.set(key, handle);
+    // The build just landed at the back, so a size over the bound evicts from the
+    // front, which is the least recently requested and never the one just made.
+    while (this.byKey.size > this.bound) {
+      const stalest = this.byKey.entries().next().value;
+      if (stalest === undefined) break;
+      const [staleKey, staleHandle] = stalest;
+      const value = this.held.get(staleHandle) as T;
+      this.byKey.delete(staleKey);
+      this.held.delete(staleHandle);
+      this.onEvict?.(value);
+    }
     return handle;
   }
 
-  /** The pipeline a handle names. A handle this cache never minted is refused here
-   * rather than resolving to whatever sits at that index, the way the arena refuses
-   * a handle it never handed out. */
+  /** The pipeline a handle names. A handle this cache never minted — or one an
+   * eviction has since dropped — is refused here rather than resolving to some
+   * later structure, the way the arena refuses a handle it never handed out. */
   resolve(handle: PipelineHandle): T {
-    if (handle < 0 || handle >= this.slots.length) {
+    if (!this.held.has(handle)) {
       throw new Error(`the pipeline cache was asked for handle ${handle}, which it never minted`);
     }
-    return this.slots[handle] as T;
+    return this.held.get(handle) as T;
   }
 
-  /** How many distinct structures the cache has built, which is one per handle it
-   * has minted. Read by a caller that wants to know a repeat request built nothing
-   * new without reaching into the slots. */
+  /** How many distinct structures the cache currently holds. Read by a caller that
+   * wants to know a repeat request built nothing new, and never above the bound. */
   get size(): number {
-    return this.slots.length;
+    return this.held.size;
+  }
+
+  /** Hand every held pipeline back and empty the cache, which a backend does when
+   * it is disposed so the structures it shared do not outlive it. */
+  clear(): void {
+    for (const value of this.held.values()) this.onEvict?.(value);
+    this.held.clear();
+    this.byKey.clear();
   }
 }
 

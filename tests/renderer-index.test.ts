@@ -102,7 +102,12 @@ describe('the programs it keeps', () => {
     renderer.draw(other, {});
     renderer.draw(one, {});
 
-    expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
+    // Two programs, kept apart — each builds its own bind group over its own
+    // resources. Their one shared pipeline structure (they differ only in id)
+    // compiles once in the backend's shared cache (item 63), so the compilation
+    // count no longer stands in for the program count; the bind group does.
+    expect(gpu.calls('createBindGroup')).toHaveLength(2);
+    expect(gpu.calls('createRenderPipeline')).toHaveLength(1);
   });
 
   it('keeps a program per resource set, not just per id and source', async () => {
@@ -124,9 +129,14 @@ describe('the programs it keeps', () => {
     renderer.draw(one, {});
     renderer.draw(other, {});
 
-    // Two compiled programs, one per resource set, rather than one shared across
-    // both because their id and source happened to match.
-    expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
+    // Two programs, one per resource set, rather than one shared across both
+    // because their id and source happened to match — each builds its own bind
+    // group over its own uniform buffer. The pipeline structure is one (the block
+    // layout is resident, not structural), so it compiles once in the shared cache;
+    // the two programs are what keep the second's buffer from drawing under the
+    // first, and the bind group count is what shows there are two.
+    expect(gpu.calls('createBindGroup')).toHaveLength(2);
+    expect(gpu.calls('createRenderPipeline')).toHaveLength(1);
   });
 
   it('builds the program to answer what the shader declares and nothing reads', async () => {
@@ -138,7 +148,10 @@ describe('the programs it keeps', () => {
 });
 
 describe('the programs it lets go', () => {
-  // A distinct source each time, which is what a reader compiling edits produces.
+  // A distinct frame each time — a distinct id, so a distinct program — but one
+  // shared pipeline structure, since the source and its layout do not change. That
+  // is why building a program is counted through its own bind group below and not
+  // through a pipeline compilation the shared cache now runs once for the whole run.
   const edit = (n: number) => artefact({ id: `edit-${n}` });
 
   it('keeps at most the limit alive, disposing the stalest as new edits arrive', async () => {
@@ -147,28 +160,38 @@ describe('the programs it lets go', () => {
 
     for (let n = 0; n < runLength; n++) renderer.draw(edit(n), {});
 
-    // Every distinct edit compiled once, so the run's card memory would be the
-    // whole run's worth of programs if nothing were let go.
-    expect(gpu.calls('createRenderPipeline')).toHaveLength(runLength);
+    // Each edit built its own program — its own bind group over its own buffer — so
+    // the run's resident memory would be the whole run's worth if nothing were let
+    // go. The one pipeline structure they share compiled once in the shared cache
+    // (item 63), where a per-program cache compiled it once per edit.
+    expect(gpu.calls('createBindGroup')).toHaveLength(runLength);
+    expect(gpu.calls('createRenderPipeline')).toHaveLength(1);
     // Four edits pushed past the limit, so four programs were disposed while the
     // run was still going, each handing back its own uniform buffer. Before the
     // limit this count was 0 until the renderer itself was disposed.
     expect(gpu.calls('buffer.destroy')).toHaveLength(4);
   });
 
-  it('recompiles a source that has been evicted, and does not for one still kept', async () => {
+  it('rebuilds an evicted source’s program but reuses its warm shared pipeline', async () => {
     const { gpu, renderer } = await rendererOver();
     for (let n = 0; n <= PROGRAM_CACHE_LIMIT; n++) renderer.draw(edit(n), {});
-    const compiledDuringRun = gpu.calls('createRenderPipeline').length;
+    const builtDuringRun = gpu.calls('createBindGroup').length;
+    // One structure across every edit, compiled once and held warm in the shared
+    // cache whatever the program cache evicts (item 63).
+    expect(gpu.calls('createRenderPipeline')).toHaveLength(1);
 
-    // The most recent edit is still warm.
+    // The most recent edit's program is still warm, so re-drawing it rebuilds
+    // nothing.
     renderer.draw(edit(PROGRAM_CACHE_LIMIT), {});
-    expect(gpu.calls('createRenderPipeline')).toHaveLength(compiledDuringRun);
+    expect(gpu.calls('createBindGroup')).toHaveLength(builtDuringRun);
 
-    // The first edit was the stalest when the last one pushed past the limit, so
-    // it is gone and asking for it compiles again.
+    // The first edit was the stalest when the last one pushed past the limit, so its
+    // program was disposed; re-drawing it builds a new program — a fresh bind group
+    // over a fresh buffer — but its pipeline is still in the shared cache, so nothing
+    // recompiles. This is item 63's gain over a per-program cache, which recompiled.
     renderer.draw(edit(0), {});
-    expect(gpu.calls('createRenderPipeline')).toHaveLength(compiledDuringRun + 1);
+    expect(gpu.calls('createBindGroup')).toHaveLength(builtDuringRun + 1);
+    expect(gpu.calls('createRenderPipeline')).toHaveLength(1);
   });
 
   it('keeps a re-drawn source fresh, so the next eviction takes an older one', async () => {
@@ -177,17 +200,21 @@ describe('the programs it lets go', () => {
     for (let n = 0; n < PROGRAM_CACHE_LIMIT; n++) renderer.draw(edit(n), {});
     expect(gpu.calls('buffer.destroy')).toHaveLength(0);
 
-    // Touch the oldest, which moves it to the back of the recency order.
+    // Touch the oldest, which moves its program to the back of the recency order.
     renderer.draw(edit(0), {});
     // One more distinct edit pushes past the limit and evicts the new stalest,
     // which is edit 1 rather than edit 0.
     renderer.draw(edit(PROGRAM_CACHE_LIMIT), {});
-    const after = gpu.calls('createRenderPipeline').length;
+    const built = gpu.calls('createBindGroup').length;
 
+    // edit 0 was touched, so its program is still warm and re-drawing it rebuilds
+    // nothing; edit 1 was the one evicted, so re-drawing it builds a fresh program.
+    // Read through the bind group, one per program, since the pipeline they share
+    // compiles once and cannot tell an evicted program from a kept one (item 63).
     renderer.draw(edit(0), {});
-    expect(gpu.calls('createRenderPipeline')).toHaveLength(after);
+    expect(gpu.calls('createBindGroup')).toHaveLength(built);
     renderer.draw(edit(1), {});
-    expect(gpu.calls('createRenderPipeline')).toHaveLength(after + 1);
+    expect(gpu.calls('createBindGroup')).toHaveLength(built + 1);
   });
 });
 

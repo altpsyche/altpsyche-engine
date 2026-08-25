@@ -149,12 +149,16 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       validate(frame);
 
       // The static lifetime of §5: the linked program a shader compiles to, keyed
-      // on the structure of its two documents. Scoped to this program so the linked
-      // program is freed when this one is disposed, the same bound the backend held
-      // before the split. A cache shared across programs, for a frame that draws the
-      // same GLSL as another, needs an eviction the cache does not yet have and
-      // waits on [ROADMAP.md](../docs/ROADMAP.md) item 63. What it caches is the
-      // compilation alone; the uniform buffer a program feeds is resident.
+      // on the structure of its two documents. Scoped to this program — an unbounded
+      // `PipelineCache`, living and dying with the one program — so the linked
+      // program is freed through `gl.deleteProgram` on dispose, the same bound the
+      // backend held before the split. Item 63 shares WebGPU's cache across programs
+      // for the scene tier's many pipelines; this backend draws one fullscreen pass
+      // and stays program-scoped, since a shared WebGLProgram would need a reference
+      // count before an eviction could `deleteProgram` it out from under a live
+      // program that still draws with it — work its cross-program reuse (Phase 5)
+      // will carry, not this. What it caches is the compilation alone; the uniform
+      // buffer a program feeds is resident.
       const programCache = new PipelineCache<{
         program: WebGLProgram;
         layout: Map<string, number> | null;

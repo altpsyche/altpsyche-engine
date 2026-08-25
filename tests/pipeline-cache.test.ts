@@ -85,11 +85,101 @@ describe('what the cache builds', () => {
   });
 });
 
+describe('the bound the shared cache holds to (item 63)', () => {
+  // A structure that differs only in its source, so each `code` is a distinct
+  // structure the cache builds and holds its own pipeline for.
+  const bodied = (code: string) => structure({ stages: [{ code, entry: 'main' }] });
+
+  it('frees the stalest when a new structure pushes past the bound', () => {
+    const evicted: string[] = [];
+    const cache = new PipelineCache<string>({ bound: 2, onEvict: (value) => evicted.push(value) });
+    let builds = 0;
+    const make = () => `pipeline-${++builds}`;
+
+    const a = cache.request(bodied('a'), make); // pipeline-1
+    cache.request(bodied('b'), make); // pipeline-2
+    // The third distinct structure pushes past the bound of two, so the stalest —
+    // 'a', built first and never touched since — is freed rather than kept alive.
+    cache.request(bodied('c'), make); // pipeline-3, evicts pipeline-1
+    expect(cache.size).toBe(2);
+    expect(evicted).toEqual(['pipeline-1']);
+    // The freed structure's handle no longer resolves, so nothing reads a pipeline
+    // the cache has handed back.
+    expect(() => cache.resolve(a)).toThrow(/never minted/);
+    // And asking for 'a' again builds it afresh, proving the cache holds none of it.
+    cache.request(bodied('a'), make); // pipeline-4, evicts pipeline-2 ('b')
+    expect(builds).toBe(4);
+    expect(evicted).toEqual(['pipeline-1', 'pipeline-2']);
+  });
+
+  it('touches a structure on a repeat request, so the one drawn stays warm', () => {
+    const evicted: string[] = [];
+    const cache = new PipelineCache<string>({ bound: 2, onEvict: (value) => evicted.push(value) });
+    let builds = 0;
+    const make = () => `pipeline-${++builds}`;
+
+    cache.request(bodied('a'), make); // pipeline-1
+    cache.request(bodied('b'), make); // pipeline-2
+    // Touch 'a', which moves it to the back of the recency order.
+    cache.request(bodied('a'), make); // hit, no build, 'a' now freshest
+    expect(builds).toBe(2);
+    // A new structure now evicts 'b' — the new stalest — rather than the touched 'a'.
+    cache.request(bodied('c'), make); // pipeline-3, evicts pipeline-2 ('b')
+    expect(evicted).toEqual(['pipeline-2']);
+    expect(cache.size).toBe(2);
+  });
+
+  it('with no bound keeps every distinct structure, the program-scoped default', () => {
+    const cache = new PipelineCache<string>();
+    for (const code of ['a', 'b', 'c', 'd', 'e']) cache.request(bodied(code), () => code);
+    expect(cache.size).toBe(5);
+  });
+
+  it('hands every held pipeline back when cleared', () => {
+    const evicted: string[] = [];
+    const cache = new PipelineCache<string>({ onEvict: (value) => evicted.push(value) });
+    cache.request(bodied('a'), () => 'pa');
+    cache.request(bodied('b'), () => 'pb');
+    cache.clear();
+    expect(cache.size).toBe(0);
+    expect(evicted.sort()).toEqual(['pa', 'pb']);
+  });
+});
+
 describe('the structure key', () => {
   it('is one string for two equal structures and two for any difference', () => {
     expect(structureKey(structure())).toBe(structureKey(structure()));
     expect(structureKey(structure())).not.toBe(
       structureKey(structure({ stages: [{ code: 'fn main() {}', entry: 'renamed' }] }))
+    );
+  });
+
+  it('keys apart two frames whose one spec binds resources of different kinds', () => {
+    // The gap a shared cache (item 63) would otherwise activate: two frames carry
+    // the same pipeline spec — same name, same bindings by name, same source — but
+    // the resource under the binding is a read-only storage buffer in one and a
+    // writable one in the other. The bind-group layout the card bakes differs, so
+    // the second frame must not be handed the first's pipeline. Resolving the
+    // binding's kind and access into the structure is what keys them apart.
+    const spec: PipelineSpec = {
+      kind: 'render',
+      name: 'draw',
+      vertex: 'fullscreen',
+      fragment: { module: 'wgsl', entry: 'fragMain' },
+      bindings: [{ group: 0, binding: 0, resource: 'data', visibility: ['fragment'] }],
+    };
+    const frame = (access: 'read' | 'read-write'): Parameters<typeof pipelineStructureOf>[0] => ({
+      id: 'shared-spec',
+      target: 'wgsl',
+      uniforms: [],
+      modules: [{ name: 'wgsl', code: 'fn main() {}' }],
+      resources: [{ kind: 'buffer', name: 'data', access, bytes: 16 }],
+      pipelines: [spec],
+      passes: [{ pipeline: 'draw', draws: [{ vertices: 3 }] }],
+    });
+
+    expect(structureKey(pipelineStructureOf(frame('read'), spec))).not.toBe(
+      structureKey(pipelineStructureOf(frame('read-write'), spec))
     );
   });
 });

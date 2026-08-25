@@ -51,7 +51,7 @@ import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
 import { runFrame, issueDraws } from '../submit/execute.js';
 import type { ResolvedGeometry, ResolvedRun } from '../submit/execute.js';
 import { frameStores, mergeGroups } from '../graph/attachments.js';
-import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
+import { PIPELINE_CACHE_LIMIT, PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
 
 /** What the pipeline cache holds for one structure: the compiled pipeline and the
  * group-0 layouts its bindings ask for, plus the bands those layouts were built
@@ -170,6 +170,18 @@ export function createWebGPUBackend(
   // the backend's own target and averaging sampler outlive every program and are
   // freed when the backend is.
   const arena = new Arena<GpuResource>(disposeGpuResource);
+
+  // One pipeline cache for the backend's whole life, shared across every program it
+  // builds (item 63). Two programs whose frames differ only in resident data — one
+  // material's pipeline drawn over two meshes — share the one pipeline their
+  // structures key to, so the second compiles none. It is bounded so the sharing
+  // cannot grow card memory without end: past `PIPELINE_CACHE_LIMIT` distinct
+  // structures it frees the least-recently-requested. A WebGPU pipeline the GC
+  // reclaims once nothing references it, so an eviction is a dropped reference with
+  // no `onEvict`; a live program keeps its own reference to any pipeline it resolved,
+  // so eviction bounds reuse, never liveness. Item 15 scoped this per program because
+  // an unbounded shared cache was the hazard; the bound is what lets it be shared.
+  const pipelineCache = new PipelineCache<CachedPipeline>({ bound: PIPELINE_CACHE_LIMIT });
 
   const fullscreen = device.createShaderModule({ code: FULLSCREEN_TRIANGLE });
 
@@ -359,15 +371,11 @@ export function createWebGPUBackend(
 
       // The static lifetime of §5, owned by the pipeline cache rather than compiled
       // inline the way the fused `createProgram` did: a pipeline depends on nothing
-      // but its own structure, and two pipelines of one frame keyed alike return one
-      // handle. It is scoped to this program so its pipelines are released when the
-      // renderer's LRU lets the program go, which is what keeps the editing path —
-      // a source recompiled on every edit — from growing card memory without bound.
-      // A cache shared across programs would need an eviction the cache does not yet
-      // have; cross-frame pipeline reuse waits on [ROADMAP.md](../docs/ROADMAP.md)
-      // item 63.
-      const pipelineCache = new PipelineCache<CachedPipeline>();
-
+      // but its own structure, and two pipelines keyed alike return one handle. The
+      // cache is the backend's shared one (item 63), so a pipeline this program's
+      // structure keys to is compiled once across every program that carries it and
+      // this program compiles none the cache already holds; the bound on that cache
+      // is what keeps the sharing from growing card memory without end.
       const compiled = compileModules(device, frame, onRefused);
 
       // Which turn the next frame runs on, and the render bundles recorded per
@@ -1300,6 +1308,9 @@ export function createWebGPUBackend(
       if (targetHandle !== null) arena.free(targetHandle);
       target = null;
       targetHandle = null;
+      // The shared pipeline cache is emptied with the backend so the pipelines it
+      // held across programs do not outlive the device they were compiled on.
+      pipelineCache.clear();
       if (configured) context.unconfigure();
     },
   };

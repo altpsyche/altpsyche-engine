@@ -1187,7 +1187,7 @@ not read them, and re-pinning every line number is not this move's job. See
 **How it landed.** [tests/import-graph.test.ts](../tests/import-graph.test.ts) gains four
 describe blocks, one per rule, each walking the parse tree rather than matching text.
 **Rule 1** (`graph/` imports nothing outside itself) was **violated** before this item:
-`graph/types.ts` imported `FrameTraffic` from `resource/arena.js`, the one cross-layer edge
+`graph/types.ts` imported `FrameTraffic` from `resource/arena.ts`, the one cross-layer edge
 in all of `graph/`, flagged in item 37's [JOURNAL.md](JOURNAL.md) row as this item's to
 sever. `FrameTraffic` is a pure data interface and part of the `Backend` contract, which
 already lives in `graph/types.ts`, so it moved there and the arena now imports it from
@@ -1203,9 +1203,9 @@ could not tell the two apart. **Rule 4** (`host/loop.ts` imports only the packag
 a file that does not exist yet — the loop arrives with `submit(graph)`, item 68 — so its live
 check passes vacuously and stands ready for when the file lands, which is decision 7's "a test
 rather than a discipline". **Each rule was verified to fail when broken, once:** a stray
-`resource/` import in `graph/validate.ts` (rule 1), a `gpu/webgpu.js` import in `toy/frame.ts`
+`resource/` import in `graph/validate.ts` (rule 1), a `gpu/webgpu.ts` import in `toy/frame.ts`
 (rule 2), stripping `OffscreenCanvas` off a `gpu/webgl2.ts` canvas param (rule 3), and a
-`host/loop.ts` importing `gpu/renderer.js` (rule 4) each turned the suite red, and each was
+`host/loop.ts` importing `gpu/renderer.ts` (rule 4) each turned the suite red, and each was
 reverted. **What the cheap gates could not see:** nothing here — these are node tests reading
 the tree's own import edges and AST, which is exactly what runs. 686 node tests green (was
 682), `type-check` green; the door did not move (`FrameTraffic` was never on it), so
@@ -1563,7 +1563,7 @@ Each row is honest and neither is wrong. What nobody owned is the join: **on a m
 
 ### 63. The pipeline cache dedupes across programs
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A pipeline compiled once and shared by every program whose frame carries its structure, bounded so the sharing cannot grow card memory without end.
 
@@ -1572,6 +1572,46 @@ Each row is honest and neither is wrong. What nobody owned is the join: **on a m
 **Needs.** item 15, item 21.
 
 **Why it exists.** Item 12 built `PipelineCache` content-addressed for exactly this reuse, and item 15 wired the backends to compile through it — but **per program**, not per backend, so the cache never dedupes across two programs. That scope was deliberate and is recorded in item 15's [JOURNAL.md](JOURNAL.md) row: a per-backend `PipelineCache` has no eviction, so the editing path — a source recompiled on every keystroke, each a new structure — would accumulate pipelines the renderer's LRU can no longer reach, which is the unbounded card-memory growth that LRU exists to prevent. The renderer's LRU already reuses a whole **program** when a frame repeats exactly (via `frameKey`), so the reuse still missing is the scene-tier one: many programs sharing one material's pipeline over different meshes, each compiling that pipeline again today. That is why this `Needs` item 21 as well as item 15 — the `cost()` metric is where a "compiled nothing new" claim becomes assertable without a browser, and the scene tier is where the reuse pays. **Reverse:** none needed until it lands; item 15's per-program scope stands on its own.
+
+**How it landed.** [pipeline/cache.ts](../pipeline/cache.ts)'s `PipelineCache` gained a bound
+and an eviction, and the WebGPU backend now builds every program's pipelines through **one**
+cache for its whole life rather than a fresh cache per program. The cache is a map from handle to
+pipeline plus a recency-ordered `byKey` map: a request that hits an existing structure re-inserts
+its key to the back (touched), and a build that pushes the size past the `bound` frees the front —
+the least-recently-requested — through an optional `onEvict`. `PIPELINE_CACHE_LIMIT` is **64**,
+above the renderer's `PROGRAM_CACHE_LIMIT` of 16 so a program cache full of distinct programs does
+not evict a pipeline a still-warm program holds. **The bound governs reuse, not liveness:** a
+WebGPU pipeline the GC reclaims once nothing references it, so the WebGPU cache passes no `onEvict`
+and an eviction is a dropped reference — a live program that resolved a pipeline keeps its own
+reference whatever the cache evicts, so nothing draws through a freed pipeline. `two programs …
+compile one pipeline between them` is asserted at the backend
+([tests/renderer-pipeline-cache.test.ts](../tests/renderer-pipeline-cache.test.ts)): two frames
+sharing one structure over meshes that differ only in resident vertex bytes issue one
+`createRenderPipeline` and one `createBindGroupLayout` between them, while each builds its own
+vertex buffer and bind group — two programs, one pipeline. `a bound … frees the stalest` is
+asserted on the cache directly ([tests/pipeline-cache.test.ts](../tests/pipeline-cache.test.ts)): a
+cache bounded at two, given a third distinct structure, frees the first, its handle stops
+resolving, and re-requesting it builds afresh; a touched structure stays warm while the next
+stalest goes.
+
+**Two calls taken while landing it, both in [JOURNAL.md](JOURNAL.md).** (1) The structure key was
+**incomplete for cross-program keying** and I closed it: `pipelineStructureOf` keyed a binding by
+its resource *name*, so two frames with one spec over resources of different kinds (a read-only
+storage buffer versus a writable one) keyed alike and the second would have been handed a layout
+built for the first — a silent wrong picture the per-program cache never exposed because it only
+ever saw one frame. The key now resolves each binding's kind, buffer access and texture
+format/use, asserted in `pipeline-cache.test.ts`. (2) **WebGL 2 stays program-scoped.** Its cached
+`WebGLProgram` needs an explicit `gl.deleteProgram`, so a shared cache would need a reference count
+before an eviction could free one out from under a live program that still draws with it; that
+backend draws one fullscreen pass today and its cross-program reuse is Phase 5 work, so its cache
+keeps the unbounded per-program default and frees on the program's own dispose, unchanged.
+
+**What the gates could not see.** Every assertion reads calls off the recording double; that the
+shared, evicting cache draws a byte-identical picture on a card is `gate:browser`'s to confirm (the
+"15 of 15 traces agreeing" the `Done when` for renames names, and the standing card-gated gap
+these rows keep) and was not run in this unattended session. It is pixel-identical by construction:
+a shared pipeline is the same compiled object a per-program cache built, and eviction only drops a
+reference the GC would have dropped when the program did. See [JOURNAL.md](JOURNAL.md).
 
 ### 64. The node corpus loader assembles a frame again
 
