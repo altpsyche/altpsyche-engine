@@ -140,7 +140,7 @@ describe('cost', () => {
         workgroup: [8, 8, 1],
       },
     ];
-    const passes: PassSpec[] = [{ pipeline: 'step', dispatch: 'frame' }];
+    const passes: PassSpec[] = [{ pipeline: 'step', groups: [1, 1, 1] }];
     const c = cost(frame({ pipelines, passes }), SIZE);
     expect(c.draws).toBe(0);
     expect(c.dispatches).toBe(1);

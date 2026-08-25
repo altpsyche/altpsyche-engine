@@ -18,7 +18,6 @@ import type {
   BindingSpec,
   Backend,
   DeviceReport,
-  Dispatch,
   DrawSpec,
   IndexResource,
   PassSpec,
@@ -33,7 +32,7 @@ import type {
   VertexResource,
 } from '../graph/types.js';
 import {
-  dispatchesIndirectly,
+  groupsIndirectly,
   drawsCorners,
   drawsIndirectly,
   isRenderPass,
@@ -543,8 +542,8 @@ export function createWebGPUBackend(
           const ordered = isRenderPass(pass) && spec?.kind === 'render' && spec.geometry !== undefined;
           const named: string[] = isRenderPass(pass)
             ? pass.draws.filter(drawsIndirectly).map((draw) => draw.indirect)
-            : dispatchesIndirectly(pass.dispatch)
-              ? [pass.dispatch.indirect]
+            : groupsIndirectly(pass.groups)
+              ? [pass.groups.indirect]
               : [];
           const words = !isRenderPass(pass) ? 3 : ordered ? 5 : 4;
           for (const name of named) arguments_.set(name, Math.max(arguments_.get(name) ?? 0, words * 4));
@@ -860,32 +859,6 @@ export function createWebGPUBackend(
         // not to be the source's.
         const at = new Map(block.map((slot) => [slot.name, slot.offset / 4]));
 
-        /** How many workgroups one dispatch runs, in whole blocks of the pipeline's
-         * own size. Every count is worked out from a size the description already
-         * carries, so nothing here is a number written down twice. */
-        const blocks = (dispatch: Dispatch, workgroup: [number, number, number]): [number, number, number] => {
-          if (Array.isArray(dispatch)) return dispatch;
-          // A dispatch reading its count out of a buffer never reaches here, since
-          // the count is the card's to read and there is nothing to work out.
-          if (dispatchesIndirectly(dispatch)) {
-            throw new Error(`the frame for "${frame.id}" counted the blocks of a dispatch it reads from a buffer`);
-          }
-          const over =
-            dispatch === 'frame'
-              ? [width, height]
-              : (() => {
-                  const resource = resourceOf(frame, dispatch.over);
-                  if (!resource || resource.kind !== 'texture') {
-                    throw new Error(
-                      `the frame for "${frame.id}" dispatches over "${dispatch.over}", which is no texture`
-                    );
-                  }
-                  const dims = sizeAt(resource.size, { width, height });
-                  return [dims.width, dims.height];
-                })();
-          return [Math.ceil((over[0] as number) / workgroup[0]), Math.ceil((over[1] as number) / workgroup[1]), 1];
-        };
-
         runs = planFramePasses(frame, geometryOf);
 
         /** The geometry an inline draw or a bundle walks, resolved from names to the
@@ -1004,9 +977,12 @@ export function createWebGPUBackend(
 
               let dispatch: ResolvedRun['dispatch'];
               if (!isRenderPass(pass) && spec.kind === 'compute') {
-                dispatch = dispatchesIndirectly(pass.dispatch)
-                  ? { indirect: buffers.get(pass.dispatch.indirect) as GPUBuffer }
-                  : { blocks: blocks(pass.dispatch, spec.workgroup) };
+                // The group count is the producer's, worked out from the size it
+                // had (item 72): `groups` is either the count itself or a buffer
+                // to read it from, so nothing here derives it from the frame size.
+                dispatch = groupsIndirectly(pass.groups)
+                  ? { indirect: buffers.get(pass.groups.indirect) as GPUBuffer }
+                  : { blocks: pass.groups };
               }
 
               const recordedBundle = recorded.get(index);
@@ -1143,11 +1119,11 @@ export function createWebGPUBackend(
           // resize threw away, so they are recorded again, and the resolved runs
           // point at the textures the resize replaced, so they are resolved again.
           //
-          // A frame with no such texture still re-resolves on a size change,
-          // because a compute dispatch of `frame` counts its blocks against the
-          // frame size and those counts used to be worked out every frame. It
-          // resolves once per resize rather than once per frame — `made` tracks the
-          // size the runs were resolved at whether or not a texture was rebuilt.
+          // The runs re-resolve on a size change so a rebuilt frame-sized texture's
+          // new views reach them; a compute group count no longer follows the frame
+          // (item 72 moved that to the producer), so a frame with no frame-sized
+          // texture re-resolves to the same runs — harmless, and `made` still tracks
+          // the size the runs were resolved at whether or not a texture was rebuilt.
           if (made.width !== width || made.height !== height) {
             if (declared.some(spansFrame)) {
               build(spansFrame);

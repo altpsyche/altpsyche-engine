@@ -77,7 +77,10 @@ const stateFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
     },
   ],
   passes: [
-    { pipeline: 'step', dispatch: { over: 'next' } },
+    // The producer's group count (item 72): [32, 32, 1] covers the 256×256 grid
+    // the `next` texture holds in whole blocks of the pipeline's 8×8 workgroup,
+    // worked out from that fixed size rather than the frame's own by the backend.
+    { pipeline: 'step', groups: [32, 32, 1] },
     { pipeline: 'shade', draws: [{ vertices: 3 }] },
   ],
   swap: [['previous', 'next']],
@@ -231,47 +234,15 @@ describe('the two sets of bind groups', () => {
   });
 });
 
-describe('the dispatch a pass takes over a resource', () => {
-  it('covers that texture in whole blocks of the pipeline’s own workgroup size', () => {
+describe('the group count a compute pass over a resource carries', () => {
+  it('dispatches the count the producer set over its own texture, not the frame', () => {
     const { gpu, backend } = backendOver();
     backend.program(stateFrame()).draw();
 
-    // Two hundred and fifty-six over eight, on both axes, and not the frame's
-    // own eight hundred by six hundred.
+    // Thirty-two over both axes — the 256×256 grid the producer counted, and not
+    // the frame's own eight hundred by six hundred. The count is worked out above
+    // the backend now (item 72), which dispatches it as given.
     const { x, y, z } = gpu.calls('dispatchWorkgroups')[0]!;
     expect([x, y, z]).toEqual([32, 32, 1]);
-  });
-
-  it('rounds a size the workgroup does not divide up rather than leaving an edge unwritten', () => {
-    const { gpu, backend } = backendOver();
-    const frame = stateFrame();
-    backend
-      .program({
-        ...frame,
-        resources: [
-          frame.resources[0]!,
-          { ...PAIR('previous'), size: { width: 100, height: 60 } },
-          { ...PAIR('next'), size: { width: 100, height: 60 } },
-          frame.resources[3]!,
-        ],
-      })
-      .draw();
-
-    const { x, y, z } = gpu.calls('dispatchWorkgroups')[0]!;
-    expect([x, y, z]).toEqual([13, 8, 1]);
-  });
-
-  it('refuses a dispatch over a name that is no texture of the frame', () => {
-    const { backend } = backendOver();
-    const frame = stateFrame();
-
-    expect(() =>
-      backend
-        .program({
-          ...frame,
-          passes: [{ pipeline: 'step', dispatch: { over: 'stateSampler' } }, frame.passes[1]!],
-        })
-        .draw()
-    ).toThrow(/dispatches over "stateSampler", which is no texture/);
   });
 });

@@ -76,12 +76,27 @@ const UNIFORMS = [
   { name: 'u_resolution', type: 'vec2' },
 ];
 
+// The block one run of the program covers, which is what the group count is worked
+// out against; it matches the source's own `@workgroup_size(8, 8)`.
+const WORKGROUP: [number, number, number] = [8, 8, 1];
+
+/** How many workgroups cover a device-pixel size in whole blocks of the source's
+ * workgroup size — the count a compute pass carries as its `groups`. Item 72 moved
+ * this off the backend and onto the producer: the page works the count out from
+ * the size it is about to draw at, an edge that does not divide by the block size
+ * covered by a block running past it, rather than the backend deriving it from the
+ * frame size at draw time. */
+function groupsCovering(width: number, height: number): [number, number, number] {
+  return [Math.ceil(width / WORKGROUP[0]), Math.ceil(height / WORKGROUP[1]), 1];
+}
+
 // The frame's structure: one storage texture the size of the frame, one compute
-// pipeline over it, one pass dispatched over the whole frame, and the texture
+// pipeline over it, one pass over the workgroups `groups` names, and the texture
 // named as the picture so the backend copies it onto the canvas. The bindings are
 // the source's own — the uniform block at 0 and the storage texture at 1, both
-// reached only by the compute stage.
-const DESCRIPTION: FrameDescription = {
+// reached only by the compute stage. The pass's group count is the one thing that
+// depends on the size drawn at, so the description is built per size.
+const descriptionAt = (groups: [number, number, number]): FrameDescription => ({
   target: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms' },
@@ -106,25 +121,46 @@ const DESCRIPTION: FrameDescription = {
         { group: 0, binding: 0, resource: 'uniforms', visibility: ['compute'] },
         { group: 0, binding: 1, resource: 'picture', visibility: ['compute'], reads: 'storage' },
       ],
-      // The block one run of the program covers, which is what the dispatch count
-      // is worked out against; it matches the source's own `@workgroup_size`.
-      workgroup: [8, 8, 1],
+      workgroup: WORKGROUP,
     },
   ],
-  // The whole frame in blocks of the workgroup size, so an edge that does not
-  // divide by the block size is covered by a block running past it.
-  passes: [{ pipeline: 'paint', dispatch: 'frame' }],
+  passes: [{ pipeline: 'paint', groups }],
   present: 'picture',
-};
+});
 
-// The frame the backend draws, with the block laid out from the source and the
-// two capabilities it depends on declared. `requires` is what `refusal` reads a
-// graph against a device, and where selection comes back empty it is what names
-// what was missing rather than showing nothing.
-const frame = {
-  ...frameOf('compute-field', DESCRIPTION, { [WGSL_DOCUMENT]: SOURCE }, UNIFORMS, uniformBlockOf(SOURCE)),
-  requires: ['compute', 'storage-texture'] as readonly Capability[],
-};
+const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+
+/** The device-pixel size the frame is about to be drawn at: the canvas's CSS size
+ * times the screen's pixel density, which is what the surface resizes the frame to
+ * — it multiplies by `devicePixelRatio`, this example setting no dpr clamp. The
+ * group count is worked out against this, so a compute pass covers the picture the
+ * backend actually allocates rather than the CSS box. */
+function devicePixels(): { width: number; height: number } {
+  const density = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+  return {
+    width: Math.max(1, Math.round(canvas.clientWidth * density)),
+    height: Math.max(1, Math.round(canvas.clientHeight * density)),
+  };
+}
+
+/** The frame the backend draws at a given device-pixel size, with the block laid
+ * out from the source and the two capabilities it depends on declared. `requires`
+ * is what `refusal` reads a graph against a device, and where selection comes back
+ * empty it names what was missing rather than showing nothing. */
+function frameAt(pixels: { width: number; height: number }) {
+  return {
+    ...frameOf(
+      'compute-field',
+      descriptionAt(groupsCovering(pixels.width, pixels.height)),
+      { [WGSL_DOCUMENT]: SOURCE },
+      UNIFORMS,
+      uniformBlockOf(SOURCE)
+    ),
+    requires: ['compute', 'storage-texture'] as readonly Capability[],
+  };
+}
+
+const frame = frameAt(devicePixels());
 
 // What core WebGL 2 has of the ten capabilities §10 names. It guarantees
 // multisampled renderbuffers and nothing else on this list — no compute and no
@@ -132,8 +168,6 @@ const frame = {
 // a live backend's own `device.capabilities` to selection and refusal, is not
 // landed yet; when it is, this example reads the real report rather than this.
 const WEBGL2_CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>(['msaa']);
-
-const canvas = document.querySelector('canvas') as HTMLCanvasElement;
 
 // Ask for a WebGPU card first, because whether asking returns one is the fact
 // selection reads — a browser can report the API and then hand back nothing. A
@@ -164,7 +198,15 @@ if ('backend' in selection && selection.backend === 'webgpu' && device) {
   if (!surface) {
     showMessage('WebGPU was selected and then would not give this page a device');
   } else {
-    const fit = () => surface.resize(canvas.clientWidth, canvas.clientHeight);
+    // A resize both resizes the surface and hands it a frame whose group count
+    // covers the new size. Item 72 made the count the producer's, so the page
+    // recomputes it here rather than the backend tracking the frame size — this is
+    // the §7 layer boundary the item relocated the computation across, seen from a
+    // consumer: the one that owns the size owns the count.
+    const fit = () => {
+      surface.resize(canvas.clientWidth, canvas.clientHeight);
+      surface.setGraph(frameAt(devicePixels()));
+    };
     addEventListener('resize', fit);
     fit();
     surface.start();

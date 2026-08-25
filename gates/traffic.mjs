@@ -120,7 +120,7 @@ const computeFrame = {
       workgroup: [1, 1, 1],
     },
   ],
-  passes: [{ pipeline: 'plan', dispatch: [1, 1, 1] }],
+  passes: [{ pipeline: 'plan', groups: [1, 1, 1] }],
 };
 
 const frames = [

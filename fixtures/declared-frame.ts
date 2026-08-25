@@ -8,7 +8,7 @@
  * surface. A shader a reader can reach declaring a frame of its own is what would
  * move it.
  */
-import type { Dispatch, GeometryPrimitive, StencilMode, TransientSize } from '@altpsyche/engine';
+import type { Groups, GeometryPrimitive, StencilMode, TransientSize } from '@altpsyche/engine';
 import type { TextureContent, BufferContent } from './shader-content';
 import type { BlendMode } from './shader-blend';
 
@@ -100,15 +100,16 @@ export interface DeclaredFrame {
     samples?: 4;
   }[];
   /** The passes in the order they run. A pass names an entry point the source
-   * declares, and a dispatch of `frame` covers the picture in whole blocks of that
-   * entry point's own workgroup size, where naming a resource covers that texture
-   * the same way. A pass naming geometry draws it through a vertex entry point of
-   * the shader's own, as many instances over as it asks for. A pass with none of
-   * the three draws the backend's own three corners, and which kind of work a pass
-   * is comes off the stage the source declares its entry point at. */
+   * declares, and a compute pass carries `groups`: the whole workgroup count a
+   * producer worked out from the size it had (`groupsToCover` covers a pixel size
+   * in whole blocks of the entry point's own workgroup size), or a buffer to read
+   * that count from. A pass naming geometry draws it through a vertex entry point
+   * of the shader's own, as many instances over as it asks for. A pass with none
+   * of the three draws the backend's own three corners, and which kind of work a
+   * pass is comes off the stage the source declares its entry point at. */
   passes: {
     pipeline: string;
-    dispatch?: Dispatch;
+    groups?: Groups;
     /** The vertex entry point the geometry is read by, which a drawn pass needs
      * because the frame's own corners are the backend's program rather than the
      * shader's. */

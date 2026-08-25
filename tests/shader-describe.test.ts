@@ -50,7 +50,7 @@ const SAMPLING_FRAME: DeclaredFrame = {
 
 const COMPUTE_FRAME: DeclaredFrame = {
   textures: [{ name: 'picture', size: { scale: 1 } }],
-  passes: [{ pipeline: 'paint', dispatch: 'frame' }],
+  passes: [{ pipeline: 'paint', groups: [1, 1, 1] }],
   present: 'picture',
 };
 
@@ -71,7 +71,7 @@ describe('the pipeline kind a description takes off the source', () => {
 
     expect(frame.pipelines[0]!.kind).toBe('compute');
     expect(frame.documents).toEqual([{ name: 'wgsl' }]);
-    expect(frame.passes).toEqual([{ pipeline: 'paint', dispatch: 'frame' }]);
+    expect(frame.passes).toEqual([{ pipeline: 'paint', groups: [1, 1, 1] }]);
   });
 
   it('refuses a pass naming an entry point the source declares at neither stage', () => {
@@ -80,15 +80,15 @@ describe('the pipeline kind a description takes off the source', () => {
     );
   });
 
-  it('refuses a compute entry run with no dispatch, since there is nothing to cover', () => {
+  it('refuses a compute entry run with no groups, since there is nothing to cover', () => {
     expect(() => declaredFrame('x', COMPUTE, { ...COMPUTE_FRAME, passes: [{ pipeline: 'paint' }] })).toThrow(
-      /runs the compute entry "paint" with no dispatch/
+      /runs the compute entry "paint" with no groups/
     );
   });
 
-  it('refuses a fragment entry given a dispatch, which is the other kind of work', () => {
+  it('refuses a fragment entry given a group count, which is the other kind of work', () => {
     expect(() =>
-      declaredFrame('x', SAMPLES, { ...SAMPLING_FRAME, passes: [{ pipeline: 'fragMain', dispatch: 'frame' }] })
+      declaredFrame('x', SAMPLES, { ...SAMPLING_FRAME, passes: [{ pipeline: 'fragMain', groups: [1, 1, 1] }] })
     ).toThrow(/dispatches "fragMain", which its source declares as a fragment stage/);
   });
 });
@@ -256,7 +256,7 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
       { name: 'next', size: { width: 256, height: 256 } },
     ],
     samplers: [{ name: 'stateSampler', filter: 'linear', wrap: 'clamp' }],
-    passes: [{ pipeline: 'step', dispatch: [32, 32, 1] }, { pipeline: 'shade' }],
+    passes: [{ pipeline: 'step', groups: [32, 32, 1] }, { pipeline: 'shade' }],
   };
 
   it('builds one pipeline per entry point a pass names, each at its own stage', () => {
@@ -268,7 +268,7 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     ]);
     expect(frame.documents).toEqual([{ name: 'wgsl' }]);
     expect(frame.passes).toEqual([
-      { pipeline: 'step', dispatch: [32, 32, 1] },
+      { pipeline: 'step', groups: [32, 32, 1] },
       { pipeline: 'shade', draws: [{ vertices: 3 }] },
     ]);
   });
@@ -290,8 +290,8 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     const frame = declaredFrame('core-state', TWO_STAGES, {
       ...TWO_PASSES,
       passes: [
-        { pipeline: 'step', dispatch: [32, 32, 1] },
-        { pipeline: 'step', dispatch: [32, 32, 1] },
+        { pipeline: 'step', groups: [32, 32, 1] },
+        { pipeline: 'step', groups: [32, 32, 1] },
         { pipeline: 'shade' },
       ],
     });
@@ -300,13 +300,13 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     expect(frame.passes).toHaveLength(3);
   });
 
-  it('refuses a dispatch on the pass that draws, and a draw on the pass that dispatches', () => {
+  it('refuses a group count on the pass that draws, and a draw on the pass that dispatches', () => {
     expect(() =>
       declaredFrame('core-state', TWO_STAGES, {
         ...TWO_PASSES,
         passes: [
-          { pipeline: 'step', dispatch: [32, 32, 1] },
-          { pipeline: 'shade', dispatch: 'frame' },
+          { pipeline: 'step', groups: [32, 32, 1] },
+          { pipeline: 'shade', groups: [1, 1, 1] },
         ],
       })
     ).toThrow(/dispatches "shade", which its source declares as a fragment stage/);
@@ -316,7 +316,7 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
         ...TWO_PASSES,
         passes: [{ pipeline: 'step' }, { pipeline: 'shade' }],
       })
-    ).toThrow(/runs the compute entry "step" with no dispatch/);
+    ).toThrow(/runs the compute entry "step" with no groups/);
   });
 });
 
@@ -436,7 +436,7 @@ fn warp(@location(0) corner: vec2<f32>, @location(1) place: vec2<f32>) -> @built
       declaredFrame('x', both, {
         geometry: [{ name: 'grid', primitive: 'quad-grid', size: [2, 2] }],
         textures: [{ name: 'picture', size: { scale: 1 } }],
-        passes: [{ pipeline: 'paint', vertex: 'warp', geometry: 'grid', dispatch: 'frame' }],
+        passes: [{ pipeline: 'paint', vertex: 'warp', geometry: 'grid', groups: [1, 1, 1] }],
         present: 'picture',
       })
     ).toThrow(/draws geometry through "paint", which is a compute stage/);
@@ -590,7 +590,7 @@ describe('the attachments a description says a pass draws into', () => {
       declaredFrame('core-depth', COMPUTE, {
         textures: [{ name: 'picture', size: { scale: 1 } }],
         attachments: [{ name: 'held', size: { scale: 1 }, format: 'rgba8unorm' }],
-        passes: [{ pipeline: 'paint', dispatch: 'frame', colour: [{ resource: 'held', clear: [0, 0, 0, 1] }] }],
+        passes: [{ pipeline: 'paint', groups: [1, 1, 1], colour: [{ resource: 'held', clear: [0, 0, 0, 1] }] }],
         present: 'picture',
       })
     ).toThrow('the frame for "core-depth" draws attachments through "paint", which is a compute stage');
@@ -844,8 +844,8 @@ const PLANNED: DeclaredFrame = {
   buffers: [{ name: 'counts', bytes: 32 }],
   textures: [{ name: 'picture', size: { scale: 1 } }],
   passes: [
-    { pipeline: 'plan', dispatch: [1, 1, 1] },
-    { pipeline: 'paint', dispatch: { indirect: 'counts' } },
+    { pipeline: 'plan', groups: [1, 1, 1] },
+    { pipeline: 'paint', groups: { indirect: 'counts' } },
     { pipeline: 'shade', indirect: 'counts' },
   ],
   present: 'picture',
@@ -899,18 +899,18 @@ describe('a pass whose counts come out of a buffer', () => {
     expect(drawing).toEqual({ pipeline: 'shade', draws: [{ indirect: 'counts' }] });
   });
 
-  it('carries the dispatch the entry wrote, which the renderer reads the same way', () => {
+  it('carries the group count the entry wrote, which the renderer reads the same way', () => {
     const [, painting] = planned().passes;
 
-    expect(painting).toEqual({ pipeline: 'paint', dispatch: { indirect: 'counts' } });
+    expect(painting).toEqual({ pipeline: 'paint', groups: { indirect: 'counts' } });
   });
 
   it('is refused where it reads them from something the frame never declares', () => {
     expect(() =>
       planned({
         passes: [
-          { pipeline: 'plan', dispatch: [1, 1, 1] },
-          { pipeline: 'paint', dispatch: 'frame' },
+          { pipeline: 'plan', groups: [1, 1, 1] },
+          { pipeline: 'paint', groups: [1, 1, 1] },
           { pipeline: 'shade', indirect: 'plans' },
         ],
       })
@@ -921,8 +921,8 @@ describe('a pass whose counts come out of a buffer', () => {
     expect(() =>
       planned({
         passes: [
-          { pipeline: 'plan', dispatch: [1, 1, 1] },
-          { pipeline: 'paint', dispatch: 'frame' },
+          { pipeline: 'plan', groups: [1, 1, 1] },
+          { pipeline: 'paint', groups: [1, 1, 1] },
           { pipeline: 'shade', indirect: 'counts', instances: 3 },
         ],
       })
@@ -933,8 +933,8 @@ describe('a pass whose counts come out of a buffer', () => {
     expect(() =>
       planned({
         passes: [
-          { pipeline: 'plan', dispatch: [1, 1, 1] },
-          { pipeline: 'paint', dispatch: 'frame', indirect: 'counts' },
+          { pipeline: 'plan', groups: [1, 1, 1] },
+          { pipeline: 'paint', groups: [1, 1, 1], indirect: 'counts' },
           { pipeline: 'shade' },
         ],
       })
@@ -1057,8 +1057,8 @@ describe('a pass the card is asked to report on', () => {
       planned({
         buffers: [{ name: 'counts', bytes: 32 }],
         passes: [
-          { pipeline: 'plan', dispatch: [1, 1, 1], visible: 'counts' },
-          { pipeline: 'paint', dispatch: [1, 1, 1] },
+          { pipeline: 'plan', groups: [1, 1, 1], visible: 'counts' },
+          { pipeline: 'paint', groups: [1, 1, 1] },
           { pipeline: 'shade', draws: undefined } as never,
         ],
       })

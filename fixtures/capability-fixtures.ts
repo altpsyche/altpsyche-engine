@@ -7,6 +7,7 @@
  * compiles, so nothing under it reaches a consumer.
  */
 import type { DeclaredFrame } from './declared-frame';
+import { groupsToCover } from '../graph/refs';
 import { mat4, vec3 } from '@altpsyche/engine';
 import { type Camera, type Scene, viewProjection, worldMatrix } from '@altpsyche/engine';
 import { drawList } from '@altpsyche/engine';
@@ -232,8 +233,11 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       textures: [{ name: 'picture', size: { scale: 1 } }],
       // The whole frame in blocks of the size the source declares, so an edge
       // that does not divide by that size is covered by a block running past it
-      // rather than left unwritten.
-      passes: [{ pipeline: 'paint', dispatch: 'frame' }],
+      // rather than left unwritten. The count is the producer's now (item 72):
+      // worked out here from the corpus size the frame is drawn at (800×600) and
+      // the source's `@workgroup_size(8, 8)`, rather than by the backend at draw
+      // time from the frame size.
+      passes: [{ pipeline: 'paint', groups: groupsToCover({ width: 800, height: 600 }, [8, 8, 1]) }],
       present: 'picture',
     },
   },
@@ -283,8 +287,10 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       samplers: [{ name: 'stateSampler', filter: 'linear', wrap: 'clamp' }],
       // The grid in blocks of the size the source declares, then the frame drawn
       // from what that pass left behind. The order is what makes it a field
-      // rather than two unrelated pictures.
-      passes: [{ pipeline: 'step', dispatch: { over: 'next' } }, { pipeline: 'shade' }],
+      // rather than two unrelated pictures. The count covers the 256×256 grid the
+      // `next` texture holds, worked out by the producer (item 72) from that fixed
+      // size and the source's `@workgroup_size(8, 8)` — not the frame's own size.
+      passes: [{ pipeline: 'step', groups: groupsToCover({ width: 256, height: 256 }, [8, 8, 1]) }, { pipeline: 'shade' }],
     },
   },
   {
@@ -527,8 +533,8 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // asked for, and then the frame itself, drawn as much as the other set of
       // words says.
       passes: [
-        { pipeline: 'plan', dispatch: [1, 1, 1] },
-        { pipeline: 'paint', dispatch: { indirect: 'blocks' } },
+        { pipeline: 'plan', groups: [1, 1, 1] },
+        { pipeline: 'paint', groups: { indirect: 'blocks' } },
         { pipeline: 'shade', indirect: 'copies' },
       ],
     },

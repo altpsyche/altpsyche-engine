@@ -194,12 +194,11 @@ export function runFrame(exec: FrameExecution): void {
       const compute = encoder.beginComputePass(timestamps);
       compute.setPipeline(run.pipeline as GPUComputePipeline);
       run.bands.forEach((band, at) => compute.setBindGroup(at, band));
-      // A dispatch of `frame` covers the picture in whole blocks, so an
-      // edge that does not divide by the workgroup size is covered by a
-      // block that runs past it rather than left unwritten. Naming a
+      // The group count `blocks` carries is the producer's, worked out from
+      // the size it had (item 72) and resolved into the run already. Naming a
       // buffer hands the card the buffer and nothing else: the count is the
-      // three words an earlier pass wrote at the start of it. Both are
-      // worked out where the frame was resolved rather than here.
+      // three words an earlier pass wrote at the start of it. Neither is
+      // derived here.
       const dispatch = run.dispatch as { blocks: [number, number, number] } | { indirect: GPUBuffer };
       if ('indirect' in dispatch) compute.dispatchWorkgroupsIndirect(dispatch.indirect, 0);
       else compute.dispatchWorkgroups(...dispatch.blocks);

@@ -15,7 +15,7 @@
  */
 import { WGSL_DOCUMENT } from '@altpsyche/engine';
 import { uniformBindingOf } from '@altpsyche/engine';
-import { dispatchesIndirectly } from '@altpsyche/engine';
+import { groupsIndirectly } from '@altpsyche/engine';
 import { namesReachedBy } from '@altpsyche/engine';
 import {
   computeEntriesOf,
@@ -153,10 +153,10 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   );
   for (const pass of declared.passes) {
     const compute = stages.get(pass.pipeline);
-    if (compute && pass.dispatch === undefined) {
-      throw new Error(`the frame for "${id}" runs the compute entry "${pass.pipeline}" with no dispatch`);
+    if (compute && pass.groups === undefined) {
+      throw new Error(`the frame for "${id}" runs the compute entry "${pass.pipeline}" with no groups`);
     }
-    if (!compute && pass.dispatch !== undefined) {
+    if (!compute && pass.groups !== undefined) {
       throw new Error(
         `the frame for "${id}" dispatches "${pass.pipeline}", which its source declares as a fragment stage`
       );
@@ -374,7 +374,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   for (const pass of declared.passes) {
     const named =
       pass.indirect ??
-      (pass.dispatch !== undefined && dispatchesIndirectly(pass.dispatch) ? pass.dispatch.indirect : undefined);
+      (pass.groups !== undefined && groupsIndirectly(pass.groups) ? pass.groups.indirect : undefined);
     if (named === undefined) continue;
     if (!(declared.buffers ?? []).some((one) => one.name === named)) {
       throw new Error(
@@ -638,7 +638,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
       ...(pass.timed !== undefined ? { timed: pass.timed } : {}),
       ...(pass.visible !== undefined ? { visible: pass.visible } : {}),
     };
-    if (pass.dispatch !== undefined) return { pipeline: pass.pipeline, dispatch: pass.dispatch, ...said };
+    if (pass.groups !== undefined) return { pipeline: pass.pipeline, groups: pass.groups, ...said };
     // What a pass attaches, carrying only what the entry said: a clear value where
     // it named one, and nothing where it means the attachment is kept.
     const attaches: Pick<RenderPassSpec, 'colour' | 'depth'> = {

@@ -76,6 +76,24 @@ export function sizeKey(size: TransientSize): string {
   return 'scale' in size ? `scale${size.scale}` : `${size.width}x${size.height}`;
 }
 
+/** How many workgroups cover a pixel size in whole blocks of a compute pipeline's
+ * own `@workgroup_size`. This is the producer's half of item 72: the count a
+ * compute pass runs is worked out here, from a size a producer has, rather than
+ * by the backend at draw time from the frame size. An edge that does not divide
+ * by the block size is covered by a block running past it (`ceil`) rather than
+ * left unwritten, and the third axis is one, since a picture is covered in two.
+ *
+ * It is the compute sibling of `sizeAt`: `sizeAt` resolves a size to pixels, this
+ * turns those pixels into the `[n, n, n]` a `ComputePassSpec.groups` carries. A
+ * producer covering the whole frame passes `sizeAt({ scale: 1 }, frame)`; one
+ * covering a texture of its own passes that texture's resolved size. */
+export function groupsToCover(
+  pixels: { width: number; height: number },
+  workgroup: readonly [number, number, number]
+): [number, number, number] {
+  return [Math.ceil(pixels.width / workgroup[0]), Math.ceil(pixels.height / workgroup[1]), 1];
+}
+
 /** A resource declared inside the graph by descriptor rather than allocated
  * through the arena, so `submit/` owns its whole life — one frame, or pooled
  * across frames once item 18 lands. A depth target is a texture transient with

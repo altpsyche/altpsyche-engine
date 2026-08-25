@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { Arena, type Handle } from '../resource/arena';
 import { FrameResources } from '../submit/frame-resources';
 import { TransientPool, shapeKey } from '../submit/transient-pool';
-import { isResident, isTransient, sizeAt, type BufferRef, type TextureRef, type Transient } from '../graph/refs';
+import {
+  groupsToCover,
+  isResident,
+  isTransient,
+  sizeAt,
+  type BufferRef,
+  type TextureRef,
+  type Transient,
+} from '../graph/refs';
 import type { BufferHandle, TransientId } from '../graph/handles';
 
 /**
@@ -229,5 +237,32 @@ describe('a size resolves to pixels against the frame', () => {
 
   it('rounds a scale that does not divide the frame evenly to the nearer pixel', () => {
     expect(sizeAt({ scale: 0.5 }, { width: 101, height: 99 })).toEqual({ width: 51, height: 50 });
+  });
+});
+
+/**
+ * `groupsToCover`, the producer's half of item 72: the group count a compute pass
+ * runs is worked out here from a pixel size, in whole blocks of a pipeline's
+ * `@workgroup_size`, rather than by the backend at draw time from the frame size.
+ * An edge that does not divide by the block is covered by a block running past it.
+ */
+describe('a group count covers a pixel size in whole workgroups', () => {
+  it('divides a size the workgroup fits exactly into that many blocks', () => {
+    expect(groupsToCover({ width: 256, height: 256 }, [8, 8, 1])).toEqual([32, 32, 1]);
+  });
+
+  it('covers the corpus frame in the blocks the corpus fixtures carry', () => {
+    expect(groupsToCover({ width: 800, height: 600 }, [8, 8, 1])).toEqual([100, 75, 1]);
+  });
+
+  it('rounds an edge the workgroup does not divide up rather than leaving it unwritten', () => {
+    // 801 over 8 is 100.125, so a hundred-and-first block runs past the edge; 60
+    // over 8 is 7.5, rounded up to eight — the case the backend used to compute.
+    expect(groupsToCover({ width: 801, height: 600 }, [8, 8, 1])).toEqual([101, 75, 1]);
+    expect(groupsToCover({ width: 100, height: 60 }, [8, 8, 1])).toEqual([13, 8, 1]);
+  });
+
+  it('reads each axis against its own workgroup extent, and the third is one', () => {
+    expect(groupsToCover({ width: 64, height: 64 }, [16, 8, 1])).toEqual([4, 8, 1]);
   });
 });

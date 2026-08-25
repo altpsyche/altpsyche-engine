@@ -535,7 +535,10 @@ const computeFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
       ],
     },
   ],
-  passes: [{ pipeline: 'field', dispatch: 'frame' }],
+  // The group count is the producer's (item 72): [100, 75, 1] covers the fake
+  // canvas's 800×600 in whole blocks of the pipeline's 8×8 workgroup. The backend
+  // dispatches it as given and no longer works it out from the frame size.
+  passes: [{ pipeline: 'field', groups: [100, 75, 1] }],
   present: 'picture',
   ...over,
 });
@@ -666,21 +669,27 @@ describe('the compute pass it runs', () => {
     expect(order).toEqual(['beginComputePass', 'setPipeline', 'setBindGroup', 'dispatchWorkgroups', 'endPass']);
   });
 
-  it('covers the frame in whole blocks of the workgroup size the source declares', () => {
+  it('dispatches the group count the producer set and does not recount on a resize', () => {
     const { gpu, backend } = backendOver();
     const program = backend.program(computeFrame());
+    program.draw();
+    // A resize no longer moves the count (item 72): the producer worked it out
+    // from the size it had and the backend dispatches that, so a page wanting a
+    // resize to change the coverage hands over a fresh frame — it is not the
+    // backend's to derive from the new frame size.
     backend.resize(801, 600);
     program.draw();
 
-    // 801 does not divide by 8, so the block that runs past the edge is asked for
-    // rather than the last column being left unwritten.
-    expect(gpu.calls('dispatchWorkgroups')[0]).toMatchObject({ x: 101, y: 75, z: 1 });
+    expect(gpu.calls('dispatchWorkgroups').map((call) => [call.x, call.y, call.z])).toEqual([
+      [100, 75, 1],
+      [100, 75, 1],
+    ]);
   });
 
   it('dispatches exactly what a description naming its own count asks for', () => {
     const { gpu, backend } = backendOver();
     const frame = computeFrame();
-    backend.program({ ...frame, passes: [{ pipeline: 'field', dispatch: [3, 2, 1] }] }).draw();
+    backend.program({ ...frame, passes: [{ pipeline: 'field', groups: [3, 2, 1] }] }).draw();
 
     expect(gpu.calls('dispatchWorkgroups')[0]).toMatchObject({ x: 3, y: 2, z: 1 });
   });

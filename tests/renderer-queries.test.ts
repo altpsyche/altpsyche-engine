@@ -125,7 +125,7 @@ describe('a pass that is timed', () => {
 
   it('times a compute pass the same way, since a dispatch has two ends as well', () => {
     const { gpu, backend } = backendOver();
-    backend.program(frameOf({ passes: [{ pipeline: 'plan', dispatch: [1, 1, 1], timed: 'readings' }] })).draw();
+    backend.program(frameOf({ passes: [{ pipeline: 'plan', groups: [1, 1, 1], timed: 'readings' }] })).draw();
 
     expect(gpu.calls('beginComputePass')[0]?.times).toBe('readings-times');
     expect(gpu.calls('resolveQuerySet')[0]?.count).toBe(2);

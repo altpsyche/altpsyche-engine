@@ -89,8 +89,8 @@ const planned = (over: Partial<FrameGraph> = {}): FrameGraph => ({
     },
   ],
   passes: [
-    { pipeline: 'plan', dispatch: [1, 1, 1] },
-    { pipeline: 'paint', dispatch: { indirect: 'counts' } },
+    { pipeline: 'plan', groups: [1, 1, 1] },
+    { pipeline: 'paint', groups: { indirect: 'counts' } },
     { pipeline: 'shade', draws: [{ indirect: 'counts' }] },
   ],
   ...over,
@@ -189,8 +189,8 @@ describe('a pass whose count comes out of a buffer', () => {
     backend.program(
       planned({
         passes: [
-          { pipeline: 'plan', dispatch: [1, 1, 1] },
-          { pipeline: 'paint', dispatch: 'frame' },
+          { pipeline: 'plan', groups: [1, 1, 1] },
+          { pipeline: 'paint', groups: [1, 1, 1] },
           { pipeline: 'shade', draws: [{ vertices: 3 }] },
         ],
       })
@@ -212,8 +212,8 @@ describe('what a count read out of a buffer is refused for', () => {
     refused(
       planned({
         passes: [
-          { pipeline: 'plan', dispatch: [1, 1, 1] },
-          { pipeline: 'paint', dispatch: { indirect: 'picture' } },
+          { pipeline: 'plan', groups: [1, 1, 1] },
+          { pipeline: 'paint', groups: { indirect: 'picture' } },
           { pipeline: 'shade', draws: [{ vertices: 3 }] },
         ],
       }),
@@ -226,8 +226,8 @@ describe('what a count read out of a buffer is refused for', () => {
       planned({
         resources: [planned().resources[0] as BufferResource, counts({ bytes: 8 }), planned().resources[2]!],
         passes: [
-          { pipeline: 'plan', dispatch: [1, 1, 1] },
-          { pipeline: 'paint', dispatch: { indirect: 'counts' } },
+          { pipeline: 'plan', groups: [1, 1, 1] },
+          { pipeline: 'paint', groups: { indirect: 'counts' } },
           { pipeline: 'shade', draws: [{ vertices: 3 }] },
         ],
       }),
@@ -240,8 +240,8 @@ describe('what a count read out of a buffer is refused for', () => {
       planned({
         resources: [planned().resources[0] as BufferResource, counts({ bytes: 12 }), planned().resources[2]!],
         passes: [
-          { pipeline: 'plan', dispatch: [1, 1, 1] },
-          { pipeline: 'paint', dispatch: 'frame' },
+          { pipeline: 'plan', groups: [1, 1, 1] },
+          { pipeline: 'paint', groups: [1, 1, 1] },
           { pipeline: 'shade', draws: [{ indirect: 'counts' }] },
         ],
       }),

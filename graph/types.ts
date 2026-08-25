@@ -297,16 +297,21 @@ export interface RenderPipelineSpec {
   samples?: 4;
 }
 
-/** How much compute work one pass runs. `frame` covers the picture in blocks of
- * the pipeline's workgroup size. Naming a resource covers that resource instead,
- * which is what a pass writing a texture of its own wants: the count is worked out
- * from the texture's size and the workgroup size, so neither number is written
- * down a second time where it could disagree.
+/** How much compute work one pass runs: a whole count of workgroups, or a buffer
+ * to read that count out of.
+ *
+ * `[n, n, n]` is the count itself. A producer works it out from the size it has —
+ * `groupsToCover` in `graph/refs.ts` covers a pixel size in whole blocks of the
+ * pipeline's workgroup size — so no size and no block count is written down a
+ * second time where the backend could disagree with it. The runtime `'frame'` and
+ * `{ over }` variants that had the backend derive the count at draw time are gone
+ * (item 72): that computation lived below the §7 layer boundary and the size it
+ * needs is the producer's, not the device's.
  *
  * Naming a buffer runs however much the three words at the start of it say, which
  * is the same arrangement a drawn pass has: the count arrives from a pass rather
  * than from the description. */
-export type Dispatch = [number, number, number] | 'frame' | { over: string } | { indirect: string };
+export type Groups = [number, number, number] | { indirect: string };
 
 /** A program run over a grid of work items rather than over the frame's corners.
  * The block size is read off the source's own `@workgroup_size`, because the
@@ -405,10 +410,10 @@ export interface RenderPassSpec {
   colour?: { resource: string; clear?: [number, number, number, number]; resolve?: string }[];
 }
 
-/** One run of compute work, over as much of it as the dispatch asks for. */
+/** One run of compute work, over as many workgroups as `groups` asks for. */
 export interface ComputePassSpec {
   pipeline: string;
-  dispatch: Dispatch;
+  groups: Groups;
   /** The buffer the two times this pass took land in, the same as a drawn pass.
    * There is no count of samples here, since nothing in a compute pass is drawn
    * for something else to cover. */
@@ -542,10 +547,10 @@ export function perDrawBinding(spec: PipelineSpec): BindingSpec | undefined {
   return spec.bindings.find((binding) => binding.perDraw !== undefined);
 }
 
-/** Whether a dispatch reads its count out of a buffer, which is the same question
- * asked of the other kind of pass. */
-export function dispatchesIndirectly(dispatch: Dispatch): dispatch is { indirect: string } {
-  return typeof dispatch === 'object' && !Array.isArray(dispatch) && 'indirect' in dispatch;
+/** Whether a group count reads out of a buffer, which is the same question asked
+ * of the other kind of pass. */
+export function groupsIndirectly(groups: Groups): groups is { indirect: string } {
+  return !Array.isArray(groups) && 'indirect' in groups;
 }
 
 /** One document of a frame by the name a pipeline gave it. */

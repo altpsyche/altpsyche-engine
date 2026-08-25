@@ -1800,7 +1800,7 @@ see [JOURNAL.md](JOURNAL.md).
 
 ### 72. `Dispatch` loses its runtime variants for `groups`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The §14 row `Dispatch = … | 'frame'` to `groups: [n,n,n] | { indirect }`: the `'frame'` and `{ over: <texture> }` variants go, and a producer computes the group count from the size it knows rather than the backend computing it at draw time.
 
@@ -1809,3 +1809,40 @@ see [JOURNAL.md](JOURNAL.md).
 **Needs.** item 37.
 
 **Why it exists.** Split out of item 38 on 2026-08-25: it is the one row of the six that cannot be a rename even in principle. `gpu/webgpu.ts`'s `blocks()` turns `'frame'` into `[width, height]` and `{ over }` into a named texture's size at draw time; removing those variants relocates that computation across the §7 layer boundary into producers, which is a behaviour change, not a name change. `core-compute`, `core-storage-pingpong`, `compute-field` and several tests author the dropped variants today, so the work includes teaching each to emit concrete `groups`.
+
+**How it landed.** The graph type `Dispatch = [n,n,n] | 'frame' | { over } | { indirect }`
+became `Groups = [n,n,n] | { indirect }` ([graph/types.ts](../graph/types.ts)) — the two runtime
+variants gone — and `ComputePassSpec.dispatch` became `groups`; the guard `dispatchesIndirectly`
+became `groupsIndirectly`. The backend's `blocks()` in [gpu/webgpu.ts](../gpu/webgpu.ts), which
+turned `'frame'` into `[width, height]` and `{ over }` into a named texture's size **at draw
+time**, is deleted: `resolveTurns` now resolves a compute pass to `{ blocks: pass.groups }`
+directly, so no group count is derived from the frame size below the §7 boundary. That computation
+moved up to a pure producer helper, `groupsToCover(pixels, workgroup)` in
+[graph/refs.ts](../graph/refs.ts) — the compute sibling of item 71's `sizeAt` — which covers a
+pixel size in whole blocks of a pipeline's `@workgroup_size`, an edge that does not divide covered
+by a block running past it. Every producer that authored a dropped variant now emits concrete
+`groups`: the corpus fixtures `core-compute` (`groupsToCover({800,600},[8,8,1])` = `[100,75,1]`)
+and `core-state` (over the 256×256 `next` grid, `[32,32,1]`) in
+[fixtures/capability-fixtures.ts](../fixtures/capability-fixtures.ts); `examples/compute-field`,
+which computes its count from the device-pixel size it is about to draw at and, on a resize, hands
+the surface a fresh frame via `setGraph` rather than the backend tracking the frame size — the §7
+relocation seen from a consumer. The `describe`/`declaredFrame` producer
+([fixtures/shader-describe.ts](../fixtures/shader-describe.ts)) passes `groups` straight through
+(it no longer converts a variant), and its "compute entry with no dispatch" refusal reads "with no
+groups". The `core-storage-pingpong` fixture the item names does not exist in the tree; the
+existing compute presets are what was taught. `Groups` is exported through the door in place of
+`Dispatch`, and `groupsIndirectly` in place of `dispatchesIndirectly` — a 1:1 swap, so `gate:pack`
+stays at **54 door names**; `groupsToCover` is a producer helper kept off the door. `npm test` 704
+green (4 new `groupsToCover` cases in [tests/graph-refs.test.ts](../tests/graph-refs.test.ts)),
+`type-check` clean, `gate:pack` 54/11.
+
+**What the cheap gates could not see.** That the compute corpus presets draw the same picture —
+the item's "the browser batch still agrees 15 of 15" — needs `gate:browser`, held for the closing
+session and not run here. It is behaviour-preserving by construction at the corpus size (800×600):
+`groupsToCover({800,600},[8,8,1])` is `[100,75,1]`, the exact count the old `'frame'` branch
+computed at that size, so the recorded `dispatchWorkgroups` calls are byte-identical and the trace
+contract (which draws the corpus at 800×600) agrees either way. **The one genuine behaviour change
+is deliberate and sanctioned by the item:** a compute pass's group count no longer follows a
+resize — the backend dispatches the producer's count as given. A consumer wanting a resize to
+re-cover the frame rebuilds the graph with a fresh count, which is what `compute-field` now does;
+the old auto-tracking is gone by design (§7, §14). See [JOURNAL.md](JOURNAL.md).

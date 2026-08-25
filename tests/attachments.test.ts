@@ -219,7 +219,7 @@ describe('mergeGroups decides which consecutive passes share a render pass', () 
       ],
       passes: [
         { pipeline: 'a', draws: [{ vertices: 3 }], colour: [{ resource: 'buf', clear: [0, 0, 0, 1] }] },
-        { pipeline: 'c', dispatch: 'frame' },
+        { pipeline: 'c', groups: [1, 1, 1] },
         { pipeline: 'b', draws: [{ vertices: 3 }], colour: [{ resource: 'buf' }] },
       ],
     });

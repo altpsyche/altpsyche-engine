@@ -66,12 +66,12 @@ describe('the compute preset the build wrote', () => {
     });
   });
 
-  it('recounts its blocks against the new size after a resize between draws', () => {
-    // The dispatch count used to be worked out every frame from the current size.
-    // Item 16 resolves each pass once and re-resolves on a size change rather than
-    // per frame, so a resize between two draws still lands the blocks the new size
-    // implies rather than the old ones — the property that would break if the
-    // re-resolution were skipped when the size moved.
+  it('keeps the producer’s block count across a resize rather than recounting it', () => {
+    // The count used to be worked out every frame from the current size. Item 72
+    // moved it to the producer that had the size, so the backend dispatches the
+    // count the build wrote and a resize between two draws does not change it —
+    // covering a new size is a fresh frame the page hands over, not the backend's
+    // to derive. The property that would break is a backend that recounted here.
     const gpu = createFakeGPU();
     const backend = createWebGPUBackend(gpu.canvas, gpu.device);
     if (!backend) throw new Error('the fake canvas gave no WebGPU context');
@@ -85,11 +85,8 @@ describe('the compute preset the build wrote', () => {
     backend.resize(WIDTH / 2, HEIGHT / 2);
     program.draw();
     const [x, y] = workgroup();
-    expect(gpu.calls('dispatchWorkgroups').at(-1)).toMatchObject({
-      x: Math.ceil(WIDTH / 2 / x),
-      y: Math.ceil(HEIGHT / 2 / y),
-      z: 1,
-    });
+    const covered = { x: Math.ceil(WIDTH / x), y: Math.ceil(HEIGHT / y), z: 1 };
+    expect(gpu.calls('dispatchWorkgroups').at(-1)).toMatchObject(covered);
   });
 
   it('builds a compute pipeline at the layout the description carries, not one the driver inferred', () => {

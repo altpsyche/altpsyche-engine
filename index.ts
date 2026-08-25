@@ -68,9 +68,9 @@ export {
 } from './toy/frame.js';
 export {
   componentsOf,
-  dispatchesIndirectly,
   drawsCorners,
   drawsIndirectly,
+  groupsIndirectly,
   isRenderPass,
   moduleOf,
   perDrawBinding,
@@ -85,10 +85,10 @@ export type {
   ComputePassSpec,
   ComputePipelineSpec,
   DeviceReport,
-  Dispatch,
   DocumentSpec,
   DrawSpec,
   FrameDescription,
+  Groups,
   IndexResource,
   ModuleSpec,
   PassSpec,

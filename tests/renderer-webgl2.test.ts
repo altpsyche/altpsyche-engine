@@ -125,7 +125,7 @@ describe('a description above the subset', () => {
       bindings: [],
     };
     expect(() =>
-      backend.program(glsl({ pipelines: [compute], passes: [{ pipeline: 'field', dispatch: 'frame' }] }))
+      backend.program(glsl({ pipelines: [compute], passes: [{ pipeline: 'field', groups: [1, 1, 1] }] }))
     ).toThrow('the frame for "fixture" runs compute work, and WebGL 2 has no compute stage');
   });
 
