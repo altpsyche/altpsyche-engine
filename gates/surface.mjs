@@ -18,7 +18,12 @@ const PORT = Number(process.env.PORT ?? 3161);
 // surface cannot pass against a shape only it makes.
 const { glslFrame, wgslFrame } = await loadFromRoot('toy/frame.ts');
 const corpus = await loadCorpus();
-const fixture = (id) => corpus.find((one) => one.id === id);
+/** @param {string} id */
+const fixture = (id) => {
+  const found = corpus.find((one) => one.id === id);
+  if (!found) throw new Error(`no ${id} fixture in the corpus`);
+  return found;
+};
 
 const VERTEX = 'attribute vec3 position;void main(){gl_Position=vec4(position.xy,0.0,1.0);}';
 
@@ -27,7 +32,6 @@ const GRAPH = glslFrame(
   VERTEX,
   'precision highp float;uniform float u_time;uniform vec2 u_resolution;' +
     'void main(){vec2 uv=gl_FragCoord.xy/u_resolution;gl_FragColor=vec4(uv,abs(sin(u_time)),1.0);}',
-  []
 );
 
 // A swap is what a reader does by moving a control or pressing compile, and
@@ -36,7 +40,6 @@ const SECOND = glslFrame(
   'surface-probe-second',
   VERTEX,
   'precision highp float;void main(){gl_FragColor=vec4(1.0,0.0,0.0,1.0);}',
-  []
 );
 
 // The same shader, the same length, a different colour. A reader editing a
@@ -46,14 +49,12 @@ const SAME_LENGTH = glslFrame(
   'surface-probe-second',
   VERTEX,
   'precision highp float;void main(){gl_FragColor=vec4(0.0,0.0,1.0,1.0);}',
-  []
 );
 
 const BROKEN = glslFrame(
   'surface-probe-broken',
   VERTEX,
   'precision highp float;void main(){gl_FragColor=notAFunction(1.0);}',
-  []
 );
 
 // The other backend, and the reason it is a second phase rather than four more
@@ -82,7 +83,7 @@ fn fragMain(@builtin(position) at : vec4f) -> @location(0) vec4f {
   return vec4f(uv, abs(sin(frame.u_time)), 1.0);
 }`;
 
-const WGSL = wgslFrame('surface-probe-wgsl', WGSL_CODE, WGSL_BLOCK, []);
+const WGSL = wgslFrame('surface-probe-wgsl', WGSL_CODE, WGSL_BLOCK);
 
 /** A name WGSL does not have, so the module fails to compile and the card says
  * where. WebGPU answers that after the fact rather than at the call that made
@@ -90,8 +91,7 @@ const WGSL = wgslFrame('surface-probe-wgsl', WGSL_CODE, WGSL_BLOCK, []);
 const WGSL_BROKEN = wgslFrame(
   'surface-probe-wgsl-broken',
   WGSL_CODE.replace('abs(sin(frame.u_time))', 'notAFunction(frame.u_time)'),
-  WGSL_BLOCK,
-  []
+  WGSL_BLOCK
 );
 
 // The one fixture whose picture is made out of its own last frame, derived rather
@@ -130,8 +130,9 @@ await page.addScriptTag({ path: bundle });
 
 const results = await page.evaluate(
   async ({ graph, second, sameLength, broken }) => {
+    /** @param {number} ms */
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    const canvas = document.getElementById('c');
+    const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
     const checks = [];
     let frames = 0;
     let lostFired = 0;
@@ -144,10 +145,15 @@ const results = await page.evaluate(
     // The whole buffer costs a read of every pixel, so it is taken on the one
     // frame that is asked for rather than on all of them.
     let sampleWhole = false;
+    /** @type {ReturnType<typeof import('../trace/frame-coverage.js').readFrameCoverage> | null} */
     let whole = null;
     const originalDraw = WebGL2RenderingContext.prototype.drawArrays;
-    WebGL2RenderingContext.prototype.drawArrays = function (...args) {
-      originalDraw.apply(this, args);
+    WebGL2RenderingContext.prototype.drawArrays = function (
+      /** @type {number} */ mode,
+      /** @type {number} */ first,
+      /** @type {number} */ count
+    ) {
+      originalDraw.call(this, mode, first, count);
       const px = new Uint8Array(4);
       this.readPixels(
         Math.floor(this.drawingBufferWidth / 2),
@@ -234,7 +240,7 @@ const results = await page.evaluate(
     checks.push({
       name: 'an edit that leaves the source the same length still reaches the card',
       ok: centre === '0,0,255',
-      detail: `centre ${centre}, both sources ${second.modules.find((m) => m.name === 'fragment').code.length} characters`,
+      detail: `centre ${centre}, both sources ${second.modules.find((m) => m.name === 'fragment')?.code.length} characters`,
     });
 
     const refusedBroken = surface.setGraph(broken);
@@ -265,12 +271,17 @@ const results = await page.evaluate(
       ok: canvas.width === Math.round(320 * density) && canvas.height === Math.round(180 * density),
       detail: `${canvas.width}x${canvas.height} at density ${density}`,
     });
+    // `whole` is written only inside the drawArrays override above, so along this
+    // straight-line path the checker still sees its initial `null`; the cast reads
+    // it back at its declared type so the truthiness guard narrows rather than
+    // collapsing to `never`.
+    const sampled = /** @type {ReturnType<typeof import('../trace/frame-coverage.js').readFrameCoverage> | null} */ (whole);
     checks.push({
       name: 'a resized surface paints every row and column of its buffer',
-      ok: !!whole && whole.paintedRows === whole.height && whole.paintedColumns === whole.width,
-      detail: whole
-        ? `${whole.paintedRows} of ${whole.height} rows and ${whole.paintedColumns} of ${whole.width} columns painted, ` +
-          `ground ${whole.ground.join(',')} over ${(whole.groundShare * 100).toFixed(1)}%`
+      ok: !!sampled && sampled.paintedRows === sampled.height && sampled.paintedColumns === sampled.width,
+      detail: sampled
+        ? `${sampled.paintedRows} of ${sampled.height} rows and ${sampled.paintedColumns} of ${sampled.width} columns painted, ` +
+          `ground ${sampled.ground.join(',')} over ${(sampled.groundShare * 100).toFixed(1)}%`
         : 'no frame was sampled',
     });
 
@@ -317,7 +328,7 @@ const server = http.createServer((_request, response) => {
   response.writeHead(200, { 'Content-Type': 'text/html' });
   response.end('<!doctype html><html><body style="margin:0"><canvas id="c" style="width:200px;height:100px"></canvas></body></html>');
 });
-await new Promise((ready) => server.listen(PORT, '127.0.0.1', ready));
+await new Promise((ready) => server.listen(PORT, '127.0.0.1', () => ready(undefined)));
 
 const card = await chromium.launch({
   executablePath: CHROME,
@@ -334,10 +345,12 @@ await gpuPage.addScriptTag({ path: bundle });
 
 const gpuResults = await gpuPage.evaluate(
   async ({ graph, broken, state, perdraw }) => {
+    /** @param {number} ms */
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const canvas = document.createElement('canvas');
     const checks = [];
     let frames = 0;
+    /** @type {string[]} */
     const said = [];
 
     const device = await window.requestWebGPUDevice();
@@ -351,6 +364,7 @@ const gpuResults = await gpuPage.evaluate(
     // device inside a second. What the backend draws into is a texture of its
     // own carrying `COPY_SRC`, so remembering the last one made is what gives a
     // frame to read.
+    /** @type {GPUTexture | null} */
     let target = null;
     const originalCreateTexture = device.createTexture.bind(device);
     device.createTexture = (spec) => {
@@ -362,6 +376,7 @@ const gpuResults = await gpuPage.evaluate(
     // A texture copies out a row at a time on a 256 byte stride, so the rows
     // come back padded and the padding has to come off before anything counts
     // pixels.
+    /** @param {GPUTexture} texture */
     const readTexture = async (texture) => {
       const stride = Math.ceil((texture.width * 4) / 256) * 256;
       const buffer = device.createBuffer({
@@ -428,15 +443,18 @@ const gpuResults = await gpuPage.evaluate(
       ok: canvas.width === Math.round(320 * density) && canvas.height === Math.round(180 * density),
       detail: `${canvas.width}x${canvas.height} at density ${density}`,
     });
+    // As with `whole` above: `target` is written only inside the createTexture
+    // override, so the cast reads it back at its declared type for the guard.
+    const framed = /** @type {GPUTexture | null} */ (target);
     checks.push({
       name: 'the WebGPU backend draws at the size the surface was resized to',
-      ok: !!target && target.width === canvas.width && target.height === canvas.height,
-      detail: target ? `${target.width}x${target.height} against a canvas of ${canvas.width}x${canvas.height}` : 'no frame texture',
+      ok: !!framed && framed.width === canvas.width && framed.height === canvas.height,
+      detail: framed ? `${framed.width}x${framed.height} against a canvas of ${canvas.width}x${canvas.height}` : 'no frame texture',
     });
-    const coverage = target
-      ? window.readFrameCoverage(await readTexture(target), {
-          width: target.width,
-          height: target.height,
+    const coverage = framed
+      ? window.readFrameCoverage(await readTexture(framed), {
+          width: framed.width,
+          height: framed.height,
           channels: 4,
         })
       : null;
@@ -461,9 +479,10 @@ const gpuResults = await gpuPage.evaluate(
     surface.stop();
     await sleep(120);
     const paused = target ? await readTexture(target) : null;
+    /** @param {Uint8Array | null} rows */
     const levelsOf = (rows) => {
       const seen = new Set();
-      for (let i = 0; i < rows.length; i += 4) seen.add(rows[i]);
+      for (let i = 0; rows && i < rows.length; i += 4) seen.add(rows[i]);
       return seen.size;
     };
     await sleep(400);

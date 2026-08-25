@@ -41,7 +41,7 @@ try {
   }
 } catch (error) {
   failures++;
-  console.log(`FAIL ${String(error.message).split('\n')[0]}`);
+  console.log(`FAIL ${String(/** @type {any} */ (error).message).split('\n')[0]}`);
 } finally {
   await browser.close().catch(() => {});
 }

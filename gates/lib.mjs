@@ -48,6 +48,7 @@ const DOOR = `--alias:@altpsyche/engine=${path.join(ROOT, 'index.ts')}`;
  * so the sources are bundled as they are written. The caller removes the staging
  * directory when it is done with the bundle.
  */
+/** @param {Record<string, string[]>} imports */
 export function bundleForPage(imports) {
   const staging = mkdtempSync(path.join(os.tmpdir(), 'engine-gate-'));
   const entry = path.join(staging, 'entry.ts');
@@ -68,6 +69,11 @@ export function bundleForPage(imports) {
  * A gate runs under node, which reads no TypeScript. Restating a rule instead of
  * compiling it is what goes wrong here: a restated shape cannot disagree with
  * itself, so nothing notices when it drifts from the shipped one.
+ */
+/**
+ * @template {string} M
+ * @param {M} module
+ * @returns {Promise<import('./load-map.js').ModuleOf<M>>}
  */
 export async function loadFromRoot(module) {
   const staging = mkdtempSync(path.join(os.tmpdir(), 'engine-gate-'));
@@ -126,9 +132,13 @@ export async function loadCorpus() {
     // remapping a loader does after fetching those files.
     const bytes = new Map();
     for (const resource of description.resources) {
-      if (!resource.source) continue;
-      const made = generated.get(resource.source);
-      if (!made) throw new Error(`nothing generated ${resource.source} for ${entry.id}`);
+      // Only some resource kinds carry a `source`; the others skip here exactly as
+      // a falsy `source` skipped them before, so the `in` narrows the union without
+      // changing which resources are remapped.
+      const source = 'source' in resource ? resource.source : undefined;
+      if (!source) continue;
+      const made = generated.get(source);
+      if (!made) throw new Error(`nothing generated ${source} for ${entry.id}`);
       bytes.set(resource.name, made);
     }
 

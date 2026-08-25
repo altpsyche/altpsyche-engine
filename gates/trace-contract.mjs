@@ -57,6 +57,13 @@ const SOFTWARE_ARGS = [
  * sequence the page below draws it through. A step in one and not the other is a
  * difference the contract would report as the device's, which is the one way this
  * gate can lie. */
+/**
+ * @param {typeof import('../index.js')} engine
+ * @param {typeof import('../gpu/webgpu.js')} backends
+ * @param {typeof import('../tests/support/fake-gpu.js')} fake
+ * @param {import('../graph/types.js').FrameGraph} frame
+ * @param {Record<string, number | number[]>} values
+ */
 async function traceOffTheDouble(engine, backends, fake, frame, values) {
   const gpu = fake.createFakeGPU({ connected: false });
   gpu.mapped = fake.paddedFrame(W, H);
@@ -95,7 +102,7 @@ async function main() {
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end('<!doctype html><html><body></body></html>');
   });
-  await new Promise((ready) => host.listen(PORT, '127.0.0.1', () => ready()));
+  await new Promise((ready) => host.listen(PORT, '127.0.0.1', () => ready(undefined)));
 
   const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
   await page.goto(`http://127.0.0.1:${PORT}/`);
@@ -111,6 +118,7 @@ async function main() {
         const device = await window.requestWebGPUDevice();
         if (!device) return { error: 'no WebGPU adapter, the browser needs --enable-unsafe-webgpu' };
 
+        /** @type {import('../trace/trace.js').TraceEntry[]} */
         const trace = [];
         const recorded = window.wrapDevice(device, trace);
 
@@ -133,7 +141,7 @@ async function main() {
           program.dispose();
           backend.dispose();
         } catch (e) {
-          return { error: String(e?.message ?? e).slice(0, 300) };
+          return { error: String(/** @type {any} */ (e)?.message ?? e).slice(0, 300) };
         }
 
         return { trace: window.projectTrace(trace) };

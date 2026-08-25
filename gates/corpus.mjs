@@ -49,7 +49,7 @@ const host = http.createServer((_request, response) => {
   response.writeHead(200, { 'Content-Type': 'text/html' });
   response.end('<!doctype html><html><body></body></html>');
 });
-await new Promise((ready) => host.listen(PORT, '127.0.0.1', () => ready()));
+await new Promise((ready) => host.listen(PORT, '127.0.0.1', () => ready(undefined)));
 
 const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
 await page.goto(`http://127.0.0.1:${PORT}/`);
@@ -76,8 +76,9 @@ for (const { id, frame, values, entry } of corpus) {
 
       // Anything the pipeline refuses arrives here rather than where it was made,
       // because WebGPU reports a bad shader through the device.
+      /** @type {string[]} */
       const refusals = [];
-      device.addEventListener('uncapturederror', (event) => refusals.push(String(event.error.message)));
+      device.addEventListener('uncapturederror', (event) => refusals.push(String(/** @type {any} */ (event).error.message)));
 
       const backend = window.createWebGPUBackend(canvas, device);
       if (!backend) return { error: 'no webgpu context' };
@@ -87,7 +88,7 @@ for (const { id, frame, values, entry } of corpus) {
       try {
         program = backend.program(frame);
       } catch (e) {
-        return { error: String(e.message || e).slice(0, 300) };
+        return { error: String(/** @type {any} */ (e).message || e).slice(0, 300) };
       }
 
       // A uniform an entry describes is a value a caller expects to reach the
@@ -121,10 +122,14 @@ for (const { id, frame, values, entry } of corpus) {
     console.log(`FAIL ${label}  drew nothing, 0 of ${result.total} pixels lit`);
     failures++;
   } else {
-    const share = ((result.lit / result.total) * 100).toFixed(1);
+    // The earlier arms have ruled out the error shape and a zero `lit`, so both are
+    // present here; the casts state what the branches already guarantee.
+    const lit = /** @type {number} */ (result.lit);
+    const total = /** @type {number} */ (result.total);
+    const share = ((lit / total) * 100).toFixed(1);
     const named = entry.uniforms.length;
     console.log(
-      `PASS ${label}  ${result.lit.toLocaleString('en-US')} of ${result.total.toLocaleString('en-US')} pixels lit, ${share}%` +
+      `PASS ${label}  ${lit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pixels lit, ${share}%` +
         `, ${named} declared uniform${named === 1 ? '' : 's'} found in the source`
     );
   }

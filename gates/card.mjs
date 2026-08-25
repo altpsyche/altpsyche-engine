@@ -56,7 +56,7 @@ const server = http.createServer((_request, response) => {
   response.writeHead(200, { 'Content-Type': 'text/html' });
   response.end('<!doctype html><html><body style="margin:0"></body></html>');
 });
-await new Promise((ready) => server.listen(PORT, '127.0.0.1', ready));
+await new Promise((ready) => server.listen(PORT, '127.0.0.1', () => ready(undefined)));
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: false, args: CARD_ARGS });
 const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
@@ -64,6 +64,7 @@ await page.goto(`http://127.0.0.1:${PORT}/`);
 await page.addScriptTag({ path: bundle });
 
 let failures = 0;
+/** @param {boolean} ok @param {string} line */
 const say = (ok, line) => {
   if (!ok) failures++;
   console.log(`${ok ? 'PASS' : 'FAIL'} ${line}`);
@@ -81,7 +82,7 @@ const card = await page.evaluate(async () => {
     architecture: adapter.info?.architecture ?? 'unknown',
     features: adapter.features.size,
     maxBufferSize: device.limits.maxBufferSize,
-    webgl: named ? gl.getParameter(named.UNMASKED_RENDERER_WEBGL) : 'not reported',
+    webgl: named ? /** @type {WebGL2RenderingContext} */ (gl).getParameter(named.UNMASKED_RENDERER_WEBGL) : 'not reported',
   };
 });
 
@@ -95,7 +96,7 @@ if (card.error) {
 
 say(card.architecture !== 'swiftshader', `the adapter is the card  ${card.vendor} / ${card.architecture}`);
 console.log(
-  `     ${card.features} adapter features, ${(card.maxBufferSize / 1024 ** 3).toFixed(1)} GiB buffer ceiling\n` +
+  `     ${card.features} adapter features, ${(/** @type {number} */ (card.maxBufferSize) / 1024 ** 3).toFixed(1)} GiB buffer ceiling\n` +
     `     WebGL 2 in the same browser reports ${card.webgl}`
 );
 
@@ -110,7 +111,7 @@ const CONTROL = {
 
 const control = await page.evaluate(
   async ({ sources, W, H, TOLERANCE }) => {
-    const adapter = await navigator.gpu.requestAdapter();
+    const adapter = /** @type {GPUAdapter} */ (await navigator.gpu.requestAdapter());
     const device = await adapter.requestDevice();
     const format = 'rgba8unorm';
     const vs = device.createShaderModule({
@@ -159,22 +160,23 @@ const control = await page.evaluate(
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
-    const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+    const gl = /** @type {WebGL2RenderingContext} */ (canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false }));
+    /** @param {number} kind @param {string} source */
     const build = (kind, source) => {
-      const shader = gl.createShader(kind);
+      const shader = /** @type {WebGLShader} */ (gl.createShader(kind));
       gl.shaderSource(shader, source);
       gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(/** @type {string} */ (gl.getShaderInfoLog(shader)));
       return shader;
     };
-    const program = gl.createProgram();
+    const program = /** @type {WebGLProgram} */ (gl.createProgram());
     try {
       gl.attachShader(program, build(gl.VERTEX_SHADER, sources.vertex));
       gl.attachShader(program, build(gl.FRAGMENT_SHADER, sources.fragment));
       gl.linkProgram(program);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(/** @type {string} */ (gl.getProgramInfoLog(program)));
     } catch (e) {
-      return { error: String(e.message || e) };
+      return { error: String(/** @type {any} */ (e).message || e) };
     }
     gl.useProgram(program);
     const quad = gl.createBuffer();
@@ -226,8 +228,9 @@ for (const { id, frame, values, entry } of corpus) {
 
       const device = await window.requestWebGPUDevice();
       if (!device) return { error: 'no WebGPU device on the card' };
+      /** @type {string[]} */
       const refusals = [];
-      device.addEventListener('uncapturederror', (event) => refusals.push(String(event.error.message)));
+      device.addEventListener('uncapturederror', (event) => refusals.push(String(/** @type {any} */ (event).error.message)));
 
       const backend = window.createWebGPUBackend(canvas, device);
       if (!backend) return { error: 'no webgpu context' };
@@ -237,7 +240,7 @@ for (const { id, frame, values, entry } of corpus) {
       try {
         program = backend.program(frame);
       } catch (e) {
-        return { error: String(e.message || e).slice(0, 300) };
+        return { error: String(/** @type {any} */ (e).message || e).slice(0, 300) };
       }
       const absent = window.missing(frame, declared);
       program.setUniforms(values);
@@ -257,11 +260,12 @@ for (const { id, frame, values, entry } of corpus) {
   else if (result.absent?.length)
     say(false, `${id} on the card  the program has nowhere to put ${result.absent.join(', ')}`);
   else if (result.lit === 0) say(false, `${id} on the card  drew nothing, 0 of ${result.total} pixels lit`);
-  else
-    say(
-      true,
-      `${id} on the card  ${result.lit.toLocaleString('en-US')} of ${result.total.toLocaleString('en-US')} pixels lit`
-    );
+  else {
+    // The earlier arms rule out the error shape and a zero `lit`, so both are present here.
+    const lit = /** @type {number} */ (result.lit);
+    const total = /** @type {number} */ (result.total);
+    say(true, `${id} on the card  ${lit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pixels lit`);
+  }
 }
 
 await browser.close();

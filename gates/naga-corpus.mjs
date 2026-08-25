@@ -40,12 +40,14 @@ const WEBGL2 = 'es300';
 /** Every `@vertex`/`@fragment`/`@compute` entry point in a source, in file
  * order. A compute entry carries `@workgroup_size(...)` between its stage
  * attribute and `fn`, so the match reaches across attributes to the name. */
+/** @param {string} src */
 const entryPoints = (src) =>
   [...src.matchAll(/@(vertex|fragment|compute)\b[\s\S]*?\bfn\s+([A-Za-z0-9_]+)/g)].map((m) => ({
-    stage: m[1],
+    stage: /** @type {'vertex' | 'fragment' | 'compute'} */ (m[1]),
     name: m[2],
   }));
 
+/** @param {string} profile @param {string} name @param {string} input @param {string} output */
 const naga = (profile, name, input, output) => {
   try {
     execFileSync('naga', ['--profile', profile, '--entry-point', name, input, output], {
@@ -53,8 +55,9 @@ const naga = (profile, name, input, output) => {
     });
     return { ok: true };
   } catch (e) {
-    if (e.code === 'ENOENT') throw e;
-    return { ok: false, message: (e.stderr?.toString() || e.message).trim().replace(/\s+/g, ' ') };
+    if (/** @type {any} */ (e).code === 'ENOENT') throw e;
+    const err = /** @type {any} */ (e);
+    return { ok: false, message: (err.stderr?.toString() || err.message).trim().replace(/\s+/g, ' ') };
   }
 };
 
@@ -81,13 +84,14 @@ for (const file of files) {
     try {
       result = naga(VIABILITY, ep.name, join(SOURCE, file), dst);
     } catch (e) {
-      if (e.code === 'ENOENT') {
+      if (/** @type {any} */ (e).code === 'ENOENT') {
         console.error('\nno `naga` on PATH — install with: cargo install naga-cli --version 30.0.1');
         process.exit(2);
       }
       throw e;
     }
     // WebGL 2's own profile, for the stages WebGL 2 can run. Compute is not one.
+    /** @type {{ ok?: boolean, message?: string, skip?: boolean }} */
     const webgl2 =
       ep.stage === 'compute'
         ? { skip: true }

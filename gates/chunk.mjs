@@ -37,6 +37,7 @@ const ROOT = join(here, '..');
 
 /** Resolve `./x.js` to `./x.ts` where the source is TypeScript, so esbuild bundles
  * the tree as written. Relative specifiers only — bare imports are left alone. */
+/** @type {import('esbuild').Plugin} */
 const tsFromJs = {
   name: 'ts-from-js',
   setup(pluginBuild) {
@@ -72,11 +73,14 @@ export async function analyseChunk() {
   });
 
   const outputs = result.metafile.outputs;
+  /** @param {string} input */
   const isTranslator = (input) => input.replace(/\\/g, '/').endsWith('resource/translator.ts');
 
   // The entry chunk is the one esbuild marks with our stdin sourcefile as its entryPoint.
   const [entryFile, entryOut] = Object.entries(outputs).find(([, o]) => o.entryPoint === 'first-download.js') ?? [];
-  if (!entryFile) throw new Error('no entry chunk in the bundle');
+  // entryOut is defined exactly when entryFile is — one tuple — so naming both here
+  // narrows entryOut without adding a case that can fire on its own.
+  if (!entryFile || !entryOut) throw new Error('no entry chunk in the bundle');
 
   // The translator chunk is the output whose inputs include resource/translator.ts.
   const translatorFile = Object.keys(outputs).find((f) => Object.keys(outputs[f].inputs).some(isTranslator));

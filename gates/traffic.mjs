@@ -48,13 +48,10 @@ struct Vertex { @builtin(position) at: vec4<f32>, @location(0) place: vec2<f32> 
   return vec4<f32>(v.place, uniforms.u_time, 1.0);
 }`;
 
+/** @type {import('../graph/types.js').FrameGraph} */
 const gridFrame = {
   id: 'grid',
   target: 'wgsl',
-  uniforms: [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     {
@@ -96,13 +93,10 @@ const COMPUTE_SOURCE = `struct Uniforms { u_time: f32, u_resolution: vec2<f32> }
 @group(0) @binding(1) var<storage, read_write> tally: array<u32>;
 @compute @workgroup_size(1) fn plan() { tally[0] = u32(uniforms.u_time); }`;
 
+/** @type {import('../graph/types.js').FrameGraph} */
 const computeFrame = {
   id: 'compute',
   target: 'wgsl',
-  uniforms: [
-    { name: 'u_time', type: 'float' },
-    { name: 'u_resolution', type: 'vec2' },
-  ],
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     { kind: 'buffer', name: 'tally', bytes: 256, access: 'read-write', data: new Uint8Array(256) },
@@ -129,7 +123,9 @@ const frames = [
 ];
 
 const idWidth = Math.max(...frames.map((f) => f.frame.id.length), 'frame'.length);
+/** @param {unknown} text @param {number} width */
 const pad = (text, width) => String(text).padEnd(width);
+/** @param {unknown} value @param {number} width */
 const num = (value, width = 8) => String(value).padStart(width);
 
 console.log(`\nresident traffic beside per-frame cost, at ${W}x${H} — two readings, never summed\n`);

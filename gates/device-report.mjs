@@ -38,7 +38,7 @@ const server = http.createServer((_request, response) => {
   response.writeHead(200, { 'Content-Type': 'text/html' });
   response.end('<!doctype html><html><body style="margin:0"></body></html>');
 });
-await new Promise((ready) => server.listen(PORT, '127.0.0.1', ready));
+await new Promise((ready) => server.listen(PORT, '127.0.0.1', () => ready(undefined)));
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: false, args: CARD_ARGS });
 const page = await browser.newPage({ viewport: { width: 400, height: 300 } });

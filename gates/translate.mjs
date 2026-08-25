@@ -59,10 +59,11 @@ const EXT = { vertex: 'vert', fragment: 'frag', compute: 'comp' };
  * `fn`, so the match reaches across attributes to the name. Shared in shape with
  * item 75's `gates/naga-corpus.mjs`, which asked the viability question this step
  * builds on. */
+/** @param {string} src */
 export const entryPoints = (src) =>
   [...src.matchAll(/@(vertex|fragment|compute)\b[\s\S]*?\bfn\s+([A-Za-z0-9_]+)/g)].map((m) => ({
-    stage: m[1],
-    name: m[2],
+    stage: /** @type {'vertex' | 'fragment' | 'compute'} */ (m[1]),
+    name: /** @type {string} */ (m[2]),
   }));
 
 /**
@@ -79,15 +80,23 @@ export const entryPoints = (src) =>
  * - Anything else that will not translate is a genuine untranslatable construct
  *   and **fails the build**, carrying naga's message so the construct is named.
  */
+/**
+ * @param {'vertex' | 'fragment' | 'compute'} stage
+ * @param {{ ok: boolean, message?: string } | null} es300 — null for compute, which is refused before es300 is asked
+ * @returns {{ action: 'bake' } | { action: 'skip', capability: string } | { action: 'fail', construct: string }}
+ */
 export function classify(stage, es300) {
   if (stage === 'compute') return { action: 'skip', capability: 'compute' };
-  if (es300.ok) return { action: 'bake' };
-  const msg = es300.message;
+  // Reached only for a non-compute stage, where the caller always asked es300.
+  const result = /** @type {{ ok: boolean, message?: string }} */ (es300);
+  if (result.ok) return { action: 'bake' };
+  const msg = /** @type {string} */ (result.message);
   if (msg.includes('BUFFER_STORAGE')) return { action: 'skip', capability: 'storage-buffer' };
   if (msg.includes('IMAGE_LOAD_STORE')) return { action: 'skip', capability: 'storage-texture' };
   return { action: 'fail', construct: msg };
 }
 
+/** @param {string} profile @param {string} name @param {string} input @param {string} output */
 const naga = (profile, name, input, output) => {
   try {
     execFileSync('naga', ['--profile', profile, '--entry-point', name, input, output], {
@@ -95,8 +104,9 @@ const naga = (profile, name, input, output) => {
     });
     return { ok: true };
   } catch (e) {
-    if (e.code === 'ENOENT') throw e;
-    return { ok: false, message: (e.stderr?.toString() || e.message).trim().replace(/\s+/g, ' ') };
+    if (/** @type {any} */ (e).code === 'ENOENT') throw e;
+    const err = /** @type {any} */ (e);
+    return { ok: false, message: (err.stderr?.toString() || err.message).trim().replace(/\s+/g, ' ') };
   }
 };
 
@@ -114,8 +124,11 @@ export function translateCorpus() {
     process.exit(1);
   }
 
+  /** @type {Record<string, { entries: Record<string, { stage: string, glsl: string }> }>} */
   const presets = {};
+  /** @type {Record<string, { entry: string, stage: string, capability: string }[]>} */
   const refused = {};
+  /** @type {{ id: string, entry: string, stage: string, construct: string }[]} */
   const failures = [];
   let baked = 0;
   let entryCount = 0;
@@ -183,7 +196,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     translateCorpus();
   } catch (e) {
-    if (e.code === 'ENOENT') {
+    if (/** @type {any} */ (e).code === 'ENOENT') {
       console.error('\nno `naga` on PATH — install with: cargo install naga-cli --version 30.0.1');
       process.exit(2);
     }
