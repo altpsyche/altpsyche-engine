@@ -1939,7 +1939,7 @@ not do the work could check once and for all. Same treatment as items 53 and 57.
 
 ### 56. The deprecation mechanism
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `@deprecated` JSDoc, which surfaces at the call site where it works, plus a one-shot dev-mode warning per symbol.
 
@@ -1961,6 +1961,38 @@ declared against them: item 70 landed §14's four genuine renames, and item 81 i
 that changes a name a consumer writes. Item 82 is deliberately **not** named — it deletes
 `readBuffer` rather than renaming anything, and a deletion does not need the deprecation mechanism
 to exist first. **Reverse:** restore `**Needs.** item 38.` and delete this paragraph.
+
+**How it landed.** The mechanism is the two halves §17 decision 8 names. The editor half is a
+`@deprecated` JSDoc tag on the export, which a language server draws struck through at the call
+site and which needs no code — a tag on a declaration, drawn by every editor that speaks
+TypeScript. The runtime half is [deprecate.ts](../deprecate.ts): `deprecate(name, detail?)` warns
+**once per symbol per session** (a module-level `Set` keyed by the caller's own name, so a loop
+reaching a deprecated export every frame warns once, not every frame) and is **silent in a
+production build** — it reads `process.env.NODE_ENV`, the one token every bundler replaces, so a
+production build folds the check and drops the branch, guarded by `typeof process` so an unbundled
+browser reads as development and warns rather than throwing. `deprecate` is internal, **not**
+re-exported through `index.ts`: the package deprecates its own names, a consumer does not, so the
+door stays the size decision 5 keeps it (surface unmoved, still 54, `gate:pack` not run because
+nothing on the door changed).
+
+**What it demonstrates on, and why a stand-in.** Nothing shipping is deprecated yet, on purpose:
+0.x renames a name away rather than deprecating it (decision 8 forbids renames only *after* 1.0 and
+runs deprecation a minimum of one minor cycle), and item 94 removed `frame.target`/`module.code`
+outright with no alias. So the proof rides [tests/support/deprecated-export.ts](../tests/support/deprecated-export.ts),
+a `legacyEcho` carrying the exact shape a real post-1.0 shim copies — a `@deprecated` tag plus a
+`deprecate()` call — the way item 39's loop rule stood ready for a file that did not exist.
+[tests/deprecate.test.ts](../tests/deprecate.test.ts) reaches it twice and reads one warning, reads
+zero under `NODE_ENV=production`, shows a second name warns on its own, and asks the compiler (not a
+regex) whether the declaration carries a recognised `@deprecated` tag — the tag a server keys its
+strikethrough off. 833 node tests green (was 829), `type-check` green.
+
+**What the gates could not see.** The strikethrough itself. A node suite proves the `@deprecated`
+tag the compiler recognises is present; the struck-through text is painted by a language server in
+an editor, which no gate here runs. That is the one part of the "Done when" a person confirms by
+opening the file, and the tag's presence is the strongest claim a headless run can make about it.
+`deprecate.ts` is not yet in `tsconfig.build.json` or the `SHIPPING` list, so it is not published:
+publishing a module nothing imports is what the "shipping == emitted" test forbids, and the first
+real deprecation shim adds both entries when it imports it. See [JOURNAL.md](JOURNAL.md).
 
 ### 57. Device readings accumulate
 
