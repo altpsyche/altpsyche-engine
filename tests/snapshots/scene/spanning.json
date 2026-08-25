@@ -1,6 +1,6 @@
 {
   "id": "spanning",
-  "target": "wgsl",
+  "authored": "wgsl",
   "resources": [
     {
       "kind": "buffer",
@@ -112,7 +112,7 @@
   "modules": [
     {
       "name": "scene",
-      "code": "// authored once, fed by the producer"
+      "wgsl": "// authored once, fed by the producer"
     }
   ],
   "pipelines": [

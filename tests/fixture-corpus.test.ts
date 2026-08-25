@@ -27,7 +27,7 @@ describe('the fixture corpus', () => {
     expect(existsSync(sourcePath(name))).toBe(true);
     const fixture = loadFixture(name);
     expect(fixture.code.length).toBeGreaterThan(0);
-    expect(fixture.description.target).toBe('wgsl');
+    expect(fixture.description.authored).toBe('wgsl');
     expect(fixture.description.passes.length).toBeGreaterThan(0);
     // Every address the description sends a reader to is a thing the declaration
     // generated, because a description naming bytes nobody made is a fetch of

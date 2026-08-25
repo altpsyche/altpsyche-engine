@@ -2,27 +2,30 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createWebGL2Backend } from '../gpu/webgl2';
-import { frameOf } from '../toy/frame';
+import { frameOf, glslFrameOf } from '../toy/frame';
 import { loadFixture } from './support/fixture';
 import { createFakeGL } from './support/fake-gl';
-import type { FrameGraph } from '@altpsyche/engine';
+import type { FixtureName } from './support/fixture';
+import type { FrameGraph, WgslFrameGraph } from '@altpsyche/engine';
 
 /**
- * Item 79's frame assembly, read independently of the gate that uses it.
+ * The baked GLSL reaching the WebGL 2 backend through the source that carries it,
+ * read independently of the gate that draws it (items 79, 94).
  *
- * `gates/corpus.mjs` draws the capability corpus through `createWebGL2Backend` on
- * a real `webgl2` context. Every preset's *source* is WGSL, and WebGL 2 links
- * GLSL, so the frame the gate draws is the WGSL description re-pointed at the GLSL
- * ES 3.00 the build baked with naga (`fixtures/source/glsl/corpus.generated.json`,
- * item 41): each pipeline's `vertex`/`fragment` entry becomes a GLSL document of
- * its own, and the geometry bytes the loader fetched carry through unchanged.
+ * `gates/corpus.mjs` draws the capability corpus through `createWebGL2Backend` on a
+ * real `webgl2` context. Every preset's *source* is WGSL, and WebGL 2 links GLSL,
+ * so the frame the gate draws is the WGSL frame turned into GLSL by the library's
+ * own `glslFrameOf` — which reads the GLSL ES 3.00 naga baked off each
+ * `WgslModule.glsl`, keyed by entry point, rather than off a gate-local stitch of
+ * the build artifact (item 94). This test loads that bake onto the source the way a
+ * corpus loader does, then asks the library to make the GLSL frame and draws it.
  *
  * The browser draw itself is a `gate:browser` reading — a real context, a software
  * renderer is enough — and is not run here (§17 note 3). What this pins in the fast
  * suite is the half a node machine *can* settle: that the assembled baked-GLSL
  * frame is one the WebGL 2 backend accepts and draws, so a red browser gate would
- * mean the driver refused the GLSL rather than that the harness built the frame
- * wrong. The transform below is re-implemented rather than imported from the `.mjs`
+ * mean the driver refused the GLSL rather than that the source carried it wrong.
+ * The bake is loaded onto the source here rather than imported from the `.mjs`
  * gate, the way `translate-build.test.ts` re-implements the entry-point scan, so
  * this is an independent reading of the bake and not a mirror of the gate.
  */
@@ -30,49 +33,6 @@ const ARTIFACT = path.join(import.meta.dirname, '..', 'fixtures', 'source', 'gls
 const artifact = (): {
   presets: Record<string, { entries: Record<string, { stage: string; glsl: string }> }>;
 } => JSON.parse(readFileSync(ARTIFACT, 'utf8'));
-
-/** Re-point a WGSL description's pipelines at the baked GLSL: each entry point a
- * pipeline names becomes a document of its own, entered at `main`, and the block
- * bindings drop away because a GLSL program answers where its block sits. Returns
- * null where the bake carries no GLSL for an entry the pipelines need — a
- * fullscreen WGSL frame (no vertex baked) or a stage naga refused. */
-function glslFrameOf(id: string, description: FrameGraph, bytes: Map<string, Uint8Array<ArrayBuffer>>) {
-  const baked = artifact().presets[id]?.entries ?? {};
-  const names = new Set<string>();
-  let unbaked: string | null = null;
-  const pipelines = description.pipelines.map((pipeline) => {
-    // A compute pipeline has no vertex or fragment and no place on WebGL 2; the
-    // corpus's one compute preset is left unbaked and skipped either way.
-    if (!('fragment' in pipeline)) {
-      unbaked = 'compute';
-      return pipeline;
-    }
-    const vertex =
-      pipeline.vertex === 'fullscreen' ? 'fullscreen' : { module: pipeline.vertex.entry, entry: 'main' as const };
-    if (pipeline.vertex === 'fullscreen') unbaked = 'fullscreen';
-    else {
-      names.add(pipeline.vertex.entry);
-      if (!baked[pipeline.vertex.entry]) unbaked = pipeline.vertex.entry;
-    }
-    names.add(pipeline.fragment.entry);
-    if (!baked[pipeline.fragment.entry]) unbaked = pipeline.fragment.entry;
-    // The block bindings drop away because a GLSL program answers where its block
-    // sits — except a per-draw slice's, which the backend reads to know which
-    // buffer to bind one record's range of a draw (item 27/85).
-    const bindings = (pipeline.bindings ?? []).filter((binding) => binding.perDraw !== undefined);
-    return { ...pipeline, vertex, fragment: { module: pipeline.fragment.entry, entry: 'main' as const }, bindings };
-  });
-  if (unbaked) return null;
-  const modules = [...names].map((name) => ({ name, code: '' }));
-  const texts = Object.fromEntries([...names].map((name) => [name, baked[name].glsl]));
-  const glsl = {
-    ...description,
-    target: 'glsl',
-    modules,
-    pipelines: pipelines as FrameGraph['pipelines'],
-  } as FrameGraph;
-  return frameOf(id, glsl, texts, undefined, undefined, bytes);
-}
 
 /** The bytes the loader fetched, keyed by the resource that reads them — the same
  * rekey `gates/lib.mjs`'s `loadCorpus` does. */
@@ -88,16 +48,32 @@ function bytesOf(description: FrameGraph, generated: Map<string, Uint8Array<Arra
   return bytes;
 }
 
-describe('the WebGL 2 corpus column draws baked GLSL, not the WGSL source (item 79)', () => {
-  it('re-points core-geometry at its baked GLSL and the backend draws it', () => {
-    const { description, generated } = loadFixture('core-geometry');
-    const frame = glslFrameOf('core-geometry', description, bytesOf(description, generated));
+/** The WGSL frame a WebGPU-less device selects for a preset, carrying naga's baked
+ * GLSL on its `wgsl` document keyed by entry point — the state a corpus loader
+ * leaves the source in so the translation travels with it (item 94). */
+function bakedWgslFrame(id: FixtureName): WgslFrameGraph {
+  const { description, code, generated } = loadFixture(id);
+  const baked = artifact().presets[id]?.entries ?? {};
+  const glsl = Object.fromEntries(Object.entries(baked).map(([entry, { glsl }]) => [entry, glsl]));
+  // The bake rides the source: each WGSL document gains the GLSL its entry points
+  // baked to, which is what `glslFrameOf` reads rather than the artifact directly.
+  const withBake: WgslFrameGraph = {
+    ...(description as WgslFrameGraph),
+    modules: (description as WgslFrameGraph).modules.map((module) => ({ ...module, glsl })),
+    translated: true,
+  };
+  return frameOf(id, withBake, { wgsl: code }, undefined, undefined, bytesOf(description, generated)) as WgslFrameGraph;
+}
+
+describe('the WebGL 2 corpus column draws baked GLSL off the source that carries it (items 79, 94)', () => {
+  it('turns core-geometry into a baked-GLSL frame the backend draws', () => {
+    const frame = glslFrameOf(bakedWgslFrame('core-geometry'));
     expect(frame, 'core-geometry bakes both a vertex and a fragment').not.toBeNull();
-    expect(frame!.target).toBe('glsl');
+    expect(frame!.authored).toBe('glsl');
     // The pipeline names the baked entry points as its two documents, entered at
     // main, rather than the one WGSL document the source carried.
     expect(frame!.modules.map((module) => module.name).sort()).toEqual(['shade', 'warp']);
-    expect(frame!.modules.every((module) => module.code.startsWith('#version 300 es'))).toBe(true);
+    expect(frame!.modules.every((module) => module.glsl.startsWith('#version 300 es'))).toBe(true);
 
     const gl = createFakeGL();
     const backend = createWebGL2Backend(gl.canvas);
@@ -111,11 +87,10 @@ describe('the WebGL 2 corpus column draws baked GLSL, not the WGSL source (item 
     expect(gl.of('drawElementsInstanced')).toHaveLength(1);
   });
 
-  it('re-points core-depth, which draws the sheet through the backend it once refused', () => {
+  it('turns core-depth, which draws the sheet through the backend it once refused', () => {
     // A second preset, and a two-pass depth-tested one (item 48), to show the
     // transform is not shaped around the one geometry preset it must draw.
-    const { description, generated } = loadFixture('core-depth');
-    const frame = glslFrameOf('core-depth', description, bytesOf(description, generated));
+    const frame = glslFrameOf(bakedWgslFrame('core-depth'));
     expect(frame, 'core-depth bakes a vertex and a fragment').not.toBeNull();
     const gl = createFakeGL();
     const backend = createWebGL2Backend(gl.canvas);
@@ -123,14 +98,13 @@ describe('the WebGL 2 corpus column draws baked GLSL, not the WGSL source (item 
     expect(() => backend!.program(frame!).draw()).not.toThrow();
   });
 
-  it('re-points core-perdraw-uniform, and the backend binds one range a draw (item 85)', () => {
+  it('turns core-perdraw-uniform, and the backend binds one range a draw (item 85)', () => {
     // The per-draw preset: one grid drawn three times, each draw pointed at its own
     // record by the offset it names. This is the half a node machine can settle —
     // the assembled baked-GLSL frame is one the backend accepts and draws, so a red
-    // browser gate would mean the driver refused the GLSL, not that the harness
-    // built the frame wrong. That the three quads light is the corpus gate's.
-    const { description, generated } = loadFixture('core-perdraw-uniform');
-    const frame = glslFrameOf('core-perdraw-uniform', description, bytesOf(description, generated));
+    // browser gate would mean the driver refused the GLSL, not that the source
+    // carried it wrong. That the three quads light is the corpus gate's.
+    const frame = glslFrameOf(bakedWgslFrame('core-perdraw-uniform'));
     expect(frame, 'core-perdraw-uniform bakes a vertex and a fragment').not.toBeNull();
     // The per-draw binding survives the re-point where the shared block's binding
     // drops, so the backend can read which buffer to slice and how wide a record is.
@@ -154,7 +128,6 @@ describe('the WebGL 2 corpus column draws baked GLSL, not the WGSL source (item 
     // core-texture is a fullscreen fragment: WGSL supplies the corners, so naga
     // bakes only a fragment and there is no vertex for WebGL 2 to link. The gate
     // skips it by outcome — a reported reason — rather than drawing it.
-    const { description, generated } = loadFixture('core-texture');
-    expect(glslFrameOf('core-texture', description, bytesOf(description, generated))).toBeNull();
+    expect(glslFrameOf(bakedWgslFrame('core-texture'))).toBeNull();
   });
 });

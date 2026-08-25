@@ -27,6 +27,7 @@ import type { compareFrames } from './compare.js';
 declare global {
   interface Window {
     frameOf: typeof Door.frameOf;
+    glslFrameOf: typeof Door.glslFrameOf;
     missing: typeof Door.missing;
     probe: typeof Door.probe;
     readingRow: typeof Door.readingRow;

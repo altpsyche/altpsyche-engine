@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
@@ -39,16 +40,16 @@ const PAIR = (name: string) =>
     use: ['storage', 'sample'] as ('storage' | 'sample')[],
   }) as const;
 
-const stateFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const stateFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-state',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     PAIR('previous'),
     PAIR('next'),
     { kind: 'sampler', name: 'stateSampler', filter: 'linear', wrap: 'clamp' },
   ],
-  modules: [{ name: 'wgsl', code: STATE }],
+  modules: [{ name: 'wgsl', wgsl: STATE }],
   pipelines: [
     {
       kind: 'compute',

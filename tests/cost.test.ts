@@ -23,9 +23,9 @@ function frame(over: {
 }): FrameGraph {
   return {
     id: 'cost-fixture',
-    target: 'wgsl',
+    authored: 'wgsl',
     resources: over.resources ?? [{ kind: 'uniform', name: 'uniforms' }],
-    modules: [{ name: 'wgsl', code: '' }],
+    modules: [{ name: 'wgsl', wgsl: '' }],
     pipelines: over.pipelines ?? [
       {
         kind: 'render',

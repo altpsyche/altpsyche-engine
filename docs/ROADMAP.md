@@ -3366,7 +3366,7 @@ nothing. `carry`: decision 1's answer belongs in the consuming repository's log.
 
 ### 94. The authoring language becomes a discriminant, not `frame.target` or `module.code`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The half of item 81 that its `Needs` (item 41, item 70) actually reach: a shader's
 authoring language read off one discriminated `authored` value rather than off the frame-level

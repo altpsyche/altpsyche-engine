@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { frameStores, mergeGroups } from '../graph/attachments';
 import type { PassSpec, PipelineSpec, FrameGraph } from '@altpsyche/engine';
@@ -25,12 +26,12 @@ const RENDER = (name: string, over: Partial<Extract<PipelineSpec, { kind: 'rende
   ...over,
 });
 
-function frame(over: { pipelines: PipelineSpec[]; passes: PassSpec[] } & Partial<FrameGraph>): FrameGraph {
+function frame(over: { pipelines: PipelineSpec[]; passes: PassSpec[] } & Partial<WgslFrameGraph>): FrameGraph {
   return {
     id: 'attachments-fixture',
-    target: 'wgsl',
+    authored: 'wgsl',
     resources: over.resources ?? [],
-    modules: [{ name: 'wgsl', code: '' }],
+    modules: [{ name: 'wgsl', wgsl: '' }],
     present: over.present,
     swap: over.swap,
     pipelines: over.pipelines,

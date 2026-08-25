@@ -366,7 +366,7 @@ export function createWebGPUBackend(
     },
 
     program(frame: FrameGraph): ShaderProgram {
-      if (frame.target !== 'wgsl') throw new Error(`WebGPU was handed a ${frame.target} frame to draw`);
+      if (frame.authored !== 'wgsl') throw new Error(`WebGPU was handed a ${frame.authored} frame to draw`);
 
       // The static lifetime of §5, owned by the pipeline cache rather than compiled
       // inline the way the fused `createProgram` did: a pipeline depends on nothing
@@ -1296,8 +1296,12 @@ function compileModules(
   onRefused?: (message: string) => void
 ): Map<string, GPUShaderModule> {
   const compiled = new Map<string, GPUShaderModule>();
+  // WebGPU compiles WGSL, so every document it is handed carries `wgsl` text; the
+  // backend guards a non-WGSL frame before here (item 94), and this narrows on the
+  // same discriminant so the field it reads is the one the language names.
+  if (frame.authored !== 'wgsl') return compiled;
   for (const document of frame.modules) {
-    const built = device.createShaderModule({ label: document.name, code: document.code });
+    const built = device.createShaderModule({ label: document.name, code: document.wgsl });
     compiled.set(document.name, built);
     void built.getCompilationInfo().then((info) => {
       const said = refusal(info);

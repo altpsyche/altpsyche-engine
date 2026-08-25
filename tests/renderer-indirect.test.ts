@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
@@ -49,15 +50,15 @@ const counts = (over: Partial<BufferResource> = {}): BufferResource => ({
 const VERTICES = new Uint8Array(9 * 16);
 const INDICES = new Uint8Array(24 * 2);
 
-const planned = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const planned = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-indirect',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     counts(),
     { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['storage'] },
   ],
-  modules: [{ name: 'wgsl', code: PLANS }],
+  modules: [{ name: 'wgsl', wgsl: PLANS }],
   pipelines: [
     {
       kind: 'compute',
@@ -94,7 +95,7 @@ const planned = (over: Partial<FrameGraph> = {}): FrameGraph => ({
 
 /** The same frame with geometry under the drawn pass, which is the one thing that
  * changes which of the two indirect draw calls the card is given. */
-const ordered = (over: Partial<FrameGraph> = {}): FrameGraph => {
+const ordered = (over: Partial<WgslFrameGraph> = {}): FrameGraph => {
   const base = planned();
   return planned({
     resources: [

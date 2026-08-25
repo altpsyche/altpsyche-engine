@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
@@ -48,15 +49,15 @@ const geometry = (over: Partial<VertexResource> = {}): VertexResource => ({
   ...over,
 });
 
-const gridFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const gridFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-geometry',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     geometry(),
     { kind: 'indices', name: 'gridIndices', format: 'uint16', count: 24, data: INDICES },
   ],
-  modules: [{ name: 'wgsl', code: GRID }],
+  modules: [{ name: 'wgsl', wgsl: GRID }],
   pipelines: [
     {
       kind: 'render',

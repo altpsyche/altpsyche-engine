@@ -207,7 +207,7 @@ fn shadow(in: VsOut) -> @location(0) vec4<f32> {
   return vec4<f32>(0.06, 0.06, 0.09, 1.0);
 }`;
 
-const MODULE: ModuleSpec = { name: 'scene', code: SCENE_WGSL };
+const MODULE: ModuleSpec = { name: 'scene', wgsl: SCENE_WGSL };
 
 /** The eight corners of a unit cube and its six faces as two triangles each:
  * thirty-six vertices of position and face normal, twenty-four bytes apiece. No
@@ -266,7 +266,7 @@ const shadowPipeline: RenderPipelineSpec = {
 
 const options: SceneViewOptions<Panel> = {
   id: 'orbit-shadow',
-  target: 'wgsl',
+  authored: 'wgsl',
   modules: [MODULE],
   // Shadows first, lit objects on top: the producer's ordering decision (item 33),
   // spelled as the order the pipelines are listed.

@@ -15,11 +15,16 @@
  * translation between two types.
  */
 import { uniformBindingOf } from '../wgsl-binding.js';
+import { moduleOf } from '../graph/types.js';
 import type {
   ResourceSpec,
   FrameGraph,
+  GlslFrameGraph,
+  RenderPipelineSpec,
   UniformResource,
   UniformSlot,
+  WgslModule,
+  WgslFrameGraph,
 } from '../graph/types.js';
 
 /** The name every one-pass shader's pipeline carries. Nothing reads it but the
@@ -61,9 +66,9 @@ export function wgslDescription(code: string): FrameGraph {
   // something it does not.
   const at = uniformBindingOf(code);
   return {
-    target: 'wgsl',
+    authored: 'wgsl',
     resources: [{ kind: 'uniform', name: UNIFORMS }],
-    modules: [{ name: WGSL_DOCUMENT, code: '' }],
+    modules: [{ name: WGSL_DOCUMENT, wgsl: '' }],
     pipelines: [
       {
         kind: 'render',
@@ -87,9 +92,9 @@ export function wgslDescription(code: string): FrameGraph {
  */
 export function glslDescription(): FrameGraph {
   return {
-    target: 'glsl',
+    authored: 'glsl',
     resources: [{ kind: 'uniform', name: UNIFORMS }],
-    modules: [{ name: 'vertex', code: '' }, { name: 'fragment', code: '' }],
+    modules: [{ name: 'vertex', glsl: '' }, { name: 'fragment', glsl: '' }],
     pipelines: [
       {
         kind: 'render',
@@ -153,25 +158,46 @@ export function frameOf(
   );
   if (empty) throw new Error(`the description for "${id}" names a picture "${empty.name}" with no bytes`);
 
-  const positions = description.target === 'wgsl' ? block : undefined;
+  const positions = description.authored === 'wgsl' ? block : undefined;
 
-  return {
+  const resources = description.resources.map((resource) => {
+    if (resource.kind === 'uniform' && positions) return { ...resource, block: positions } as UniformResource;
+    const bytes = 'source' in resource ? generated?.get(resource.name) : undefined;
+    return bytes ? { ...resource, data: bytes } : resource;
+  });
+  const common = {
     id,
-    target: description.target,
-    resources: description.resources.map((resource) => {
-      if (resource.kind === 'uniform' && positions) return { ...resource, block: positions } as UniformResource;
-      const bytes = 'source' in resource ? generated?.get(resource.name) : undefined;
-      return bytes ? { ...resource, data: bytes } : resource;
-    }),
-    modules: description.modules.map((module) => ({
-      name: module.name,
-      code: texts[module.name] as string,
-      ...(constants && description.target === 'wgsl' ? { constants } : {}),
-    })),
+    resources,
     pipelines: description.pipelines,
     passes: description.passes,
+    ...(description.translated !== undefined ? { translated: description.translated } : {}),
     ...(description.present !== undefined ? { present: description.present } : {}),
     ...(description.swap ? { swap: description.swap } : {}),
+  };
+
+  // The modules take their text on the field the frame's language names, and a
+  // rung's numbers land on the WGSL documents alone — the one language whose value
+  // reaches the pipeline rather than the text. The frame's `authored` answers which
+  // documents take them without a per-document role to read.
+  if (description.authored === 'wgsl') {
+    return {
+      ...common,
+      authored: 'wgsl',
+      modules: description.modules.map((module) => ({
+        name: module.name,
+        wgsl: texts[module.name] as string,
+        ...(module.glsl ? { glsl: module.glsl } : {}),
+        ...(constants ? { constants } : {}),
+      })),
+    };
+  }
+  return {
+    ...common,
+    authored: 'glsl',
+    modules: description.modules.map((module) => ({
+      name: module.name,
+      glsl: texts[module.name] as string,
+    })),
   };
 }
 
@@ -239,4 +265,81 @@ export function wgslFrame(
 /** One GLSL pair as a frame, for the same callers. */
 export function glslFrame(id: string, vertex: string, fragment: string): FrameGraph {
   return frameOf(id, glslDescription(), { vertex, fragment });
+}
+
+/**
+ * A WGSL frame turned into the GLSL frame a WebGL 2 device draws, reading the baked
+ * GLSL translation off the source that carries it (`WgslModule.glsl`, keyed by
+ * entry point) rather than off a gate-local stitch of the build artifact (item 94).
+ * A WebGPU-less device selects WebGL 2 for a WGSL frame that carries a translation
+ * (§17 decisions 2 and 6), and this is what hands that backend a frame in its own
+ * language.
+ *
+ * Each pipeline's vertex and fragment entry points become GLSL documents of their
+ * own, entered at `main`, exactly as the build baked them. The uniform block's binding
+ * numbers and positions drop away — a linked GLSL program answers where its block
+ * sits — except a per-draw slice's binding, which the backend reads to bind one
+ * record's range a draw (item 27/85). The geometry and every other resource carry
+ * through unchanged.
+ *
+ * Returns `null` where the bake carries no GLSL for an entry the pipelines need — a
+ * fullscreen WGSL frame that baked no vertex, a compute stage with no place on
+ * WebGL 2, or a stage the build refused to translate for a capability WebGL 2 withholds — so a caller
+ * skips it by outcome rather than drawing a frame with a hole in it. The reason is
+ * the caller's to name from the build artifact's `refused` list; this reports only
+ * that a needed document is absent.
+ */
+export function glslFrameOf(frame: WgslFrameGraph): GlslFrameGraph | null {
+  // The baked GLSL of each entry a pipeline names, gathered off the source that
+  // carries it, keyed by the entry-point name the GLSL document takes.
+  const texts: Record<string, string> = {};
+  let missing = false;
+  const bakedFor = (module: string, entry: string): string | undefined =>
+    // `frame` is a WGSL frame, so its documents are `WgslModule` and their `glsl` is
+    // the entry-keyed bake; `moduleOf` widens to the module union, hence the narrow.
+    (moduleOf(frame, module) as WgslModule | undefined)?.glsl?.[entry];
+  const take = (module: string, entry: string): void => {
+    const source = bakedFor(module, entry);
+    if (source === undefined) missing = true;
+    else texts[entry] = source;
+  };
+
+  const pipelines: RenderPipelineSpec[] = [];
+  for (const pipeline of frame.pipelines) {
+    // A compute pipeline has no vertex or fragment and no place on WebGL 2; a
+    // fullscreen WGSL frame supplies its corners from the backend, so the build bakes no
+    // vertex for WebGL 2 to link. Either leaves a hole a caller skips by outcome.
+    if (pipeline.kind !== 'render' || pipeline.vertex === 'fullscreen') {
+      missing = true;
+      continue;
+    }
+    take(pipeline.vertex.module, pipeline.vertex.entry);
+    take(pipeline.fragment.module, pipeline.fragment.entry);
+    pipelines.push({
+      ...pipeline,
+      vertex: { module: pipeline.vertex.entry, entry: 'main' },
+      fragment: { module: pipeline.fragment.entry, entry: 'main' },
+      // A GLSL program answers where each uniform block sits, so the block bindings
+      // drop — except a per-draw slice's, whose group and binding tell the per-draw
+      // block apart from the shared one and whose `perDraw` size is one record's.
+      bindings: pipeline.bindings.filter((binding) => binding.perDraw !== undefined),
+    });
+  }
+  if (missing) return null;
+
+  return {
+    ...(frame.id !== undefined ? { id: frame.id } : {}),
+    authored: 'glsl',
+    // A GLSL frame's uniform resource carries no block positions: the linked program
+    // is asked where its members sit, so the WebGPU-computed layout drops here.
+    resources: frame.resources.map((resource) =>
+      resource.kind === 'uniform' && resource.block ? { kind: 'uniform', name: resource.name } : resource
+    ),
+    modules: Object.entries(texts).map(([name, glsl]) => ({ name, glsl })),
+    pipelines,
+    passes: frame.passes,
+    ...(frame.requires !== undefined ? { requires: frame.requires } : {}),
+    ...(frame.present !== undefined ? { present: frame.present } : {}),
+    ...(frame.swap ? { swap: frame.swap } : {}),
+  };
 }

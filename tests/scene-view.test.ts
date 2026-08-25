@@ -36,7 +36,7 @@ type Panel = { tint: [number, number, number] };
 const MODEL_BYTES = 64; // one mat4x4<f32>
 const OBJECT_BYTES = 80; // model matrix, then a vec3 colour with a padding word
 
-const MODULE: ModuleSpec = { name: 'scene', code: '// authored once, fed by the producer' };
+const MODULE: ModuleSpec = { name: 'scene', wgsl: '// authored once, fed by the producer' };
 
 const PIPELINE: RenderPipelineSpec = {
   kind: 'render',
@@ -64,7 +64,7 @@ const packPanel = (draw: MaterialDraw<Panel>): Uint8Array => {
 
 const OPTIONS: SceneViewOptions<Panel> = {
   id: 'panels',
-  target: 'wgsl',
+  authored: 'wgsl',
   modules: [MODULE],
   pipelines: [{ pipeline: PIPELINE, objects: { buffer: 'objects', pack: packPanel } }],
   materials: MATERIALS,
@@ -111,7 +111,7 @@ describe('sceneView turns a world and its cameras into a frame with no GPU', () 
     const frame = view.graph(TWO_PANELS, [CAMERA]);
 
     expect(frame.id).toBe('panels');
-    expect(frame.target).toBe('wgsl');
+    expect(frame.authored).toBe('wgsl');
     expect(frame.modules).toEqual([MODULE]);
     expect(frame.pipelines).toEqual([PIPELINE]);
     expect(frame.passes).toHaveLength(1);
@@ -214,7 +214,7 @@ describe('sceneView spans two pipelines in one graph, the producer deciding orde
 
   const optionsFor = (order: RenderPipelineSpec[]): SceneViewOptions<Panel> => ({
     id: 'spanning',
-    target: 'wgsl',
+    authored: 'wgsl',
     modules: [MODULE],
     pipelines: order.map((pipeline) => ({
       pipeline,
@@ -278,7 +278,7 @@ describe('sceneView spans two pipelines in one graph, the producer deciding orde
     expect(() =>
       sceneView(new Arena<Uint8Array>(() => undefined as never), {
         id: 'clash',
-        target: 'wgsl',
+        authored: 'wgsl',
         modules: [MODULE],
         pipelines: [
           { pipeline: PIPELINE, objects: { buffer: 'shared', pack: packPanel } },
@@ -372,7 +372,7 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
   };
   const optionsFor = (order: RenderPipelineSpec[], withDepth: boolean): SceneViewOptions<Panel> => ({
     id: 'solids',
-    target: 'wgsl',
+    authored: 'wgsl',
     modules: [MODULE],
     pipelines: order.map((pipeline) => ({
       pipeline: withDepth ? pipeline : flatten(pipeline),

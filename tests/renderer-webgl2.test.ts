@@ -1,3 +1,4 @@
+import type { GlslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGL2Backend } from '../gpu/webgl2';
 import { glslFrame, missing, cost, GEOMETRY_PRIMITIVE } from '@altpsyche/engine';
@@ -57,12 +58,12 @@ function twoPass(at: 'canvas' | 'present' = 'canvas'): FrameGraph {
   }
   return {
     id: 'chain',
-    target: 'glsl',
+    authored: 'glsl',
     resources,
     modules: [
-      { name: 'vertex', code: VERTEX },
-      { name: 'paint', code: FRAGMENT },
-      { name: 'show', code: FRAGMENT_SAMPLE },
+      { name: 'vertex', glsl: VERTEX },
+      { name: 'paint', glsl: FRAGMENT },
+      { name: 'show', glsl: FRAGMENT_SAMPLE },
     ],
     pipelines: [
       {
@@ -89,8 +90,8 @@ function twoPass(at: 'canvas' | 'present' = 'canvas'): FrameGraph {
 
 /** The one-pass description of the fixture, built the way the build builds one,
  * so what these assert is the backend rather than a shape written here. */
-const graph = (over: { vertex?: string; fragment?: string } = {}): FrameGraph =>
-  glslFrame('fixture', over.vertex ?? VERTEX, over.fragment ?? FRAGMENT);
+const graph = (over: { vertex?: string; fragment?: string } = {}): GlslFrameGraph =>
+  glslFrame('fixture', over.vertex ?? VERTEX, over.fragment ?? FRAGMENT) as GlslFrameGraph;
 
 function backendOver(setup: (gl: ReturnType<typeof createFakeGL>) => void = () => {}) {
   const gl = createFakeGL();
@@ -123,7 +124,7 @@ describe('the context it asks for', () => {
 
   it('refuses a frame for the other backend by naming the target it got', () => {
     const { backend } = backendOver();
-    const wgsl = { id: 'x', target: 'wgsl' } as FrameGraph;
+    const wgsl = { id: 'x', authored: 'wgsl' } as unknown as FrameGraph;
     expect(() => backend.program(wgsl)).toThrow('WebGL 2 was handed a wgsl frame to draw');
   });
 });
@@ -139,7 +140,7 @@ describe('the context it asks for', () => {
  * program is asked for and this is the second door rather than the first.
  */
 describe('a description above the subset', () => {
-  const glsl = (over: Partial<FrameGraph>): FrameGraph => ({ ...graph(), ...over });
+  const glsl = (over: Partial<GlslFrameGraph>): FrameGraph => ({ ...graph(), ...over });
 
   it('refuses a frame with no pass in it rather than drawing nothing', () => {
     const { backend } = backendOver();
@@ -254,17 +255,17 @@ describe('a description above the subset', () => {
    * multisample renderbuffer and averages them through the resolve blit, and that
    * everything a multisample attachment cannot be is still refused by name.
    */
-  const multisample = (over: Partial<FrameGraph> = {}, edgesOver: Partial<TextureResource> = {}): FrameGraph => ({
+  const multisample = (over: Partial<GlslFrameGraph> = {}, edgesOver: Partial<TextureResource> = {}): FrameGraph => ({
     id: 'fixture',
-    target: 'glsl',
+    authored: 'glsl',
     resources: [
       { kind: 'uniform', name: 'uniforms' },
       { kind: 'texture', name: 'edges', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'], samples: 4, ...edgesOver },
       { kind: 'texture', name: 'flat', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
     ],
     modules: [
-      { name: 'vertex', code: VERTEX },
-      { name: 'fragment', code: FRAGMENT },
+      { name: 'vertex', glsl: VERTEX },
+      { name: 'fragment', glsl: FRAGMENT },
     ],
     pipelines: [
       {
@@ -654,7 +655,7 @@ function manyTargets(n: number): FrameGraph {
   const writes = names.map((_name, at) => `c${at}=vec4(${at}.0);`).join('');
   return {
     id: 'gbuffer',
-    target: 'glsl',
+    authored: 'glsl',
     resources: [
       { kind: 'uniform', name: 'uniforms' },
       ...names.map((name) => ({
@@ -666,8 +667,8 @@ function manyTargets(n: number): FrameGraph {
       })),
     ],
     modules: [
-      { name: 'vertex', code: VERTEX },
-      { name: 'paint', code: `#version 300 es\nprecision highp float;\n${outputs}\nvoid main(){${writes}}` },
+      { name: 'vertex', glsl: VERTEX },
+      { name: 'paint', glsl: `#version 300 es\nprecision highp float;\n${outputs}\nvoid main(){${writes}}` },
     ],
     pipelines: [
       {
@@ -781,7 +782,7 @@ function geometryFrame(instances = 3): FrameGraph {
   const made = grid.bytes(16, 16);
   return {
     id: 'core-geometry',
-    target: 'glsl',
+    authored: 'glsl',
     resources: [
       { kind: 'uniform', name: 'uniforms' },
       {
@@ -797,8 +798,8 @@ function geometryFrame(instances = 3): FrameGraph {
       { kind: 'indices', name: 'grid-index', format: grid.indexFormat, count: made.indexCount, data: made.indices },
     ],
     modules: [
-      { name: 'warp', code: GRID_VERTEX },
-      { name: 'shade', code: FRAGMENT },
+      { name: 'warp', glsl: GRID_VERTEX },
+      { name: 'shade', glsl: FRAGMENT },
     ],
     pipelines: [
       {
@@ -947,7 +948,7 @@ function mixedArmsFrame(): FrameGraph {
   const made = grid.bytes(16, 16);
   return {
     id: 'mixed-arms',
-    target: 'glsl',
+    authored: 'glsl',
     resources: [
       { kind: 'uniform', name: 'uniforms' },
       {
@@ -965,10 +966,10 @@ function mixedArmsFrame(): FrameGraph {
       { kind: 'sampler', name: 'smooth', filter: 'linear', wrap: 'clamp' },
     ],
     modules: [
-      { name: 'warp', code: GRID_VERTEX },
-      { name: 'shade', code: FRAGMENT },
-      { name: 'vertex', code: VERTEX },
-      { name: 'show', code: FRAGMENT_SAMPLE },
+      { name: 'warp', glsl: GRID_VERTEX },
+      { name: 'shade', glsl: FRAGMENT },
+      { name: 'vertex', glsl: VERTEX },
+      { name: 'show', glsl: FRAGMENT_SAMPLE },
     ],
     pipelines: [
       {
@@ -1042,15 +1043,15 @@ const GRAIN_BYTES = 64 * 64 * 4;
 function textureFrame(size: { width: number; height: number } | { scale: number } = { width: 64, height: 64 }): FrameGraph {
   return {
     id: 'core-texture',
-    target: 'glsl',
+    authored: 'glsl',
     resources: [
       { kind: 'uniform', name: 'uniforms' },
       { kind: 'texture', name: 'grain', size, format: 'rgba8unorm', use: ['sample'], data: new Uint8Array(GRAIN_BYTES) },
       { kind: 'sampler', name: 'grainSampler', filter: 'linear', wrap: 'repeat' },
     ],
     modules: [
-      { name: 'vertex', code: VERTEX },
-      { name: 'shade', code: GRAIN_FRAGMENT },
+      { name: 'vertex', glsl: VERTEX },
+      { name: 'shade', glsl: GRAIN_FRAGMENT },
     ],
     pipelines: [
       {
@@ -1144,7 +1145,7 @@ const MIPS_BYTES = MIPS_SIDE * MIPS_SIDE * 4;
 function mipsFrame(over: Partial<TextureResource> = {}): FrameGraph {
   return {
     id: 'core-mips',
-    target: 'glsl',
+    authored: 'glsl',
     resources: [
       { kind: 'uniform', name: 'uniforms' },
       {
@@ -1160,8 +1161,8 @@ function mipsFrame(over: Partial<TextureResource> = {}): FrameGraph {
       { kind: 'sampler', name: 'grainSampler', filter: 'linear', wrap: 'repeat' },
     ],
     modules: [
-      { name: 'vertex', code: VERTEX },
-      { name: 'shade', code: GRAIN_FRAGMENT },
+      { name: 'vertex', glsl: VERTEX },
+      { name: 'shade', glsl: GRAIN_FRAGMENT },
     ],
     pipelines: [
       {
@@ -1262,7 +1263,7 @@ function depthFrame(): FrameGraph {
     },
   ];
   return {
-    id: 'core-depth', target: 'glsl',
+    id: 'core-depth', authored: 'glsl',
     resources: [
       { kind: 'uniform', name: 'uniforms' },
       { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
@@ -1270,8 +1271,8 @@ function depthFrame(): FrameGraph {
       ...sheetResources(),
     ],
     modules: [
-      { name: 'project', code: SHEET_VERTEX },
-      { name: 'paint', code: FRAGMENT },
+      { name: 'project', glsl: SHEET_VERTEX },
+      { name: 'paint', glsl: FRAGMENT },
     ],
     pipelines,
     passes: [
@@ -1298,7 +1299,7 @@ function stencilFrame(): FrameGraph {
     },
   ];
   return {
-    id: 'core-stencil', target: 'glsl',
+    id: 'core-stencil', authored: 'glsl',
     resources: [
       { kind: 'uniform', name: 'uniforms' },
       { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
@@ -1306,9 +1307,9 @@ function stencilFrame(): FrameGraph {
       ...sheetResources(),
     ],
     modules: [
-      { name: 'project', code: SHEET_VERTEX },
-      { name: 'cover', code: VERTEX },
-      { name: 'paint', code: FRAGMENT },
+      { name: 'project', glsl: SHEET_VERTEX },
+      { name: 'cover', glsl: VERTEX },
+      { name: 'paint', glsl: FRAGMENT },
     ],
     pipelines,
     passes: [

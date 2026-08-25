@@ -146,8 +146,8 @@ export function readingOf(facts: ProbeFacts, date: string): DeviceReading {
   // WGSL selects WebGPU where it is offered; a GLSL frame would fall to WebGL 2.
   // Reading the richer backend first is what a toy-tier WGSL probe would select,
   // and the GLSL arm is what is left on a WebGPU-less machine.
-  const wgsl = selectBackend({ target: 'wgsl' }, offer);
-  const glsl = selectBackend({ target: 'glsl' }, offer);
+  const wgsl = selectBackend({ authored: 'wgsl' }, offer);
+  const glsl = selectBackend({ authored: 'glsl' }, offer);
   const backend: BackendName | null = 'backend' in wgsl ? wgsl.backend : 'backend' in glsl ? glsl.backend : null;
 
   const source = backend === 'webgpu' ? facts.webgpu : backend === 'webgl2' ? facts.webgl2 : null;

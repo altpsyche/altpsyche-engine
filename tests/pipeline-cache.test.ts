@@ -170,8 +170,8 @@ describe('the structure key', () => {
     };
     const frame = (access: 'read' | 'read-write'): Parameters<typeof pipelineStructureOf>[0] => ({
       id: 'shared-spec',
-      target: 'wgsl',
-      modules: [{ name: 'wgsl', code: 'fn main() {}' }],
+      authored: 'wgsl',
+      modules: [{ name: 'wgsl', wgsl: 'fn main() {}' }],
       resources: [{ kind: 'buffer', name: 'data', access, bytes: 16 }],
       pipelines: [spec],
       passes: [{ pipeline: 'draw', draws: [{ vertices: 3 }] }],

@@ -47,14 +47,14 @@ const SOURCE = `struct Uniforms { u_time: f32, u_resolution: vec2<f32> };
 /** @type {import('../graph/types.js').FrameGraph} */
 const frame = {
   id: 'timed',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     { kind: 'buffer', name: 'tally', bytes: 16, access: 'read-write', data: new Uint8Array(16) },
     { kind: 'buffer', name: 'computeTime', bytes: 16, access: 'read-write' },
     { kind: 'buffer', name: 'renderTime', bytes: 16, access: 'read-write' },
   ],
-  modules: [{ name: 'wgsl', code: SOURCE }],
+  modules: [{ name: 'wgsl', wgsl: SOURCE }],
   pipelines: [
     {
       kind: 'compute',

@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
@@ -30,16 +31,16 @@ const WGSL = `struct Cube { transform: mat4x4<f32> };
 const RECORD = 64;
 const SLOT = 256;
 
-const perDrawFrame = (draws: DrawSpec[], count: number, over: Partial<FrameGraph> = {}): FrameGraph => ({
+const perDrawFrame = (draws: DrawSpec[], count: number, over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-perdraw',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     // The per-draw buffer: one record per draw, laid out at 256-byte slots. It
     // arrives with its first contents, which is what a producer of transforms
     // fills once.
     { kind: 'buffer', name: 'cubes', bytes: count * SLOT, access: 'read', data: new Uint8Array(count * SLOT) },
   ],
-  modules: [{ name: 'wgsl', code: WGSL }],
+  modules: [{ name: 'wgsl', wgsl: WGSL }],
   pipelines: [
     {
       kind: 'render',

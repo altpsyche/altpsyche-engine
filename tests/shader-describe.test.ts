@@ -63,14 +63,14 @@ describe('the pipeline kind a description takes off the source', () => {
     expect(pipeline.vertex).toBe('fullscreen');
     expect(pipeline.fragment).toEqual({ module: 'wgsl', entry: 'fragMain' });
     expect(frame.passes).toEqual([{ pipeline: 'fragMain', draws: [{ vertices: 3 }] }]);
-    expect(frame.modules).toEqual([{ name: 'wgsl', code: '' }]);
+    expect(frame.modules).toEqual([{ name: 'wgsl', wgsl: '' }]);
   });
 
   it('describes a compute pipeline for a compute entry, and calls its document by its language', () => {
     const frame = declaredFrame('core-compute', COMPUTE, COMPUTE_FRAME);
 
     expect(frame.pipelines[0]!.kind).toBe('compute');
-    expect(frame.modules).toEqual([{ name: 'wgsl', code: '' }]);
+    expect(frame.modules).toEqual([{ name: 'wgsl', wgsl: '' }]);
     expect(frame.passes).toEqual([{ pipeline: 'paint', groups: [1, 1, 1] }]);
   });
 
@@ -266,7 +266,7 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
       ['step', 'compute'],
       ['shade', 'render'],
     ]);
-    expect(frame.modules).toEqual([{ name: 'wgsl', code: '' }]);
+    expect(frame.modules).toEqual([{ name: 'wgsl', wgsl: '' }]);
     expect(frame.passes).toEqual([
       { pipeline: 'step', groups: [32, 32, 1] },
       { pipeline: 'shade', draws: [{ vertices: 3 }] },

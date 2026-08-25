@@ -240,7 +240,7 @@ const results = await page.evaluate(
     checks.push({
       name: 'an edit that leaves the source the same length still reaches the card',
       ok: centre === '0,0,255',
-      detail: `centre ${centre}, both sources ${second.modules.find((m) => m.name === 'fragment')?.code.length} characters`,
+      detail: `centre ${centre}, both sources ${/** @type {any} */ (second.modules.find((m) => m.name === 'fragment'))?.glsl.length} characters`,
     });
 
     const refusedBroken = surface.setGraph(broken);

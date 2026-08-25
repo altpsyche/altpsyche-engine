@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
@@ -53,15 +54,15 @@ const holds = (name: string, over: Partial<TextureResource> = {}): TextureResour
 
 /** Two colours out of one fragment stage into two textures, with the first of
  * them the one a reader sees. */
-const pairFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const pairFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-targets',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     holds('picture'),
     holds('distance'),
   ],
-  modules: [{ name: 'wgsl', code: TWO }],
+  modules: [{ name: 'wgsl', wgsl: TWO }],
   pipelines: [
     {
       kind: 'render',
@@ -227,7 +228,7 @@ describe('a colour mixed with what the attachment held', () => {
 });
 
 describe('what a description disagreeing with itself about its colours is refused with', () => {
-  const refuses = (over: Partial<FrameGraph>, said: string) => {
+  const refuses = (over: Partial<WgslFrameGraph>, said: string) => {
     const { backend } = backendOver();
     expect(() => backend.program(pairFrame(over))).toThrow(said);
   };

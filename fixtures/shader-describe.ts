@@ -720,9 +720,9 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   });
 
   return {
-    target: 'wgsl',
+    authored: 'wgsl',
     resources,
-    modules: [{ name: WGSL_DOCUMENT, code: '' }],
+    modules: [{ name: WGSL_DOCUMENT, wgsl: '' }],
     pipelines,
     passes,
     ...(declared.present !== undefined ? { present: declared.present } : {}),

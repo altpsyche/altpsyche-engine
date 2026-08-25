@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
@@ -53,11 +54,11 @@ const mask = (over: Partial<TextureResource> = {}): TextureResource => ({
 
 /** One pass marking the mask and one drawn only inside the mark, which is the
  * smallest frame a stencil does anything in. */
-const masked = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const masked = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-stencil',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [{ kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] }, mask()],
-  modules: [{ name: 'wgsl', code: SHEETS }],
+  modules: [{ name: 'wgsl', wgsl: SHEETS }],
   pipelines: [
     {
       kind: 'render',
@@ -93,7 +94,7 @@ function backendOver() {
 
 /** What the description says, refused by a message naming both halves of the
  * disagreement rather than whichever call the card took second. */
-function refuses(over: Partial<FrameGraph>, said: string) {
+function refuses(over: Partial<WgslFrameGraph>, said: string) {
   const { backend } = backendOver();
   expect(() => backend.program(masked(over)).draw()).toThrow(said);
 }

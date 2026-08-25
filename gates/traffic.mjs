@@ -51,7 +51,7 @@ struct Vertex { @builtin(position) at: vec4<f32>, @location(0) place: vec2<f32> 
 /** @type {import('../graph/types.js').FrameGraph} */
 const gridFrame = {
   id: 'grid',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     {
@@ -69,7 +69,7 @@ const gridFrame = {
     },
     { kind: 'indices', name: 'gridIndices', format: 'uint16', count: 24, data: new Uint8Array(24 * 2) },
   ],
-  modules: [{ name: 'wgsl', code: GRID_SOURCE }],
+  modules: [{ name: 'wgsl', wgsl: GRID_SOURCE }],
   pipelines: [
     {
       kind: 'render',
@@ -96,12 +96,12 @@ const COMPUTE_SOURCE = `struct Uniforms { u_time: f32, u_resolution: vec2<f32> }
 /** @type {import('../graph/types.js').FrameGraph} */
 const computeFrame = {
   id: 'compute',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     { kind: 'buffer', name: 'tally', bytes: 256, access: 'read-write', data: new Uint8Array(256) },
   ],
-  modules: [{ name: 'wgsl', code: COMPUTE_SOURCE }],
+  modules: [{ name: 'wgsl', wgsl: COMPUTE_SOURCE }],
   pipelines: [
     {
       kind: 'compute',

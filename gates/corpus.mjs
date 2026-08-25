@@ -42,73 +42,44 @@ const artifact = JSON.parse(
 );
 
 // The library's own builders, so a frame drawn here is the shape a consumer's
-// build produces rather than one this gate invented.
+// build produces rather than one this gate invented. `glslFrameOf` is the WGSL→GLSL
+// conversion the page calls: it reads the baked GLSL off the source's own documents
+// (item 94), so the stitch this gate used to hold now lives in the library.
 const { glslFrame } = await loadFromRoot('toy/frame.ts');
 
 /**
- * Re-point a WGSL description's pipelines at the baked GLSL for WebGL 2: each
- * entry point a pipeline names becomes a document entered at `main`, and the block
- * bindings drop away because a GLSL program answers where its block sits. Returns
- * the pieces a page rebuilds the frame from, or a `skip` reason where the bake
- * carries no GLSL for an entry the pipelines need — a fullscreen WGSL frame with
- * no baked vertex, or a stage naga refused for a WebGL 2 capability.
+ * Why a preset's WGSL frame cannot be carried to WebGL 2, or `null` where it can.
  *
- * @param {{ id: string, description: any, bytes: Map<string, Uint8Array> }} one
+ * This is the reason a skip names, read off the build artifact's `refused` list and
+ * the pipelines' own shape — a compute stage or a fullscreen frame that baked no
+ * vertex, or a stage naga refused for a capability WebGL 2 withholds. It is *not*
+ * the frame assembly: turning the source into the GLSL frame the backend draws is
+ * the library's `glslFrameOf`, run in the page off the bake the source carries.
+ *
+ * @param {string} id
+ * @param {any} description
  */
-function webgl2Frame({ id, description, bytes }) {
+function webgl2SkipReason(id, description) {
   const baked = artifact.presets[id]?.entries ?? {};
   const refused = artifact.refused?.[id] ?? [];
-  /** @type {Set<string>} */
-  const names = new Set();
-  /** @type {string | null} */
-  let missing = null;
-  const pipelines = description.pipelines.map((/** @type {any} */ pipeline) => {
-    // A compute pipeline has no vertex or fragment and no place on WebGL 2.
-    if (!('fragment' in pipeline)) {
-      missing ??= 'compute';
-      return pipeline;
+  for (const pipeline of description.pipelines) {
+    if (!('fragment' in pipeline)) return 'a compute stage, which has no place on WebGL 2';
+    if (pipeline.vertex === 'fullscreen')
+      return 'a fullscreen WGSL frame, which bakes no vertex for WebGL 2 to link';
+    for (const entry of [pipeline.vertex.entry, pipeline.fragment.entry]) {
+      if (baked[entry]) continue;
+      const why = refused.find((/** @type {any} */ r) => r.entry === entry);
+      return why ? `${entry} needs ${why.capability}, which WebGL 2 has not got` : `${entry} baked no GLSL`;
     }
-    const vertexEntry = pipeline.vertex === 'fullscreen' ? null : pipeline.vertex.entry;
-    if (vertexEntry === null) missing ??= 'fullscreen';
-    else {
-      names.add(vertexEntry);
-      if (!baked[vertexEntry]) missing ??= vertexEntry;
-    }
-    names.add(pipeline.fragment.entry);
-    if (!baked[pipeline.fragment.entry]) missing ??= pipeline.fragment.entry;
-    return {
-      ...pipeline,
-      vertex: vertexEntry === null ? 'fullscreen' : { module: vertexEntry, entry: 'main' },
-      fragment: { module: pipeline.fragment.entry, entry: 'main' },
-      // A GLSL program answers where each uniform block sits, so the block bindings
-      // drop away — except a per-draw slice's, which the backend reads to bind one
-      // record's range a draw (item 27): its group and binding tell the per-draw
-      // block apart from the shared one, and its `perDraw` size is one record's
-      // width. Nothing else about it is a GLSL binding number.
-      bindings: (pipeline.bindings ?? []).filter((/** @type {any} */ binding) => binding.perDraw !== undefined),
-    };
-  });
-  if (missing) {
-    if (missing === 'fullscreen') return { skip: 'a fullscreen WGSL frame, which bakes no vertex for WebGL 2 to link' };
-    if (missing === 'compute') return { skip: 'a compute stage, which has no place on WebGL 2' };
-    const why = refused.find((/** @type {any} */ r) => r.entry === missing);
-    return { skip: why ? `${missing} needs ${why.capability}, which WebGL 2 has not got` : `${missing} baked no GLSL` };
   }
-  const modules = [...names].map((name) => ({ name, code: '' }));
-  const texts = Object.fromEntries([...names].map((name) => [name, baked[name].glsl]));
-  const glsl = { ...description, target: 'glsl', modules, pipelines };
-  // Bytes do not survive the trip through `page.evaluate`, so they cross as arrays
-  // and are rebuilt into a Uint8Array map inside the page (the shape surface.mjs
-  // uses for the same reason).
-  const bytesArrays = Object.fromEntries([...bytes].map(([name, made]) => [name, [...made]]));
-  return { glsl, texts, bytesArrays };
+  return null;
 }
 
 const { bundle, staging } = bundleForPage({
   'gpu/webgpu': ['createWebGPUBackend'],
   'gpu/webgl2': ['createWebGL2Backend'],
   'gpu/webgpu-device': ['requestWebGPUDevice'],
-  'toy/frame': ['frameOf'],
+  'toy/frame': ['frameOf', 'glslFrameOf'],
   // `missing` replaced the program's own `unreached` at item 69. It is a weaker
   // reading and the message below says so: it compares an entry's declared names
   // against the uniforms the SOURCE declares, where `unreached` asked the built
@@ -186,7 +157,7 @@ if (probe.error) {
   console.log(`PASS webgl2-fullscreen-probe WebGL 2  ${lit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pixels lit, ${share}%`);
 }
 
-for (const { id, frame, values, entry, description, bytes } of corpus) {
+for (const { id, frame, values, entry, description, bytes, code } of corpus) {
   if (entry.language !== 'wgsl') throw new Error(`the corpus gained a ${entry.language} fixture and this gate draws WGSL`);
 
   const result = await page.evaluate(
@@ -265,16 +236,18 @@ for (const { id, frame, values, entry, description, bytes } of corpus) {
   // WebGL 2 is a SKIP with the reason; one it did is drawn through the backend's
   // own path on a real context and lights the buffer or fails by name.
   const gl2Label = `${id} WebGL 2`;
-  const built = webgl2Frame({ id, description, bytes });
-  if (built.skip) {
-    skipped.push(`${gl2Label}  ${built.skip}`);
+  const skip = webgl2SkipReason(id, description);
+  if (skip) {
+    skipped.push(`${gl2Label}  ${skip}`);
     continue;
   }
-  const glsl = /** @type {any} */ (built.glsl);
-  const texts = /** @type {Record<string, string>} */ (built.texts);
-  const bytesArrays = /** @type {Record<string, number[]>} */ (built.bytesArrays);
+  // The WGSL description carries naga's bake on its documents (item 94); the page
+  // rebuilds the WGSL frame from it and asks the library to turn it into the GLSL
+  // frame WebGL 2 draws. Bytes do not survive `page.evaluate`, so they cross as
+  // arrays and are rebuilt into a Uint8Array map inside the page.
+  const bytesArrays = Object.fromEntries([...bytes].map(([name, made]) => [name, [...made]]));
   const gl2 = await page.evaluate(
-    async ({ id, glsl, texts, bytesArrays, values, W, H }) => {
+    async ({ id, description, code, bytesArrays, values, W, H }) => {
       const canvas = document.createElement('canvas');
       canvas.width = W;
       canvas.height = H;
@@ -284,7 +257,9 @@ for (const { id, frame, values, entry, description, bytes } of corpus) {
       const generated = new Map(Object.entries(bytesArrays).map(([name, made]) => [name, new Uint8Array(made)]));
       let program;
       try {
-        const frame = window.frameOf(id, glsl, texts, undefined, undefined, generated);
+        const wgslFrame = window.frameOf(id, description, { wgsl: code }, undefined, undefined, generated);
+        const frame = window.glslFrameOf(/** @type {any} */ (wgslFrame));
+        if (!frame) return { error: 'the source carried no baked GLSL to draw' };
         program = backend.program(frame);
       } catch (e) {
         return { error: String(/** @type {any} */ (e).message || e).slice(0, 300) };
@@ -298,7 +273,7 @@ for (const { id, frame, values, entry, description, bytes } of corpus) {
       backend.dispose();
       return { lit, total: px.length / 4 };
     },
-    { id, glsl, texts, bytesArrays, values, W, H }
+    { id, description, code, bytesArrays, values, W, H }
   );
   if (gl2.error) {
     // A preset whose GLSL the backend refuses to build or draw is one this backend

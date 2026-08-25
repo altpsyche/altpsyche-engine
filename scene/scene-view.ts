@@ -43,6 +43,7 @@ import type { Camera, Scene } from './scene.js';
 import { mat4 } from './maths.js';
 import type {
   BufferResource,
+  GlslModule,
   ModuleSpec,
   RenderPassSpec,
   RenderPipelineSpec,
@@ -50,6 +51,7 @@ import type {
   FrameGraph,
   ShaderTarget,
   TextureResource,
+  WgslModule,
 } from '../graph/types.js';
 
 /**
@@ -88,9 +90,13 @@ export interface ScenePipeline<V> {
 
 export interface SceneViewOptions<V> {
   id: string;
-  target: ShaderTarget;
+  /** The language the scene's documents are authored in, the one value the frame's
+   * authoring language is read off (item 94). `modules` carry their source on the
+   * field this names — `wgsl` for a WGSL scene, `glsl` for one authored in GLSL. */
+  authored: ShaderTarget;
   /** The documents the pipelines link or compile from, code already in hand — a
-   * producer reaches no fetch. */
+   * producer reaches no fetch. Each carries its source on the field `authored`
+   * names. */
   modules: ModuleSpec[];
   /** The pipelines the world draws through, one instanced render pass each, in the
    * order their passes run — the producer's scheduling decision (item 33). A
@@ -301,19 +307,20 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
         return pass;
       });
 
-      const frame: FrameGraph = {
-        id: options.id,
-        target: options.target,
-        resources: [
-          ...(options.resources ?? []),
-          ...objectResources,
-          viewsBuffer,
-          ...(depthTarget ? [depthTarget] : []),
-        ],
-        modules: options.modules,
-        pipelines: groups.map((group) => group.pipeline),
-        passes,
-      };
+      const resources = [
+        ...(options.resources ?? []),
+        ...objectResources,
+        viewsBuffer,
+        ...(depthTarget ? [depthTarget] : []),
+      ];
+      const pipelines = groups.map((group) => group.pipeline);
+      // The frame is built on the arm its `authored` names (item 94); the caller
+      // declared the discriminant and passed documents of the matching kind, so the
+      // modules narrow to that arm's type here.
+      const frame: FrameGraph =
+        options.authored === 'wgsl'
+          ? { id: options.id, authored: 'wgsl', resources, modules: options.modules as WgslModule[], pipelines, passes }
+          : { id: options.id, authored: 'glsl', resources, modules: options.modules as GlslModule[], pipelines, passes };
       if (options.requires !== undefined) frame.requires = options.requires;
       if (options.present !== undefined) frame.present = options.present;
       return frame;

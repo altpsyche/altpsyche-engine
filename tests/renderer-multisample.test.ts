@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
@@ -58,15 +59,15 @@ const into = (over: Partial<RenderPassSpec> = {}): RenderPassSpec => ({
   ...over,
 });
 
-const averaged = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const averaged = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-multisample',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     picture('edges', { samples: 4 }),
     picture('flat'),
   ],
-  modules: [{ name: 'wgsl', code: DRAWS }],
+  modules: [{ name: 'wgsl', wgsl: DRAWS }],
   pipelines: [shade()],
   passes: [into()],
   present: 'flat',

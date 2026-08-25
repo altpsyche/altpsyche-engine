@@ -93,7 +93,7 @@ function groupsCovering(width: number, height: number): [number, number, number]
 // reached only by the compute stage. The pass's group count is the one thing that
 // depends on the size drawn at, so the description is built per size.
 const descriptionAt = (groups: [number, number, number]): FrameGraph => ({
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms' },
     {
@@ -107,7 +107,7 @@ const descriptionAt = (groups: [number, number, number]): FrameGraph => ({
       use: ['storage'],
     },
   ],
-  modules: [{ name: WGSL_DOCUMENT, code: '' }],
+  modules: [{ name: WGSL_DOCUMENT, wgsl: '' }],
   pipelines: [
     {
       kind: 'compute',

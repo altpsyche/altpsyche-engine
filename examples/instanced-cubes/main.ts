@@ -151,7 +151,7 @@ const VERTEX_STRIDE = 24;
 // frame's own colour target. `draws: [{ instances }]` is the one instanced draw —
 // the vertex count is the geometry's, so it is not written a second time here.
 const WGSL_DESCRIPTION: FrameGraph = {
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms' },
     {
@@ -171,7 +171,7 @@ const WGSL_DESCRIPTION: FrameGraph = {
     // store rather than writing it back.
     { kind: 'texture', name: 'depth', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
   ],
-  modules: [{ name: WGSL_DOCUMENT, code: '' }],
+  modules: [{ name: WGSL_DOCUMENT, wgsl: '' }],
   pipelines: [
     {
       kind: 'render',
@@ -234,9 +234,9 @@ void main() {
 // instance count rides beside them: `{ vertices: 3, instances: COUNT }` is one
 // `drawArraysInstanced` (item 28) covering the thousand objects in one pass.
 const GLSL_DESCRIPTION: FrameGraph = {
-  target: 'glsl',
+  authored: 'glsl',
   resources: [{ kind: 'uniform', name: 'uniforms' }],
-  modules: [{ name: 'vertex', code: '' }, { name: 'fragment', code: '' }],
+  modules: [{ name: 'vertex', glsl: '' }, { name: 'fragment', glsl: '' }],
   pipelines: [
     {
       kind: 'render',

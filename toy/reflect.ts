@@ -101,16 +101,20 @@ function glslUniforms(source: string): Uniform[] {
 export function reflect(frame: FrameGraph): Uniform[] {
   const seen = new Set<string>();
   const uniforms: Uniform[] = [];
-  for (const module of frame.modules) {
-    const declared =
-      frame.target === 'wgsl'
-        ? wgslUniformFields(module.code).map((field) => ({ name: field.name, type: commonType(field.type) }))
-        : glslUniforms(module.code);
-    for (const uniform of declared) {
-      if (seen.has(uniform.name)) continue;
-      seen.add(uniform.name);
-      uniforms.push(uniform);
-    }
+  // `authored` is the one value the language is read off (item 94): a WGSL frame's
+  // documents carry `wgsl` text read by the WGSL field parser, a GLSL frame's carry
+  // `glsl` text read by the GLSL one, and the discriminant narrows `frame.modules`
+  // to the arm each reads without inspecting a document's shape.
+  const declared: Uniform[] =
+    frame.authored === 'wgsl'
+      ? frame.modules.flatMap((module) =>
+          wgslUniformFields(module.wgsl).map((field) => ({ name: field.name, type: commonType(field.type) }))
+        )
+      : frame.modules.flatMap((module) => glslUniforms(module.glsl));
+  for (const uniform of declared) {
+    if (seen.has(uniform.name)) continue;
+    seen.add(uniform.name);
+    uniforms.push(uniform);
   }
   return uniforms;
 }

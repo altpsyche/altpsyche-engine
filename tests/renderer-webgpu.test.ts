@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { ONE_PASS, missing, wgslFrame } from '@altpsyche/engine';
-import type { FrameGraph, TextureResource } from '@altpsyche/engine';
+import type { FrameGraph, TextureResource, WgslFrameGraph } from '@altpsyche/engine';
 import type { UniformSlot } from '@altpsyche/engine';
 import { createFakeGPU, paddedFrame } from './support/fake-gpu';
 
@@ -63,7 +63,7 @@ describe('the backend it is handed', () => {
 
   it('refuses a frame for the other backend by naming the target it got', () => {
     const { backend } = backendOver();
-    const glsl = { id: 'x', target: 'glsl' } as FrameGraph;
+    const glsl = { id: 'x', authored: 'glsl' } as unknown as FrameGraph;
     expect(() => backend.program(glsl)).toThrow('WebGPU was handed a glsl frame to draw');
   });
 });
@@ -510,14 +510,14 @@ fn computeMain(@builtin(global_invocation_id) at: vec3<u32>) {
   textureStore(picture, vec2<i32>(at.xy), vec4<f32>(uniforms.u_time));
 }`;
 
-const computeFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const computeFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-compute',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: BLOCK },
     { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['storage'] },
   ],
-  modules: [{ name: 'compute', code: COMPUTE }],
+  modules: [{ name: 'compute', wgsl: COMPUTE }],
   pipelines: [
     {
       kind: 'compute',
@@ -561,7 +561,7 @@ describe('the compute pipeline it builds', () => {
 
   it('hands a rung its overridable constants through the compute stage', () => {
     const { gpu, backend } = backendOver();
-    backend.program(computeFrame({ modules: [{ name: 'compute', code: COMPUTE, constants: { STEPS: 32 } }] }));
+    backend.program(computeFrame({ modules: [{ name: 'compute', wgsl: COMPUTE, constants: { STEPS: 32 } }] }));
 
     expect(gpu.calls('createComputePipeline')[0]!.constants).toEqual({ STEPS: 32 });
   });
@@ -753,9 +753,9 @@ fn fragMain(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
  * read off the wrong axis visible rather than plausible. */
 const GRAIN = new Uint8Array(4 * 4 * 4).map((_, at) => Math.floor(at / 16) + 1);
 
-const sampledFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const sampledFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-sampled',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: BLOCK },
     {
@@ -769,7 +769,7 @@ const sampledFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
     },
     { kind: 'sampler', name: 'grainSampler', filter: 'linear', wrap: 'repeat' },
   ],
-  modules: [{ name: 'fragment', code: SAMPLED }],
+  modules: [{ name: 'fragment', wgsl: SAMPLED }],
   pipelines: [
     {
       kind: 'render',

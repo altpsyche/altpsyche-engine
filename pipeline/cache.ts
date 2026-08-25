@@ -86,8 +86,17 @@ export interface PipelineStructure {
  * a distinct structure, and the throw belongs where the pipeline is actually built
  * against the card, not where its key is taken. */
 function stagesOf(frame: FrameGraph, spec: PipelineSpec): { code: string; entry: string }[] {
+  // A stage's source is the text on the field the frame's language names (item 94):
+  // a WGSL frame's documents carry `wgsl`, a GLSL frame's carry `glsl`. Each backend
+  // draws a frame already in its own language — a WGSL-authored frame reaches WebGL 2
+  // only after `glslFrameOf` turns it into a GLSL one — so no bake map is read here.
+  const source = (name: string): string => {
+    const module = moduleOf(frame, name);
+    if (!module) return '';
+    return frame.authored === 'wgsl' ? (module as { wgsl: string }).wgsl : (module as { glsl: string }).glsl;
+  };
   const resolve = (named: { module: string; entry: string }) => ({
-    code: moduleOf(frame, named.module)?.code ?? '',
+    code: source(named.module),
     entry: named.entry,
   });
   if (spec.kind === 'compute') return [resolve(spec.compute)];

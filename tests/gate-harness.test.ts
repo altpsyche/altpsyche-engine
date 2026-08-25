@@ -34,7 +34,8 @@ describe('the gate harness still assembles what the browser gates draw', () => {
       expect(entry.frame.modules.length, `${entry.id} carries no module`).toBeGreaterThan(0);
       for (const module of entry.frame.modules) {
         expect(module.name, `${entry.id} has a module with no name`).toBeTruthy();
-        expect(module.code, `${entry.id}'s module "${module.name}" has no text`).toBeTruthy();
+        const text = 'wgsl' in module ? module.wgsl : module.glsl;
+        expect(text, `${entry.id}'s module "${module.name}" has no text`).toBeTruthy();
       }
     }
   });

@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
@@ -38,11 +39,11 @@ const both: PassSpec[] = [
   { pipeline: 'over', draws: [{ vertices: 3 }] },
 ];
 
-const holding = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const holding = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-passes',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [{ kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] }],
-  modules: [{ name: 'wgsl', code: SHADER }],
+  modules: [{ name: 'wgsl', wgsl: SHADER }],
   pipelines: [
     {
       kind: 'render',

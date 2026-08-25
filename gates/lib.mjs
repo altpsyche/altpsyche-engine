@@ -17,7 +17,7 @@
 //     carries neither the backends nor the fake device, on purpose, so a gate
 //     reading `dist` could not reach what it exists to measure.
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -124,8 +124,33 @@ export async function loadCorpus() {
   const { loadFixture } = await loadFromRoot('tests/support/fixture.ts');
   const { CAPABILITY_FIXTURES } = await loadFromRoot('fixtures/capability-fixtures.ts');
 
+  // Every preset's source is WGSL; the GLSL ES 3.00 the build baked from it with
+  // naga (item 41) travels with that source here, keyed by entry point on each WGSL
+  // document's `glsl`, so a WebGPU-less device reaches WebGL 2 through the source
+  // rather than through a gate-local stitch (item 94). `naga` is a build-time tool
+  // never shipped (§17 decision 5), so this reads the bake it left.
+  const artifact = JSON.parse(
+    readFileSync(path.join(ROOT, 'fixtures', 'source', 'glsl', 'corpus.generated.json'), 'utf8')
+  );
+
   return CAPABILITY_FIXTURES.map((entry) => {
     const { description, code, generated } = loadFixture(entry.id);
+
+    // The baked GLSL for this preset, keyed by the entry point each stage baked, or
+    // an empty map where naga refused every stage. Attached to the WGSL documents so
+    // the translation rides the source; `glslFrameOf` reads it off there.
+    const baked = artifact.presets?.[entry.id]?.entries ?? {};
+    const glslBake = Object.fromEntries(
+      Object.entries(baked).map(([point, { glsl }]) => [point, glsl])
+    );
+    const described =
+      Object.keys(glslBake).length > 0
+        ? {
+            ...description,
+            modules: description.modules.map((/** @type {any} */ module) => ({ ...module, glsl: glslBake })),
+            translated: true,
+          }
+        : description;
 
     // The bytes arrive keyed by the address a description sends a reader to, and a
     // frame wants them keyed by the resource that reads them, which is the
@@ -147,12 +172,12 @@ export async function loadCorpus() {
     return {
       id: entry.id,
       entry,
-      description,
+      description: described,
       code,
       bytes,
       block,
       values: Object.fromEntries(entry.uniforms.map((uniform) => [uniform.name, uniform.value])),
-      frame: frameOf(entry.id, description, { wgsl: code }, block, undefined, bytes),
+      frame: frameOf(entry.id, described, { wgsl: code }, block, undefined, bytes),
     };
   });
 }

@@ -1,3 +1,4 @@
+import type { GlslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGL2Backend } from '../gpu/webgl2';
 import type { FrameGraph } from '@altpsyche/engine';
@@ -33,17 +34,17 @@ const SLOT = 256;
 /** A GLSL per-draw frame the way the corpus gate builds one for WebGL 2: a uniform
  * buffer of records, a pipeline binding that slices it per draw, and one draw per
  * record naming the byte offset of its slice. */
-function perDrawFrame(over: Partial<FrameGraph> = {}): FrameGraph {
+function perDrawFrame(over: Partial<GlslFrameGraph> = {}): FrameGraph {
   return {
     id: 'perdraw',
-    target: 'glsl',
+    authored: 'glsl',
     resources: [
       { kind: 'uniform', name: 'uniforms' },
       { kind: 'buffer', name: 'slice', bytes: 3 * SLOT, access: 'read', data: new Uint8Array(3 * SLOT) },
     ],
     modules: [
-      { name: 'vertex', code: VERTEX },
-      { name: 'fragment', code: FRAGMENT },
+      { name: 'vertex', glsl: VERTEX },
+      { name: 'fragment', glsl: FRAGMENT },
     ],
     pipelines: [
       {
@@ -174,14 +175,14 @@ describe('a per-draw uniform slice on WebGL 2', () => {
     const { backend } = backendOver();
     const frame: FrameGraph = {
       id: 'storage',
-      target: 'glsl',
+      authored: 'glsl',
       resources: [
         { kind: 'uniform', name: 'uniforms' },
         { kind: 'buffer', name: 'blob', bytes: 64, access: 'read' },
       ],
       modules: [
-        { name: 'vertex', code: VERTEX },
-        { name: 'fragment', code: FRAGMENT },
+        { name: 'vertex', glsl: VERTEX },
+        { name: 'fragment', glsl: FRAGMENT },
       ],
       pipelines: [
         {

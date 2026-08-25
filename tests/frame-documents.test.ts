@@ -19,9 +19,9 @@ const VERTEX = '@vertex fn main(@builtin(vertex_index) i : u32) -> @builtin(posi
 const FRAGMENT = '@fragment fn fragMain() -> @location(0) vec4f { return vec4f(1); }';
 
 const description: FrameGraph = {
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [{ kind: 'uniform', name: 'uniforms' }],
-  modules: [{ name: 'corners', code: '' }, { name: 'shade', code: '' }],
+  modules: [{ name: 'corners', wgsl: '' }, { name: 'shade', wgsl: '' }],
   pipelines: [
     {
       kind: 'render',
@@ -55,8 +55,8 @@ describe('a description naming two distinct WGSL documents', () => {
   it('assembles with both documents’ text intact, neither overwriting the other', () => {
     const frame = assembled();
     expect(frame.modules).toEqual([
-      { name: 'corners', code: VERTEX },
-      { name: 'shade', code: FRAGMENT },
+      { name: 'corners', wgsl: VERTEX },
+      { name: 'shade', wgsl: FRAGMENT },
     ]);
   });
 
@@ -79,9 +79,9 @@ describe('a description naming two distinct WGSL documents', () => {
  * at the same site that already refuses a document with no text.
  */
 const collision: FrameGraph = {
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [{ kind: 'uniform', name: 'uniforms' }],
-  modules: [{ name: 'shade', code: '' }, { name: 'shade', code: '' }],
+  modules: [{ name: 'shade', wgsl: '' }, { name: 'shade', wgsl: '' }],
   pipelines: [
     {
       kind: 'render',

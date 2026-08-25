@@ -25,7 +25,7 @@ const SIZE = { width: 800, height: 600 };
  * draw into the frame's own colour target. */
 const wgslCubes: FrameGraph = {
   id: 'instanced-cubes',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     {
@@ -42,7 +42,7 @@ const wgslCubes: FrameGraph = {
     },
     { kind: 'texture', name: 'depth', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
   ],
-  modules: [{ name: 'wgsl', code: '' }],
+  modules: [{ name: 'wgsl', wgsl: '' }],
   pipelines: [
     {
       kind: 'render',
@@ -61,11 +61,11 @@ const wgslCubes: FrameGraph = {
  * the thousand objects, no depth and no vertex buffer of its own. */
 const glslCubes: FrameGraph = {
   id: 'instanced-cubes',
-  target: 'glsl',
+  authored: 'glsl',
   resources: [{ kind: 'uniform', name: 'uniforms' }],
   modules: [
-    { name: 'vertex', code: '' },
-    { name: 'fragment', code: '' },
+    { name: 'vertex', glsl: '' },
+    { name: 'fragment', glsl: '' },
   ],
   pipelines: [
     {

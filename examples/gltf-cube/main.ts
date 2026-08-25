@@ -206,7 +206,7 @@ fn shade(in: VsOut) -> @location(0) vec4<f32> {
   return vec4<f32>(in.tint * (0.25 + 0.75 * lambert), 1.0);
 }`;
 
-const MODULE: ModuleSpec = { name: 'scene', code: SCENE_WGSL };
+const MODULE: ModuleSpec = { name: 'scene', wgsl: SCENE_WGSL };
 
 const litPipeline: RenderPipelineSpec = {
   kind: 'render',
@@ -226,7 +226,7 @@ const litPipeline: RenderPipelineSpec = {
 function optionsFor(mesh: Mesh): SceneViewOptions<Panel> {
   return {
     id: 'gltf-cube',
-    target: 'wgsl',
+    authored: 'wgsl',
     modules: [MODULE],
     pipelines: [{ pipeline: litPipeline, objects: { buffer: 'objects', pack: packLit } }],
     materials: MATERIALS,

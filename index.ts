@@ -74,6 +74,7 @@ export {
   generatedResources,
   glslDescription,
   glslFrame,
+  glslFrameOf,
   wgslDescription,
   wgslFrame,
 } from './toy/frame.js';
@@ -98,6 +99,8 @@ export type {
   ComputePipelineSpec,
   DeviceReport,
   DrawSpec,
+  GlslFrameGraph,
+  GlslModule,
   Groups,
   IndexResource,
   ModuleSpec,
@@ -116,6 +119,8 @@ export type {
   UniformSlot,
   UniformValue,
   VertexResource,
+  WgslFrameGraph,
+  WgslModule,
 } from './graph/types.js';
 
 // A texture's size is a whole-size descriptor rather than a per-axis pair, the

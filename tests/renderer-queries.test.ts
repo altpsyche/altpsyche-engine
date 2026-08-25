@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
@@ -39,11 +40,11 @@ const held = (over: Partial<BufferResource> = {}): BufferResource => ({
   ...over,
 });
 
-const frameOf = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const frameOf = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-queries',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [{ kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] }, held()],
-  modules: [{ name: 'wgsl', code: SOURCE }],
+  modules: [{ name: 'wgsl', wgsl: SOURCE }],
   pipelines: [
     {
       kind: 'compute',

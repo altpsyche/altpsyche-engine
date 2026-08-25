@@ -42,7 +42,7 @@ const packPanel = (draw: MaterialDraw<Panel>): Uint8Array => {
   return out;
 };
 
-const MODULE: ModuleSpec = { name: 'scene', code: '// authored once, fed by the producer' };
+const MODULE: ModuleSpec = { name: 'scene', wgsl: '// authored once, fed by the producer' };
 
 const SURFACE: RenderPipelineSpec = {
   kind: 'render',
@@ -104,7 +104,7 @@ const SPANNING: Scene = {
 
 const SURFACE_ONLY: SceneViewOptions<Panel> = {
   id: 'panels',
-  target: 'wgsl',
+  authored: 'wgsl',
   modules: [MODULE],
   pipelines: [{ pipeline: SURFACE, objects: { buffer: 'objects', pack: packPanel } }],
   materials: MATERIALS,
@@ -113,7 +113,7 @@ const SURFACE_ONLY: SceneViewOptions<Panel> = {
 
 const SURFACE_AND_GLOW: SceneViewOptions<Panel> = {
   id: 'spanning',
-  target: 'wgsl',
+  authored: 'wgsl',
   modules: [MODULE],
   pipelines: [
     { pipeline: SURFACE, objects: { buffer: 'objects', pack: packPanel } },

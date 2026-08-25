@@ -279,7 +279,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
     },
 
     program(frame: FrameGraph): ShaderProgram {
-      if (frame.target !== 'glsl') throw new Error(`WebGL 2 was handed a ${frame.target} frame to draw`);
+      if (frame.authored !== 'glsl') throw new Error(`WebGL 2 was handed a ${frame.authored} frame to draw`);
       // Every rule about the graph is checked in one place; the WebGL 2 path does
       // not reach `submit/plan.ts`, so it reads the same function directly (item
       // 19). It is a no-op for the fullscreen GLSL frames this backend draws today
@@ -435,12 +435,17 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         if (!vertexSource || !fragmentSource) {
           throw new Error(`the frame for "${frame.id}" names a document it does not carry`);
         }
+        // A GLSL frame's documents carry their source on `glsl` (item 94); the
+        // backend guarded a non-GLSL frame above, so the field the language names is
+        // the one read here.
+        const vertexGlsl = (vertexSource as { glsl: string }).glsl;
+        const fragmentGlsl = (fragmentSource as { glsl: string }).glsl;
         return programCache.resolve(
           programCache.request(pipelineStructureOf(frame, spec), () => {
             const linked = gl.createProgram();
             if (!linked) throw new Error('the context refused to make a program');
-            const vertex = compile(gl, gl.VERTEX_SHADER, vertexSource.code);
-            const fragment = compile(gl, gl.FRAGMENT_SHADER, fragmentSource.code);
+            const vertex = compile(gl, gl.VERTEX_SHADER, vertexGlsl);
+            const fragment = compile(gl, gl.FRAGMENT_SHADER, fragmentGlsl);
             gl.attachShader(linked, vertex);
             gl.attachShader(linked, fragment);
             gl.linkProgram(linked);

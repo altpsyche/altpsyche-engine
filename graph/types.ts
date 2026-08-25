@@ -23,29 +23,59 @@ export type ShaderTarget = 'glsl' | 'wgsl';
 export type UniformValue = number | number[];
 
 /**
- * One shader document.
- *
- * A shader written in WGSL or Slang is one of these and a shader written in GLSL
- * is two, which is the whole of what the two languages differ by here: the pair
- * a WebGL 2 program links from and the single module a WebGPU pipeline is made
- * from are both a list of documents with a pipeline naming which one runs at
- * which stage.
- *
- * The `code` is the fetched text on a frame a backend draws, and an empty string
- * on the build-time shape a producer names but a loader has not filled yet: a
- * document is named, carried and referenced by the one name it has, which a role
- * fixed to a three-value union — fragment, vertex, wgsl — could not, since two
+ * One shader document, carrying its source under the language it is authored in
+ * rather than a bare `code` string whose language something else decides (item
+ * 94). A document is named, carried and referenced by the one name it has, which a
+ * role fixed to a three-value union — fragment, vertex, wgsl — could not, since two
  * WGSL documents share one role between them and carry two distinct texts.
+ *
+ * Which arm a module is comes off its frame's `authored` discriminant, not off
+ * which fields the record happens to carry: a WGSL frame's modules are all
+ * `WgslModule`, a GLSL frame's all `GlslModule`, so nothing reads a language off
+ * the shape of a document (§17 decision 6). A WGSL shader written in one file is
+ * one document and a GLSL shader is the pair a WebGL 2 program links from, which is
+ * the whole of what the two languages differ by here: both are a list of documents
+ * with a pipeline naming which one runs at which stage.
  */
-export interface ModuleSpec {
+export interface WgslModule {
   name: string;
-  code: string;
+  /** The WGSL text on a frame a backend draws, and an empty string on the
+   * build-time shape a producer names but a loader has not filled yet. */
+  wgsl: string;
+  /** The baked GLSL translation of this document (§17 decision 2), keyed by the
+   * entry point each stage baked exactly as
+   * `fixtures/source/glsl/corpus.generated.json` stores it, so a device without
+   * WebGPU can draw a WGSL frame on WebGL 2 through the source that carries it (item
+   * 94). Absent where the build baked no translation. It is keyed by entry point
+   * rather than folded into a §9 `GlslPair`, because one WGSL document may hold
+   * several pipelines' entry points and a single vertex/fragment pair could not hold
+   * a multi-pipeline preset's bake — the `GlslPair` shape waits for item 95, which
+   * establishes a source per render pipeline first. Read only by the WGSL-to-GLSL
+   * frame conversion (`glslFrameOf`); neither backend nor the pipeline cache reads
+   * it, because each draws a frame already in its own language. */
+  glsl?: Record<string, string>;
   /** What this rung asks of the source, by the names it declares as overridable.
    * The text is the same at every rung, so these numbers are the only thing
    * separating a phone's picture from a desktop's, and they are spent when the
    * pipeline is made rather than written into the code. */
   constants?: Record<string, number>;
 }
+
+/** One document of a GLSL-authored shader — the authored truth on this arm, one
+ * stage's text, where the WGSL arm's `glsl` is a cached translation. That a single
+ * optional field cannot mean both a translation and an authored source is why the
+ * discriminant exists (§17 decision 6). */
+export interface GlslModule {
+  name: string;
+  /** The authored GLSL text of one stage's document, empty at build time for the
+   * reason a WGSL document's `wgsl` is. */
+  glsl: string;
+  constants?: Record<string, number>;
+}
+
+/** One shader document, discriminated by its frame's `authored` language, never by
+ * which fields it carries. */
+export type ModuleSpec = WgslModule | GlslModule;
 
 /** Where one uniform sits in the block Slang gathers them all into. Read off the
  * reflection the compiler emits, because the layout is the compiler's to decide
@@ -442,7 +472,7 @@ export type PassSpec = RenderPassSpec | ComputePassSpec;
  * the reshape adds nothing to what either backend does.
  *
  * One type covers a frame in either state of a fetch. The build writes it with
- * its modules named rather than filled — a `code: ''` placeholder the loader
+ * its modules named rather than filled — an empty-string placeholder the loader
  * overwrites — and with no `id`, because the identity is the manifest key a
  * loader stamps on when it hands the frame across (`frameOf`). A frame a backend
  * draws is the same shape with every module's text in it and its `id` set: there
@@ -450,23 +480,30 @@ export type PassSpec = RenderPassSpec | ComputePassSpec;
  * empty becoming full. A uniform resource carries no positions until then either,
  * for the same reason — the block is the shader's, the same on every target that
  * has one, and asked of the linked program on the one target that has none.
+ *
+ * The frame is discriminated on `authored`, the one value everything reads a
+ * shader's authoring language off (item 94, §17 decision 6): a WGSL frame's
+ * modules are all `WgslModule`, a GLSL frame's all `GlslModule`, so `select`, both
+ * backends and `reflect` narrow on `frame.authored` and never on which fields a
+ * module carries. It replaces the old `frame.target` field, which said the same
+ * thing beside a `module.code` string whose language nothing on the module named.
  */
-export interface FrameGraph {
+interface FrameGraphCommon {
   /** The manifest key a loader stamps on when it fills the frame, absent on the
    * build-time shape a producer hands over — the identity is not the producer's
    * to invent, since one description is filled under whatever id a caller draws it
    * by. Every frame a backend draws has it, because `frameOf` sets it. */
   id?: string;
-  target: ShaderTarget;
   /** Whether a WGSL frame carries a GLSL translation, so a device without WebGPU
    * can still draw it on WebGL 2 by that translation rather than being refused
-   * (§17 decision 2). It is the one fact selection reads beyond the target and the
-   * device: a WGSL frame with a translation gains WebGL 2 as a fallback candidate,
-   * one without it does not, and on a WebGPU-less device the refusal names which of
-   * the two was missing. Absent, and meaningless, on a GLSL frame — WebGL 2 speaks
-   * that language with no translation. The translation itself travels with the
-   * source at item 94; this is only the fact that it exists, which is the whole of
-   * what `selectBackend` needs to route by. */
+   * (§17 decision 2). It is the one fact selection reads beyond the authoring
+   * language and the device: a WGSL frame with a translation gains WebGL 2 as a
+   * fallback candidate, one without it does not, and on a WebGPU-less device the
+   * refusal names which of the two was missing. Absent, and meaningless, on a GLSL
+   * frame — WebGL 2 speaks that language with no translation. The translation text
+   * itself now travels with the source, on each `WgslModule.glsl` (item 94); this
+   * is the fact that it exists, which is the whole of what `selectBackend` routes
+   * by without reading the modules. */
   translated?: boolean;
   /** The names and types a caller may feed are no longer written down here: they
    * are read from the source by `reflect(frame)` (item 69), because a source and
@@ -479,7 +516,6 @@ export interface FrameGraph {
    * than as a method a backend would throw from, per §17 decision 2. */
   requires?: readonly Capability[];
   resources: ResourceSpec[];
-  modules: ModuleSpec[];
   pipelines: PipelineSpec[];
   /** Run in this order on one command encoder, every frame. */
   passes: PassSpec[];
@@ -496,6 +532,23 @@ export interface FrameGraph {
    * one to write and never learns which of the two textures it was handed. */
   swap?: [string, string][];
 }
+
+/** A WGSL-authored frame: its documents are WGSL, each carrying an optional baked
+ * GLSL translation so a WebGPU-less device can draw it on WebGL 2 (§17 decision 2). */
+export interface WgslFrameGraph extends FrameGraphCommon {
+  authored: 'wgsl';
+  modules: WgslModule[];
+}
+
+/** A GLSL-authored frame: its documents are the GLSL a WebGL 2 program links from,
+ * the authored truth with no translation, because GLSL selects WebGL 2 wherever it
+ * runs and GLSL-to-WGSL is deferred (§17 decision 6). */
+export interface GlslFrameGraph extends FrameGraphCommon {
+  authored: 'glsl';
+  modules: GlslModule[];
+}
+
+export type FrameGraph = WgslFrameGraph | GlslFrameGraph;
 
 /** The one uniform block of a frame, or undefined where it describes none. */
 export function uniformResourceOf(frame: FrameGraph): UniformResource | undefined {

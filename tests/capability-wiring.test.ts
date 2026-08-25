@@ -24,15 +24,15 @@ const chosen = (outcome: BackendSelection) =>
  * WebGL 2 device has neither of. `id` is what the message names the graph by. */
 const computeFrame = {
   id: 'field',
-  target: 'wgsl' as const,
+  authored: 'wgsl' as const,
   requires: ['compute', 'storage-texture'] as readonly Capability[],
 };
 
 /** A plain WGSL fragment graph, needing nothing optional. */
-const fragmentFrame = { id: 'toy', target: 'wgsl' as const, requires: undefined };
+const fragmentFrame = { id: 'toy', authored: 'wgsl' as const, requires: undefined };
 
 /** A GLSL graph, which speaks WebGL 2 and requires nothing WebGL 2 lacks. */
-const glslFrame = { id: 'paste', target: 'glsl' as const, requires: undefined };
+const glslFrame = { id: 'paste', authored: 'glsl' as const, requires: undefined };
 
 /** A WebGL 2 machine: no WebGPU adapter, a WebGL 2 context with only its core set. */
 const webgl2Machine: DeviceProfile = { webgpu: null, webgl2: webgl2Capabilities([]) };
@@ -73,7 +73,7 @@ describe('resolve — selection first, refusal second', () => {
     // A WebGPU device with no optional features: it speaks WGSL and is selected,
     // but a graph needing `timestamp` is refused against it by that name, not the
     // language refusal — selection succeeded, the capability did not.
-    const timed = { id: 'timed', target: 'wgsl' as const, requires: ['timestamp'] as readonly Capability[] };
+    const timed = { id: 'timed', authored: 'wgsl' as const, requires: ['timestamp'] as readonly Capability[] };
     const outcome = resolve(timed, { webgpu: webgpuCapabilities([]), webgl2: null });
     expect('backend' in outcome).toBe(false);
     if ('refusal' in outcome) expect(outcome.refusal).toContain('timestamp');

@@ -108,14 +108,14 @@ const MISSING_TRANSLATION: Record<ShaderTarget, string> = {
  * take, where "no WebGPU adapter" names a thing the caller cannot conjure.
  */
 export function selectBackend(
-  frame: Pick<FrameGraph, 'target' | 'translated'>,
+  frame: Pick<FrameGraph, 'authored' | 'translated'>,
   offer: DeviceOffer
 ): BackendSelection {
   // An offered backend blocked only for want of a translation, and a candidate the
   // device does not offer at all: the two shapes a refusal chooses between below.
   let untranslated: BackendName | null = null;
   let absent: BackendName | null = null;
-  for (const backend of CANDIDATES[frame.target]) {
+  for (const backend of CANDIDATES[frame.authored]) {
     const offered = backend === 'webgpu' ? offer.webgpu : offer.webgl2;
     if (!offered) {
       absent ??= backend;
@@ -123,12 +123,12 @@ export function selectBackend(
     }
     // Offered: it can build the frame if the frame is in its own language, or it
     // carries a translation into that language.
-    if (NATIVE[backend] === frame.target || frame.translated) return { backend };
+    if (NATIVE[backend] === frame.authored || frame.translated) return { backend };
     untranslated ??= backend;
   }
-  if (untranslated) return { refusal: `no backend can draw a ${frame.target} frame: ${MISSING_TRANSLATION[frame.target]}` };
-  const missing = absent ?? CANDIDATES[frame.target][0];
-  return { refusal: `no backend can draw a ${frame.target} frame: ${MISSING[missing]}` };
+  if (untranslated) return { refusal: `no backend can draw a ${frame.authored} frame: ${MISSING_TRANSLATION[frame.authored]}` };
+  const missing = absent ?? CANDIDATES[frame.authored][0];
+  return { refusal: `no backend can draw a ${frame.authored} frame: ${MISSING[missing]}` };
 }
 
 /**
@@ -223,7 +223,7 @@ export function webgl2Capabilities(extensions: Iterable<string>): ReadonlySet<Ca
  * reading over two records, which is the whole of §17 decision 2.
  */
 export function resolve(
-  frame: Pick<FrameGraph, 'id' | 'target' | 'requires' | 'translated'>,
+  frame: Pick<FrameGraph, 'id' | 'authored' | 'requires' | 'translated'>,
   device: DeviceProfile
 ): BackendSelection {
   const offer: DeviceOffer = { webgpu: device.webgpu !== null, webgl2: device.webgl2 !== null };

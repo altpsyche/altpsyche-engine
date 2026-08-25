@@ -1,3 +1,4 @@
+import type { WgslFrameGraph } from '@altpsyche/engine';
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
@@ -43,15 +44,15 @@ const grain = (over: Partial<TextureResource> = {}): TextureResource => ({
   ...over,
 });
 
-const laddered = (over: Partial<FrameGraph> = {}): FrameGraph => ({
+const laddered = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-mips',
-  target: 'wgsl',
+  authored: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     grain(),
     { kind: 'sampler', name: 'grainSampler', filter: 'linear', wrap: 'clamp' },
   ],
-  modules: [{ name: 'wgsl', code: READS }],
+  modules: [{ name: 'wgsl', wgsl: READS }],
   pipelines: [
     {
       kind: 'render',
