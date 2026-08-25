@@ -1444,11 +1444,44 @@ waits on a WebGL 2 backend drawing the corpus (items 46–52). See [JOURNAL.md](
 
 ### 46. WebGL 2: multiple passes
 
-**Status.** open
+**Status.** done
 
 **Done when.** A two-pass graph draws, and the pass count in `cost()` matches what the backend issued.
 
 **Needs.** item 41.
+
+**How it landed.** The WebGL 2 backend ([gpu/webgl2.ts](../gpu/webgl2.ts)) stopped being a
+single fullscreen pass. `program(frame)` now builds a plan per pass — its linked program (still
+keyed by `pipelineStructureOf`, so two passes drawing one pipeline link it once), the corners
+and instances of its draws, the texture it draws into or the canvas where it names none, the
+colour it clears to, and the textures it samples bound to units — and `draw()` walks that plan:
+for each pass it binds the target framebuffer (a texture's, or the default), clears it where the
+pass says so, binds each earlier pass's texture to a unit and points the sampler uniform at it,
+and draws. A frame that names a `present` texture is shown by blitting its framebuffer onto the
+canvas; a frame whose last pass drew the canvas directly names none and needs no blit. Textures
+and their framebuffers are allocated through two arenas of their own (`Arena<WebGLTexture>`,
+`Arena<WebGLFramebuffer>`) beside the existing buffer arena — one per resource kind because
+WebGL 2 frees a texture, a framebuffer and a buffer through three different context calls where
+WebGPU frees one union through the object — so item 10's stale-handle safety covers them, and a
+frame-following target is remade at the new size on a resize. The frame's one uniform block is
+bound to point 0 once per linked program at build, so every pass shares the one buffer
+`setUniforms` writes (the WGSL model of one uniform buffer read by each pipeline). The refusals
+narrowed rather than vanished: a storage texture (no compute stage), a ladder (item 50), several
+samples a pixel (item 48), a texture arriving with contents, more than one colour at once (item
+47), and depth (item 48) are each still refused by name; a texture used only as an attachment and
+a sample is now kept.
+
+**What the gates could see, and what they could not.** The pass count is asserted against
+`cost()`: [tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts)'s two-pass fixture
+issues exactly `cost(frame, size).passes` framebuffer binds in `draw()`, so a change adding or
+dropping a pass moves both together. The node fake ([tests/support/fake-gl.ts](../tests/support/fake-gl.ts),
+now carrying texture/framebuffer/blit calls) proves the first pass draws into a texture the
+second samples, the clear, the present blit, the resize-remakes-the-target path, and that every
+texture and framebuffer is given back on dispose. **What no gate here could see is that the
+resulting two-pass picture is correct on a card:** the fake records calls, not pixels;
+`gate:browser` was not run in the unattended session and `gate:card` never runs here (SwiftShader
+on every headless launch, §17 note 3). So *that a two-pass graph draws* is by construction plus
+`gate:browser`/`gate:card` later, as every prior WebGL 2 item here has been. See [JOURNAL.md](JOURNAL.md).
 
 ### 47. WebGL 2: multiple render targets
 

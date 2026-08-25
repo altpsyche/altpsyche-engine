@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGL2Backend } from '../gpu/webgl2';
-import { glslFrame, missing } from '@altpsyche/engine';
+import { glslFrame, missing, cost } from '@altpsyche/engine';
 import type { RenderPipelineSpec, FrameGraph } from '@altpsyche/engine';
 import { bottomUpFrame, createFakeGL } from './support/fake-gl';
 
@@ -31,6 +31,61 @@ const FRAGMENT_INT =
 /** A fragment declaring an `int` and a `float`, for the mixed cases. */
 const FRAGMENT_MIXED =
   '#version 300 es\nprecision highp float;\nuniform int u_frame;\nuniform float u_time;\nout vec4 c;\nvoid main(){c=vec4(u_time*float(u_frame));}';
+/** A fragment that reads what an earlier pass drew, sampling the texture named
+ * `scene` — the second pass of the multi-pass chain (item 46). */
+const FRAGMENT_SAMPLE =
+  '#version 300 es\nprecision highp float;\nuniform sampler2D scene;\nout vec4 c;\nvoid main(){c=texture(scene,gl_FragCoord.xy/vec2(800.0,600.0));}';
+
+/**
+ * A two-pass chain the way a producer would author it: a first pass draws into a
+ * frame-sized texture, a second pass samples that texture and draws the frame the
+ * reader sees. `at` decides where the second pass's picture lands — the canvas
+ * directly, or a second texture the frame `present`s by blitting it on.
+ */
+function twoPass(at: 'canvas' | 'present' = 'canvas'): FrameGraph {
+  const resources: FrameGraph['resources'] = [
+    { kind: 'uniform', name: 'uniforms' },
+    { kind: 'texture', name: 'scene', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment', 'sample'] },
+    { kind: 'sampler', name: 'smooth', filter: 'linear', wrap: 'clamp' },
+  ];
+  const second: FrameGraph['passes'][number] =
+    at === 'present'
+      ? { pipeline: 'second', draws: [{ vertices: 3 }], colour: [{ resource: 'shown' }] }
+      : { pipeline: 'second', draws: [{ vertices: 3 }] };
+  if (at === 'present') {
+    resources.push({ kind: 'texture', name: 'shown', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] });
+  }
+  return {
+    id: 'chain',
+    target: 'glsl',
+    resources,
+    modules: [
+      { name: 'vertex', code: VERTEX },
+      { name: 'paint', code: FRAGMENT },
+      { name: 'show', code: FRAGMENT_SAMPLE },
+    ],
+    pipelines: [
+      {
+        kind: 'render',
+        name: 'first',
+        vertex: { module: 'vertex', entry: 'main' },
+        fragment: { module: 'paint', entry: 'main' },
+        targets: [{ format: 'rgba8unorm' }],
+        bindings: [],
+      },
+      {
+        kind: 'render',
+        name: 'second',
+        vertex: { module: 'vertex', entry: 'main' },
+        fragment: { module: 'show', entry: 'main' },
+        ...(at === 'present' ? { targets: [{ format: 'rgba8unorm' as const }] } : {}),
+        bindings: [{ group: 0, binding: 0, resource: 'scene', visibility: ['fragment'], reads: 'sample' }],
+      },
+    ],
+    passes: [{ pipeline: 'first', draws: [{ vertices: 3 }], colour: [{ resource: 'scene', clear: [0, 0, 0, 1] }] }, second],
+    ...(at === 'present' ? { present: 'shown' } : {}),
+  };
+}
 
 /** The one-pass description of the fixture, built the way the build builds one,
  * so what these assert is the backend rather than a shape written here. */
@@ -134,22 +189,14 @@ describe('a description above the subset', () => {
     ).toThrow('the frame for "fixture" runs compute work, and WebGL 2 has no compute stage');
   });
 
-  it('refuses a second pass rather than drawing the first and dropping the rest', () => {
-    const { backend } = backendOver();
-    const pass = graph().passes[0]!;
-    expect(() => backend.program(glsl({ passes: [pass, pass] }))).toThrow(
-      'the frame for "fixture" runs more than one pass'
-    );
-  });
-
-  it('refuses a pipeline writing more than one colour, since the frame is the only one it has', () => {
+  it('refuses a pipeline writing more than one colour at once, which is item 47', () => {
     const { backend } = backendOver();
     const several = {
       ...(graph().pipelines[0] as RenderPipelineSpec),
       targets: [{ format: 'rgba8unorm' as const }, { format: 'rgba8unorm' as const }],
     };
     expect(() => backend.program(glsl({ pipelines: [several] }))).toThrow(
-      'the frame for "fixture" writes 2 colours, and this backend writes the frame alone'
+      'the frame for "fixture" writes 2 colours at once, and this backend writes one'
     );
   });
 
@@ -164,7 +211,7 @@ describe('a description above the subset', () => {
     );
   });
 
-  it('refuses a texture the description declares, since it has nowhere to write one', () => {
+  it('refuses a storage texture, since it has no compute to fill one (item 51 names it)', () => {
     const { backend } = backendOver();
     const resources = [
       ...graph().resources,
@@ -177,7 +224,54 @@ describe('a description above the subset', () => {
       },
     ];
     expect(() => backend.program(glsl({ resources }))).toThrow(
-      'the frame for "fixture" declares a texture resource, and this backend has none'
+      'the frame for "fixture" writes "picture" as a storage texture, and this backend has no compute to fill one'
+    );
+  });
+
+  it('refuses a texture with a ladder of levels, which is item 50', () => {
+    const { backend } = backendOver();
+    const resources = [
+      ...graph().resources,
+      {
+        kind: 'texture' as const,
+        name: 'picture',
+        size: { scale: 1 },
+        format: 'rgba8unorm' as const,
+        use: ['sample' as const],
+        mips: 'generate' as const,
+      },
+    ];
+    expect(() => backend.program(glsl({ resources }))).toThrow(
+      'the frame for "fixture" gives "picture" a ladder of levels, and this backend generates none'
+    );
+  });
+
+  it('refuses a texture keeping several samples a pixel, which is item 48', () => {
+    const { backend } = backendOver();
+    const resources = [
+      ...graph().resources,
+      {
+        kind: 'texture' as const,
+        name: 'picture',
+        size: { scale: 1 },
+        format: 'rgba8unorm' as const,
+        use: ['attachment' as const],
+        samples: 4 as const,
+      },
+    ];
+    expect(() => backend.program(glsl({ resources }))).toThrow(
+      'the frame for "fixture" keeps several samples of "picture", and this backend keeps one'
+    );
+  });
+
+  it('refuses a buffer resource, since a storage buffer is a compute output', () => {
+    const { backend } = backendOver();
+    const resources = [
+      ...graph().resources,
+      { kind: 'buffer' as const, name: 'counts', bytes: 16, access: 'read-write' as const },
+    ];
+    expect(() => backend.program(glsl({ resources }))).toThrow(
+      'the frame for "fixture" declares a buffer resource, and this backend has none'
     );
   });
 
@@ -409,6 +503,71 @@ describe('the frame it draws', () => {
     // mirror.
     expect(pixels[0]).toBe(1);
     expect(pixels[pixels.length - 1]).toBe(3);
+  });
+});
+
+describe('a graph of more than one pass (item 46)', () => {
+  const FRAMEBUFFER = 0x8d40;
+  const READ_FRAMEBUFFER = 0x8ca8;
+
+  it('draws each pass, the count matching what cost() reads off the structure', () => {
+    const { gl, backend } = backendOver();
+    const program = backend.program(twoPass());
+    // Only the binds the draw itself issues count as passes — the ones that
+    // built the framebuffer at program time are before this mark.
+    const before = gl.calls.length;
+    program.draw();
+    const passBinds = gl.calls
+      .slice(before)
+      .filter((entry) => entry.call === 'bindFramebuffer' && entry.target === FRAMEBUFFER);
+    // Two passes issued, and cost() reads two off the same structure, so a change
+    // that adds or drops a pass moves both together (the item's second clause).
+    expect(passBinds).toHaveLength(cost(twoPass(), { width: 800, height: 600 }).passes);
+    expect(passBinds).toHaveLength(2);
+    // Both passes drew.
+    expect(gl.of('drawArrays')).toHaveLength(2);
+  });
+
+  it('draws the first pass into a texture the second pass then samples', () => {
+    const { gl, backend } = backendOver();
+    backend.program(twoPass()).draw();
+    // The first pass's target is a texture attached to a framebuffer at build.
+    expect(gl.of('framebufferTexture2D')).toHaveLength(1);
+    // The second pass binds that texture to a unit and points its sampler at it.
+    expect(gl.of('bindTexture').length).toBeGreaterThan(0);
+    expect(gl.of('activeTexture').at(-1)).toMatchObject({ unit: 0x84c0 });
+    // The first pass cleared its attachment before drawing into it.
+    expect(gl.of('clearColor').at(-1)).toMatchObject({ r: 0, g: 0, b: 0, a: 1 });
+  });
+
+  it('shows the picture a frame presents by blitting its texture onto the canvas', () => {
+    const { gl, backend } = backendOver();
+    backend.program(twoPass('present')).draw();
+    // The present texture is read into the canvas: a read-framebuffer bind and a
+    // blit, where a frame drawing the canvas directly issues neither.
+    expect(gl.of('bindFramebuffer').some((entry) => entry.target === READ_FRAMEBUFFER)).toBe(true);
+    expect(gl.of('blitFramebuffer')).toHaveLength(1);
+  });
+
+  it('remakes a frame-following target at the new size before the next draw', () => {
+    const { gl, backend } = backendOver();
+    const program = backend.program(twoPass());
+    const before = gl.calls.length;
+    backend.resize(320, 180);
+    program.draw();
+    // The scene texture follows the frame, so a resize between build and draw
+    // respecifies it at 320×180 before the first pass reads it as a target.
+    expect(gl.calls.slice(before).some((entry) => entry.call === 'texImage2D' && entry.width === 320)).toBe(true);
+    // And the first pass draws at that size.
+    expect(gl.of('viewport').some((entry) => entry.width === 320 && entry.height === 180)).toBe(true);
+  });
+
+  it('gives every texture and framebuffer it made back when it is done', () => {
+    const { gl, backend } = backendOver();
+    backend.program(twoPass('present')).dispose();
+    // Two textures (scene, shown) and their framebuffers freed through the arenas.
+    expect(gl.of('deleteTexture')).toHaveLength(2);
+    expect(gl.of('deleteFramebuffer')).toHaveLength(2);
   });
 });
 

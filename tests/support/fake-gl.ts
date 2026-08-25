@@ -32,7 +32,29 @@ const CONSTANTS = {
   TRIANGLES: 0x0004,
   FLOAT: 0x1406,
   RGBA: 0x1908,
+  RGBA8: 0x8058,
   UNSIGNED_BYTE: 0x1401,
+  // The names a multi-pass frame draws through: a texture bound to a unit, a
+  // framebuffer a pass draws into, and the blit that shows one on the canvas
+  // (item 46). Each is the specification's own number, so a test reading one
+  // reads the value a driver would see.
+  TEXTURE_2D: 0x0de1,
+  TEXTURE0: 0x84c0,
+  TEXTURE_MIN_FILTER: 0x2801,
+  TEXTURE_MAG_FILTER: 0x2800,
+  TEXTURE_WRAP_S: 0x2802,
+  TEXTURE_WRAP_T: 0x2803,
+  NEAREST: 0x2600,
+  LINEAR: 0x2601,
+  CLAMP_TO_EDGE: 0x812f,
+  REPEAT: 0x2901,
+  MIRRORED_REPEAT: 0x8370,
+  FRAMEBUFFER: 0x8d40,
+  READ_FRAMEBUFFER: 0x8ca8,
+  DRAW_FRAMEBUFFER: 0x8ca9,
+  COLOR_ATTACHMENT0: 0x8ce0,
+  FRAMEBUFFER_COMPLETE: 0x8cd5,
+  COLOR_BUFFER_BIT: 0x4000,
 };
 
 /** The ceilings the report asks this context for, by the names the specification
@@ -213,6 +235,51 @@ export function createFakeGL({ context = true } = {}): FakeGL {
       record('readPixels');
       if (state.frame) into.set(state.frame.subarray(0, into.length));
     },
+
+    // Textures a pass writes and a later pass samples (item 46). The fake keeps no
+    // pixels — a real driver's are `backends.mjs`'s to hold — so these record what
+    // the backend asked for and hand back an object the backend can bind again.
+    createTexture: () => ({ texture: true }),
+    deleteTexture: () => record('deleteTexture'),
+    bindTexture: (target: number) => record('bindTexture', { target }),
+    activeTexture: (unit: number) => record('activeTexture', { unit }),
+    texImage2D: (
+      target: number,
+      level: number,
+      internal: number,
+      width: number,
+      height: number,
+      border: number,
+      format: number,
+      type: number
+    ) => record('texImage2D', { target, level, internal, width, height, format, type }),
+    texParameteri: (target: number, pname: number, param: number) =>
+      record('texParameteri', { target, pname, param }),
+
+    // Framebuffers, one per texture a pass draws into, and the blit that shows a
+    // texture on the canvas (item 46). `checkFramebufferStatus` answers complete,
+    // since the fake attaches a texture of the right shape by construction.
+    createFramebuffer: () => ({ framebuffer: true }),
+    deleteFramebuffer: () => record('deleteFramebuffer'),
+    bindFramebuffer: (target: number, framebuffer: unknown) =>
+      record('bindFramebuffer', { target, bound: framebuffer ? 'texture' : 'canvas' }),
+    framebufferTexture2D: (target: number, attachment: number) =>
+      record('framebufferTexture2D', { target, attachment }),
+    checkFramebufferStatus: () => CONSTANTS.FRAMEBUFFER_COMPLETE,
+    blitFramebuffer: (
+      sx0: number,
+      sy0: number,
+      sx1: number,
+      sy1: number,
+      dx0: number,
+      dy0: number,
+      dx1: number,
+      dy1: number,
+      mask: number,
+      filter: number
+    ) => record('blitFramebuffer', { sx1, sy1, dx1, dy1, mask, filter }),
+    clearColor: (r: number, g: number, b: number, a: number) => record('clearColor', { r, g, b, a }),
+    clear: (mask: number) => record('clear', { mask }),
 
     getExtension: (name: string) =>
       name === 'WEBGL_lose_context'
