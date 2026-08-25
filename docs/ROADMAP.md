@@ -1523,11 +1523,37 @@ later, as every prior WebGL 2 item here has been. See [JOURNAL.md](JOURNAL.md).
 
 ### 48. WebGL 2: depth and stencil
 
-**Status.** open
+**Status.** lifted needs decomposition
 
 **Done when.** The depth and stencil presets that WebGPU passes today pass here, and the pixels agree per item 44.
 
-**Needs.** item 46.
+**Needs.** item 46, item 77.
+
+**Lifted 2026-08-25: this asks for work its `Needs` never named — the WebGL 2 backend
+cannot draw the vertex geometry these presets are built on.** The two presets WebGPU
+passes are `core-depth` and `core-stencil` ([fixtures/capability-fixtures.ts](../fixtures/capability-fixtures.ts)),
+and **both draw a `quad-grid` `sheet` of the shader's own geometry** — `core-depth`'s two
+leaning sheets, `core-stencil`'s turned sheet for its `marking` pass. The WebGL 2 backend
+draws only its own fullscreen corners and **refuses any pass whose draw walks a buffer**
+(`gpu/webgl2.ts`, the `drawsCorners` refusal: *"draws geometry of its own, and this backend
+has no buffer for it"*). So neither preset can be reached, let alone depth-tested, until the
+backend draws vertex geometry — and that path is delivered by **no item**: item 49's own
+`Done when` draws `instanced-cubes` through the backend's fullscreen corners plus
+`gl_InstanceID` (item 28), *not* a vertex buffer, as `examples/instanced-cubes/main.ts` states
+in as many words (*"item 49 is where it gains one"*, but its exit criterion never forces it).
+That geometry path is separable and is now **item 77**, which this item's `Needs` gains.
+
+**What is separable, and what remains item 48's once item 77 lands.** The depth-attachment
+and depth-test state (a depth renderbuffer, `gl.enable(DEPTH_TEST)`, `depthFunc`, `depthMask`)
+and the stencil-attachment and stencil ops (`stencil8`, `stencilFunc`/`stencilOp` for `mark`
+and `inside`) are the coherent capability this item keeps — two halves of one depth/stencil
+attachment, the shape items 46/47 each added for their own capability. They can only be
+exercised on a preset that draws geometry, so they wait on item 77. The `pixels agree per
+item 44` half is a card's or a browser's, as every WebGL 2 item's pixel-agreement is (§17
+note 3; items 46/47 landed their call-level behaviour and deferred pixels the same way).
+
+**Reverse.** Set `Status` back to `open`, drop `item 77` from `Needs`, and delete this note.
+The item is workable once item 77 has drawn a geometry preset on WebGL 2.
 
 ### 49. WebGL 2: instancing and per-draw UBO ranges
 
@@ -1535,7 +1561,18 @@ later, as every prior WebGL 2 item here has been. See [JOURNAL.md](JOURNAL.md).
 
 **Done when.** `instanced-cubes` draws here, at the same object count, with alignment respected.
 
-**Needs.** item 27, item 46.
+**Needs.** item 27, item 46, item 77.
+
+**Gained `item 77` on 2026-08-25, recorded while item 48 was lifted.** This item's title is
+instancing and per-draw UBO ranges of *the shader's own vertex geometry* on WebGL 2 — the arm
+item 28's journal row homes here (*"Instancing geometry of the shader's own on WebGL 2 … is
+item 49's"*). But its `Done when` names only `instanced-cubes`, whose WebGL 2 arm draws the
+backend's fullscreen **corners** with `gl_InstanceID` and no per-draw buffer (item 28), so as
+written the exit criterion is already met by items 27+28 and lands nothing new. The real work
+— instanced *geometry*, and per-draw UBO ranges wired through the backend and exercised by a
+corpus preset (`core-perdraw` draws a `quad-grid` and binds a storage buffer, both refused
+today) — needs the vertex-geometry path of **item 77**. Whoever takes this should also tighten
+the `Done when` past `instanced-cubes` to a preset that actually reads a vertex buffer.
 
 ### 50. WebGL 2: mip generation
 
@@ -1543,7 +1580,17 @@ later, as every prior WebGL 2 item here has been. See [JOURNAL.md](JOURNAL.md).
 
 **Done when.** The mips preset passes and the sampled result agrees per item 44.
 
-**Needs.** item 46.
+**Needs.** item 46, item 78.
+
+**Gained `item 78` on 2026-08-25, recorded while item 48 was lifted.** The mips preset
+`core-mips` gives its `grain` texture `content: 'value-noise'` and `mips: 'generate'` — a
+resident image uploaded, then a ladder generated off it. The WebGL 2 backend generates no
+mips (item 50's own scope) **and refuses a texture arriving with contents** (`gpu/webgl2.ts`:
+*"gives … contents, and this backend fills a texture only by drawing it"*), homing that upload
+in the scene tier without itemising it. So `core-mips` cannot draw here until the backend
+uploads a resident texture's content, which is now **item 78**. Once it lands, item 50 is the
+mip generation on top of it (`gl.generateMipmap`, a trilinear min filter); the `agrees per
+item 44` half is a card's or a browser's, as every WebGL 2 item's pixel-agreement is.
 
 ### 51. Capability declaration wired end to end
 
@@ -1561,7 +1608,12 @@ later, as every prior WebGL 2 item here has been. See [JOURNAL.md](JOURNAL.md).
 
 **Done when.** `orbit-shadow` draws on WebGL 2 as well as WebGPU, and the difference between the two is reported by item 44's three numbers.
 
-**Needs.** item 35, item 48, item 49, item 50.
+**Needs.** item 35, item 48, item 49, item 50, item 77, item 78.
+
+**Gained `item 77` and `item 78` on 2026-08-25.** The scene draws vertex geometry (item 77)
+and uploads material textures (item 78) directly, so it names both prerequisites its
+predecessors 48/49/50 do — recorded here rather than reached transitively, since the graph a
+`sceneView` producer emits reaches those paths on its own.
 
 ---
 
@@ -2281,3 +2333,63 @@ construction, but `gate:browser` and `gate:card` were not run in the unattended 
 The node `tests/gate-harness.test.ts` and `tests/bench-traffic.test.ts`, which drive
 `loadCorpus` and `traffic.mjs`'s frames, stayed green, so the two gate helpers whose
 run-time forms changed still behave. See [JOURNAL.md](JOURNAL.md).
+
+### 77. WebGL 2 draws vertex geometry
+
+**Status.** open
+
+**Asks for.** The WebGL 2 backend draws a pass whose pipeline reads a vertex buffer of the
+shader's own geometry — positions and per-vertex attributes off a `vertices` resource — where
+today it draws only its own fullscreen corners and refuses any pass whose draw walks a buffer
+(`gpu/webgl2.ts`, the `drawsCorners` refusal *"draws geometry of its own, and this backend has
+no buffer for it"*). The vertex data reaches the backend as bytes the way the WGSL frames'
+does (`frameOf`'s generated-bytes map, keyed by the resource that reads it); the backend
+allocates a vertex buffer through an arena of its own, binds the pipeline's attribute layout,
+and draws `drawArrays`/`drawElements` — instanced where a draw counts instances (item 28's
+arm already issues `drawArraysInstanced` over corners; this extends it to a real buffer).
+
+**Done when.** A corpus preset that draws `quad-grid` geometry — `core-geometry` is the
+simplest, with no depth, stencil, MRT or per-draw slice to entangle it — draws on WebGL 2:
+its vertex buffer allocated and freed through an arena, its attribute layout bound off the
+pipeline, and the vertex/draw counts `cost()` reports issued. That the picture agrees is a
+card's or a browser's per item 44, as every WebGL 2 item's pixel-agreement is (§17 note 3).
+
+**Needs.** item 46.
+
+**Found by review 2026-08-25, filed by the run that lifted item 48.** Vertex-geometry drawing
+on WebGL 2 is the prerequisite items 48 (its depth/stencil presets draw a `sheet`), 49 (its
+title's real-geometry instancing), and 52 (the scene tier's meshes) each require, but it was
+delivered by no item and named in none of their `Needs`. Item 49's own `Done when` draws
+`instanced-cubes` through the backend's fullscreen corners plus `gl_InstanceID` (item 28), not
+a vertex buffer — `examples/instanced-cubes/main.ts` says so outright (*"item 49 is where it
+gains one"*) while its exit criterion never forces it. This item is that path, named once so
+the three that need it can depend on it. **Reverse:** delete this item; the three items revert
+to naming a prerequisite nothing tracks, which is the state this filing corrects.
+
+### 78. WebGL 2 uploads resident texture content
+
+**Status.** open
+
+**Asks for.** The WebGL 2 backend uploads a resident texture's initial content — a generated
+image handed in as bytes — where today it fills a texture only by drawing it and refuses any
+texture arriving with contents (`gpu/webgl2.ts`: *"gives … contents, and this backend fills a
+texture only by drawing it"*). A `content`-bearing texture reaches the backend as bytes (the
+same generated-bytes seam item 77 reads geometry through); the backend uploads them with
+`texImage2D` at level 0 and binds the texture for sampling, where a scratch attachment stays
+drawn-into rather than uploaded.
+
+**Done when.** A corpus preset that samples an uploaded texture — `core-texture` is the
+simplest, one `value-noise` image sampled fullscreen with no mips — draws on WebGL 2, its
+content uploaded through `texImage2D` and its bytes counted through `arena.traffic()` as
+resident (item 22). That the sampled picture agrees is a card's or a browser's per item 44.
+
+**Needs.** item 46.
+
+**Found by review 2026-08-25, filed by the run that lifted item 48.** The refusal comment
+homes this upload in *"a resident image a scene tier uploads"* — the scene tier is item 52,
+which `Needs` item 50 — so item 50 (`core-mips` uploads `value-noise`, then generates its
+mips) needs an upload path itemised nowhere, and so does item 52's own materials. This item is
+that path. It is deliberately texture content only; a resident *buffer* upload (a per-draw or
+storage buffer the page fills) is a distinct capability the corpus's `core-perdraw`/`core-*`
+storage presets exercise, refused on other grounds too (storage) and not filed here.
+**Reverse:** delete this item; items 50 and 52 revert to naming a prerequisite nothing tracks.
