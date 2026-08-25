@@ -872,7 +872,7 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 
 ### 32. `sceneView`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `sceneView(arena, options).graph(world, views) → FrameGraph`. A producer, importing `graph/` and receiving an arena, reaching no device.
 
@@ -881,6 +881,41 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 **Needs.** item 26, item 27.
 
 **Note.** `views` as a list is free now and a breaking signature change after this phase. That is the whole reason it is specified here even though nothing needs two views yet.
+
+**How it landed.** [engine/scene-view.ts](../engine/scene-view.ts) holds
+`sceneView<V>(arena, options): SceneView`, exported through the door beside the
+engine's other producers. `options` carries the frame-invariant half — the shader
+`modules`, the one `pipeline` the world draws through, the `materials` it is fed,
+the caller's other `resources` and `uniforms`, and the names of the two buffers the
+scene fills — and `.graph(world, views)` is the per-frame half: it batches the world
+with `batchOnePipeline` (one pipeline until item 33 lifts it), bakes each drawn
+object's record and every view's `viewProjection` into two read-only storage
+buffers, and emits a `ShaderFrame` of one instanced render pass. The camera and the
+transforms are baked into buffer `data` rather than fed as uniforms, so the graph
+alone determines the picture — which is what lets item 34 snapshot it as a text
+diff. **`views: Camera[]`** is honoured as a list: one matrix per camera, in order,
+a single view being the length-one case, and an empty list refused by name.
+**Imports `graph/` and no device:** it names its resident buffers as
+`graph/`'s `BufferRef` and reads them back through `isResident`, and every matrix is
+worked out on the CPU — no backend, no `submit/`, no `gpu/`. The arena is the
+resident lifetime: the two buffers are allocated once and reused while the world
+keeps its shape, reallocated only when the object or view count changes, with
+`written`/`uploaded` traffic recorded either way.
+
+**Tests, all with no GPU** ([tests/scene-view.test.ts](../tests/scene-view.test.ts)):
+the emitted pass, pipeline and modules; each object's baked world matrix and colour
+in draw order; one view-projection per camera for one and for two cameras; the
+carried-through resources, uniforms, `requires` and `present`; the empty-views and
+non-batchable-scene refusals; the arena reuse-and-reallocate behaviour read off its
+traffic and dispose count; and a static-analysis assertion that the source imports
+nothing from `submit/` or `gpu/`. `engine/scene-view.ts` is added to
+[tests/import-graph.test.ts](../tests/import-graph.test.ts)'s shipping closure. 669
+node tests green (+11), type-check green, `gate:pack` green at the moved export
+surface. **What the gates could not see:** that a frame `sceneView` emits *draws*
+needs a card or `gate:browser` (neither run here) — but nothing it emits is new to
+either backend (it is the geometry-with-storage-buffer shape the corpus already
+draws), and its whole output is data the node suite reads directly. See
+[JOURNAL.md](JOURNAL.md).
 
 ### 33. `batchOnePipeline` loses its restriction
 

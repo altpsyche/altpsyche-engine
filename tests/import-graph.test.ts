@@ -58,6 +58,7 @@ const SHIPPING = [
   'engine/material.ts',
   'engine/maths.ts',
   'engine/scene.ts',
+  'engine/scene-view.ts',
   'wgsl-layout.ts',
   'wgsl-references.ts',
   'wgsl-binding.ts',

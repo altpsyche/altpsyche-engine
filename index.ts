@@ -173,6 +173,18 @@ export type {
   Draw,
 } from './engine/draw-list.js';
 
+// The scene tier's producer: a world and the cameras watching it become a frame,
+// per §17 decision 7 and Stage 4. Handed an arena for the resident buffers it
+// fills from the scene, taking `views: Camera[]` rather than one camera, and
+// reaching no device — the picture is a function of the world and the views alone.
+export {
+  sceneView,
+} from './engine/scene-view.js';
+export type {
+  SceneView,
+  SceneViewOptions,
+} from './engine/scene-view.js';
+
 // What one frame costs by its structure alone — passes, draws, dispatches,
 // pipeline and bind switches, attachment loads and stores, transient bytes.
 // Pure and device-free, asserted per preset in CI and only ever reported by
