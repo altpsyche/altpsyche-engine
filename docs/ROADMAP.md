@@ -3518,9 +3518,31 @@ other is item 95. **Reverse:** delete this item; item 81 reverts to `open` and i
 
 ### 95. `ShaderSource` takes §9's exact `GlslPair` shape
 
-**Status.** open
+**Status.** lifted needs decomposition
 
-**Asks for.** §9's `ShaderSource` in the shape item 81 named exactly — the `wgsl` arm
+**Lifted 2026-08-26, the curator decision this item's own note deferred to whoever reached it.** The
+`Done when` bundles two structural changes with a hard ordering between them, and the item itself
+flagged the split ("Establishing a source per render pipeline may itself be separable from adopting
+the `GlslPair` shape over it; a curator meeting this once item 87 lands decides"). Item 87 has
+landed and this run is that curator. The two are **not** independent: a `GlslPair` is one render
+pipeline's two stages, but a WGSL document today feeds several render pipelines and its bake is
+stored keyed by entry point (`WgslModule.glsl: Record<string, string>`, `graph/types.ts` L73) —
+`core-depth`/`core-report` bake two vertex and two fragment entries each — so a `GlslPair` cannot
+carry the bake until each source belongs to exactly one render pipeline. Establishing that
+per-pipeline source identity must land **first**, and only then can the pair shape sit over it. That
+ordering is a `Needs` edge, which is the signature of two items rather than one. Split into **item
+99** (a source per render pipeline, the prerequisite restructure — `Needs` item 87, item 94, so
+reachable now) and **item 100** (§9's exact `GlslPair` shape over that source — `Needs` item 99).
+The GlslPair half is where the corpus bake reshape and the WebGL 2 baked-GLSL browser-batch risk
+both concentrate, so gating the two halves separately is worth more than one commit that only the
+browser gate could prove. **Reverse:** set this item's `Status` back to `open`, delete this
+paragraph and items 99 and 100, and this item stands as one piece again. **What would change the
+answer:** if a single session could restructure the frame graph, all corpus fixtures, both backends,
+`reflect`, the pipeline cache, `toy/frame`, `scene-view` and the translate bake in one commit *and*
+run the browser batch that is its only real proof — none of which this run can do — the two collapse
+back into one. `carry`: the shader-source shape a consumer authors against changes with the pair.
+
+**Asks for (original, retained for the split's provenance).** §9's `ShaderSource` in the shape item 81 named exactly — the `wgsl` arm
 `{ authored: 'wgsl'; wgsl; glsl?: GlslPair; constants? }` and the `glsl` arm
 `{ authored: 'glsl'; glsl: GlslPair; constants? }`, where `GlslPair` is one vertex and one fragment.
 This is the half of item 81 its own `Needs` did not reach: a `GlslPair` is the shape of **one render
@@ -3569,33 +3591,6 @@ not a machine limit** — the work is a one-line label plus test cleanups. **Rev
 the tests keep their current usage/`.at(-1)` disambiguation. **What would change the answer:** item 16
 unifying authoring and runtime handles, or a broader pass over device labels, may relabel every
 resource and subsume this.
-
-### 96. The corpus gate fails for a WebGL 2 build error instead of skipping it
-
-**Status.** open
-
-**Asks for.** The WebGL 2 arm of [gates/corpus.mjs](../gates/corpus.mjs) to distinguish *this
-device cannot draw that* from *this build threw*. Today every error in that arm becomes a skip
-(L285–L292, `skipped.push(\`${gl2Label}  refused: ${gl2.error}\`)`), where the WebGPU arm turns the
-same shape into a `FAIL` (L213–L214). A capability refusal and a broken frame build are reported
-identically, so the gate whose job is the WebGL 2 draw path **cannot fail for it**.
-
-**Done when.** A frame that throws while building reports `FAIL` naming the throw, a frame refused
-for a capability the device has not got still reports `SKIP`, and a test or a deliberate broken
-fixture demonstrates the two are told apart.
-
-**Needs.** item 79.
-
-**Found 2026-08-26, by the red batch over item 87.** Item 87's half-migrated gates made `frameOf`
-throw *"the description for 'core-perdraw' names a generated resource 1 with no bytes"*.
-`surface.mjs` failed loudly and correctly. `corpus.mjs` printed **"17 of 17 draws lit their buffer,
-with 0 failed and 16 WebGL 2 skips"** and **exited 0** — six of those skips carrying that same
-throw, for `core-geometry`, `core-perdraw-uniform`, `core-depth`, `core-multisample`, `core-report`
-and `core-scene`, every one of which had been drawing the run before. A gate that goes green having
-run none of the path it exists to check is worse than no gate, because the greenness is read as
-evidence. It was `surface.mjs` that caught item 87, and had that one been skip-shaped too the
-defect would have merged. **Reverse:** delete this item; the WebGL 2 arm keeps reporting a throw as
-a refusal, with nothing tracking it.
 
 ### 97. WebGL 2's `storage-buffer` capability says more than it can do
 
@@ -3655,3 +3650,86 @@ change with its own consumer rewrites — not something to smuggle into the inte
 methods stay as inline-typed methods on the drawable and §14's dissolution stays unfinished with
 nothing tracking it. `carry`: whether a consumer mutates a held program or re-submits a graph is a
 fact a consumer builds against.
+
+### 99. A shader source belongs to one render pipeline
+
+**Status.** open
+
+**Asks for.** The per-pipeline source identity a `GlslPair` presupposes, established before the pair
+shape (item 100) sits over it. Today a frame carries a flat `modules` list and a
+`RenderPipelineSpec` names its vertex and fragment stages by `ModuleHandle` into that list, so one
+WGSL document can feed several render pipelines and a WGSL document's baked GLSL is stored keyed by
+entry point (`WgslModule.glsl: Record<string, string>`, [graph/types.ts](../graph/types.ts) L73)
+because a single vertex/fragment pair could not hold a multi-pipeline preset's bake. This item makes
+each render pipeline's source its own: the source a pipeline draws from — its two stages and their
+bake — is reachable as one thing per render pipeline rather than gathered from a shared document
+pool at draw time. It changes **where a source lives and how it is addressed**, not yet its shape;
+the bake may stay keyed by entry point until item 100 collapses it to a `{ vertex; fragment }`.
+
+**Done when.** Every render pipeline resolves to exactly one source carrying its own two stages and
+their bake, with no WGSL document shared across two render pipelines' sources; both backends,
+`reflect`, the pipeline cache, `toy/frame`, `scene-view` and the corpus fixtures read a pipeline's
+source through that per-pipeline identity; the node suite and `type-check` are green; and the browser
+batch agrees 15 of 15 — the only gate that proves the WebGL 2 baked-GLSL path still draws, so it runs
+before this is claimed, not after (the warning items 87 and 94 carry).
+
+**Needs.** item 87, item 94.
+
+**Filed 2026-08-26 by the lift of item 95.** It is the first of the two halves item 95 split into and
+the prerequisite for the second: item 100's `GlslPair` cannot carry a bake while a source is shared
+across pipelines, which is why item 95's single `Done when` bundled two items. **Reverse:** delete
+this item; item 95 reverts to `open` and its `Needs` stand. `carry`: the shader-source shape a
+consumer authors against changes as its identity moves per-pipeline.
+
+### 100. `ShaderSource` takes §9's exact `GlslPair` shape
+
+**Status.** open
+
+**Asks for.** §9's `ShaderSource` in the shape item 81 named exactly — the `wgsl` arm
+`{ authored: 'wgsl'; wgsl; glsl?: GlslPair; constants? }` and the `glsl` arm
+`{ authored: 'glsl'; glsl: GlslPair; constants? }`, where `GlslPair` is one vertex and one fragment.
+This is item 95's residual once item 99 has given each render pipeline its own source: the bake, now
+belonging to one pipeline, collapses from a `Record<string, string>` keyed by entry point to a
+single `{ vertex; fragment }`, and the source union takes §9's exact arms.
+
+**Done when.** Every shader source is a `ShaderSource` in §9's exact shape, one per render pipeline,
+its `glsl` a single `{ vertex; fragment }`; item 41's bake for each pipeline travels in that
+pipeline's source's `glsl`; the node suite and `type-check` are green; and the browser batch agrees
+15 of 15.
+
+**Needs.** item 99.
+
+**Filed 2026-08-26 by the lift of item 95.** It is the second of the two halves item 95 split into;
+the per-pipeline source identity item 99 establishes is what lets the pair shape hold each pipeline's
+bake. **Reverse:** delete this item; item 95 reverts to `open` and its `Needs` stand. `carry`: the
+shader-source shape a consumer authors against changes with the pair.
+
+### 101. The corpus gate fails for a WebGL 2 build error instead of skipping it
+
+**Status.** open
+
+**Asks for.** The WebGL 2 arm of [gates/corpus.mjs](../gates/corpus.mjs) to distinguish *this
+device cannot draw that* from *this build threw*. Today every error in that arm becomes a skip
+(L285–L292, `skipped.push(\`${gl2Label}  refused: ${gl2.error}\`)`), where the WebGPU arm turns the
+same shape into a `FAIL` (L213–L214). A capability refusal and a broken frame build are reported
+identically, so the gate whose job is the WebGL 2 draw path **cannot fail for it**.
+
+**Done when.** A frame that throws while building reports `FAIL` naming the throw, a frame refused
+for a capability the device has not got still reports `SKIP`, and a test or a deliberate broken
+fixture demonstrates the two are told apart.
+
+**Needs.** item 79.
+
+**Found 2026-08-26, by the red batch over item 87. Renumbered from 96 to 101 on 2026-08-26** to
+resolve a duplicate item number: two runs of item 87's work each filed a `96`, this one and "The
+uniform-block buffer carries a label of its own". The uniform-block item kept 96 as the earlier in
+document order and this one moved to the next free number, so the queue is ascending again. Item 87's
+half-migrated gates made `frameOf` throw *"the description for 'core-perdraw' names a generated
+resource 1 with no bytes"*. `surface.mjs` failed loudly and correctly. `corpus.mjs` printed **"17 of
+17 draws lit their buffer, with 0 failed and 16 WebGL 2 skips"** and **exited 0** — six of those
+skips carrying that same throw, for `core-geometry`, `core-perdraw-uniform`, `core-depth`,
+`core-multisample`, `core-report` and `core-scene`, every one of which had been drawing the run
+before. A gate that goes green having run none of the path it exists to check is worse than no gate,
+because the greenness is read as evidence. It was `surface.mjs` that caught item 87, and had that one
+been skip-shaped too the defect would have merged. **Reverse:** delete this item; the WebGL 2 arm
+keeps reporting a throw as a refusal, with nothing tracking it.
