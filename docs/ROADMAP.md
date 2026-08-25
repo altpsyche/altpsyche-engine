@@ -1273,13 +1273,49 @@ and that the baked GLSL draws the same picture on a card is item 44's, unrun her
 
 ### 42. The on-demand translator chunk
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The editing path: someone typing WGSL on a WebGL 2 device gets translation while the page runs, fetched by `await import()` in its own chunk.
 
 **Done when.** A bundle analysis shows the translator absent from the first download, and the editing path still works.
 
 **Needs.** item 75. **Not** item 40: what these need is a translator known to carry the corpus, which is item 75. Item 40 chooses between two and is a separate, heavier question — see item 75 for why the two were split.
+
+**How it landed.** Two files and one boundary. [resource/translator.ts](../resource/translator.ts)
+is the chunk — the `TranslatorEngine` interface (`translate(wgsl, entry) → GLSL ES 3.00`),
+the `EntryPoint` type (`vertex`/`fragment`, never `compute` — GLSL ES 3.00 has no compute
+stage, §17 decision 6), and `defaultEngine`, which is **null** until item 40 wires the wasm
+engine behind this same boundary. [resource/editing.ts](../resource/editing.ts)'s
+`translateForEditing(wgsl, entries, opts)` is the editing path: it reaches the chunk only by
+`await import('./translator.js')` — the same dynamic import `gpu/renderer.ts` fetches a backend
+through — so a bundler splits it off, and it translates each entry point through the engine the
+fetch returns. A shipped scene never enters here (its materials were translated at build time,
+item 41); the toy-tier editor enters on the first WGSL edit and pays the one fetch. Neither is
+re-exported through the door (§11: the translator is never named by a consumer), so the export
+surface did not move.
+
+**The bundle analysis, clause one.** [gates/chunk.mjs](../gates/chunk.mjs) bundles a first-download
+entry that imports the editing path, with esbuild's code splitting on, and reads the metafile:
+the translator is its own output chunk, reached from the entry by a **`dynamic-import`** edge,
+and its source is **absent from the entry chunk's own bytes**. All three hold, so the translator
+is not in the first download. [tests/editing-chunk.test.ts](../tests/editing-chunk.test.ts) drives
+the gate through a subprocess (the shape `translate-build.test.ts` drives `translate.mjs`) and
+reads its verdict back. esbuild is a dev tool and never ships.
+
+**The editing path, clause two.** Driven the way every card-adjacent path in this tree is proven
+on a machine with no card — the engine is handed in, and the mechanism above it is what runs.
+[tests/editing-path.test.ts](../tests/editing-path.test.ts) shows the path fetches the chunk
+through a loader (standing in for `await import()`), reads its engine, and translates each entry
+point in order; and that reaching it with the chunk's real null `defaultEngine` is a refusal
+**naming item 40** rather than a null-call crash.
+
+**What the gates could not see.** The concrete WGSL→GLSL engine is item 40's (naga or tint, the
+Stage 5a choice §17 lists as open), so the shipped `defaultEngine` is null: runtime translation
+of *novel* WGSL does not function until that engine lands behind this boundary — what this item
+delivers is the on-demand chunk boundary, its bundle split, and the path that drives whatever
+engine fills it. That the translated GLSL then *draws* on a WebGL 2 card is unrun here (no card,
+`gate:browser` not run) and waits on the WebGL 2 backend consuming a translation (items 46–52),
+exactly as item 41's build-time bake waits on the same. See [JOURNAL.md](JOURNAL.md).
 
 ### 43. Refusal by named construct
 
