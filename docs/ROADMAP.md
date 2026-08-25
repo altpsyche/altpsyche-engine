@@ -1947,14 +1947,30 @@ items 53 and 55. **Reverse:** put `item 57` back into item 58's `Needs` and dele
 | device readings published | items 9, 57 |
 | **one consumer outside this org shipping something** | item 53 |
 
-**Needs.** Every item above **except items 53, 55 and 57**, which are registers and waits rather
-than tasks and can never be marked `done` — each says so in its own entry.
+**Needs.** Every item above is `done`, or is one of the four kinds of entry that can never be
+`done` and is named here so nobody has to judge it later:
+
+| kind | items | why it cannot close |
+| --- | --- | --- |
+| standing rows | 53, 55, 57 | registers and waits rather than tasks; each says so in its own entry |
+| reverted | 6 | a record of a mistake, kept rather than deleted per the status table |
+| work that moved | 38, 49, 66, 67, 68 | `lifted decomposed into …`; the work lives in the successor items, which are what this gate reads |
+| lifted to hardware | 31, 62 | **these must be read, not superseded.** A machine with a real graphics card closes them, and until one does, 1.0 is not declarable |
+
+Everything else above must be `done`.
 
 **Reworded 2026-08-25, because as written this item could never be declared.** Item 57's `Done
 when` is the single word "Never", item 55's is a hardware reading that is explicitly never a CI
-gate, and item 53's is an event outside this repository. "Every item above" therefore named three
-items that cannot close, which made 1.0 formally unreachable however much work landed. The three
-are excluded by name rather than deleted, because each is a real standing obligation.
+gate, and item 53's is an event outside this repository. "Every item above" therefore named items
+that cannot close, which made 1.0 formally unreachable however much work landed.
+
+**Amended the same day, because naming three was not enough.** A first pass excluded only 53, 55
+and 57, and the queue still could not close: item 6 is `reverted`, and items 38, 49, 66, 67 and 68
+are `lifted decomposed into …` records whose work moved into successor items. `lifted` never satisfies
+a `Needs`, so each of those would have blocked 1.0 forever while representing no outstanding work
+at all. The table above names all four kinds so the distinction is read rather than rediscovered —
+and it keeps items 31 and 62 **in** the gate, because a hardware reading nobody has taken is
+outstanding work, unlike a record of work that moved.
 
 **1.0 is deliberately not the next release.** 0.x continues, and **a 0.x release does not need this
 item** — README says 0.x is unstable and that names and shapes change between releases, and
@@ -2227,7 +2243,7 @@ so `gate:pack` was not required.
 
 ### 66. The last two §14 renames, once the capability wiring exists
 
-**Status.** lifted needs decomposition
+**Status.** lifted decomposed into items 81, 82
 
 **Asks for.** The two rows item 38 could not reach: `readBuffer` removed, and `ShaderSource` becoming a union discriminated on `authored`.
 
