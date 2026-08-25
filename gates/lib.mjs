@@ -142,7 +142,7 @@ export async function loadCorpus() {
       bytes,
       block,
       values: Object.fromEntries(entry.uniforms.map((uniform) => [uniform.name, uniform.value])),
-      frame: frameOf(entry.id, description, { wgsl: code }, uniforms, block, undefined, bytes),
+      frame: frameOf(entry.id, description, { wgsl: code }, block, undefined, bytes),
     };
   });
 }

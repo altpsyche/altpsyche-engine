@@ -29,6 +29,11 @@ const { bundle, staging } = bundleForPage({
   'gpu/webgpu': ['createWebGPUBackend'],
   'gpu/webgl2': ['createWebGL2Backend'],
   'gpu/webgpu-device': ['requestWebGPUDevice'],
+  // `missing` replaced the program's own `unreached` at item 69. It is a weaker
+  // reading and the message below says so: it compares an entry's declared names
+  // against the uniforms the SOURCE declares, where `unreached` asked the built
+  // pipeline and could therefore see a name the compiler had dropped.
+  'index.ts': ['missing'],
 });
 
 const browser = await chromium.launch({
@@ -86,9 +91,11 @@ for (const { id, frame, values, entry } of corpus) {
       }
 
       // A uniform an entry describes is a value a caller expects to reach the
-      // card, so a name the program has nowhere to put is a control wired to
-      // nothing. The built pipeline is asked rather than the source text.
-      const absent = program.unreached(declared);
+      // card, so a name nothing declares is a control wired to nothing. The
+      // source is what answers since item 69: a compiled program is no longer
+      // asked, so a name the compiler dropped after accepting it is invisible
+      // here in a way it was not before.
+      const absent = window.missing(frame, declared);
 
       program.setUniforms(values);
       program.draw();
@@ -118,7 +125,7 @@ for (const { id, frame, values, entry } of corpus) {
     const named = entry.uniforms.length;
     console.log(
       `PASS ${label}  ${result.lit.toLocaleString('en-US')} of ${result.total.toLocaleString('en-US')} pixels lit, ${share}%` +
-        `, ${named} declared uniform${named === 1 ? '' : 's'} reached`
+        `, ${named} declared uniform${named === 1 ? '' : 's'} found in the source`
     );
   }
 }

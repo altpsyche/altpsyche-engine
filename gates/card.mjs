@@ -47,6 +47,9 @@ const corpus = await loadCorpus();
 const { bundle, staging } = bundleForPage({
   'gpu/webgpu': ['createWebGPUBackend'],
   'gpu/webgpu-device': ['requestWebGPUDevice'],
+  // `missing` replaced the program's own `unreached` at item 69; a source reading
+  // rather than a question put to the built pipeline.
+  'index.ts': ['missing'],
 });
 
 const server = http.createServer((_request, response) => {
@@ -236,7 +239,7 @@ for (const { id, frame, values, entry } of corpus) {
       } catch (e) {
         return { error: String(e.message || e).slice(0, 300) };
       }
-      const absent = program.unreached(declared);
+      const absent = window.missing(frame, declared);
       program.setUniforms(values);
       program.draw();
       const px = await backend.readPixels();
