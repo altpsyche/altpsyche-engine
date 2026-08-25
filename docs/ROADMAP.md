@@ -3556,3 +3556,32 @@ run none of the path it exists to check is worse than no gate, because the green
 evidence. It was `surface.mjs` that caught item 87, and had that one been skip-shaped too the
 defect would have merged. **Reverse:** delete this item; the WebGL 2 arm keeps reporting a throw as
 a refusal, with nothing tracking it.
+
+### 97. WebGL 2's `storage-buffer` capability says more than it can do
+
+**Status.** open
+
+**Asks for.** The capability a device declares to mean what the backend will actually accept. Item
+92 added `storage-buffer` to `WEBGL2_CORE` ([gpu/select.ts](../gpu/select.ts) L198) because WebGL 2
+can now draw a **read-only** per-instance record as a uniform block. It cannot draw a **read-write**
+one, and [gpu/webgl2.ts](../gpu/webgl2.ts) L411–L415 throws for it at build time: *"writes resource
+N as a storage buffer, and this backend has no compute to fill one"*. So a graph declaring
+`requires: ['storage-buffer']` with a read-write buffer now **passes selection and refusal, then
+throws**, where before item 92 the capability model refused it in the data.
+
+**Done when.** `refusal(graph, device)` answers correctly for a read-write storage buffer on WebGL
+2 — by splitting the capability (a read arm and a write arm), or by whatever name the queue
+prefers — and no graph reaches a backend build that the capability model said was drawable. The
+throw at `gpu/webgl2.ts` L411 becomes unreachable by construction rather than load-bearing.
+
+**Needs.** item 92.
+
+**Found by review 2026-08-26, merging item 92.** This is [CLAUDE.md](../CLAUDE.md)'s standing
+refusal in a new coat — *"No backend grows a method the other has to throw from. Capability lives
+in the data"* — and §17 decision 2's rule that a dependency lives in data rather than in a method a
+backend throws from. Item 92 is not wrong to have landed: its `Done when` said the declaration must
+either map to the raster path **or be refused by name**, and a throw naming the resource is a
+refusal by name in the plain sense. What moved is *where* the refusal lives, out of `refusal()` and
+into the backend, and that is the thing §10 exists to prevent. **It matters most for item 93**,
+whose thousand-object scene is the first graph large enough to want a read-write path.
+**Reverse:** delete this item; WebGL 2 keeps declaring a capability it half has.

@@ -39,6 +39,10 @@ and §14's table cannot be fully spent until those are decomposed, which is a re
    process that reported completion, and a removed worktree leaves its git commands resolving to
    the main repository — which is how one commit landed on `main` on 2026-08-25 while its branch
    never saw it. Check both: no `.loop/lock` in the worktree, and no `claude -p` process left.
+   **Check by worktree path, never by a remembered pid** — `pgrep -af run-loop.sh | grep <name>`.
+   A pid read once and reused is not a check, and a pattern like `run-loop.sh 1 --cap 90` matches
+   every run that ever used those flags. That mistake removed a live worktree a second time on
+   2026-08-26.
 3. **Never put item 53 in `--items`.** It is "wait for a consumer who did not write this" and
    the prompt stops the whole run on it.
 4. **A high-numbered urgent item runs last**, because selection is lowest-number-first. Give it
