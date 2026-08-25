@@ -45,7 +45,7 @@ const OVER: GPUBlendState = {
 const holds = (name: string, over: Partial<TextureResource> = {}): TextureResource => ({
   kind: 'texture',
   name,
-  size: ['frame', 'frame'],
+  size: { scale: 1 },
   format: 'rgba8unorm',
   use: ['attachment'],
   ...over,

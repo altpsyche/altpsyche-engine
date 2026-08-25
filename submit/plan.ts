@@ -26,6 +26,7 @@ import type {
 import { drawsCorners, drawsIndirectly, isRenderPass, resourceOf } from '../graph/types.js';
 import { frameOf } from '../toy/frame.js';
 import { validate } from '../graph/validate.js';
+import { sizeKey } from '../graph/refs.js';
 
 /** The geometry one pipeline reads and the indices that order it, looked up where
  * a pipeline is made and where a pass is planned so the two agree on which
@@ -159,7 +160,7 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) =>
     // samples of the pixel underneath it, and same single sample, because a
     // texture keeping several is what is being averaged rather than what an
     // average lands in.
-    const shape = (resource: TextureResource) => `${resource.size.join('x')} ${resource.format}`;
+    const shape = (resource: TextureResource) => `${sizeKey(resource.size)} ${resource.format}`;
     if (resource.samples !== undefined || shape(resource) !== shape(into)) {
       throw new Error(
         `the pass on "${spec.name}" averages "${attachment.resource}" into "${name}", which is not the same picture keeping one sample`

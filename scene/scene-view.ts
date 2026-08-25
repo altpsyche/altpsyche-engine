@@ -286,7 +286,7 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
       const depthTarget: TextureResource | undefined = options.depth && {
         kind: 'texture',
         name: options.depth.texture,
-        size: ['frame', 'frame'],
+        size: { scale: 1 },
         format: options.depth.format,
         use: ['attachment'],
       };

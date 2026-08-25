@@ -151,7 +151,7 @@ describe('cost', () => {
     const target: ResourceSpec = {
       kind: 'texture',
       name: 'scratch',
-      size: ['frame', 'frame'],
+      size: { scale: 1 },
       format: 'rgba8unorm',
       use: ['attachment', 'sample'],
     };
@@ -191,8 +191,8 @@ describe('cost', () => {
 
   it('counts the resolve as the store and discards the samples it came from', () => {
     const resources: ResourceSpec[] = [
-      { kind: 'texture', name: 'msaa', size: ['frame', 'frame'], format: 'rgba8unorm', use: ['attachment'], samples: 4 },
-      { kind: 'texture', name: 'flat', size: ['frame', 'frame'], format: 'rgba8unorm', use: ['attachment'] },
+      { kind: 'texture', name: 'msaa', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'], samples: 4 },
+      { kind: 'texture', name: 'flat', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
     ];
     const pipelines: PipelineSpec[] = [
       {
@@ -218,7 +218,7 @@ describe('cost', () => {
 
   it('stores both halves of a depth-stencil a later pass reads, and discards both where none does', () => {
     const resources: ResourceSpec[] = [
-      { kind: 'texture', name: 'zs', size: ['frame', 'frame'], format: 'depth24plus-stencil8', use: ['attachment'] },
+      { kind: 'texture', name: 'zs', size: { scale: 1 }, format: 'depth24plus-stencil8', use: ['attachment'] },
     ];
     const pipelines: PipelineSpec[] = [
       {
@@ -260,7 +260,7 @@ describe('cost', () => {
 
   it('sums the whole mip ladder of a transient texture', () => {
     const resources: ResourceSpec[] = [
-      { kind: 'texture', name: 'ladder', size: [4, 4], format: 'rgba8unorm', use: ['attachment'], mips: 'generate' },
+      { kind: 'texture', name: 'ladder', size: { width: 4, height: 4 }, format: 'rgba8unorm', use: ['attachment'], mips: 'generate' },
     ];
     const passes: PassSpec[] = [{ pipeline: 'frame', draws: [{ vertices: 3 }] }];
     // 4x4 + 2x2 + 1x1 pixels at four bytes each: (16 + 4 + 1) * 4 = 84.
@@ -269,7 +269,7 @@ describe('cost', () => {
 
   it('follows the frame size on a frame-sized transient', () => {
     const resources: ResourceSpec[] = [
-      { kind: 'texture', name: 'scratch', size: ['frame', 'frame'], format: 'rgba8unorm', use: ['attachment'] },
+      { kind: 'texture', name: 'scratch', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
     ];
     const passes: PassSpec[] = [{ pipeline: 'frame', draws: [{ vertices: 3 }] }];
     const small = cost(frame({ passes, resources }), { width: 100, height: 100 });

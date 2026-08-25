@@ -34,11 +34,47 @@ export type Ref<H> = { resident: H } | { transient: TransientId };
 export type BufferRef = Ref<BufferHandle>;
 export type TextureRef = Ref<TextureHandle>;
 
-/** How big a transient is, relative to the frame or fixed. `{ scale: 1 }` is a
+/** How big a texture is, relative to the frame or fixed. `{ scale: 1 }` is a
  * frame-sized target following every resize, `{ scale: 0.5 }` a half-resolution
  * one; a fixed pair is a size that does not follow the frame. This replaces the
- * old `Extent = number | 'frame'`, which could not say half-resolution. */
+ * old `Extent = number | 'frame'`, which could not say half-resolution.
+ *
+ * It types a transient's size and, since item 71, a resident `TextureResource`'s
+ * too: one whole-size descriptor rather than a per-axis pair, so the rule for how
+ * a size resolves against a frame lives in one place — `sizeAt` below. */
 export type TransientSize = { scale: number } | { width: number; height: number };
+
+/** A size resolved to concrete pixels at a given frame. A `{ scale }` size
+ * follows the frame — `{ scale: 1 }` is the frame's own size, `{ scale: 0.5 }`
+ * half of it, rounded — and a `{ width, height }` size is those numbers whatever
+ * the frame does. This is the one place a size becomes pixels, so a resident
+ * texture and a transient resolve identically. Rounding, rather than floor or
+ * ceil, so a half-resolution target of an odd dimension lands on the nearer
+ * pixel; every size the tree carries today is either the frame's own or an even
+ * fixed pair, so the choice is unobservable until a non-integer scale is authored. */
+export function sizeAt(
+  size: TransientSize,
+  frame: { width: number; height: number }
+): { width: number; height: number } {
+  if ('scale' in size) {
+    return { width: Math.round(frame.width * size.scale), height: Math.round(frame.height * size.scale) };
+  }
+  return { width: size.width, height: size.height };
+}
+
+/** Whether a size follows the frame, which is what makes a texture carrying
+ * contents a contradiction: the contents arrive once and a frame-following
+ * texture is thrown away and remade on every resize. */
+export function followsFrame(size: TransientSize): boolean {
+  return 'scale' in size;
+}
+
+/** A stable string naming a size, so two sizes hash together exactly when they
+ * name one shape. `scale`-based and fixed sizes never collide because one carries
+ * the word `scale` and the other an `x`. */
+export function sizeKey(size: TransientSize): string {
+  return 'scale' in size ? `scale${size.scale}` : `${size.width}x${size.height}`;
+}
 
 /** A resource declared inside the graph by descriptor rather than allocated
  * through the arena, so `submit/` owns its whole life — one frame, or pooled

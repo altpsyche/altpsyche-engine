@@ -20,7 +20,6 @@ import type {
   DeviceReport,
   Dispatch,
   DrawSpec,
-  Extent,
   IndexResource,
   PassSpec,
   RenderPassSpec,
@@ -44,6 +43,7 @@ import {
   uniformResourceOf,
 } from '../graph/types.js';
 import type { FrameTraffic } from '../graph/types.js';
+import { followsFrame, sizeAt, sizeKey } from '../graph/refs.js';
 import { Arena } from '../resource/arena.js';
 import type { Handle } from '../resource/arena.js';
 import { planFramePasses } from '../submit/plan.js';
@@ -655,8 +655,7 @@ export function createWebGPUBackend(
         }
 
         const textures = new Map<string, GPUTexture>();
-        const span = (size: Extent, frameSize: number) => (size === 'frame' ? frameSize : size);
-        const spansFrame = (resource: TextureResource) => resource.size[0] === 'frame' || resource.size[1] === 'frame';
+        const spansFrame = (resource: TextureResource) => followsFrame(resource.size);
         const made = { width: 0, height: 0 };
 
         // Contents and the frame's own size are a contradiction, because a texture
@@ -706,8 +705,7 @@ export function createWebGPUBackend(
         const build = (which: (resource: TextureResource) => boolean) => {
           for (const resource of declared) {
             if (!which(resource)) continue;
-            const across = span(resource.size[0], width);
-            const down = span(resource.size[1], height);
+            const { width: across, height: down } = sizeAt(resource.size, { width, height });
             const levels = resource.mips ? levelsOf(across, down) : 1;
             const make = () =>
               device.createTexture({
@@ -790,7 +788,7 @@ export function createWebGPUBackend(
           // whichever of them the frame ended on and either may be the one a pass
           // wrote. Refused here rather than left to a copy the card reports as out
           // of range on the frames that swap and not on the frames that do not.
-          const shape = (resource: TextureResource) => `${resource.size.join('x')} ${resource.format}`;
+          const shape = (resource: TextureResource) => `${sizeKey(resource.size)} ${resource.format}`;
           if (shape(first as TextureResource) !== shape(second as TextureResource)) {
             throw new Error(
               `the frame for "${frame.id}" swaps "${one}" and "${other}", which are not the same texture`
@@ -882,7 +880,8 @@ export function createWebGPUBackend(
                       `the frame for "${frame.id}" dispatches over "${dispatch.over}", which is no texture`
                     );
                   }
-                  return [span(resource.size[0], width), span(resource.size[1], height)];
+                  const dims = sizeAt(resource.size, { width, height });
+                  return [dims.width, dims.height];
                 })();
           return [Math.ceil((over[0] as number) / workgroup[0]), Math.ceil((over[1] as number) / workgroup[1]), 1];
         };

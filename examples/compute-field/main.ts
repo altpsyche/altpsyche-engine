@@ -91,7 +91,7 @@ const DESCRIPTION: FrameDescription = {
       // Frame-sized, so the picture still covers the canvas after a resize; what
       // it held is gone when it is rebuilt, which is what a shader writing every
       // pixel of it every frame wants.
-      size: ['frame', 'frame'],
+      size: { scale: 1 },
       format: 'rgba8unorm',
       use: ['storage'],
     },

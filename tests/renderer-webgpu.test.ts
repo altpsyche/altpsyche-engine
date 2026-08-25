@@ -520,7 +520,7 @@ const computeFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   uniforms: UNIFORMS,
   resources: [
     { kind: 'uniform', name: 'uniforms', block: BLOCK },
-    { kind: 'texture', name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm', use: ['storage'] },
+    { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['storage'] },
   ],
   modules: [{ name: 'compute', code: COMPUTE }],
   pipelines: [
@@ -597,7 +597,7 @@ describe('the texture a compute pass writes', () => {
       ...frame,
       resources: [
         frame.resources[0]!,
-        { kind: 'texture', name: 'picture', size: [64, 64], format: 'rgba8unorm', use: ['storage'] },
+        { kind: 'texture', name: 'picture', size: { width: 64, height: 64 }, format: 'rgba8unorm', use: ['storage'] },
       ],
     });
 
@@ -626,7 +626,7 @@ describe('the texture a compute pass writes', () => {
       ...frame,
       resources: [
         frame.resources[0]!,
-        { kind: 'texture', name: 'picture', size: [64, 64], format: 'rgba8unorm', use: ['storage'] },
+        { kind: 'texture', name: 'picture', size: { width: 64, height: 64 }, format: 'rgba8unorm', use: ['storage'] },
       ],
     });
     program.draw();
@@ -758,7 +758,7 @@ const sampledFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
     {
       kind: 'texture',
       name: 'grain',
-      size: [4, 4],
+      size: { width: 4, height: 4 },
       format: 'rgba8unorm',
       use: ['sample'],
       source: 'grain.bin',
@@ -839,7 +839,7 @@ describe('the texture a shader samples', () => {
         ...frame,
         resources: [
           frame.resources[0]!,
-          { ...(frame.resources[1] as TextureResource), size: ['frame', 'frame'] },
+          { ...(frame.resources[1] as TextureResource), size: { scale: 1 } },
           frame.resources[2]!,
         ],
       })

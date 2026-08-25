@@ -35,7 +35,7 @@ const BYTES = new Uint8Array(64 * 64 * 4).fill(128);
 const grain = (over: Partial<TextureResource> = {}): TextureResource => ({
   kind: 'texture',
   name: 'grain',
-  size: [64, 64],
+  size: { width: 64, height: 64 },
   format: 'rgba8unorm',
   use: ['sample'],
   mips: 'generate',
@@ -96,7 +96,7 @@ describe('the levels a laddered texture is made with', () => {
     const { gpu, backend } = backendOver();
     backend.program(
       laddered({
-        resources: [...laddered().resources.slice(0, 1), grain({ size: [256, 64] }), ...laddered().resources.slice(2)],
+        resources: [...laddered().resources.slice(0, 1), grain({ size: { width: 256, height: 64 } }), ...laddered().resources.slice(2)],
       })
     );
 

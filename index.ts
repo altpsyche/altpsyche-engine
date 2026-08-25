@@ -88,7 +88,6 @@ export type {
   Dispatch,
   DocumentSpec,
   DrawSpec,
-  Extent,
   FrameDescription,
   IndexResource,
   ModuleSpec,
@@ -108,6 +107,11 @@ export type {
   UniformValue,
   VertexResource,
 } from './graph/types.js';
+
+// A texture's size is a whole-size descriptor rather than a per-axis pair, the
+// §14 shape that replaced `Extent` (item 71). `{ scale: 1 }` follows the frame,
+// `{ scale: 0.5 }` is a half-resolution target, `{ width, height }` a fixed one.
+export type { TransientSize } from './graph/refs.js';
 
 // The uniform block a WGSL source lays out, computed off its struct because
 // nothing here compiles WGSL.

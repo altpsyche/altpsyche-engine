@@ -34,7 +34,7 @@ const PAIR = (name: string) =>
   ({
     kind: 'texture' as const,
     name,
-    size: [256, 256] as [number, number],
+    size: { width: 256, height: 256 },
     format: 'rgba16float' as GPUTextureFormat,
     use: ['storage', 'sample'] as ('storage' | 'sample')[],
   }) as const;
@@ -122,7 +122,7 @@ describe('the textures a swapping frame owns', () => {
     expect(() =>
       backend.program({
         ...frame,
-        resources: [frame.resources[0]!, PAIR('previous'), { ...PAIR('next'), size: [128, 128] }, frame.resources[3]!],
+        resources: [frame.resources[0]!, PAIR('previous'), { ...PAIR('next'), size: { width: 128, height: 128 } }, frame.resources[3]!],
       })
     ).toThrow(/swaps "previous" and "next", which are not the same texture/);
   });
@@ -250,8 +250,8 @@ describe('the dispatch a pass takes over a resource', () => {
         ...frame,
         resources: [
           frame.resources[0]!,
-          { ...PAIR('previous'), size: [100, 60] },
-          { ...PAIR('next'), size: [100, 60] },
+          { ...PAIR('previous'), size: { width: 100, height: 60 } },
+          { ...PAIR('next'), size: { width: 100, height: 60 } },
           frame.resources[3]!,
         ],
       })

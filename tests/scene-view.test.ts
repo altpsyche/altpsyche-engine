@@ -399,7 +399,7 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
     const depth = frame.resources.find((r) => r.name === 'depth');
     expect(depth?.kind).toBe('texture');
     if (depth?.kind !== 'texture') return;
-    expect(depth.size).toEqual(['frame', 'frame']);
+    expect(depth.size).toEqual({ scale: 1 });
     expect(depth.format).toBe('depth24plus');
     expect(depth.use).toEqual(['attachment']);
     // A transient: no first contents of its own, so item 1 discards the store no

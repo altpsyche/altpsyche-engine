@@ -34,7 +34,7 @@ fn fragMain(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
 const picture = (name: string, over: Partial<TextureResource> = {}): TextureResource => ({
   kind: 'texture',
   name,
-  size: ['frame', 'frame'],
+  size: { scale: 1 },
   format: 'rgba8unorm',
   use: ['attachment'],
   ...over,
@@ -206,7 +206,7 @@ describe('what a description keeping several samples a pixel is refused for', ()
         resources: [
           averaged().resources[0] as TextureResource,
           picture('edges', { samples: 4 }),
-          picture('flat', { size: [64, 64] }),
+          picture('flat', { size: { width: 64, height: 64 } }),
         ],
       }),
       'the pass on "shade" averages "edges" into "flat", which is not the same picture keeping one sample'
@@ -268,7 +268,7 @@ describe('what a description keeping several samples a pixel is refused for', ()
       averaged({
         resources: [
           averaged().resources[0] as TextureResource,
-          picture('edges', { samples: 4, size: [64, 64], data: new Uint8Array(64 * 64 * 4) }),
+          picture('edges', { samples: 4, size: { width: 64, height: 64 }, data: new Uint8Array(64 * 64 * 4) }),
           picture('flat'),
         ],
       }),

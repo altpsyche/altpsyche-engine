@@ -166,7 +166,7 @@ describe('a description above the subset', () => {
       {
         kind: 'texture' as const,
         name: 'picture',
-        size: ['frame', 'frame'] as ['frame', 'frame'],
+        size: { scale: 1 },
         format: 'rgba8unorm' as const,
         use: ['storage' as const],
       },

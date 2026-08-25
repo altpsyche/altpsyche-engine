@@ -229,7 +229,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // As big as the picture, so the texture is rebuilt when the reader resizes
       // the window and what it held is gone, which is what a shader writing every
       // pixel of it every frame wants.
-      textures: [{ name: 'picture', size: ['frame', 'frame'] }],
+      textures: [{ name: 'picture', size: { scale: 1 } }],
       // The whole frame in blocks of the size the source declares, so an edge
       // that does not divide by that size is covered by a block running past it
       // rather than left unwritten.
@@ -251,7 +251,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // to put their finest one. It is a fixed size rather than the frame's,
       // because the bytes arrive once and a texture following the frame is
       // thrown away on every resize.
-      textures: [{ name: 'grain', size: [64, 64], content: 'value-noise' }],
+      textures: [{ name: 'grain', size: { width: 64, height: 64 }, content: 'value-noise' }],
       // Smooth, because the picture is stretched over a frame many times its own
       // size and reading the nearest pixel would show it as squares. Repeating,
       // because the source tiles the picture three times across and the value
@@ -275,7 +275,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // everything the field had grown goes with it. The pattern's features are
       // also a few cells across, so how coarse the picture looks is this number
       // rather than the window's.
-      pairs: [{ read: 'previous', write: 'next', size: [256, 256] }],
+      pairs: [{ read: 'previous', write: 'next', size: { width: 256, height: 256 } }],
       // Smooth, because a grid of 256 is stretched over a frame hundreds of
       // pixels across and reading the nearest cell would show it as squares.
       // Held at the edge rather than repeating, since the picture covers the
@@ -358,9 +358,9 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // and tested at another would decide which surface is in front out of the
       // wrong pixels.
       attachments: [
-        { name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm' },
-        { name: 'distance', size: ['frame', 'frame'], format: 'rgba8unorm' },
-        { name: 'depth', size: ['frame', 'frame'], format: 'depth24plus' },
+        { name: 'picture', size: { scale: 1 }, format: 'rgba8unorm' },
+        { name: 'distance', size: { scale: 1 }, format: 'rgba8unorm' },
+        { name: 'depth', size: { scale: 1 }, format: 'depth24plus' },
       ],
       passes: [
         // The sheet leaning away first, emptying both pictures and the depth. Its
@@ -408,7 +408,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // the two. The entry declares how big it is and what it holds because no
       // source can say either, and that the second pass reads it is the source's
       // own sampled declaration rather than a word repeated here.
-      attachments: [{ name: 'scene', size: ['frame', 'frame'], format: 'rgba8unorm' }],
+      attachments: [{ name: 'scene', size: { scale: 1 }, format: 'rgba8unorm' }],
       // Held at the edge rather than repeating, since the picture covers the frame
       // exactly once and a vignette reads right up to it.
       samplers: [{ name: 'sceneSampler', filter: 'linear', wrap: 'clamp' }],
@@ -441,7 +441,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // enough steps that the climb across the frame has somewhere to go, where the
       // sampling preset's 64 would run out after seven. The backend draws every
       // level below the first, and how many there are comes off this size.
-      textures: [{ name: 'grain', size: [256, 256], content: 'value-noise', mips: 'generate' }],
+      textures: [{ name: 'grain', size: { width: 256, height: 256 }, content: 'value-noise', mips: 'generate' }],
       // Smooth, because a level between two whole numbers is a mix of the two
       // copies either side of it and reading the nearest pixel would show the steps
       // as hard edges. Repeating, because the source tiles the picture three times
@@ -478,8 +478,8 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // picture, and a pair of textures one of which followed the window would
       // stop being that after the first drag.
       attachments: [
-        { name: 'edges', size: ['frame', 'frame'], format: 'rgba8unorm', samples: 4 },
-        { name: 'flat', size: ['frame', 'frame'], format: 'rgba8unorm' },
+        { name: 'edges', size: { scale: 1 }, format: 'rgba8unorm', samples: 4 },
+        { name: 'flat', size: { scale: 1 }, format: 'rgba8unorm' },
       ],
       // Emptied to nothing at all rather than to black, so a pixel the outline
       // crosses comes back with the fraction of itself the sheet covered sitting
@@ -517,7 +517,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // the frame's for the reason the pair exists: what the painting pass leaves
       // outside the band it covered is what the frame before it drew, and a
       // texture following the window would throw that away on every drag.
-      pairs: [{ read: 'shown', write: 'painted', size: [256, 256] }],
+      pairs: [{ read: 'shown', write: 'painted', size: { width: 256, height: 256 } }],
       // Smooth, because a grid of 256 is stretched over a frame hundreds of pixels
       // across and reading the nearest cell would show it as squares. Held at the
       // edge, since the grid covers the frame exactly once.
@@ -566,8 +566,8 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // The picture and the distances both follow the frame, so a reader resizing
       // the window gets a depth kept at the size it is tested at.
       attachments: [
-        { name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm' },
-        { name: 'depth', size: ['frame', 'frame'], format: 'depth24plus' },
+        { name: 'picture', size: { scale: 1 }, format: 'rgba8unorm' },
+        { name: 'depth', size: { scale: 1 }, format: 'depth24plus' },
       ],
       passes: [
         // The near sheet first, emptying the picture and the depth, and leaving its
@@ -621,8 +621,8 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // far away it was. Both follow the frame, so a reader resizing the window
       // gets a mask the size of the picture it cuts.
       attachments: [
-        { name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm' },
-        { name: 'mask', size: ['frame', 'frame'], format: 'stencil8' },
+        { name: 'picture', size: { scale: 1 }, format: 'rgba8unorm' },
+        { name: 'mask', size: { scale: 1 }, format: 'stencil8' },
       ],
       passes: [
         // The sheet first, emptying the picture and the mask and leaving the mark

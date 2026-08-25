@@ -43,13 +43,13 @@ fn fragMain(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
 }`;
 
 const SAMPLING_FRAME: DeclaredFrame = {
-  textures: [{ name: 'grain', size: [64, 64], content: 'value-noise' }],
+  textures: [{ name: 'grain', size: { width: 64, height: 64 }, content: 'value-noise' }],
   samplers: [{ name: 'grainSampler', filter: 'linear', wrap: 'repeat' }],
   passes: [{ pipeline: 'fragMain' }],
 };
 
 const COMPUTE_FRAME: DeclaredFrame = {
-  textures: [{ name: 'picture', size: ['frame', 'frame'] }],
+  textures: [{ name: 'picture', size: { scale: 1 } }],
   passes: [{ pipeline: 'paint', dispatch: 'frame' }],
   present: 'picture',
 };
@@ -100,7 +100,7 @@ describe('the texture a description says the build writes', () => {
 
     expect(grain.format).toBe(TEXTURE_CONTENT['value-noise'].format);
     expect(grain.use).toEqual(['sample']);
-    expect(grain.size).toEqual([64, 64]);
+    expect(grain.size).toEqual({ width: 64, height: 64 });
     expect(grain.source).toBe(textureFileName('core-texture', 'grain'));
     expect(grain.data).toBeUndefined();
   });
@@ -119,14 +119,14 @@ describe('the texture a description says the build writes', () => {
     expect(() =>
       declaredFrame('x', COMPUTE, {
         ...COMPUTE_FRAME,
-        textures: [{ name: 'picture', size: [64, 64], content: 'value-noise' }],
+        textures: [{ name: 'picture', size: { width: 64, height: 64 }, content: 'value-noise' }],
       })
     ).toThrow(/sizes a texture "picture" its source never samples/);
   });
 
   it('refuses a size for a name the source samples rather than stores into', () => {
     expect(() =>
-      declaredFrame('x', SAMPLES, { ...SAMPLING_FRAME, textures: [{ name: 'grain', size: [64, 64] }] })
+      declaredFrame('x', SAMPLES, { ...SAMPLING_FRAME, textures: [{ name: 'grain', size: { width: 64, height: 64 } }] })
     ).toThrow(/sizes a texture "grain" its source never writes/);
   });
 
@@ -134,7 +134,7 @@ describe('the texture a description says the build writes', () => {
     expect(() =>
       declaredFrame('x', SAMPLES, {
         ...SAMPLING_FRAME,
-        textures: [{ name: 'grain', size: ['frame', 'frame'], content: 'value-noise' }],
+        textures: [{ name: 'grain', size: { scale: 1 }, content: 'value-noise' }],
       })
     ).toThrow(/gives "grain" contents and the frame/);
   });
@@ -252,8 +252,8 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
 
   const TWO_PASSES: DeclaredFrame = {
     textures: [
-      { name: 'previous', size: [256, 256], content: 'value-noise' },
-      { name: 'next', size: [256, 256] },
+      { name: 'previous', size: { width: 256, height: 256 }, content: 'value-noise' },
+      { name: 'next', size: { width: 256, height: 256 } },
     ],
     samplers: [{ name: 'stateSampler', filter: 'linear', wrap: 'clamp' }],
     passes: [{ pipeline: 'step', dispatch: [32, 32, 1] }, { pipeline: 'shade' }],
@@ -435,7 +435,7 @@ fn warp(@location(0) corner: vec2<f32>, @location(1) place: vec2<f32>) -> @built
     expect(() =>
       declaredFrame('x', both, {
         geometry: [{ name: 'grid', primitive: 'quad-grid', size: [2, 2] }],
-        textures: [{ name: 'picture', size: ['frame', 'frame'] }],
+        textures: [{ name: 'picture', size: { scale: 1 } }],
         passes: [{ pipeline: 'paint', vertex: 'warp', geometry: 'grid', dispatch: 'frame' }],
         present: 'picture',
       })
@@ -474,9 +474,9 @@ fn nearer(shaded: Surface) -> Pictures {
 const CROSSING: DeclaredFrame = {
   geometry: [{ name: 'sheet', primitive: 'quad-grid', size: [16, 16] }],
   attachments: [
-    { name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm' },
-    { name: 'distance', size: ['frame', 'frame'], format: 'rgba8unorm' },
-    { name: 'depth', size: ['frame', 'frame'], format: 'depth24plus' },
+    { name: 'picture', size: { scale: 1 }, format: 'rgba8unorm' },
+    { name: 'distance', size: { scale: 1 }, format: 'rgba8unorm' },
+    { name: 'depth', size: { scale: 1 }, format: 'depth24plus' },
   ],
   passes: [
     {
@@ -507,9 +507,9 @@ describe('the attachments a description says a pass draws into', () => {
     const written = crossing().resources.filter((one): one is TextureResource => one.kind === 'texture');
 
     expect(written.map((one) => [one.name, one.size, one.format, one.use])).toEqual([
-      ['picture', ['frame', 'frame'], 'rgba8unorm', ['attachment']],
-      ['distance', ['frame', 'frame'], 'rgba8unorm', ['attachment']],
-      ['depth', ['frame', 'frame'], 'depth24plus', ['attachment']],
+      ['picture', { scale: 1 }, 'rgba8unorm', ['attachment']],
+      ['distance', { scale: 1 }, 'rgba8unorm', ['attachment']],
+      ['depth', { scale: 1 }, 'depth24plus', ['attachment']],
     ]);
   });
 
@@ -579,7 +579,7 @@ describe('the attachments a description says a pass draws into', () => {
       crossing({
         attachments: [
           ...(CROSSING.attachments ?? []),
-          { name: 'spare', size: ['frame', 'frame'], format: 'rgba8unorm' },
+          { name: 'spare', size: { scale: 1 }, format: 'rgba8unorm' },
         ],
       })
     ).toThrow('the frame for "core-depth" declares an attachment "spare" no pass of it writes');
@@ -588,8 +588,8 @@ describe('the attachments a description says a pass draws into', () => {
   it('refuses a compute pass asked to draw attachments, since a dispatch writes no picture of its own', () => {
     expect(() =>
       declaredFrame('core-depth', COMPUTE, {
-        textures: [{ name: 'picture', size: ['frame', 'frame'] }],
-        attachments: [{ name: 'held', size: ['frame', 'frame'], format: 'rgba8unorm' }],
+        textures: [{ name: 'picture', size: { scale: 1 } }],
+        attachments: [{ name: 'held', size: { scale: 1 }, format: 'rgba8unorm' }],
         passes: [{ pipeline: 'paint', dispatch: 'frame', colour: [{ resource: 'held', clear: [0, 0, 0, 1] }] }],
         present: 'picture',
       })
@@ -630,7 +630,7 @@ fn grade(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
 
 const GRADED: DeclaredFrame = {
   geometry: [{ name: 'grid', primitive: 'quad-grid', size: [16, 16] }],
-  attachments: [{ name: 'scene', size: ['frame', 'frame'], format: 'rgba8unorm' }],
+  attachments: [{ name: 'scene', size: { scale: 1 }, format: 'rgba8unorm' }],
   samplers: [{ name: 'sceneSampler', filter: 'linear', wrap: 'clamp' }],
   passes: [
     {
@@ -650,7 +650,7 @@ describe('an attachment a later pass samples', () => {
     const scene = graded().resources.find((one) => one.name === 'scene') as TextureResource;
 
     expect(scene.use).toEqual(['attachment', 'sample']);
-    expect(scene.size).toEqual(['frame', 'frame']);
+    expect(scene.size).toEqual({ scale: 1 });
     expect(scene.format).toBe('rgba8unorm');
   });
 
@@ -677,8 +677,8 @@ describe('an attachment a later pass samples', () => {
     const unread = declaredFrame('core-target', GRADES, {
       ...GRADED,
       attachments: [
-        { name: 'scene', size: ['frame', 'frame'], format: 'rgba8unorm' },
-        { name: 'spare', size: ['frame', 'frame'], format: 'rgba8unorm' },
+        { name: 'scene', size: { scale: 1 }, format: 'rgba8unorm' },
+        { name: 'spare', size: { scale: 1 }, format: 'rgba8unorm' },
       ],
       passes: [
         {
@@ -715,8 +715,8 @@ fn shade(shaded: Surface) -> @location(0) vec4<f32> {
 const AVERAGED: DeclaredFrame = {
   geometry: [{ name: 'sheet', primitive: 'quad-grid', size: [16, 16] }],
   attachments: [
-    { name: 'edges', size: ['frame', 'frame'], format: 'rgba8unorm', samples: 4 },
-    { name: 'flat', size: ['frame', 'frame'], format: 'rgba8unorm' },
+    { name: 'edges', size: { scale: 1 }, format: 'rgba8unorm', samples: 4 },
+    { name: 'flat', size: { scale: 1 }, format: 'rgba8unorm' },
   ],
   passes: [
     {
@@ -751,7 +751,7 @@ describe('an attachment keeping several readings of every pixel', () => {
 
   it('leaves a frame keeping one reading everywhere with no count on either', () => {
     const single = averaged({
-      attachments: [{ name: 'edges', size: ['frame', 'frame'], format: 'rgba8unorm' }],
+      attachments: [{ name: 'edges', size: { scale: 1 }, format: 'rgba8unorm' }],
       passes: [
         { pipeline: 'shade', vertex: 'lean', geometry: 'sheet', colour: [{ resource: 'edges', clear: [0, 0, 0, 1] }] },
       ],
@@ -778,9 +778,9 @@ describe('an attachment keeping several readings of every pixel', () => {
     expect(() =>
       averaged({
         attachments: [
-          { name: 'edges', size: ['frame', 'frame'], format: 'rgba8unorm', samples: 4 },
-          { name: 'flat', size: ['frame', 'frame'], format: 'rgba8unorm' },
-          { name: 'depth', size: ['frame', 'frame'], format: 'depth24plus' },
+          { name: 'edges', size: { scale: 1 }, format: 'rgba8unorm', samples: 4 },
+          { name: 'flat', size: { scale: 1 }, format: 'rgba8unorm' },
+          { name: 'depth', size: { scale: 1 }, format: 'depth24plus' },
         ],
         passes: [
           {
@@ -812,7 +812,7 @@ describe('an attachment keeping several readings of every pixel', () => {
 
   it('is refused where the source samples it, which needs a declaration no source here writes', () => {
     expect(() =>
-      graded({ attachments: [{ name: 'scene', size: ['frame', 'frame'], format: 'rgba8unorm', samples: 4 }] })
+      graded({ attachments: [{ name: 'scene', size: { scale: 1 }, format: 'rgba8unorm', samples: 4 }] })
     ).toThrow('the frame for "core-target" samples "scene", which keeps several samples a pixel');
   });
 });
@@ -842,7 +842,7 @@ fn shade(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
 
 const PLANNED: DeclaredFrame = {
   buffers: [{ name: 'counts', bytes: 32 }],
-  textures: [{ name: 'picture', size: ['frame', 'frame'] }],
+  textures: [{ name: 'picture', size: { scale: 1 } }],
   passes: [
     { pipeline: 'plan', dispatch: [1, 1, 1] },
     { pipeline: 'paint', dispatch: { indirect: 'counts' } },
@@ -974,8 +974,8 @@ const REPORTED: DeclaredFrame = {
     { name: 'seen', bytes: 8 },
   ],
   attachments: [
-    { name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm' },
-    { name: 'depth', size: ['frame', 'frame'], format: 'depth24plus' },
+    { name: 'picture', size: { scale: 1 }, format: 'rgba8unorm' },
+    { name: 'depth', size: { scale: 1 }, format: 'depth24plus' },
   ],
   passes: [
     {
@@ -1089,8 +1089,8 @@ fn filling(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
 const CUT: DeclaredFrame = {
   geometry: [{ name: 'sheet', primitive: 'quad-grid', size: [8, 8] }],
   attachments: [
-    { name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm' },
-    { name: 'mask', size: ['frame', 'frame'], format: 'stencil8' },
+    { name: 'picture', size: { scale: 1 }, format: 'rgba8unorm' },
+    { name: 'mask', size: { scale: 1 }, format: 'stencil8' },
   ],
   passes: [
     {
@@ -1138,8 +1138,8 @@ describe('a pass that cuts with a mask', () => {
     const both = 'depth24plus-stencil8' as const;
     const described = cut({
       attachments: [
-        { name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm' },
-        { name: 'mask', size: ['frame', 'frame'], format: both },
+        { name: 'picture', size: { scale: 1 }, format: 'rgba8unorm' },
+        { name: 'mask', size: { scale: 1 }, format: both },
       ],
       passes: [
         {

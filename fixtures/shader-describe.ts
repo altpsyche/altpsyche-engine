@@ -91,9 +91,14 @@ export function generatedBytes(id: string, declared: DeclaredFrame | undefined):
 
   for (const texture of declared?.textures ?? []) {
     if (!texture.content) continue;
+    // A texture carrying contents is fixed, never frame-following — the describe
+    // path refuses `{ scale }` beside contents — so its size is a `{ width, height }`
+    // pair. A `{ scale }` here is that refused case; generate nothing and let the
+    // describe throw name it.
+    if (!('width' in texture.size)) continue;
     made.set(
       textureFileName(id, texture.name),
-      TEXTURE_CONTENT[texture.content].bytes(texture.size[0] as number, texture.size[1] as number)
+      TEXTURE_CONTENT[texture.content].bytes(texture.size.width, texture.size.height)
     );
   }
 
@@ -319,7 +324,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
       const verb = texture.content ? 'samples' : 'writes';
       throw new Error(`the frame for "${id}" sizes a texture "${texture.name}" its source never ${verb}`);
     }
-    if (texture.content && (texture.size[0] === 'frame' || texture.size[1] === 'frame')) {
+    if (texture.content && 'scale' in texture.size) {
       throw new Error(`the frame for "${id}" gives "${texture.name}" contents and the frame's own size`);
     }
   }

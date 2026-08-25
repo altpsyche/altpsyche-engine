@@ -45,7 +45,7 @@ fn filling(shaded: Vertex) -> @location(0) vec4<f32> {
 const mask = (over: Partial<TextureResource> = {}): TextureResource => ({
   kind: 'texture',
   name: 'mask',
-  size: ['frame', 'frame'],
+  size: { scale: 1 },
   format: 'stencil8',
   use: ['attachment'],
   ...over,

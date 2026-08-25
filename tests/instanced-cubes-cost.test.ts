@@ -44,7 +44,7 @@ const wgslCubes: FrameGraph = {
       count: 36,
       data: new Uint8Array(36 * 24),
     },
-    { kind: 'texture', name: 'depth', size: ['frame', 'frame'], format: 'depth24plus', use: ['attachment'] },
+    { kind: 'texture', name: 'depth', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
   ],
   modules: [{ name: 'wgsl', code: '' }],
   pipelines: [

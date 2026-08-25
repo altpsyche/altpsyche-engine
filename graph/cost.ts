@@ -28,6 +28,7 @@
 import type { PipelineSpec, ResourceSpec, RenderPipelineSpec, FrameGraph, TextureResource } from './types.js';
 import { isRenderPass } from './types.js';
 import { frameStores } from './attachments.js';
+import { sizeAt } from './refs.js';
 
 /** What one frame costs, by its structure alone. Every field is a count except
  * `transientBytes`, and none is ever summed with another: they measure different
@@ -129,9 +130,7 @@ const DEFAULT_BYTES_PER_PIXEL = 4;
  * it, floored, down to one pixel, which is exactly the ladder both backends
  * build, so the sum is deterministic rather than the ~4/3 approximation. */
 function textureBytes(resource: TextureResource, size: { width: number; height: number }): number {
-  const dim = (extent: number | 'frame', frame: number) => (extent === 'frame' ? frame : extent);
-  const width = dim(resource.size[0], size.width);
-  const height = dim(resource.size[1], size.height);
+  const { width, height } = sizeAt(resource.size, size);
   const perPixel = BYTES_PER_PIXEL[resource.format] ?? DEFAULT_BYTES_PER_PIXEL;
   const samples = resource.samples ?? 1;
   if (resource.mips !== 'generate') return width * height * perPixel * samples;

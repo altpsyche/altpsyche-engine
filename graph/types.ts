@@ -11,6 +11,7 @@
  */
 
 import type { Capability } from './capability.js';
+import type { TransientSize } from './refs.js';
 
 export type BackendName = 'webgl2' | 'webgpu';
 
@@ -64,21 +65,20 @@ export interface UniformResource {
   block?: UniformSlot[];
 }
 
-/** A size that is either a fixed number or the frame's own. `frame` is what makes
- * a resource follow a resize, and it is the difference between a texture that
- * still covers the picture after the reader drags the window and one that covers
- * a corner of it. What was in a frame-sized texture is gone when it is rebuilt,
- * because carrying the old contents over means scaling them, and that is a
- * decision about a picture the renderer has no business making. */
-export type Extent = number | 'frame';
-
 /** A texture the frame writes, reads or shows. `use` is what the usage flags are
  * built from, so a texture a pass writes and a later pass reads names both, and a
- * flag nothing asked for is a texture the driver refuses the pipeline over. */
+ * flag nothing asked for is a texture the driver refuses the pipeline over.
+ *
+ * `size` is a whole-size descriptor (`{ scale }` or `{ width, height }`), not a
+ * per-axis pair: `{ scale: 1 }` follows the frame, and what was in a
+ * frame-following texture is gone when it is rebuilt, because carrying the old
+ * contents over means scaling them and that is a decision about a picture the
+ * renderer has no business making. `{ scale: 0.5 }` is a half-resolution target
+ * the old `[Extent, Extent]` pair could not say. */
 export interface TextureResource {
   kind: 'texture';
   name: string;
-  size: [Extent, Extent];
+  size: TransientSize;
   format: GPUTextureFormat;
   use: ('storage' | 'sample' | 'attachment')[];
   /** Where its first contents come from, absent for a texture that starts empty.

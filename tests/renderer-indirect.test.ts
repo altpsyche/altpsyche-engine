@@ -59,7 +59,7 @@ const planned = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   resources: [
     { kind: 'uniform', name: 'uniforms', block: [{ name: 'u_time', offset: 0, size: 4 }] },
     counts(),
-    { kind: 'texture', name: 'picture', size: ['frame', 'frame'], format: 'rgba8unorm', use: ['storage'] },
+    { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['storage'] },
   ],
   modules: [{ name: 'wgsl', code: PLANS }],
   pipelines: [

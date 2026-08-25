@@ -169,7 +169,7 @@ const WGSL_DESCRIPTION: FrameDescription = {
     // Frame-sized, so the depth follows a resize the way the colour does; it is
     // cleared each frame and read by nothing afterwards, so item 1 discards its
     // store rather than writing it back.
-    { kind: 'texture', name: 'depth', size: ['frame', 'frame'], format: 'depth24plus', use: ['attachment'] },
+    { kind: 'texture', name: 'depth', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
   ],
   documents: [{ name: WGSL_DOCUMENT }],
   pipelines: [

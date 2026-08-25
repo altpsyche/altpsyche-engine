@@ -1759,7 +1759,7 @@ so `gate:pack` was not required.
 
 ### 71. `Extent` becomes a whole-size descriptor
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The §14 row `Extent = number | 'frame'` to `{ scale } | { width, height }`: a texture's size stops being a per-axis pair and becomes one descriptor that can say half-resolution, which the old type could not. `graph/refs.ts` already carries the target shape as `TransientSize`; this brings the resident `TextureResource.size` to it and deletes `Extent`.
 
@@ -1768,6 +1768,35 @@ so `gate:pack` was not required.
 **Needs.** item 37.
 
 **Why it exists.** Split out of item 38 on 2026-08-25: §14 lists it under renames but it changes a field's shape, not its name. Verified behaviour-preservable — no use in the tree mixes a fixed axis with `'frame'`, so `['frame','frame']` maps to `{ scale: 1 }` and `[w,h]` to `{ width, height }` — but it rewrites the shape item 67 migrates off string keys, so it lands with item 67 or immediately beside it; whichever takes it, the rule for a transient's size lives in one place.
+
+**How it landed.** `TextureResource.size` is now `TransientSize` (`{ scale } | { width, height }`,
+[graph/refs.ts](../graph/refs.ts)), the same whole-size descriptor a transient carries, and
+`Extent` is deleted from [graph/types.ts](../graph/types.ts) and the door — replaced there by
+`TransientSize`, so the door still names the type of a public field (`gate:pack` green, **54 door
+names**, unmoved: `Extent` out, `TransientSize` in). The rule for how a size becomes pixels lives
+in one place, `graph/refs.ts`'s new `sizeAt(size, frame)`: `{ scale: 1 }` resolves to the frame's
+own dimensions, `{ width, height }` to those numbers, and `{ scale: 0.5 }` to half the frame,
+rounded — the expressiveness the old pair lacked. Every reader moved to it — the WebGPU backend's
+texture build and compute-dispatch sizing ([gpu/webgpu.ts](../gpu/webgpu.ts)), `cost()`'s texture
+bytes ([graph/cost.ts](../graph/cost.ts)) — and the two `size.join('x')` shape keys (swap-pair in
+`gpu/webgpu.ts`, resolve-target in [submit/plan.ts](../submit/plan.ts)) plus the transient pool's
+bin key ([submit/transient-pool.ts](../submit/transient-pool.ts)) share one `sizeKey(size)`, and
+`followsFrame(size)` replaces the per-axis `=== 'frame'` test. **Behaviour-preserving by
+construction:** `sizeAt({ scale: 1 }, f)` is `{ width: round(f.width·1), height: round(f.height·1) }`
+= the old `['frame','frame']` result exactly, and `{ width, height }` returns its own numbers, so
+no device call changed. Every authoring site mapped 1:1 (`['frame','frame']` → `{ scale: 1 }`,
+`[w,h]` → `{ width, height }`) across the corpus fixtures, the examples, `scene/`, and the tests;
+`tests/graph-refs.test.ts` adds four `sizeAt` cases pinning the `{ scale: 0.5 }` → half-frame
+expressiveness the item names.
+
+**What the cheap gates could not see.** That the picture is unchanged — the item's "the browser
+batch still agrees 15 of 15" — needs `gate:browser`, which the run brief holds for the closing
+session and which was not run here. It is behaviour-preserving by construction (the mapping is
+1:1 and `sizeAt` reproduces the old per-axis resolution exactly); a card would confirm the pixels,
+not the numbers. 702 node tests green (4 new), `type-check` clean, `gate:pack` green. One decision
+nobody's gate pins: `sizeAt` **rounds** a non-integer scaled dimension (`Math.round`), unobservable
+until a fractional scale of an odd dimension is authored, which nothing in the tree does today —
+see [JOURNAL.md](JOURNAL.md).
 
 ### 72. `Dispatch` loses its runtime variants for `groups`
 

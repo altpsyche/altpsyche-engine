@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Arena, type Handle } from '../resource/arena';
 import { FrameResources } from '../submit/frame-resources';
 import { TransientPool, shapeKey } from '../submit/transient-pool';
-import { isResident, isTransient, type BufferRef, type TextureRef, type Transient } from '../graph/refs';
+import { isResident, isTransient, sizeAt, type BufferRef, type TextureRef, type Transient } from '../graph/refs';
 import type { BufferHandle, TransientId } from '../graph/handles';
 
 /**
@@ -203,5 +203,31 @@ describe('shapeKey keys two descriptors together exactly when they name one reso
 
     const keys = [base, half, other, multisampled, read, write].map(shapeKey);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+/**
+ * `sizeAt` is the one place a `TransientSize` becomes pixels, so a resident
+ * `TextureResource` and a transient resolve identically (ROADMAP item 71). This
+ * pins the expressiveness the old `Extent = number | 'frame'` pair could not
+ * reach: a `{ scale: 0.5 }` size is half the frame on each axis.
+ */
+describe('a size resolves to pixels against the frame', () => {
+  const FRAME = { width: 800, height: 600 };
+
+  it('resolves a half-resolution transient to half the frame on each axis', () => {
+    expect(sizeAt({ scale: 0.5 }, FRAME)).toEqual({ width: 400, height: 300 });
+  });
+
+  it('resolves a frame-sized transient to the frame itself', () => {
+    expect(sizeAt({ scale: 1 }, FRAME)).toEqual({ width: 800, height: 600 });
+  });
+
+  it('leaves a fixed size untouched whatever the frame is', () => {
+    expect(sizeAt({ width: 64, height: 64 }, FRAME)).toEqual({ width: 64, height: 64 });
+  });
+
+  it('rounds a scale that does not divide the frame evenly to the nearer pixel', () => {
+    expect(sizeAt({ scale: 0.5 }, { width: 101, height: 99 })).toEqual({ width: 51, height: 50 });
   });
 });

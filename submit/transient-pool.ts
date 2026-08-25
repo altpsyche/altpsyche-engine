@@ -42,6 +42,7 @@
  * would want the eviction item 63 gives that cache; this one's do not.
  */
 import type { Transient } from '../graph/refs.js';
+import { sizeKey } from '../graph/refs.js';
 
 /** A stable string naming a transient's shape, so two descriptors that ask for
  * the same resource — same size, format, use, samples, mips for a texture;
@@ -53,10 +54,7 @@ export function shapeKey(descriptor: Transient): string {
   if (descriptor.kind === 'buffer') {
     return `buffer:${descriptor.bytes}:${descriptor.access}`;
   }
-  const size =
-    'scale' in descriptor.size
-      ? `scale${descriptor.size.scale}`
-      : `${descriptor.size.width}x${descriptor.size.height}`;
+  const size = sizeKey(descriptor.size);
   const use = [...descriptor.use].sort().join('+');
   const samples = descriptor.samples ?? 1;
   const mips = descriptor.mips ?? 1;

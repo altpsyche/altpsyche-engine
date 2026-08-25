@@ -44,7 +44,7 @@ fn far(shaded: Vertex) -> @location(0) vec4<f32> {
 const kept = (over: Partial<TextureResource> = {}): TextureResource => ({
   kind: 'texture',
   name: 'depth',
-  size: ['frame', 'frame'],
+  size: { scale: 1 },
   format: 'depth24plus',
   use: ['attachment'],
   ...over,

@@ -8,7 +8,7 @@
  * surface. A shader a reader can reach declaring a frame of its own is what would
  * move it.
  */
-import type { Dispatch, Extent, GeometryPrimitive, StencilMode } from '@altpsyche/engine';
+import type { Dispatch, GeometryPrimitive, StencilMode, TransientSize } from '@altpsyche/engine';
 import type { TextureContent, BufferContent } from './shader-content';
 import type { BlendMode } from './shader-blend';
 
@@ -29,7 +29,7 @@ export interface DeclaredFrame {
    * whatever the memory held. */
   textures?: {
     name: string;
-    size: [Extent, Extent];
+    size: TransientSize;
     /** Which picture the build writes into it before anything reads it, absent
      * for a texture the shader itself writes. A texture with contents is one the
      * source samples, and one without is one the source stores into, so this is
@@ -47,7 +47,7 @@ export interface DeclaredFrame {
    * the backend hands it a different one of the pair each frame. One declaration
    * rather than two, because both halves are the same size and the same format
    * and are used both ways, and saying that twice is saying it twice. */
-  pairs?: { read: string; write: string; size: [Extent, Extent] }[];
+  pairs?: { read: string; write: string; size: TransientSize }[];
   /** Every block of bytes the frame owns, by the name its source binds it under.
    * How big it is is here because the type a source declares may be an array with
    * no length at all, and whether the shader may write into it is the source's, so
@@ -86,7 +86,7 @@ export interface DeclaredFrame {
    * formats are the entry's answer rather than being read off a declaration. */
   attachments?: {
     name: string;
-    size: [Extent, Extent];
+    size: TransientSize;
     format: GPUTextureFormat;
     /** How many readings of each pixel it keeps, absent for the one every other
      * attachment keeps. Four of them is what turns the staircase a slanted edge
