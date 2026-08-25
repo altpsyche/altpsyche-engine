@@ -10,7 +10,7 @@
 //
 // So this draws every fixture twice. Once in node against the double, once in a
 // browser against a real device wrapped in the same recorder, and the two traces
-// are compared call for call. `renderer/trace.ts` is that one recorder and it says
+// are compared call for call. `trace/trace.ts` is that one recorder and it says
 // which fields of each call are compared, which is the flat reading taken on the
 // way through rather than a descriptor holding objects the driver made.
 //
@@ -76,14 +76,14 @@ async function traceOffTheDouble(engine, backends, fake, frame, values) {
 
 async function main() {
   const engine = await loadFromRoot('index.ts');
-  const backends = await loadFromRoot('renderer/webgpu.ts');
+  const backends = await loadFromRoot('gpu/webgpu.ts');
   const fake = await loadFromRoot('tests/support/fake-gpu.ts');
   const corpus = await loadCorpus();
 
   const { bundle, staging } = bundleForPage({
-    'renderer/webgpu.ts': ['createWebGPUBackend'],
-    'renderer/webgpu-device.ts': ['requestWebGPUDevice'],
-    'renderer/trace.ts': ['projectTrace', 'wrapDevice'],
+    'gpu/webgpu.ts': ['createWebGPUBackend'],
+    'gpu/webgpu-device.ts': ['requestWebGPUDevice'],
+    'trace/trace.ts': ['projectTrace', 'wrapDevice'],
   });
 
   const browser = await chromium.launch({ executablePath: CHROME, args: SOFTWARE_ARGS });

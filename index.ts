@@ -19,34 +19,34 @@
 export {
   PROGRAM_CACHE_LIMIT,
   createFrameRenderer,
-} from './renderer/index.js';
+} from './gpu/renderer.js';
 export type {
   FrameRenderer,
   RendererOptions,
-} from './renderer/index.js';
+} from './gpu/renderer.js';
 export {
   createSurface,
   resolveDensity,
-} from './renderer/surface.js';
+} from './host/surface.js';
 export type {
   Surface,
   SurfaceOptions,
-} from './renderer/surface.js';
-export { requestWebGPUDevice } from './renderer/webgpu-device.js';
+} from './host/surface.js';
+export { requestWebGPUDevice } from './gpu/webgpu-device.js';
 
 // Which backend draws a frame, chosen inside the library from what the frame is
 // authored in and what the device offers, rather than named by the caller. Pure
 // and device-free: the offering is gathered elsewhere and handed in as data.
-export { selectBackend } from './renderer/select.js';
-export type { BackendSelection, DeviceOffer } from './renderer/select.js';
+export { selectBackend } from './gpu/select.js';
+export type { BackendSelection, DeviceOffer } from './gpu/select.js';
 
 // A one-shot reading of what this device is — which backend was selected, whether
 // WebGPU was reported, whether an adapter was returned, whether it then survived a
 // few frames of on-screen compositing, the renderer string, an assertion the
 // architecture is not SwiftShader, features, limits and the tier that ran. Readings
 // are published (in `docs/DEVICES.md`); a support matrix is not.
-export { browserProbeHost, probe, readingOf, readingRow } from './renderer/probe.js';
-export type { BackendFacts, DeviceReading, ProbeFacts, ProbeHost, ProbeTier } from './renderer/probe.js';
+export { browserProbeHost, probe, readingOf, readingRow } from './host/probe.js';
+export type { BackendFacts, DeviceReading, ProbeFacts, ProbeHost, ProbeTier } from './host/probe.js';
 
 // The description a producer hands a backend, and the builders that make one.
 // The type surface carries unions a caller has to discriminate, a pass being a
@@ -65,7 +65,7 @@ export {
   glslFrame,
   wgslDescription,
   wgslFrame,
-} from './renderer/frame.js';
+} from './toy/frame.js';
 export {
   componentsOf,
   dispatchesIndirectly,
@@ -76,7 +76,7 @@ export {
   perDrawBinding,
   resourceOf,
   uniformResourceOf,
-} from './renderer/types.js';
+} from './graph/types.js';
 export type {
   Backend,
   BackendName,
@@ -107,7 +107,7 @@ export type {
   UniformSlot,
   UniformValue,
   VertexResource,
-} from './renderer/types.js';
+} from './graph/types.js';
 
 // The uniform block a WGSL source lays out, computed off its struct because
 // nothing here compiles WGSL.
@@ -141,38 +141,38 @@ export {
   mat3,
   mat4,
   vec3,
-} from './engine/maths.js';
+} from './scene/maths.js';
 export type {
   Mat3,
   Mat4,
   Vec3,
-} from './engine/maths.js';
+} from './scene/maths.js';
 export {
   localMatrix,
   viewProjection,
   worldMatrix,
-} from './engine/scene.js';
+} from './scene/scene.js';
 export type {
   Camera,
   Entity,
   Scene,
   Transform,
-} from './engine/scene.js';
+} from './scene/scene.js';
 export {
   batchOnePipeline,
   batchScene,
-} from './engine/material.js';
+} from './scene/material.js';
 export type {
   Batch,
   Material,
   MaterialDraw,
-} from './engine/material.js';
+} from './scene/material.js';
 export {
   drawList,
-} from './engine/draw-list.js';
+} from './scene/draw-list.js';
 export type {
   Draw,
-} from './engine/draw-list.js';
+} from './scene/draw-list.js';
 
 // The scene tier's producer: a world and the cameras watching it become a frame,
 // per §17 decision 7 and Stage 4. Handed an arena for the resident buffers it
@@ -180,12 +180,12 @@ export type {
 // reaching no device — the picture is a function of the world and the views alone.
 export {
   sceneView,
-} from './engine/scene-view.js';
+} from './scene/scene-view.js';
 export type {
   ScenePipeline,
   SceneView,
   SceneViewOptions,
-} from './engine/scene-view.js';
+} from './scene/scene-view.js';
 
 // The resident lifetime a producer is handed: the arena that allocates, resizes
 // and frees the byte buffers `sceneView` fills from the scene, addressing each by
@@ -199,8 +199,8 @@ export type { Handle } from './resource/arena.js';
 // pipeline and bind switches, attachment loads and stores, transient bytes.
 // Pure and device-free, asserted per preset in CI and only ever reported by
 // hardware, per §17 decision 9 (item 21).
-export { cost } from './renderer/cost.js';
-export type { FrameCost } from './renderer/cost.js';
+export { cost } from './graph/cost.js';
+export type { FrameCost } from './graph/cost.js';
 
 // Whether a graph may run on a device, answered by naming every capability it
 // needs and the device lacks, or null where the device has them all. The third
@@ -208,8 +208,8 @@ export type { FrameCost } from './renderer/cost.js';
 // came back empty rather than as a gate every graph passes, per §10 (item 24). A
 // capability lives in `graph.requires` and `device.capabilities` as data, never
 // as a method a backend throws from.
-export { refusal } from './renderer/refusal.js';
-export type { DeviceCapabilities } from './renderer/refusal.js';
+export { refusal } from './graph/refusal.js';
+export type { DeviceCapabilities } from './graph/refusal.js';
 export type { Capability } from './graph/capability.js';
 
 // How much of a frame carries a picture, which is one reading rather than one per
@@ -220,11 +220,11 @@ export {
   describeFrameCoverage,
   isFullyPainted,
   readFrameCoverage,
-} from './renderer/frame-coverage.js';
+} from './trace/frame-coverage.js';
 export type {
   FrameCoverage,
   FrameCoverageInput,
-} from './renderer/frame-coverage.js';
+} from './trace/frame-coverage.js';
 
 // The recording double: a caller wraps a device to collect what it was asked,
 // projects a trace down to the calls worth comparing, and compares two of them.
@@ -235,5 +235,5 @@ export type {
 // a use of a freed resource is refused and a resource never freed is named, so a
 // use-after-free and a leak are visible to the fast suite rather than only to a
 // driver (item 20).
-export { compareTraces, Lifetimes, projectTrace, wrapDevice } from './renderer/trace.js';
-export type { TraceEntry } from './renderer/trace.js';
+export { compareTraces, Lifetimes, projectTrace, wrapDevice } from './trace/trace.js';
+export type { TraceEntry } from './trace/trace.js';

@@ -32,21 +32,21 @@ const SHIPPING = [
   'graph/handles.ts',
   'graph/refs.ts',
   'graph/capability.ts',
-  'renderer/types.ts',
-  'renderer/frame.ts',
-  'renderer/frame-coverage.ts',
-  'renderer/validate.ts',
-  'renderer/cost.ts',
-  'renderer/refusal.ts',
-  'renderer/attachments.ts',
-  'renderer/index.ts',
-  'renderer/probe.ts',
-  'renderer/select.ts',
-  'renderer/surface.ts',
-  'renderer/trace.ts',
-  'renderer/webgl2.ts',
-  'renderer/webgpu.ts',
-  'renderer/webgpu-device.ts',
+  'graph/types.ts',
+  'graph/validate.ts',
+  'graph/cost.ts',
+  'graph/refusal.ts',
+  'graph/attachments.ts',
+  'toy/frame.ts',
+  'trace/frame-coverage.ts',
+  'trace/trace.ts',
+  'gpu/renderer.ts',
+  'gpu/select.ts',
+  'gpu/webgl2.ts',
+  'gpu/webgpu.ts',
+  'gpu/webgpu-device.ts',
+  'host/probe.ts',
+  'host/surface.ts',
   'resource/arena.ts',
   'pipeline/cache.ts',
   'submit/plan.ts',
@@ -54,18 +54,18 @@ const SHIPPING = [
   'submit/gl2.ts',
   'submit/frame-resources.ts',
   'submit/transient-pool.ts',
-  'engine/draw-list.ts',
-  'engine/material.ts',
-  'engine/maths.ts',
-  'engine/scene.ts',
-  'engine/scene-view.ts',
+  'scene/draw-list.ts',
+  'scene/material.ts',
+  'scene/maths.ts',
+  'scene/scene.ts',
+  'scene/scene-view.ts',
   'wgsl-layout.ts',
   'wgsl-references.ts',
   'wgsl-binding.ts',
   'shader-geometry.ts',
 ].map((p) => resolve(ROOT, p));
 
-const WEBGPU_BACKEND = resolve(ROOT, 'renderer/webgpu.ts');
+const WEBGPU_BACKEND = resolve(ROOT, 'gpu/webgpu.ts');
 
 interface Edge {
   spec: string;
@@ -186,13 +186,13 @@ describe('the WebGPU backend is loaded on demand, not on every page', () => {
     // The eager graph is what a consumer downloads first: the door and the surface
     // it re-exports. Neither may reach the backend except through the dynamic
     // import in the renderer that splits it into its own chunk.
-    const eagerRoots = ['index.ts', 'renderer/surface.ts'].map((p) => resolve(ROOT, p));
+    const eagerRoots = ['index.ts', 'host/surface.ts'].map((p) => resolve(ROOT, p));
 
     const { files } = walk(eagerRoots, false);
 
     expect(
       files.has(WEBGPU_BACKEND),
-      'renderer/webgpu.ts is reachable through a static import, so it lands in the eager chunk a card-less browser downloads. It must be reached only through `await import()`.'
+      'gpu/webgpu.ts is reachable through a static import, so it lands in the eager chunk a card-less browser downloads. It must be reached only through `await import()`.'
     ).toBe(false);
   });
 });

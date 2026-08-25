@@ -22,10 +22,10 @@ import type {
   TextureResource,
   UniformSlot,
   VertexResource,
-} from '../renderer/types.js';
-import { drawsCorners, drawsIndirectly, isRenderPass, resourceOf } from '../renderer/types.js';
-import { frameOf } from '../renderer/frame.js';
-import { validate } from '../renderer/validate.js';
+} from '../graph/types.js';
+import { drawsCorners, drawsIndirectly, isRenderPass, resourceOf } from '../graph/types.js';
+import { frameOf } from '../toy/frame.js';
+import { validate } from '../graph/validate.js';
 
 /** The geometry one pipeline reads and the indices that order it, looked up where
  * a pipeline is made and where a pass is planned so the two agree on which

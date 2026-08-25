@@ -29,8 +29,8 @@
  * that never returns a real adapter. That is the same seam `selectBackend`,
  * `validate`, `refusal` and `cost` take, and for the same reason.
  */
-import { selectBackend, type DeviceOffer } from './select.js';
-import type { BackendName, DeviceReport } from './types.js';
+import { selectBackend, type DeviceOffer } from '../gpu/select.js';
+import type { BackendName, DeviceReport } from '../graph/types.js';
 
 /** The tier that actually ran to produce a reading. Phase 0 draws the toy tier —
  * one fullscreen pass — so that is what a reading records today; the scene and

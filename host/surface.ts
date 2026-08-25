@@ -9,8 +9,8 @@
  * There is no React here. The hook that binds a surface to a component is the
  * only file in this stack that imports it.
  */
-import type { BackendName, ShaderFrame, UniformValue } from './types.js';
-import { createFrameRenderer, type FrameRenderer, type RendererOptions } from './index.js';
+import type { BackendName, ShaderFrame, UniformValue } from '../graph/types.js';
+import { createFrameRenderer, type FrameRenderer, type RendererOptions } from '../gpu/renderer.js';
 
 export interface SurfaceOptions extends RendererOptions {
   /** Read once per frame rather than passed once, because the values a page

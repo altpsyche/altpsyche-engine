@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { probe, readingOf, readingRow, type BackendFacts, type ProbeFacts, type ProbeHost } from '../renderer/probe';
+import { probe, readingOf, readingRow, type BackendFacts, type ProbeFacts, type ProbeHost } from '../host/probe';
 
 /**
  * The reading, held to its shape and its judgement rather than to any one device's

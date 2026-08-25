@@ -21,8 +21,8 @@
  * `composite` receives is the finished target texture, and what it does with it is
  * the backend's business.
  */
-import type { DrawSpec } from '../renderer/types.js';
-import { drawsCorners, drawsIndirectly } from '../renderer/types.js';
+import type { DrawSpec } from '../graph/types.js';
+import { drawsCorners, drawsIndirectly } from '../graph/types.js';
 
 /** One colour attachment of a pass, resolved to the textures it writes and
  * averages into. `texture` is already turned for the frame's swap, so the loop

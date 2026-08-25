@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createWebGL2Backend } from '../renderer/webgl2';
-import { createWebGPUBackend } from '../renderer/webgpu';
+import { createWebGL2Backend } from '../gpu/webgl2';
+import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGL } from './support/fake-gl';
 import { createFakeGPU } from './support/fake-gpu';
 

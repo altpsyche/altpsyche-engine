@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createWebGL2Backend } from '../renderer/webgl2';
+import { createWebGL2Backend } from '../gpu/webgl2';
 import { glslFrame } from '@altpsyche/engine';
 import type { RenderPipelineSpec, ShaderFrame } from '@altpsyche/engine';
 import { bottomUpFrame, createFakeGL } from './support/fake-gl';

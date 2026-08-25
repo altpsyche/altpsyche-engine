@@ -7,7 +7,7 @@ import ts from 'typescript';
  * Every example reaches the library through the one door and nothing under it.
  *
  * An example is the surface a stranger meets, so an example that reached into a
- * folder — `../renderer/frame.js`, `../wgsl-layout.js` — would be teaching a
+ * folder — `../toy/frame.js`, `../wgsl-layout.js` — would be teaching a
  * reach the package does not offer and would keep drawing an export the moment it
  * left the door. ROADMAP item 7 makes that a rule: each example imports the
  * package door, `@altpsyche/engine`, and no other specifier.

@@ -26,8 +26,8 @@
  * Nothing is exported from the package door here: like the arena, the cache is a
  * mechanism the backend and the executor reach, not a type a consumer names.
  */
-import type { PipelineSpec, ShaderFrame, VertexResource } from '../renderer/types.js';
-import { moduleOf, resourceOf } from '../renderer/types.js';
+import type { PipelineSpec, ShaderFrame, VertexResource } from '../graph/types.js';
+import { moduleOf, resourceOf } from '../graph/types.js';
 
 /** The brand that stops a plain number being passed where a pipeline handle is
  * wanted. Erased at runtime — a handle is an index — and there only so the

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { frameStores, mergeGroups } from '../renderer/attachments';
+import { frameStores, mergeGroups } from '../graph/attachments';
 import type { PassSpec, PipelineSpec, ShaderFrame } from '@altpsyche/engine';
 
 /**

@@ -16,7 +16,7 @@ const PORT = Number(process.env.PORT ?? 3161);
 
 // The descriptions are built by the library's own builders, so a probe of the live
 // surface cannot pass against a shape only it makes.
-const { glslFrame, wgslFrame } = await loadFromRoot('renderer/frame.ts');
+const { glslFrame, wgslFrame } = await loadFromRoot('toy/frame.ts');
 const corpus = await loadCorpus();
 const fixture = (id) => corpus.find((one) => one.id === id);
 
@@ -111,14 +111,14 @@ const perdrawTexts = { wgsl: perdraw.code };
 const perdrawBytes = Object.fromEntries([...perdraw.bytes].map(([name, made]) => [name, [...made]]));
 
 const { bundle, staging } = bundleForPage({
-  'renderer/surface': ['createSurface'],
-  'renderer/webgpu-device': ['requestWebGPUDevice'],
-  'renderer/webgpu': ['createWebGPUBackend'],
-  'renderer/frame': ['frameOf'],
+  'host/surface': ['createSurface'],
+  'gpu/webgpu-device': ['requestWebGPUDevice'],
+  'gpu/webgpu': ['createWebGPUBackend'],
+  'toy/frame': ['frameOf'],
   // The same counting the thumbnail capture is refused by, so a frame with a
   // band of it missing is one reading here rather than two definitions of
   // painted that can drift apart.
-  'renderer/frame-coverage': ['readFrameCoverage'],
+  'trace/frame-coverage': ['readFrameCoverage'],
 });
 const browser = await chromium.launch({
   executablePath: CHROME,

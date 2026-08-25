@@ -15,7 +15,7 @@
  * outside React had to build its own, which is why one of them never injected
  * the values the others did: they were written separately and drifted.
  */
-import type { BackendName, DeviceReport, ShaderFrame, UniformValue } from './types.js';
+import type { BackendName, DeviceReport, ShaderFrame, UniformValue } from '../graph/types.js';
 import { frameKey } from '../pipeline/cache.js';
 
 /** How many compiled programs one renderer keeps warm at once. A program owns

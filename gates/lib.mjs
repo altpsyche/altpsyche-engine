@@ -113,7 +113,7 @@ export async function loadFromRoot(module) {
  * zero putting every corner of the frame on one point.
  */
 export async function loadCorpus() {
-  const { frameOf } = await loadFromRoot('renderer/frame.ts');
+  const { frameOf } = await loadFromRoot('toy/frame.ts');
   const { uniformBlockOf } = await loadFromRoot('wgsl-layout.ts');
   const { loadFixture } = await loadFromRoot('tests/support/fixture.ts');
   const { CAPABILITY_FIXTURES } = await loadFromRoot('fixtures/capability-fixtures.ts');

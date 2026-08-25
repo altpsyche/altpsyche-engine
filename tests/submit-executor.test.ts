@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createWebGPUBackend } from '../renderer/webgpu';
-import { createWebGL2Backend } from '../renderer/webgl2';
+import { createWebGPUBackend } from '../gpu/webgpu';
+import { createWebGL2Backend } from '../gpu/webgl2';
 import { wgslFrame, glslFrame } from '@altpsyche/engine';
 import type { ShaderFrame, UniformSlot } from '@altpsyche/engine';
 import { createFakeGPU } from './support/fake-gpu';

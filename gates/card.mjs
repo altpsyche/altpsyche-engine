@@ -45,8 +45,8 @@ const TOLERANCE = 8;
 const corpus = await loadCorpus();
 
 const { bundle, staging } = bundleForPage({
-  'renderer/webgpu': ['createWebGPUBackend'],
-  'renderer/webgpu-device': ['requestWebGPUDevice'],
+  'gpu/webgpu': ['createWebGPUBackend'],
+  'gpu/webgpu-device': ['requestWebGPUDevice'],
 });
 
 const server = http.createServer((_request, response) => {

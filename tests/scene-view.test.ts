@@ -333,7 +333,7 @@ describe('sceneView holds its buffers in the arena across frames', () => {
 describe('sceneView is a producer, not a backend', () => {
   it('imports nothing from submit/ or a gpu/ backend', () => {
     const ROOT = resolve(__dirname, '..');
-    const file = resolve(ROOT, 'engine/scene-view.ts');
+    const file = resolve(ROOT, 'scene/scene-view.ts');
     const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
     const specs: string[] = [];
     const visit = (node: ts.Node): void => {

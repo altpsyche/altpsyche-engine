@@ -14,7 +14,7 @@
 
 ## Where it starts, measured on 2026-08-20
 
-`renderer/webgpu.ts` is 271 lines. It makes one render pipeline with `layout: 'auto'`, one vertex module written into the backend as a triangle that covers the screen, one fragment module at the fixed entry point `fragMain`, one uniform buffer, and one bind group holding that buffer. A frame is one `draw(3)`, started once per animation frame by `renderer/surface.ts`. There is no compute pipeline, no dispatch, no storage buffer, no sampler, no vertex or index buffer and no depth attachment.
+`gpu/webgpu.ts` is 271 lines. It makes one render pipeline with `layout: 'auto'`, one vertex module written into the backend as a triangle that covers the screen, one fragment module at the fixed entry point `fragMain`, one uniform buffer, and one bind group holding that buffer. A frame is one `draw(3)`, started once per animation frame by `host/surface.ts`. There is no compute pipeline, no dispatch, no storage buffer, no sampler, no vertex or index buffer and no depth attachment.
 
 The test coverage of that stack was 13 tests, none of which reached a backend. The first step of the item added the recording stand-in and 27 tests over today's behaviour, so the suite is 609 passing and 1 skipped.
 
@@ -50,13 +50,13 @@ None of the four is a decision entry of its own. D83 is the decision they serve,
 
 **An artefact stops being one source and becomes a small description of a frame.** The caller passes what the shader is, and the backend builds it. Today's single full-screen fragment shader is that description with one resource and one pass in it, so nothing about the two art shaders changes.
 
-**Why this rather than capability objects on the backend.** The rule at the top of `renderer/types.ts` is that a method one backend has to throw from is the wrong method. A backend that grew `createComputePipeline`, `createSampler` and `createVertexBuffer` would be a backend where WebGL 2 throws from most of its own interface, and a caller asking whether its backend has compute is a caller branching on which backend it holds, which is the thing that rule exists to stop. A description has no such method. What a backend cannot build, it never receives, because the manifest is the only thing deciding what a shader can be drawn by, exactly as it already refuses a GLSL target to a shader written in WGSL.
+**Why this rather than capability objects on the backend.** The rule at the top of `graph/types.ts` is that a method one backend has to throw from is the wrong method. A backend that grew `createComputePipeline`, `createSampler` and `createVertexBuffer` would be a backend where WebGL 2 throws from most of its own interface, and a caller asking whether its backend has compute is a caller branching on which backend it holds, which is the thing that rule exists to stop. A description has no such method. What a backend cannot build, it never receives, because the manifest is the only thing deciding what a shader can be drawn by, exactly as it already refuses a GLSL target to a shader written in WGSL.
 
-**The caller's calls do not change.** A caller still asks for a program, sets uniforms by name and draws. `renderer/index.ts`, `renderer/surface.ts`, the site's surface hook and every gate keep the shape they have. What changes is what sits inside the value they pass around.
+**The caller's calls do not change.** A caller still asks for a program, sets uniforms by name and draws. `gpu/renderer.ts`, `host/surface.ts`, the site's surface hook and every gate keep the shape they have. What changes is what sits inside the value they pass around.
 
 ## The type surface
 
-**The authority for the text of these types is `renderer/types.ts`, and these blocks are the record of which idea owns which field.** They were written as sketches before the work and they are kept because the reason a field sits where it does is not readable off a declaration. Every place the tree came out differently from a sketch is written under the block it belongs to, so a reader comparing the two is reading a correction rather than finding a contradiction. Where a sketch and the file disagree about the text, the file is right.
+**The authority for the text of these types is `graph/types.ts`, and these blocks are the record of which idea owns which field.** They were written as sketches before the work and they are kept because the reason a field sits where it does is not readable off a declaration. Every place the tree came out differently from a sketch is written under the block it belongs to, so a reader comparing the two is reading a correction rather than finding a contradiction. Where a sketch and the file disagree about the text, the file is right.
 
 ### What an artefact becomes
 
@@ -298,7 +298,7 @@ export interface ShaderProgram {
 }
 ```
 
-**`readBuffer` arrived with the queries of step 17, and `Backend` gained `report()` in the same step.** Both are on both backends, which is the rule at the top of `renderer/types.ts` holding rather than bending.
+**`readBuffer` arrived with the queries of step 17, and `Backend` gained `report()` in the same step.** Both are on both backends, which is the rule at the top of `graph/types.ts` holding rather than bending.
 `report()` answers a flat record of ceilings by name and a sorted list of the optional parts, and WebGL 2 answers its own: 19 ceilings and 30 extensions on this machine against WebGPU's 36 ceilings and 19 optional parts.
 `readBuffer` answers the words of a buffer the frame declares, and a backend with no buffers to declare answers with no words, which is the true answer for it rather than a refusal.
 That is the difference between a method a backend has nothing to say through and one it has to throw from: a shader the manifest gives WebGL 2 declares no buffer, so an empty answer is never a shader's question going unanswered.
@@ -340,7 +340,7 @@ That is the difference between a method a backend has nothing to say through and
 | a bind group                                 | the program              | rebuilt wherever a resource under it was    | no                                    |
 | a vertex or index buffer                     | the program              | yes                                         | no                                    |
 
-**The one rule behind the whole table.** A program owns everything its description names, and the backend owns only the target the frame is drawn into and the context it is shown through. That is what makes a program disposable on its own, which is what the program cache in `renderer/index.ts` needs, and it is what keeps state alive across frames without the backend knowing which shader is running.
+**The one rule behind the whole table.** A program owns everything its description names, and the backend owns only the target the frame is drawn into and the context it is shown through. That is what makes a program disposable on its own, which is what the program cache in `gpu/renderer.ts` needs, and it is what keeps state alive across frames without the backend knowing which shader is running.
 
 **A device loss takes all of it.** A device does not come back, so the caller fetches the other target and draws it on a fresh canvas, which is what `onDeviceLost` already asks of a caller and why a canvas that has held a WebGPU context cannot be handed a WebGL 2 one. None of that changes.
 
@@ -364,7 +364,7 @@ That is the difference between a method a backend has nothing to say through and
 2. **A pipeline the driver will not accept, for a reason that is not the code.** A workgroup size over the device limit, a binding whose visibility does not match the stage that reads it, a colour format the device does not allow as a target. WebGPU reports these as validation errors rather than compilation ones, so pipeline creation is wrapped in an error scope and what comes back goes to the same `onRefused` callback with the same words. Without that they arrive as uncaptured device errors, which is a run's worth of noise and no message for the reader: it was 366 uncaptured errors in one run before the rollback below existed.
 3. **A description the renderer itself will not build**, which is a resource named by a binding and never declared, or a pass naming a pipeline that is not there. That is caught before any device call, thrown from `createProgram`, and it is a defect in the build rather than in a reader's source.
 
-**What a refusal rolls back to.** The last description that drew, held whole rather than per document. A WebGPU draw of a module that did not compile throws nothing, so the last artefact that drew without throwing names the refused one and keeps drawing it, which is the reason `renderer/surface.ts` holds `before` rather than reading the current value. With several documents the same rule applies to the whole description, because one document changing is a new description, and going back a document at a time would leave a pipeline built from two halves that were never compiled together.
+**What a refusal rolls back to.** The last description that drew, held whole rather than per document. A WebGPU draw of a module that did not compile throws nothing, so the last artefact that drew without throwing names the refused one and keeps drawing it, which is the reason `host/surface.ts` holds `before` rather than reading the current value. With several documents the same rule applies to the whole description, because one document changing is a new description, and going back a document at a time would leave a pipeline built from two halves that were never compiled together.
 
 ## A shader of several documents
 
@@ -422,4 +422,4 @@ That is the difference between a method a backend has nothing to say through and
 
 **Revert the commits carrying `Decision: D83`, newest first, and delete the presets that go with them**, which is what D83's own reversal recipe says. This document goes with the last of them.
 
-**Reversing the description alone**, without giving up the capabilities, means putting the capabilities back on the backend as methods, and that is the shape the rule in `renderer/types.ts` refuses. So the description is not a step that can be undone on its own: what would undo it is deciding that rule wrong, which is a decision of its own.
+**Reversing the description alone**, without giving up the capabilities, means putting the capabilities back on the backend as methods, and that is the shape the rule in `graph/types.ts` refuses. So the description is not a step that can be undone on its own: what would undo it is deciding that rule wrong, which is a decision of its own.

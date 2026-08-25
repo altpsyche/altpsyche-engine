@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWebGPUBackend } from '../renderer/webgpu';
+import { createWebGPUBackend } from '../gpu/webgpu';
 import { ONE_PASS, wgslFrame } from '@altpsyche/engine';
 import type { ShaderFrame, TextureResource } from '@altpsyche/engine';
 import type { UniformSlot } from '@altpsyche/engine';

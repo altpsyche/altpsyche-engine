@@ -48,7 +48,7 @@ import type {
   ResourceSpec,
   ShaderFrame,
   ShaderTarget,
-} from '../renderer/types.js';
+} from '../graph/types.js';
 
 /**
  * Everything about the frame that does not change frame to frame: the shader, the
@@ -57,7 +57,7 @@ import type {
  * the views are the per-frame half and arrive at `graph()` instead.
  *
  * The pipeline and its modules are the caller's because a material here is a
- * pipeline name and its values and nothing more (`engine/material.ts`): the
+ * pipeline name and its values and nothing more (`scene/material.ts`): the
  * program that draws the scene is authored once, and `sceneView` only feeds it the
  * numbers the scene works out. The uniform block, geometry and samplers a pipeline
  * also binds are `resources` — `sceneView` adds the two scene-derived buffers to

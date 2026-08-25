@@ -54,7 +54,7 @@ Three causes, in increasing order of how much they explain.
 
 | assumption | where it lives today | what a scene needs |
 | --- | --- | --- |
-| one shader is one frame is one program | cache keyed on `id` plus source text, [renderer/index.ts:125](../renderer/index.ts#L125) | many pipelines inside one frame |
+| one shader is one frame is one program | cache keyed on `id` plus source text, [gpu/renderer.ts:125](../gpu/renderer.ts#L125) | many pipelines inside one frame |
 | every resource is decided before frame one | `createProgram` allocates all resources up front | objects and assets appear at run time |
 | one uniform block, written whole, once per frame | `setUniforms(Record<string, UniformValue>)` | per object data, thousands of records |
 
@@ -66,9 +66,9 @@ Three causes, in increasing order of how much they explain.
 grep -rn '\.\./engine|\.\./renderer' renderer/*.ts engine/*.ts   →   no matches
 ```
 
-[engine/draw-list.ts](../engine/draw-list.ts) returns `{ id, world: Mat4 }[]`. [engine/material.ts](../engine/material.ts) returns `Batch { pipeline, draws[] }`. Nothing accepts either, and no type it could return would have been accepted, because `RenderPassSpec.draw` is one draw and there is no per draw data. `batchOnePipeline` refuses a scene spanning two pipelines — a restriction documented as a scheduling choice left to the caller, but in fact the only shape the renderer could have drawn.
+[scene/draw-list.ts](../scene/draw-list.ts) returns `{ id, world: Mat4 }[]`. [scene/material.ts](../scene/material.ts) returns `Batch { pipeline, draws[] }`. Nothing accepts either, and no type it could return would have been accepted, because `RenderPassSpec.draw` is one draw and there is no per draw data. `batchOnePipeline` refuses a scene spanning two pipelines — a restriction documented as a scheduling choice left to the caller, but in fact the only shape the renderer could have drawn.
 
-**And the naming records all of this.** `renderer` and `engine` are not two layers. They are two dates. `renderer/` spans the card ([renderer/webgpu.ts](../renderer/webgpu.ts)), the data contract ([renderer/types.ts](../renderer/types.ts)), source reflection, the program cache, and a DOM loop reading `window.devicePixelRatio` — simultaneously the lowest thing in the stack and the highest. `engine/` sits beside the highest thing while belonging above it.
+**And the naming records all of this.** `renderer` and `engine` are not two layers. They are two dates. `renderer/` spans the card ([gpu/webgpu.ts](../gpu/webgpu.ts)), the data contract ([graph/types.ts](../graph/types.ts)), source reflection, the program cache, and a DOM loop reading `window.devicePixelRatio` — simultaneously the lowest thing in the stack and the highest. `engine/` sits beside the highest thing while belonging above it.
 
 ## 3. The debt, itemized
 
@@ -76,17 +76,17 @@ Ordered by consequence. Each row is the thing to be deleted, not merely noted.
 
 | # | debt | where | consequence |
 | --- | --- | --- | --- |
-| 1 | resources, pipelines and passes share one lifetime | `createProgram`, [renderer/webgpu.ts](../renderer/webgpu.ts) | the root cause of rows 2, 3, 5 and 9 |
-| 2 | program cache key omits resources, pipelines and passes | [renderer/index.ts:125](../renderer/index.ts#L125) | two generated frames, same `id` and source, different geometry — cache hit, **silently draws the wrong resources** |
+| 1 | resources, pipelines and passes share one lifetime | `createProgram`, [gpu/webgpu.ts](../gpu/webgpu.ts) | the root cause of rows 2, 3, 5 and 9 |
+| 2 | program cache key omits resources, pipelines and passes | [gpu/renderer.ts:125](../gpu/renderer.ts#L125) | two generated frames, same `id` and source, different geometry — cache hit, **silently draws the wrong resources** |
 | 3 | no per draw data, no dynamic offsets, one draw per pass | `RenderPassSpec`, `ShaderProgram.setUniforms` | the scene tier is unreachable |
-| 4 | `DocumentAddress` is a three-value union, and text is keyed by address | [renderer/types.ts:403](../renderer/types.ts#L403), `assembleFrame` | two distinct WGSL sources cannot coexist in one frame |
+| 4 | `DocumentAddress` is a three-value union, and text is keyed by address | [graph/types.ts:403](../graph/types.ts#L403), `assembleFrame` | two distinct WGSL sources cannot coexist in one frame |
 | 5 | a description is per target (`target: 'wgsl' \| 'glsl'`) | `FrameDescription` | a producer authors twice, and one graph cannot serve two backends |
-| 6 | WebGL 2 accepts only one fullscreen pass | [renderer/webgl2.ts](../renderer/webgl2.ts), 8 named frame refusals | the README's "one door onto WebGL 2 and WebGPU" holds only for the toy tier |
+| 6 | WebGL 2 accepts only one fullscreen pass | [gpu/webgl2.ts](../gpu/webgl2.ts), 8 named frame refusals | the README's "one door onto WebGL 2 and WebGPU" holds only for the toy tier |
 | 7 | resources are strings resolved in maps at draw time | throughout the backend | no misuse is a compile error; a map lookup per draw per frame |
 | 8 | `engine/` imports and is imported by nothing | §2 | 480 lines with no consumer, shipped under the package's own name |
 | 9 | resource lifetime equals program lifetime | `createProgram` | a scene gaining one object rebuilds and recompiles everything |
 | 10 | vocabulary and members from the website | table below | a reader learns the wrong model from the type names |
-| 11 | `Surface` reads `window` and `clientWidth` inline | [renderer/surface.ts](../renderer/surface.ts) | the live path cannot run in a worker or headless |
+| 11 | `Surface` reads `window` and `clientWidth` inline | [host/surface.ts](../host/surface.ts) | the live path cannot run in a worker or headless |
 | 12 | both design documents reference paths that do not exist | `lib/`, `content/`, `hooks/`, `public/shaders/build/manifest.json`, `components/ui/WgslRefusal.tsx` | the docs teach a stack that is not here |
 | 13 | the audit in ABSTRACTION.md is stale | lists `writeBuffer` and `setPasses` as missing; both landed | a reader plans against solved problems |
 
@@ -94,15 +94,15 @@ Website vocabulary still in shipped code, 42 comment lines saying "the site", "a
 
 | fossil | where |
 | --- | --- |
-| `setArtefact`, `artefact` parameters | [renderer/surface.ts:56](../renderer/surface.ts#L56) |
-| `ShaderFrame` naming a whole render graph | [renderer/types.ts:449](../renderer/types.ts#L449) |
-| `WGSL_FRAGMENT_ENTRY = 'fragMain'`, `ONE_PASS = 'frame'` | [renderer/frame.ts](../renderer/frame.ts) |
-| `Extent = number \| 'frame'`, `Dispatch = … \| 'frame'` | [renderer/types.ts:71](../renderer/types.ts#L71) |
-| `ModuleSpec.overrides`, the phone and desktop "rungs" | [renderer/types.ts:31](../renderer/types.ts#L31) |
+| `setArtefact`, `artefact` parameters | [host/surface.ts:56](../host/surface.ts#L56) |
+| `ShaderFrame` naming a whole render graph | [graph/types.ts:449](../graph/types.ts#L449) |
+| `WGSL_FRAGMENT_ENTRY = 'fragMain'`, `ONE_PASS = 'frame'` | [toy/frame.ts](../toy/frame.ts) |
+| `Extent = number \| 'frame'`, `Dispatch = … \| 'frame'` | [graph/types.ts:71](../graph/types.ts#L71) |
+| `ModuleSpec.overrides`, the phone and desktop "rungs" | [graph/types.ts:31](../graph/types.ts#L31) |
 | `unreached()`, for one dead-uniform compiler quirk | `ShaderProgram` |
-| `report()`, no consumer but a gate that prints it | [renderer/types.ts:596](../renderer/types.ts#L596) |
+| `report()`, no consumer but a gate that prints it | [graph/types.ts:596](../graph/types.ts#L596) |
 | `readBuffer` answering vacuously on one backend | `ShaderProgram` |
-| `ShaderFrame.uniforms: { name, type }[]`, which exists to draw a control panel | [renderer/types.ts:452](../renderer/types.ts#L452) |
+| `ShaderFrame.uniforms: { name, type }[]`, which exists to draw a control panel | [graph/types.ts:452](../graph/types.ts#L452) |
 
 That last one is a user-interface concern living inside a render type. It is the clearest single example of the shape of all of row 10.
 
@@ -482,7 +482,7 @@ Seven mechanisms. Two exist and are strong; five are new, and every one of the f
 
 **New, and each is a direct dividend of a pure `graph/` and of producers that cannot reach a device.**
 
-3. **`validate(graph): Diagnostic[]`, a pure function.** Every rule that was once checked in two wordings — a since-deleted renderer/frame-rules.ts existed precisely because two places needed the same rule — is checked here once, in [renderer/validate.ts](../renderer/validate.ts) (ROADMAP item 19). Runs in tests, in dev builds, and in any offline producer. This is where invariant 4, one fact one home, gets its enforcement.
+3. **`validate(graph): Diagnostic[]`, a pure function.** Every rule that was once checked in two wordings — a since-deleted renderer/frame-rules.ts existed precisely because two places needed the same rule — is checked here once, in [graph/validate.ts](../graph/validate.ts) (ROADMAP item 19). Runs in tests, in dev builds, and in any offline producer. This is where invariant 4, one fact one home, gets its enforcement.
 4. **Golden graphs.** A producer's output is a JSON value. Snapshot it. A change to `sceneView` shows up as a diff in a text file, with no GPU, no browser, and no picture to squint at. This is the single largest maintainability win available, and it is impossible today because no producer output is a value.
 5. **Handle liveness in the double.** ABSTRACTION.md's audit notes that the double models calls rather than lifetimes, so use-after-free and leaks are invisible to the fast suite. With generational handles the double can track liveness, and both become test failures rather than production mysteries.
 6. **`cost(graph, size): FrameCost`, a pure function.** Passes, draws, dispatches, pipeline switches, bind switches, attachment loads and stores, transient bytes. Asserted exactly per preset, in CI, on any machine. §17 decision 9 says why this is the instrument and what it deliberately does not measure.
@@ -598,7 +598,7 @@ The one piece of real surgery, and it is the stage that matters. Take `createPro
 
 - String resource names become handles throughout; `Ref` gains its resident and transient arms.
 - `submit/` pools and aliases transients.
-- `validate(graph)` in [renderer/validate.ts](../renderer/validate.ts) absorbs every rule once written twice, the since-deleted frame-rules file included.
+- `validate(graph)` in [graph/validate.ts](../graph/validate.ts) absorbs every rule once written twice, the since-deleted frame-rules file included.
 - The double starts tracking handle liveness.
 - **`cost(graph, size)` lands**, and `arena.traffic()` beside it, per §17 decision 9.
 - **[ROADMAP.md](ROADMAP.md) item 1 becomes workable here**, and this is the stage that unblocks it: its pass-merge half moves `beginRenderPass` counts, its discard half is a recorded descriptor field, and `cost()` is the instrument that reads both. Neither half needed a phone; both needed a metric that reads fields rather than a contract that compares two runs to each other.

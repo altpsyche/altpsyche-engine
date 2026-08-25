@@ -11,11 +11,11 @@ import path from 'node:path';
  * caught by a gate rather than noticed by whoever tripped over it.
  *
  * It reads three shapes, which is what the docs use to name a file:
- *   - a Markdown link target, `](renderer/webgpu.ts)`, always a path;
- *   - a backtick span that looks like a file, `` `renderer/types.ts` ``, which is
+ *   - a Markdown link target, `](gpu/webgpu.ts)`, always a path;
+ *   - a backtick span that looks like a file, `` `graph/types.ts` ``, which is
  *     one when it ends in a source extension and its basename is a filename
  *     rather than a `Type.field` read like `ShaderSource.glsl`.
- *   - a Mermaid node label, `frame["fill the documents in<br/>renderer/frame.ts"]`,
+ *   - a Mermaid node label, `frame["fill the documents in<br/>toy/frame.ts"]`,
  *     read from inside a ```mermaid fence, because a diagram is the most-read part
  *     of a document and a stale path in a node label sends a reader chasing a file
  *     that left with the website exactly as a stale prose path does.
@@ -190,9 +190,9 @@ describe('every path the docs name is a file that is here', () => {
   });
 
   it('reads a live file label but not a folder node label inside a Mermaid fence', () => {
-    const fence = '```mermaid\n    a["fill in<br/>renderer/webgpu.ts"]\n    b["<b>graph/</b> types"]\n```';
+    const fence = '```mermaid\n    a["fill in<br/>gpu/webgpu.ts"]\n    b["<b>graph/</b> types"]\n```';
     const refs = mermaidPathRefs(fence, docsDir);
-    expect(refs.map((r) => r.ref)).toContain('renderer/webgpu.ts'); // a file label is read
+    expect(refs.map((r) => r.ref)).toContain('gpu/webgpu.ts'); // a file label is read
     expect(refs.map((r) => r.ref)).not.toContain('graph/'); // a folder label is not
     expect(refs.every((r) => resolvesToFile(r.ref, r.from))).toBe(true); // and what is read resolves
   });

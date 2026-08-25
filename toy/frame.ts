@@ -20,7 +20,7 @@ import type {
   ShaderFrame,
   UniformResource,
   UniformSlot,
-} from './types.js';
+} from '../graph/types.js';
 
 /** The name every one-pass shader's pipeline carries. Nothing reads it but the
  * pass that names it, and a description with two pipelines needs two names. */

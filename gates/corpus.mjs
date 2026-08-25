@@ -26,9 +26,9 @@ const PORT = Number(process.env.PORT ?? 3162);
 const corpus = await loadCorpus();
 
 const { bundle, staging } = bundleForPage({
-  'renderer/webgpu': ['createWebGPUBackend'],
-  'renderer/webgl2': ['createWebGL2Backend'],
-  'renderer/webgpu-device': ['requestWebGPUDevice'],
+  'gpu/webgpu': ['createWebGPUBackend'],
+  'gpu/webgl2': ['createWebGL2Backend'],
+  'gpu/webgpu-device': ['requestWebGPUDevice'],
 });
 
 const browser = await chromium.launch({

@@ -206,8 +206,8 @@ The one piece of real surgery. Implements the three lifetimes of §5. **Adds no 
 **How it landed.** The backend method `createProgram(frame)` is gone; both backends
 expose `program(frame)` instead, a composer that reaches each lifetime through its
 own module rather than building all three inline. The static lifetime now flows
-through `pipeline/`'s `PipelineCache` — `renderer/webgpu.ts`'s `buildPipelines` and
-`renderer/webgl2.ts`'s link both request their pipeline through it, keyed by
+through `pipeline/`'s `PipelineCache` — `gpu/webgpu.ts`'s `buildPipelines` and
+`gpu/webgl2.ts`'s link both request their pipeline through it, keyed by
 `pipelineStructureOf`, so no method both compiles a pipeline and allocates a buffer.
 Resident stays the arena's (item 10) and per-frame the executor's (item 13). The
 cache is scoped to one program so its pipelines are released when the renderer's LRU
@@ -329,7 +329,7 @@ transient through it. See [JOURNAL.md](JOURNAL.md).
 
 **Needs.** item 17.
 
-**How it landed.** [renderer/validate.ts](../renderer/validate.ts) holds `validate(graph: ShaderFrame): void`,
+**How it landed.** [graph/validate.ts](../graph/validate.ts) holds `validate(graph: ShaderFrame): void`,
 device-free, taking the graph alone. It owns the three rules that were written in two
 wordings each — a build wording in `fixtures/shader-describe.ts` and a runtime wording
 in the backend: the storage-buffer whole-words rule (which was frame-rules.ts's
@@ -341,7 +341,7 @@ The renderer/frame-rules.ts file is absorbed and deleted, and its `export *` lin
 `index.ts` — the byte widths and the whole-words check are no longer a producer's to
 call. The single home is reached on every path: `submit/plan.ts`'s `planFramePasses`
 calls `validate` first (covering the WebGPU program build, a runtime pass change, and
-the description seam), and `renderer/webgl2.ts`'s `program` calls it directly, since the
+the description seam), and `gpu/webgl2.ts`'s `program` calls it directly, since the
 WebGL 2 path does not reach `planFramePasses` — a no-op for its fullscreen GLSL frames.
 The duplicate copies are gone: `plan.ts`'s `depthOf` no longer restates the four
 format-kind throws, `webgpu.ts` no longer re-checks whole-words or query size (it keeps
@@ -366,7 +366,7 @@ rule is now checked. See [JOURNAL.md](JOURNAL.md).
 
 **Needs.** item 10.
 
-**How it landed.** [renderer/trace.ts](../renderer/trace.ts) gains `Lifetimes`, a
+**How it landed.** [trace/trace.ts](../trace/trace.ts) gains `Lifetimes`, a
 ledger `wrapDevice` writes resource births and deaths into. Every buffer, texture
 and query set the recorder hands back is registered (`born`) at creation and marked
 freed (`died`) when its `destroy` wrapper runs. The liveness check sits in the one
@@ -399,7 +399,7 @@ exercise is off on that path by construction, see [JOURNAL.md](JOURNAL.md).
 
 **Needs.** item 17.
 
-**How it landed.** [renderer/cost.ts](../renderer/cost.ts) holds `cost(graph, size): FrameCost`,
+**How it landed.** [graph/cost.ts](../graph/cost.ts) holds `cost(graph, size): FrameCost`,
 the third pure function beside `validate` and (still-open) `refusal`, taking the
 graph and a `{ width, height }` record and touching no device, arena or cache. The
 eight fields decision 9 lists: `passes` (every pass), `draws` (one per render pass,
@@ -448,7 +448,7 @@ and bufferData calls they already make: WebGPU's geometry and storage-buffer ini
 per-frame uniform block (respecified with `bufferData` rather than queued) → `sent`. Both
 backends expose `traffic()`/`resetTraffic()` on the shared `Backend` interface, answered from
 each backend's own arena — symmetric, neither throws, so it is not a method one has and the
-other refuses. `FrameTraffic` is imported by `renderer/types.ts` for the interface but **not
+other refuses. `FrameTraffic` is imported by `graph/types.ts` for the interface but **not
 re-exported through the door**, so the export surface did not move (`gate:pack` green at 49
 names). The benchmark is `npm run bench:traffic` ([gates/traffic.mjs](../gates/traffic.mjs)):
 it draws a geometry frame and a compute frame through the recording double — no card — and
@@ -508,7 +508,7 @@ against. See [JOURNAL.md](JOURNAL.md).
 
 **What it got wrong.** It slid from "the contract agrees" to "nothing can see it". Only the first is true. Those are two different instruments and the original treated them as one:
 
-- **The recorder already records exactly the right thing.** [renderer/trace.ts:63](../renderer/trace.ts#L63) compares `beginRenderPass` on `['colour','depth','times','counts']`, and lines 408 and 409 build `colour` as an array of objects carrying `loadOp` and `storeOp`. So `gpu.calls('beginRenderPass')[0].colour[0].storeOp` is **assertable today, with no new infrastructure**, exactly as [tests/renderer-queries.test.ts:98](../tests/renderer-queries.test.ts#L98) already asserts a recorded descriptor field.
+- **The recorder already records exactly the right thing.** [trace/trace.ts:63](../trace/trace.ts#L63) compares `beginRenderPass` on `['colour','depth','times','counts']`, and lines 408 and 409 build `colour` as an array of objects carrying `loadOp` and `storeOp`. So `gpu.calls('beginRenderPass')[0].colour[0].storeOp` is **assertable today, with no new infrastructure**, exactly as [tests/renderer-queries.test.ts:98](../tests/renderer-queries.test.ts#L98) already asserts a recorded descriptor field.
 - **Nobody is asserting on it.** That is the whole blocker: not a recorder that needs extending, but the absence of a metric that reads descriptor fields.
 
 **So the two halves are not equally blocked, and they were treated as one item.**
@@ -525,7 +525,7 @@ against. See [JOURNAL.md](JOURNAL.md).
 
 **Needs.** item 21. Stated as a `Needs` line like every other item's, because an unattended run reads dependencies from that line and would otherwise take this item first on the strength of its number.
 
-**How it landed.** Both halves, in one pure home and two consumers. [renderer/attachments.ts](../renderer/attachments.ts)
+**How it landed.** Both halves, in one pure home and two consumers. [graph/attachments.ts](../graph/attachments.ts)
 holds `frameStores(frame)` — the **discard** half — and `mergeGroups(frame)` — the **merge**
 half — reading the graph alone so `cost()` reads one and the executor reads both without either
 restating the rule (item 19's discipline). `frameStores` marks an attachment stored only where the
@@ -537,7 +537,7 @@ store exactly where `frameStores` keeps one (plus each resolve, whose average is
 its source does), so the number falls where an attachment discards. The executor
 ([submit/execute.ts](../submit/execute.ts)) carries the decision as `store`/`storeDepth`/
 `storeStencil` on its resolved attachments and emits `storeOp: 'discard'` where they are false;
-`renderer/webgpu.ts`'s `resolveTurns` resolves those flags off `frameStores` and folds the passes
+`gpu/webgpu.ts`'s `resolveTurns` resolves those flags off `frameStores` and folds the passes
 `mergeGroups` names into one render pass, replaying every group member's bundle into it — so
 `ResolvedRun.bundle` became a list. `mergeGroups` merges two passes over one **named** attachment
 set only where the second loads rather than clears, neither carries a per-pass query or a stencil,
@@ -576,7 +576,7 @@ double and a real device compute the same descriptor. See [JOURNAL.md](JOURNAL.m
 **How it landed.** [graph/capability.ts](../graph/capability.ts) holds the `Capability`
 type — the ten names §10 lists — importing nothing, per §7 rule 1. `ShaderFrame` gains
 `requires?: readonly Capability[]`, the graph's declaration, absent for a frame that
-needs only what every backend shares. [renderer/refusal.ts](../renderer/refusal.ts) holds
+needs only what every backend shares. [graph/refusal.ts](../graph/refusal.ts) holds
 `refusal(graph, device): string | null`, the third pure function beside `validate` and
 `cost`: it takes `Pick<ShaderFrame, 'id' | 'requires'>` and a `{ backend, capabilities }`
 record — `capabilities` a `ReadonlySet<Capability>` — and nothing else, touches no device,
@@ -649,14 +649,14 @@ Implements decision 7's target argument. **Gated by an example.**
 **Needs.** item 17.
 
 **How it landed.** `RenderPassSpec.draw: DrawSpec` became `draws: DrawSpec[]` in
-[renderer/types.ts](../renderer/types.ts), and `isRenderPass` now keys on `'draws' in pass` — the
+[graph/types.ts](../graph/types.ts), and `isRenderPass` now keys on `'draws' in pass` — the
 one-draw-per-pass shape is gone from the types rather than merely unused. The draws share the
 pass's one `pipeline` (item 33 is what lifts that restriction; §8's per-draw pipeline is item 38's
 rename horizon), so the executor sets the pipeline and bind groups once and issues each draw
 against them: `issueDraw` became `issueDraws` in [submit/execute.ts](../submit/execute.ts),
 looping the list, and `ResolvedRun` carries `draws` plus an `indirects` buffer list aligned to it
 (was one `draw`/one `indirect`). The WebGPU backend's bundle recorder and `resolveTurns`
-([renderer/webgpu.ts](../renderer/webgpu.ts)) record and resolve the list, and its indirect-buffer
+([gpu/webgpu.ts](../gpu/webgpu.ts)) record and resolve the list, and its indirect-buffer
 sizing loops every indirect draw a pass names rather than the first. The WebGL 2 backend refuses a
 pass unless **every** draw covers corners and issues one `drawArrays` per draw
 ([submit/gl2.ts](../submit/gl2.ts) takes a vertex-count list). `submit/plan.ts` resolves the
@@ -687,11 +687,11 @@ added or removed), so `gate:pack` was not required.
 rule. `DrawSpec` gains `perDraw?: number` — the byte offset the draw reads its
 record from — and `BindingSpec` gains `perDraw?: { size: number }` — that this
 binding reads one `size`-byte slice per draw, the buffer it names bound as a
-uniform with a dynamic offset ([renderer/types.ts](../renderer/types.ts)); the size
+uniform with a dynamic offset ([graph/types.ts](../graph/types.ts)); the size
 is the binding's and the offset is the draw's, which is the "one field either way"
 of §8. `perDrawBinding(spec)` reads the sliced binding in the one shape both
 backends and `validate` resolve it from. The 256-byte alignment is
-[renderer/validate.ts](../renderer/validate.ts)'s: every per-draw offset is a whole
+[graph/validate.ts](../graph/validate.ts)'s: every per-draw offset is a whole
 number of `PER_DRAW_ALIGNMENT` (256) — WebGPU's default
 `minUniformBufferOffsetAlignment` and WebGL 2's `UNIFORM_BUFFER_OFFSET_ALIGNMENT` —
 refused by name where it is not (`the pass on "cube" reads a per-draw slice at
@@ -699,7 +699,7 @@ offset 128, which is no whole number of 256 bytes`), along with an offset that
 runs past the buffer and an offset whose pipeline binds no slice.
 
 **WebGPU, end to end.** A per-draw buffer is built with `UNIFORM | COPY_DST`
-rather than the storage flags ([renderer/webgpu.ts](../renderer/webgpu.ts)), its
+rather than the storage flags ([gpu/webgpu.ts](../gpu/webgpu.ts)), its
 layout entry is `buffer: { type: 'uniform', hasDynamicOffset: true }`, and its
 bind group entry is one record wide (`offset: 0, size`). The group carrying the
 dynamic offset is set once **per draw** with `[draw.perDraw]` rather than once for
@@ -741,7 +741,7 @@ instance) — so item 28's work was the WebGL 2 arm, where the count was **silen
 dropped**. [submit/gl2.ts](../submit/gl2.ts)'s `drawGL2Frame` gains an
 `instances?: readonly (number | undefined)[]` list aligned to `vertices`: a draw with a
 count is one `gl.drawArraysInstanced`, a draw without one a plain `gl.drawArrays` — the call
-every fullscreen shader on the site makes. [renderer/webgl2.ts](../renderer/webgl2.ts) fills
+every fullscreen shader on the site makes. [gpu/webgl2.ts](../gpu/webgl2.ts) fills
 it from `pass.draws.map(draw => draw.instances)`. `cost()` is unchanged and pinned by
 [tests/cost.test.ts](../tests/cost.test.ts): one instanced draw counts one, two count two —
 the instances of a call are free, a second call is not. **One draw covers many instances**
@@ -772,7 +772,7 @@ not required. See [JOURNAL.md](JOURNAL.md).
 
 **How it landed.** One optional argument on the draw-and-read primitive, threaded to the
 one place a finished frame meets a texture. `into?: GPUTexture` on
-[`ShaderProgram.draw`](../renderer/types.ts), [`FrameRenderer.frame`/`draw`](../renderer/index.ts)
+[`ShaderProgram.draw`](../graph/types.ts), [`FrameRenderer.frame`/`draw`](../gpu/renderer.ts)
 and a matching `from?: GPUTexture` on `Backend.readPixels` — the pre-rename home of the
 capability §14 will spell `submit(graph, { into })` (that rename is item 38's, so no top-level
 `submit` export was added for item 38 to then rename; the door stayed at 51 names, `gate:pack`
@@ -882,7 +882,7 @@ Closes §3 row 8. Implements the §14 renames while they are still free.
 
 **Note.** `views` as a list is free now and a breaking signature change after this phase. That is the whole reason it is specified here even though nothing needs two views yet.
 
-**How it landed.** [engine/scene-view.ts](../engine/scene-view.ts) holds
+**How it landed.** [scene/scene-view.ts](../scene/scene-view.ts) holds
 `sceneView<V>(arena, options): SceneView`, exported through the door beside the
 engine's other producers. `options` carries the frame-invariant half — the shader
 `modules`, the one `pipeline` the world draws through, the `materials` it is fed,
@@ -908,7 +908,7 @@ in draw order; one view-projection per camera for one and for two cameras; the
 carried-through resources, uniforms, `requires` and `present`; the empty-views and
 non-batchable-scene refusals; the arena reuse-and-reallocate behaviour read off its
 traffic and dispose count; and a static-analysis assertion that the source imports
-nothing from `submit/` or `gpu/`. `engine/scene-view.ts` is added to
+nothing from `submit/` or `gpu/`. `scene/scene-view.ts` is added to
 [tests/import-graph.test.ts](../tests/import-graph.test.ts)'s shipping closure. 669
 node tests green (+11), type-check green, `gate:pack` green at the moved export
 surface. **What the gates could not see:** that a frame `sceneView` emits *draws*
@@ -930,7 +930,7 @@ draws), and its whole output is data the node suite reads directly. See
 **How it landed.** The restriction is lifted where it lived — in `sceneView`, not in
 `batchOnePipeline`, which stays as the single-pipeline building block a dozen fixtures
 and tests still call and whose "one pipeline" name is honest about what it is.
-[engine/material.ts](../engine/material.ts) gains `batchScene(scene, materials): Batch[]`,
+[scene/material.ts](../scene/material.ts) gains `batchScene(scene, materials): Batch[]`,
 one batch per pipeline in the order each is first drawn, and both it and
 `batchOnePipeline` now share one `withMaterial` helper so the two authoring refusals — an
 object with no material, one naming a material the table does not carry — are written once
@@ -939,7 +939,7 @@ rather than in two places (item 19's discipline). The one-pipeline refusal is wh
 is an empty list rather than a throw (the throw is `batchOnePipeline`'s, where exactly one
 pipeline is wanted).
 
-[engine/scene-view.ts](../engine/scene-view.ts) consumes it: `SceneViewOptions` now carries
+[scene/scene-view.ts](../scene/scene-view.ts) consumes it: `SceneViewOptions` now carries
 `pipelines: ScenePipeline[]` — each a pipeline and its own per-object storage buffer and
 `pack` — in place of the single `pipeline`/`objects`, and `.graph` emits **one instanced
 render pass per pipeline, in the order the producer lists them**. That list order is the
@@ -1090,13 +1090,58 @@ surface. See [JOURNAL.md](JOURNAL.md).
 
 ### 37. The folders move
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The layout of §7: `graph/`, `gpu/`, `resource/`, `pipeline/`, `submit/`, `toy/`, `scene/`, `host/`, `trace/`.
 
 **Done when.** No file sits in `renderer/` or `engine/`, and the move commit changes no logic.
 
 **Needs.** item 32. **Not earlier:** Phase 4 is when what each folder owns is known, and renaming before it is guessing.
+
+**How it landed.** `renderer/` and `engine/` are gone; their twenty files sit in the §7
+folders, each placed by what it owns rather than by when it was written (§7 rule 5). The
+graph contract and the three pure functions over it are `graph/`: `types.ts`, `validate.ts`,
+`cost.ts`, `refusal.ts`, and item 1's `attachments.ts` join `handles.ts`, `refs.ts`,
+`capability.ts` already there. The card is `gpu/`: `webgpu.ts`, `webgl2.ts`,
+`webgpu-device.ts`, `select.ts` (§11 names it `gpu/select.ts` outright), and the backend
+coordinator renderer/index.ts becomes `gpu/renderer.ts` — the one rename, because a
+gpu/index.ts would read as a barrel it is not. The only DOM is `host/`: `surface.ts` and
+`probe.ts` (its `browserProbeHost` reaches `document`). The recording double and the
+painted-frame reading are `trace/`: `trace.ts` and `frame-coverage.ts`. The toy-tier frame
+builders are `toy/frame.ts`. The scene producers are `scene/`: `scene-view.ts`, `material.ts`,
+`draw-list.ts`, `scene.ts`, `maths.ts`. `resource/`, `pipeline/`, `submit/` were already in
+place.
+
+**No logic moved, and the diff proves it.** Every moved file's only change is its import
+specifiers — `git diff -M --numstat` shows each rename at 0–3 lines added-and-deleted, and
+each of those lines is a `from '…'` or `import('…')` path (the one exception is a stale
+`scene/material.ts` comment in `scene-view.ts`, and a two-line `scene-view.ts` counts one
+import plus that comment). The rewrite was mechanical: a script recomputed a relative
+specifier only where the importing file **or** its target moved, leaving every other
+specifier byte-for-byte — so an extensionless test import like `'./support/fake-gpu'` kept
+its exact text and `gates/pack.sh`'s `sed` still matched it. The door
+([index.ts](../index.ts)) re-exports the same fifty-four names from the new paths, so the
+export surface did not move (`gate:pack` green at 54, all 11 checks). The path-carrying
+gates and configs moved with the files: `tsconfig.build.json`/`tsconfig.json` `include`
+globs, [tests/import-graph.test.ts](../tests/import-graph.test.ts)'s `SHIPPING` list and
+its eager-graph roots, every gates/\*.mjs `loadFromRoot` string, and the two tests that
+statically read a file by path ([tests/scene-view.test.ts](../tests/scene-view.test.ts)'s
+producer-import assertion, [tests/docs-paths.test.ts](../tests/docs-paths.test.ts)'s
+live-label fixture). The docs the path gate reads — this file, `RoadToPureEngine.md`,
+`ABSTRACTION.md`, `RENDERER-DESIGN.md` — had their linked and backticked paths rewritten;
+`JOURNAL.md` was left untouched, because it is a dated record and the path gate skips it by
+design.
+
+**What the gates could not see.** The move is exercised entirely by the cheap gates —
+682 node tests green, `type-check` green, `gate:pack` green — because a file's location and
+its import paths are exactly what a compiler and a resolver check. `gate:browser` was not
+run in the unattended session; it is unaffected by construction, since no device call, no
+frame and no exported name changed, only where the files sit. **One thing left inexact on
+purpose:** the `file.ts:line` suffixes in `RoadToPureEngine.md`'s §2/§3 debt tables now
+carry the new path with the *old* line number, which is close (only near-top import lines
+shifted) but not re-measured; the path gate strips the suffix before resolving, so it does
+not read them, and re-pinning every line number is not this move's job. See
+[JOURNAL.md](JOURNAL.md).
 
 ### 38. The §14 renames
 
@@ -1387,9 +1432,9 @@ public/shaders/build/manifest.json and public/shaders/source/*.wgsl — are out 
 [ABSTRACTION.md](ABSTRACTION.md)'s Mermaid node labels, each replaced by what its layer *is* to a
 reader who no longer has the website's tree (`a source file — WGSL, or GLSL a consumer authors`, `a
 consumer's adapter`, `a consumer's React hook`, and so on) rather than by a path that resolves to
-nothing here. The seven in-tree paths the diagram legitimately names — `renderer/frame.ts`,
-`renderer/index.ts`, `renderer/surface.ts`, `renderer/webgpu.ts`, `renderer/webgl2.ts`,
-`renderer/trace.ts`, `tests/support/fake-gpu.ts` — stay and still resolve. **The gate now reads the
+nothing here. The seven in-tree paths the diagram legitimately names — `toy/frame.ts`,
+`gpu/renderer.ts`, `host/surface.ts`, `gpu/webgpu.ts`, `gpu/webgl2.ts`,
+`trace/trace.ts`, `tests/support/fake-gpu.ts` — stay and still resolve. **The gate now reads the
 fence** rather than stripping it: [tests/docs-paths.test.ts](../tests/docs-paths.test.ts) gains a
 third ref kind, `mermaid`, reading the text inside each `["..."]` node label of every ```mermaid
 fence, dropping the `<b>`/`<br/>` tags a label carries and splitting on its separators, and flagging
@@ -1424,7 +1469,7 @@ Seven website paths are still in that fence today, named here without backticks 
 
 **Needs.** Nothing.
 
-**Why it exists.** [renderer/webgl2.ts](../renderer/webgl2.ts) sends every non-array scalar through `gl.uniform1f`. Feeding an `int` uniform that way is `GL_INVALID_OPERATION` in WebGL 2, so the uniform keeps its default of 0 and the shader animates off a number nobody delivered.
+**Why it exists.** [gpu/webgl2.ts](../gpu/webgl2.ts) sends every non-array scalar through `gl.uniform1f`. Feeding an `int` uniform that way is `GL_INVALID_OPERATION` in WebGL 2, so the uniform keeps its default of 0 and the shader animates off a number nobody delivered.
 
 **It is a general defect, not a leftover.** It was found through item 6's producer, which has since been reverted, and it survives that removal untouched: decision 6 says a consumer may hand this library a GLSL document, and `uniform int` is ordinary GLSL. Any consumer writing one hits this today, silently, and no gate here can see it — the node suite reads calls rather than values, and the browser corpus has no GLSL source declaring an integer.
 
@@ -1434,7 +1479,7 @@ Seven website paths are still in that fence today, named here without backticks 
 
 **Also worth checking when landing it.** The uniform-block path above the loose path writes members into a byte buffer as floats too, so an `int` member of a block has the same problem by a different route. No corpus source has one today, so both paths want a test rather than only the loose one.
 
-**How it landed.** [renderer/webgl2.ts](../renderer/webgl2.ts)'s `program` captures a
+**How it landed.** [gpu/webgl2.ts](../gpu/webgl2.ts)'s `program` captures a
 name-to-type map off `frame.uniforms` when the program is built — `declaredType`, with an
 `isInt(name)` guard reading it — the obvious route the entry named, off the field §14 retires
 from the graph. **Both paths** the entry names now route an `int` away from the float door:

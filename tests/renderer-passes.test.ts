@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createWebGPUBackend } from '../renderer/webgpu';
+import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
 import type { PassSpec, ShaderFrame } from '@altpsyche/engine';
 

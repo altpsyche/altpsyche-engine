@@ -11,7 +11,7 @@
  */
 
 import type { FrameTraffic } from '../resource/arena.js';
-import type { Capability } from '../graph/capability.js';
+import type { Capability } from './capability.js';
 
 export type BackendName = 'webgl2' | 'webgpu';
 

@@ -32,7 +32,7 @@ import type {
   TextureResource,
   UniformValue,
   VertexResource,
-} from './types.js';
+} from '../graph/types.js';
 import {
   dispatchesIndirectly,
   drawsCorners,
@@ -42,14 +42,14 @@ import {
   perDrawBinding,
   resourceOf,
   uniformResourceOf,
-} from './types.js';
+} from '../graph/types.js';
 import { Arena } from '../resource/arena.js';
 import type { FrameTraffic, Handle } from '../resource/arena.js';
 import { planFramePasses } from '../submit/plan.js';
 import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
 import { runFrame, issueDraws } from '../submit/execute.js';
 import type { ResolvedGeometry, ResolvedRun } from '../submit/execute.js';
-import { frameStores, mergeGroups } from './attachments.js';
+import { frameStores, mergeGroups } from '../graph/attachments.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
 
 /** What the pipeline cache holds for one structure: the compiled pipeline and the

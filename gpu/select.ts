@@ -19,7 +19,7 @@
  * capability it forfeits, and every one it forfeits is one GLSL ES 3.0 has no
  * syntax for.
  */
-import type { BackendName, ShaderFrame, ShaderTarget } from './types.js';
+import type { BackendName, ShaderFrame, ShaderTarget } from '../graph/types.js';
 
 /**
  * What this device offers, gathered once before any backend is chosen.

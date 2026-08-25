@@ -23,7 +23,7 @@
  * answered by nothing.
  */
 import type { BackendName, ShaderFrame } from './types.js';
-import type { Capability } from '../graph/capability.js';
+import type { Capability } from './capability.js';
 
 /** What a device is, for the one question this answers: which backend it is and
  * which capabilities it has. A plain record rather than a `Backend`, because a

@@ -28,15 +28,15 @@ flowchart TB
 
     subgraph runtime["Run time"]
         artefacts["fetch a variant<br/>a consumer's adapter"]
-        frame["fill the documents in<br/>renderer/frame.ts"]
+        frame["fill the documents in<br/>toy/frame.ts"]
         choose["pick a backend<br/>a consumer's adapter, or selectBackend"]
-        oneshot["one frame, drawn and read<br/>renderer/index.ts"]
-        live["a loop that survives a page<br/>renderer/surface.ts"]
+        oneshot["one frame, drawn and read<br/>gpu/renderer.ts"]
+        live["a loop that survives a page<br/>host/surface.ts"]
     end
 
     subgraph device["The card"]
-        wgpu["WebGPU<br/>renderer/webgpu.ts"]
-        wgl["WebGL 2, one pass<br/>renderer/webgl2.ts"]
+        wgpu["WebGPU<br/>gpu/webgpu.ts"]
+        wgl["WebGL 2, one pass<br/>gpu/webgl2.ts"]
     end
 
     subgraph react["React, and only here"]
@@ -46,7 +46,7 @@ flowchart TB
 
     subgraph proof["What holds it"]
         dbl["the recording double<br/>the engine's own tests/support/fake-gpu.ts"]
-        rec["the recorder<br/>renderer/trace.ts"]
+        rec["the recorder<br/>trace/trace.ts"]
         gates["the gates<br/>backends · device-loss · preview<br/>and the engine's own trace-contract and surface"]
     end
 
@@ -83,7 +83,7 @@ Read it as four crossings rather than nine boxes. A person writes a file and an 
 
 **The runtime reads that description and never invents one.** The site's artefact adapter asks the manifest which files a variant is, `frame.ts` fills the documents in, and the result is a `ShaderFrame`. The gates that matter fill in the build's own description for the same reason: a gate assembling a description of its own is a gate measuring its own idea of one.
 
-**A backend receives a description and has no capability methods.** The rule at the top of `renderer/types.ts` is that a method one backend has to throw from is the wrong method. A backend that grew `createComputePipeline` and `createSampler` would be a backend where WebGL 2 throws from most of its own interface, and a caller asking whether its backend has compute is a caller branching on which backend it holds. What a backend cannot build it never receives, because the manifest is the only thing deciding which backend a shader can be drawn by.
+**A backend receives a description and has no capability methods.** The rule at the top of `graph/types.ts` is that a method one backend has to throw from is the wrong method. A backend that grew `createComputePipeline` and `createSampler` would be a backend where WebGL 2 throws from most of its own interface, and a caller asking whether its backend has compute is a caller branching on which backend it holds. What a backend cannot build it never receives, because the manifest is the only thing deciding which backend a shader can be drawn by.
 
 **There are two runtime interfaces and the live one is built on the one shot one.** A build script wants one frame drawn and handed back as pixels. A page wants something that runs until it is stopped and copes with resizing, pixel density, going offscreen and the card being taken away. Handing a build script the live lifecycle gives it state it has to ignore, which is how a script ends up half driving a loop it never wanted.
 
@@ -166,7 +166,7 @@ Four things resist growth, and it is worth knowing which is which.
 
 **Two are additive**, which are per draw data and the buffer update path. They add a resource shape and a write path, and nothing existing has to move.
 
-**One is a decision rather than work.** `renderer/webgl2.ts` is deliberately a single pass fullscreen subset, and everything above that line has no GLSL target for the runtime to fetch, so it is refused before a program is asked for. Any engine layer is WebGPU only, or that backend gets rewritten. The first is almost certainly right, and it is worth saying out loud rather than discovering later.
+**One is a decision rather than work.** `gpu/webgl2.ts` is deliberately a single pass fullscreen subset, and everything above that line has no GLSL target for the runtime to fetch, so it is refused before a program is asked for. Any engine layer is WebGPU only, or that backend gets rewritten. The first is almost certainly right, and it is worth saying out loud rather than discovering later.
 
 ## What is worth commenting on
 
@@ -185,9 +185,9 @@ Written as questions because the answers are Siva's.
 | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | -------- | --------- |
 | the editing path and the shipping path have diverged, and the playground's own producer makes single pass frames only | the site's playground producer                 | high     | phase 0.5 |
 | pipeline layouts are decided by scanning strings, and a layout one binding too wide is accepted while lying           | `wgsl-references.ts`, 100 lines                | high     | phase 0.4 |
-| the program cache has no cap and no eviction, so every compiling edit keeps its programs on the card                  | `renderer/index.ts`                        | high     | phase 0.1 |
-| the cache key concatenates and hashes every document's full source text once per draw                                 | `renderer/index.ts`                        | medium   | phase 0.2 |
-| views, attachment arrays and two closures are rebuilt per pass per frame                                              | `renderer/webgpu.ts`                       | medium   | phase 0.2 |
+| the program cache has no cap and no eviction, so every compiling edit keeps its programs on the card                  | `gpu/renderer.ts`                        | high     | phase 0.1 |
+| the cache key concatenates and hashes every document's full source text once per draw                                 | `gpu/renderer.ts`                        | medium   | phase 0.2 |
+| views, attachment arrays and two closures are rebuilt per pass per frame                                              | `gpu/webgpu.ts`                       | medium   | phase 0.2 |
 | one function owns every resource, at 1,090 of 1,426 lines, so every capability edits it                               | `createProgram`                                | medium   | phase 0.3 |
 | the same rules and byte sizes are checked in the build and in the backend, in two wordings                            | the engine's `shader-describe.ts`, `webgpu.ts` | medium   | phase 0.3 |
 | resources are strings resolved in maps at draw time, so misuse is never a compile error                               | throughout the backend                         | medium   | phase 2   |
@@ -199,7 +199,7 @@ Written as questions because the answers are Siva's.
 | a buffer's contents cannot be replaced while the page runs                                                            | three write paths only                         | medium   | solved    |
 | `report()` has no consumer in shipping code, only a gate that prints it                                               | `types.ts`, the site's `backends` gate         | low      | phase 3   |
 | `readBuffer` answers vacuously on one backend and `unreached` exists for one compiler quirk                           | `ShaderProgram`                                | low      | accepted  |
-| five words for overlapping ideas, counted in one file: frame 50, texture 31, target 13, picture 12, attachment 9      | `renderer/types.ts`                        | low      | phase 0.3 |
+| five words for overlapping ideas, counted in one file: frame 50, texture 31, target 13, picture 12, attachment 9      | `graph/types.ts`                        | low      | phase 0.3 |
 | the shared description speaks WebGPU's vocabulary, so the other backend refuses words it cannot use                   | `types.ts`, 6 references                       | low      | accepted  |
 | the content layer imports renderer types for a stencil mode and a dispatch                                            | the site's content layer                       | low      | phase 3   |
 | no pooling, no suballocation, no transient or aliased resources, and a staging buffer per readback                    | the backend                                    | low      | phase 2   |
@@ -219,4 +219,4 @@ Written as questions because the answers are Siva's.
 
 **What the audit found healthy, recorded so a later pass does not re-litigate it.** One global in the whole stack, which is a documented shared fetch promise. No cycles and a one way dependency direction. Zero inheritance and no virtual dispatch beyond two closures behind one interface. No state cache, therefore no state cache that can be wrong. No forced sync in the shipping path. Zero stale markers and no commented out code. A shader system with no permutation explosion and one specialization axis. Determinism strong enough to compare frames byte for byte across runs and across backends. Two real implementations behind the backend interface, which is the number that keeps an interface honest.
 
-**The meta answers.** Deleting this abstraction would make the two backends stop being interchangeable and force every caller to branch on which one it holds, which is the failure the rule at the top of `renderer/types.ts` exists to prevent, so it earns its keep. It makes a new full frame shader with a new capability easy and provable. It makes many objects, per object data, runtime geometry, merged draws, render bundles, worker recording and bindless impossible today. And it is worked around in four places of one shape, which are the playground, the gates, the probes and the build, each producing a description by hand, so the missing piece is a sanctioned runtime producer rather than any single capability.
+**The meta answers.** Deleting this abstraction would make the two backends stop being interchangeable and force every caller to branch on which one it holds, which is the failure the rule at the top of `graph/types.ts` exists to prevent, so it earns its keep. It makes a new full frame shader with a new capability easy and provable. It makes many objects, per object data, runtime geometry, merged draws, render bundles, worker recording and bindless impossible today. And it is worked around in four places of one shape, which are the playground, the gates, the probes and the build, each producing a description by hand, so the missing piece is a sanctioned runtime producer rather than any single capability.

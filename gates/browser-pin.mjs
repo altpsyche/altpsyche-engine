@@ -29,7 +29,7 @@ try {
   // The bundler is proved here rather than in the first gate that needs it,
   // because a gate that cannot compile the library reports nothing about the
   // library and everything about the toolchain.
-  const { bundle, staging } = bundleForPage({ 'engine/maths.ts': ['vec3'] });
+  const { bundle, staging } = bundleForPage({ 'scene/maths.ts': ['vec3'] });
   try {
     await page.addScriptTag({ path: bundle });
     const measured = await page.evaluate(() => window.vec3.magnitude(window.vec3(3, 4, 0)));

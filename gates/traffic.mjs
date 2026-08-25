@@ -32,8 +32,8 @@ import { loadFromRoot } from './lib.mjs';
 const W = Number(process.env.W ?? 800);
 const H = Number(process.env.H ?? 600);
 
-const { cost } = await loadFromRoot('renderer/cost.ts');
-const { createWebGPUBackend } = await loadFromRoot('renderer/webgpu.ts');
+const { cost } = await loadFromRoot('graph/cost.ts');
+const { createWebGPUBackend } = await loadFromRoot('gpu/webgpu.ts');
 const { createFakeGPU } = await loadFromRoot('tests/support/fake-gpu.ts');
 
 // A frame drawing geometry through a uniform block: the geometry and its indices
