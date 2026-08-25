@@ -36,6 +36,16 @@ declare const HANDLE: unique symbol;
 /** A branded integer naming one live resource in an arena. */
 export type Handle = number & { readonly [HANDLE]: true };
 
+/** Which bytes of a resource a readback wants, per §9. Both halves are in bytes
+ * and both are optional: absent `offset` reads from the start, absent `length`
+ * reads to the end. A caller that wants every byte passes no range at all, which
+ * is what the two buffer readbacks moved onto `read` do — they read a whole
+ * buffer's words. */
+export interface Range {
+  offset?: number;
+  length?: number;
+}
+
 
 /** How many slots a handle's index addresses, which is also the multiplier the
  * generation sits above. Index below, generation above, packed by multiplication
@@ -67,7 +77,18 @@ export class Arena<T> {
   /** Bytes uploaded into a resource already made since the last reset. */
   private uploadedBytes = 0;
 
-  constructor(private readonly disposeOf: (resource: T) => void) {}
+  /** `readBack` is how this arena copies a resource's bytes off the card, which
+   * is device-specific the way `disposeOf` is — WebGPU maps a staging buffer,
+   * WebGL 2 has no page-readable buffer and answers vacuously — so the backend
+   * hands it in at construction rather than the arena knowing either API. An
+   * arena made without one has no `read`, and calling it says so rather than
+   * returning empty bytes that would read as a real answer. This is the §9
+   * readback door (item 89): a buffer's words leave the card through here, not
+   * through a `ShaderProgram` method. */
+  constructor(
+    private readonly disposeOf: (resource: T) => void,
+    private readonly readBack?: (resource: T, range: Range | undefined) => Promise<ArrayBuffer>
+  ) {}
 
   /** Runs `make`, stores what it returns in a slot, and hands back the handle that
    * slot is live under. A slot a free returned is reused where there is one and a
@@ -110,6 +131,24 @@ export class Arena<T> {
     const index = handle % SLOTS;
     const generation = (handle - index) / SLOTS;
     return this.resources[index] !== undefined && this.generations[index] === generation;
+  }
+
+  /** Copies a resident buffer's bytes back off the card, by the handle that
+   * names it, per §9. The handle is resolved first, so a stale one is refused
+   * here exactly as `resolve` refuses it rather than reading whatever now sits in
+   * the slot; then the backend's own `readBack` moves the bytes — a copy into a
+   * mappable staging buffer on WebGPU, nothing on a backend with no page-readable
+   * buffer. `range` narrows it to a slice; absent, the whole resource. An arena
+   * made with no `readBack` has no answer to give and says so, rather than
+   * handing back empty bytes a caller would read as the resource being empty. */
+  async read(handle: Handle, range?: Range): Promise<ArrayBuffer> {
+    const resource = this.resolve(handle);
+    if (this.readBack === undefined) {
+      throw new Error(
+        `the arena was asked to read handle ${handle} back, and it was made with no way to read a resource off the card`
+      );
+    }
+    return this.readBack(resource, range);
   }
 
   /** Queues an upload against a handle rather than running it at once, so the

@@ -212,7 +212,7 @@ export type {
 // `sceneView` takes one and a consumer authoring a scene must be able to build it
 // through the door rather than reaching a folder for it (item 35).
 export { Arena } from './resource/arena.js';
-export type { Handle } from './resource/arena.js';
+export type { Handle, Range } from './resource/arena.js';
 
 // What one frame costs by its structure alone — passes, draws, dispatches,
 // pipeline and bind switches, attachment loads and stores, transient bytes.

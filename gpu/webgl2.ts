@@ -30,7 +30,7 @@ import type {
 } from '../graph/types.js';
 import { componentsOf, drawsCorners, drawsIndirectly, isRenderPass, moduleOf, perDrawBinding } from '../graph/types.js';
 import { Arena } from '../resource/arena.js';
-import type { Handle } from '../resource/arena.js';
+import type { Handle, Range } from '../resource/arena.js';
 import type { GL2Geometry, GL2PerDraw } from '../submit/gl2.js';
 import { drawGL2Frame } from '../submit/gl2.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
@@ -195,7 +195,14 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
   // the quad it shares across programs and the uniform block each program owns —
   // is allocated and freed through here, so a handle to a deleted buffer is caught
   // rather than naming whatever the context hands back next.
-  const arena = new Arena<WebGLBuffer>((buffer) => gl.deleteBuffer(buffer));
+  // A frame this backend takes declares no page-readable buffer — a storage buffer
+  // is refused by capability, so a compute pass or a query never writes one here —
+  // so a readback through the arena's §9 door (item 89) has nothing to hand back
+  // and answers with no bytes, the true answer the way `readBuffer` answers with no
+  // words rather than refusing the question. When a WebGL 2 path does want a real
+  // buffer read back, this is where a `gl.getBufferSubData` copy would go.
+  const readNoBuffer = async (_buffer: WebGLBuffer, _range: Range | undefined): Promise<ArrayBuffer> => new ArrayBuffer(0);
+  const arena = new Arena<WebGLBuffer>((buffer) => gl.deleteBuffer(buffer), readNoBuffer);
 
   const quadHandle = arena.allocate(() => gl.createBuffer() as WebGLBuffer);
   const quad = arena.resolve(quadHandle);
@@ -248,9 +255,16 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
   let width = canvas.width;
   let height = canvas.height;
 
-  return {
-    name: 'webgl2',
-    target: 'glsl',
+  // Held in a variable, not returned as a literal, so it can carry `arena` beyond
+  // the `Backend` interface — the §9 readback door a caller reaches directly
+  // (item 89) — without growing the public surface. The same shape as the WebGPU
+  // backend, though this backend's arena answers a readback vacuously; see above.
+  const backend = {
+    name: 'webgl2' as const,
+    target: 'glsl' as const,
+    // The backend's buffer arena, exposed for a readback by handle (item 89). Not
+    // on the `Backend` interface; matches the WebGPU backend's own `arena` field.
+    arena,
 
     report(): DeviceReport {
       const named = gl as unknown as Record<string, unknown>;
@@ -1352,4 +1366,5 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     },
   };
+  return backend;
 }

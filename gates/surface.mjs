@@ -538,7 +538,17 @@ const gpuResults = await gpuPage.evaluate(
       const program = rewriteBackend.program(frame);
       program.setUniforms({ u_time: 1, u_resolution: [200, 100] });
       program.draw();
-      const before = [...(await program.readBuffer('copies'))];
+      // Read through the arena's own `read` door by handle (item 89), not through
+      // a `ShaderProgram` method: the buffer is named by its arena handle and
+      // `read` copies its bytes back, which the words are then read out of. `arena`
+      // and `bufferHandle` are the readback bridge, kept off the public `Backend`/
+      // `ShaderProgram` types on purpose (item 90 dismantles that surface), so the
+      // gate reaches them through a cast.
+      const readCopies = async () =>
+        new Uint32Array(
+          await /** @type {any} */ (rewriteBackend).arena.read(/** @type {any} */ (program).bufferHandle('copies'))
+        );
+      const before = [...(await readCopies())];
       const pxBefore = await rewriteBackend.readPixels();
 
       // Four fresh copies, a colour and a height each, laid out the way std430 lays
@@ -554,7 +564,7 @@ const gpuResults = await gpuPage.evaluate(
       }
       program.writeBuffer('copies', new Uint8Array(fresh.buffer));
       program.draw();
-      const after = [...(await program.readBuffer('copies'))];
+      const after = [...(await readCopies())];
       const pxAfter = await rewriteBackend.readPixels();
 
       const wrote = [...new Uint32Array(fresh.buffer)];

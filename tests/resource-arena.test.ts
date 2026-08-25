@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Arena } from '../resource/arena';
+import type { Range } from '../resource/arena';
 
 /**
  * The arena's own contract, held without a device: it hands out branded integer
@@ -175,5 +176,54 @@ describe('the arena tallies the bytes that cross into resident resources', () =>
     // reset rather than everything since the arena was made.
     arena.wrote(4);
     expect(arena.traffic()).toEqual({ written: 4, uploaded: 0 });
+  });
+});
+
+describe('the readback door reads a resource back by handle (§9, item 89)', () => {
+  /** An arena whose reader turns a token into its bytes and records the range it
+   * was asked for, so a test can assert both that `read` resolved the right
+   * resource and that it passed a range straight through. A string stands in for a
+   * buffer here for the same reason it does above: the door's own contract — resolve
+   * the handle, then hand the resource to the injected reader — needs no device. */
+  function arenaWithReader() {
+    const reads: { token: string; range: Range | undefined }[] = [];
+    const arena = new Arena<string>(
+      () => undefined,
+      async (token, range) => {
+        reads.push({ token, range });
+        return Uint8Array.from(token, (ch) => ch.charCodeAt(0)).buffer as ArrayBuffer;
+      }
+    );
+    return { arena, reads };
+  }
+
+  it('resolves the handle and hands the resource it names to the injected reader', async () => {
+    const { arena, reads } = arenaWithReader();
+    const handle = arena.allocate(() => 'copies');
+    const bytes = await arena.read(handle);
+    expect([...new Uint8Array(bytes)]).toEqual([...Uint8Array.from('copies', (c) => c.charCodeAt(0))]);
+    expect(reads).toEqual([{ token: 'copies', range: undefined }]);
+  });
+
+  it('passes a range through to the reader unchanged', async () => {
+    const { arena, reads } = arenaWithReader();
+    const handle = arena.allocate(() => 'buf');
+    await arena.read(handle, { offset: 4, length: 8 });
+    expect(reads[0]?.range).toEqual({ offset: 4, length: 8 });
+  });
+
+  it('refuses a stale handle before the reader is reached, rather than reading the slot’s new occupant', async () => {
+    const { arena, reads } = arenaWithReader();
+    const handle = arena.allocate(() => 'gone');
+    arena.free(handle);
+    arena.allocate(() => 'newcomer');
+    await expect(arena.read(handle)).rejects.toThrow(/no live resource/);
+    expect(reads).toEqual([]);
+  });
+
+  it('says so rather than answering with empty bytes when the arena was made with no reader', async () => {
+    const { arena } = arenaOfTokens();
+    const handle = arena.allocate(() => 'x');
+    await expect(arena.read(handle)).rejects.toThrow(/no way to read a resource off the card/);
   });
 });

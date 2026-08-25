@@ -44,7 +44,7 @@ import {
 import type { FrameTraffic } from '../graph/types.js';
 import { followsFrame, sizeAt, sizeKey } from '../graph/refs.js';
 import { Arena } from '../resource/arena.js';
-import type { Handle } from '../resource/arena.js';
+import type { Handle, Range } from '../resource/arena.js';
 import { planFramePasses } from '../submit/plan.js';
 import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
 import { runFrame, issueDraws } from '../submit/execute.js';
@@ -162,13 +162,49 @@ export function createWebGPUBackend(
   const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
   if (!context) return null;
 
+  // How this arena reads a resident buffer back off the card, handed to the arena
+  // so the readback lives on the arena (§9, item 89) rather than on a
+  // `ShaderProgram` method. The buffer the handle names is copied into a MAP_READ
+  // staging buffer of its own — a buffer a shader writes cannot be mapped, and
+  // mapping the frame's own would take it from the next frame — mapped, copied out
+  // of the mapping (its memory is gone the moment it is unmapped), and the staging
+  // slot returned at once. Allocated and freed through this same arena, so the
+  // staging buffer is a resident of the moment. This is what `readBuffer` copied
+  // inline before; that method now routes through here, and item 82 removes it.
+  const readResidentBuffer = async (resource: GpuResource, range: Range | undefined): Promise<ArrayBuffer> => {
+    const source = resource as GPUBuffer;
+    const offset = range?.offset ?? 0;
+    const length = range?.length ?? source.size - offset;
+    const stagingHandle = arena.allocate(() =>
+      device.createBuffer({
+        // Labelled off the source so a trace still names the pair it copied — the
+        // source's own label with `-read`, which is what `readBuffer` produced when
+        // it held the name; the arena has the resolved buffer, not the name, and
+        // the buffer carries its label.
+        label: `${source.label}-read`,
+        size: length,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+      })
+    );
+    const staging = arena.resolve(stagingHandle) as GPUBuffer;
+    const encoder = device.createCommandEncoder();
+    encoder.copyBufferToBuffer(source, offset, staging, 0, length);
+    device.queue.submit([encoder.finish()]);
+
+    await staging.mapAsync(GPUMapMode.READ);
+    const bytes = staging.getMappedRange().slice(0);
+    staging.unmap();
+    arena.free(stagingHandle);
+    return bytes;
+  };
+
   // One arena for the backend's whole life. Every buffer, texture, sampler and
   // query set it allocates is allocated through here and freed through here, so a
   // handle to a freed slot is caught rather than resolving to the slot's next
   // occupant. A program allocates into it and frees its own handles on dispose;
   // the backend's own target and averaging sampler outlive every program and are
   // freed when the backend is.
-  const arena = new Arena<GpuResource>(disposeGpuResource);
+  const arena = new Arena<GpuResource>(disposeGpuResource, readResidentBuffer);
 
   // One pipeline cache for the backend's whole life, shared across every program it
   // builds (item 63). Two programs whose frames differ only in resident data — one
@@ -334,9 +370,18 @@ export function createWebGPUBackend(
     encoder.copyTextureToTexture({ texture: source }, { texture: context.getCurrentTexture() }, [width, height]);
   };
 
-  return {
-    name: 'webgpu',
-    target: 'wgsl',
+  // Held in a variable, not returned as a literal, because it carries one field
+  // beyond the `Backend` interface — `arena`, so a caller reading a buffer back
+  // reaches the §9 readback door directly (item 89). The public `Backend` surface
+  // is left unchanged: the resident lifetime becoming a first-class arena a
+  // consumer holds is Stage 2's (§9), and until then the gates that read buffers
+  // reach it here rather than through a method that would grow the interface.
+  const backend = {
+    name: 'webgpu' as const,
+    target: 'wgsl' as const,
+    // The backend's own arena, exposed so a readback names a buffer by handle
+    // through `arena.read` (item 89). Not on the `Backend` interface; see above.
+    arena,
 
     report(): DeviceReport {
       const limits: Record<string, number> = {};
@@ -425,6 +470,7 @@ export function createWebGPUBackend(
         values,
         bufferHandle,
         buffers,
+        bufferHandles,
         textures,
         times,
         counting,
@@ -478,6 +524,13 @@ export function createWebGPUBackend(
         // that came with it. Neither buffer follows the frame, since geometry is the
         // same shape however big the window is and what moves it is the vertex stage.
         const buffers = new Map<string, GPUBuffer>();
+        // The arena handle each page-or-card buffer was allocated under, kept by
+        // name so a readback can name one by handle through the arena's own `read`
+        // (§9, item 89) rather than through a `ShaderProgram` method. Only the
+        // buffers a `readBuffer` could ever have named — the `buffer`-kind
+        // resources a compute pass or a query fills — are recorded here; geometry
+        // and the uniform block are not read this way.
+        const bufferHandles = new Map<string, Handle>();
         for (const resource of frame.resources) {
           if (resource.kind !== 'vertices' && resource.kind !== 'indices') continue;
           if (!resource.data) {
@@ -590,7 +643,13 @@ export function createWebGPUBackend(
           // graph carries on its own; both are checked once in `validate`, reached
           // through `planFramePasses` before any of this builds (item 19).
           const spec = resource;
-          const built = own(() =>
+          // Allocated so the handle is kept, not just the resolved buffer: a
+          // readback names this buffer by its arena handle through `arena.read`
+          // (item 89), so the name-to-handle it is recorded under below is what
+          // turns "read the buffer called `copies`" into a handle the arena
+          // resolves. It is `owned` like any resident this program frees on
+          // dispose, exactly as `own` would have collected it.
+          const handle = arena.allocate(() =>
             device.createBuffer({
             label: spec.name,
             size: spec.bytes,
@@ -615,7 +674,10 @@ export function createWebGPUBackend(
                 (spec.data ? GPUBufferUsage.COPY_DST : 0),
             })
           );
+          owned.push(handle);
+          const built = arena.resolve(handle) as GPUBuffer;
           buffers.set(resource.name, built);
+          bufferHandles.set(resource.name, handle);
           // The contents the build wrote, uploaded once before anything reads them,
           // which is what a copy of a pipeline carrying its own numbers is handed.
           // A buffer arriving with contents is the one kind the page may write later,
@@ -1067,6 +1129,7 @@ export function createWebGPUBackend(
           buffer,
           bufferHandle,
           buffers,
+          bufferHandles,
           textures,
           times,
           counting,
@@ -1087,7 +1150,13 @@ export function createWebGPUBackend(
         };
       }
 
-      return {
+      // Held in a variable rather than returned as a literal because it carries
+      // one method beyond the `ShaderProgram` interface — `bufferHandle`, the
+      // item-89 readback bridge the timing and surface gates reach — and the
+      // public interface is deliberately left unchanged (that surface is item 90's
+      // to dismantle, not this item's to grow). A widened local is assignable to
+      // `ShaderProgram` with the extra method along for the ride.
+      const program = {
         setUniforms(feed: Record<string, UniformValue>) {
           for (const [name, value] of Object.entries(feed)) {
             const start = at.get(name);
@@ -1185,35 +1254,31 @@ export function createWebGPUBackend(
           resolveTurns();
         },
 
+        // The arena handle a named buffer was allocated under, so a caller reading
+        // one back names it through `arena.read` — the §9 door (item 89) — rather
+        // than through this program. It is the bridge until the graph's names are
+        // themselves handles (Stage 2, item 16): a name-keyed lookup here stands in
+        // for the handle a producer will one day hold directly. A name that is no
+        // readable buffer of this frame is refused, the same as `readBuffer` did.
+        bufferHandle(name: string): Handle {
+          const handle = bufferHandles.get(name);
+          if (handle === undefined) {
+            throw new Error(`the frame for "${frame.id}" declares no buffer called "${name}"`);
+          }
+          return handle;
+        },
+
         async readBuffer(name: string) {
-          const held = buffers.get(name);
-          if (!held) throw new Error(`the frame for "${frame.id}" declares no buffer called "${name}"`);
-
-          // Copied into a buffer of its own rather than mapped where it is: a
-          // buffer the shader writes cannot be mapped, and mapping the one the
-          // frame uses would take it away from the next frame. It is allocated and
-          // freed through the arena within this call, so the slot it took is
-          // returned the moment the read is done.
-          const stagingHandle = arena.allocate(() =>
-            device.createBuffer({
-              label: `${name}-read`,
-              size: held.size,
-              usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-            })
-          );
-          const staging = arena.resolve(stagingHandle) as GPUBuffer;
-          const encoder = device.createCommandEncoder();
-          encoder.copyBufferToBuffer(held, 0, staging, 0, held.size);
-          device.queue.submit([encoder.finish()]);
-
-          await staging.mapAsync(GPUMapMode.READ);
-          // Copied out of the mapping rather than handed over as a view of it,
-          // since the memory behind a mapping is gone the moment it is unmapped
-          // and a caller reading it afterwards reads nothing.
-          const words = new Uint32Array(staging.getMappedRange().slice(0));
-          staging.unmap();
-          arena.free(stagingHandle);
-          return words;
+          const handle = bufferHandles.get(name);
+          if (handle === undefined) throw new Error(`the frame for "${frame.id}" declares no buffer called "${name}"`);
+          // The words as they stand, read through the arena's own `read` (item 89)
+          // rather than mapped inline here — a buffer the shader writes cannot be
+          // mapped, so `read` copies it into a staging buffer of the moment and
+          // returns its bytes. Words rather than bytes because a card fills a buffer
+          // of its own accord with counts; a caller wanting bytes reads the words'
+          // memory. `readBuffer` stays only until item 82 removes it; its two gate
+          // consumers already read through `arena.read` directly (item 89).
+          return new Uint32Array(await arena.read(handle));
         },
 
         dispose() {
@@ -1231,6 +1296,7 @@ export function createWebGPUBackend(
           buffers.clear();
         },
       };
+      return program;
     },
 
     resize(w: number, h: number) {
@@ -1282,6 +1348,7 @@ export function createWebGPUBackend(
       if (configured) context.unconfigure();
     },
   };
+  return backend;
 }
 
 /** Every document of the frame is compiled, and each is asked about itself rather

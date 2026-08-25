@@ -3267,7 +3267,7 @@ new door name a consumer builds against.
 
 ### 89. `Arena.read`, and a readback door that is not `ShaderProgram`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The readback §9 puts on the arena — `read(h: BufferHandle, range?): Promise<ArrayBuffer>` —
 and the two callers that read a buffer's words today routed through it.
@@ -3288,6 +3288,17 @@ deleting `ShaderProgram` removes `readBuffer` as a side effect, which is another
 removal deletes a landed item's readings unless a door exists first. This is that door. It needs
 item 88 because a readback wants a handle, and `submit` is what hands the caller something that is
 not a `ShaderProgram`. **Reverse:** delete this item; item 82 reverts to naming items 67 and 68.
+
+**What landed, and the doable half.** `Arena.read(handle, range?): Promise<ArrayBuffer>` (§9), the
+readback handed to the arena at construction the way the disposer is — WebGPU maps a staging buffer,
+WebGL 2 answers vacuously by capability. Both timing (`gates/times.mjs`) and surface
+(`gates/surface.mjs`) buffer readbacks route through it, and `ShaderProgram.readBuffer` now delegates
+to it too (its deletion is item 82's). §9 names the argument `BufferHandle`; today's arena addresses
+by its own generation-branded `Handle`, and the two do not unify until Stage 2 (item 16), so `read`
+takes the arena's `Handle` — the faithful doable half. A gate reaches the door through a small bridge:
+`arena` exposed on each backend and `bufferHandle(name)` on the WebGPU program, both kept **off** the
+public `Backend`/`ShaderProgram` types and removed when item 16 unifies handles and item 90 deletes
+`ShaderProgram`. See [JOURNAL.md](JOURNAL.md).
 
 ### 90. `ShaderProgram` is deleted
 
