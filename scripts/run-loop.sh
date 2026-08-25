@@ -44,6 +44,11 @@
 
 set -uo pipefail
 
+# Which model reads the batch and decides whether it is green. Steps inherit the
+# default from settings; only the closing verdict is named here. Override for a run
+# with GATE_MODEL=... in the environment.
+GATE_MODEL="${GATE_MODEL:-claude-opus-5[1m]}"
+
 REPO=$(git rev-parse --show-toplevel 2>/dev/null) || {
     echo "not inside a git repository"
     exit 2
@@ -409,8 +414,16 @@ if [ -n "$RUN_GATE" ]; then
     echo
     printf '===== batch gate over %s..HEAD =====\n' "${START_HEAD:0:8}" | tee -a "$LOG"
     rm -f "$STATE/gate-raw.log"
+    # The gate session names a model where a step does not, and the reason is a
+    # measured failure rather than a preference. A step writes code that the node
+    # suite, the browser gates and a reviewer all check afterwards; a gate session's
+    # output is a VERDICT, and a wrong verdict closes the question rather than
+    # failing loudly. One went wrong: a red batch was declared "a gate-harness
+    # esbuild fault, NOT the shipped code" on evidence that could not support it,
+    # and the defect it waved through reached every consumer who bundles. So the
+    # judgement call gets the better model and the typing does not.
     timeout --foreground 60m \
-        claude -p "$GATE_PROMPT" --permission-mode auto "${REFUSE[@]}" >>"$LOG" 2>&1
+        claude -p "$GATE_PROMPT" --model "$GATE_MODEL" --permission-mode auto "${REFUSE[@]}" >>"$LOG" 2>&1
     GATE_EXIT=$?
 
     # The gate's own output, not the session's account of it. Without this the log carries only
