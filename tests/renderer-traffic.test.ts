@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { ShaderFrame, VertexResource } from '@altpsyche/engine';
+import type { FrameGraph, VertexResource } from '@altpsyche/engine';
 
 /**
  * The resident traffic a backend reports — bytes written once into a resource's
@@ -50,7 +50,7 @@ const geometry = (over: Partial<VertexResource> = {}): VertexResource => ({
   ...over,
 });
 
-const gridFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const gridFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-traffic',
   target: 'wgsl',
   uniforms: [

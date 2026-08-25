@@ -1,7 +1,7 @@
 /**
  * `sceneView`, the scene tier's producer: a world and the cameras watching it
- * become a `FrameGraph` (today's `ShaderFrame`, per §14 and item 38's rename
- * horizon). It is [RoadToPureEngine.md](../docs/RoadToPureEngine.md) Stage 4's
+ * become a `FrameGraph` (the §14 name, landed by item 70; `FrameDescription` is
+ * still to fold in). It is [RoadToPureEngine.md](../docs/RoadToPureEngine.md) Stage 4's
  * `sceneView(arena, options).graph(world, views)`.
  *
  * A producer, not a backend: it imports the graph authoring layer (`graph/`) and
@@ -47,7 +47,7 @@ import type {
   RenderPassSpec,
   RenderPipelineSpec,
   ResourceSpec,
-  ShaderFrame,
+  FrameGraph,
   ShaderTarget,
   TextureResource,
 } from '../graph/types.js';
@@ -145,7 +145,7 @@ export interface SceneViewOptions<V> {
  * allocated so a world of the same shape reuses them rather than leaking a fresh
  * pair every frame — and it touches no device to do so. */
 export interface SceneView {
-  graph(world: Scene, views: readonly Camera[]): ShaderFrame;
+  graph(world: Scene, views: readonly Camera[]): FrameGraph;
 }
 
 /** Sixteen little-endian floats, which is what a `mat4x4<f32>` reads out of a
@@ -241,7 +241,7 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
   };
 
   return {
-    graph(world: Scene, views: readonly Camera[]): ShaderFrame {
+    graph(world: Scene, views: readonly Camera[]): FrameGraph {
       if (views.length === 0) {
         throw new Error(`sceneView "${options.id}" needs at least one view to draw, but was given none`);
       }
@@ -290,7 +290,7 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
         format: options.depth.format,
         use: ['attachment'],
       };
-      const passes: ShaderFrame['passes'] = groups.map((group, at): RenderPassSpec => {
+      const passes: FrameGraph['passes'] = groups.map((group, at): RenderPassSpec => {
         const pass: RenderPassSpec = {
           pipeline: group.pipeline.name,
           draws: [{ instances: batches.get(group.pipeline.name)!.length }],
@@ -306,7 +306,7 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
         return pass;
       });
 
-      const frame: ShaderFrame = {
+      const frame: FrameGraph = {
         id: options.id,
         target: options.target,
         uniforms: options.uniforms ?? [],

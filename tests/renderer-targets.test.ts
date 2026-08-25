@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { RenderPipelineSpec, ShaderFrame, TextureResource } from '@altpsyche/engine';
+import type { RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
 
 /**
  * A fragment stage returning more than one colour, and a colour mixed with what
@@ -53,7 +53,7 @@ const holds = (name: string, over: Partial<TextureResource> = {}): TextureResour
 
 /** Two colours out of one fragment stage into two textures, with the first of
  * them the one a reader sees. */
-const pairFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const pairFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-targets',
   target: 'wgsl',
   uniforms: [
@@ -199,7 +199,7 @@ describe('a fragment stage writing more than one colour', () => {
 });
 
 describe('a colour mixed with what the attachment held', () => {
-  const blended = (): ShaderFrame => {
+  const blended = (): FrameGraph => {
     const frame = pairFrame();
     const pipeline = frame.pipelines[0] as RenderPipelineSpec;
     return {
@@ -231,7 +231,7 @@ describe('a colour mixed with what the attachment held', () => {
 });
 
 describe('what a description disagreeing with itself about its colours is refused with', () => {
-  const refuses = (over: Partial<ShaderFrame>, said: string) => {
+  const refuses = (over: Partial<FrameGraph>, said: string) => {
     const { backend } = backendOver();
     expect(() => backend.program(pairFrame(over))).toThrow(said);
   };

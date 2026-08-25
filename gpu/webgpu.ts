@@ -26,7 +26,7 @@ import type {
   RenderPassSpec,
   RenderPipelineSpec,
   SamplerResource,
-  ShaderFrame,
+  FrameGraph,
   StencilMode,
   ShaderProgram,
   TextureResource,
@@ -366,7 +366,7 @@ export function createWebGPUBackend(
       arena.resetTraffic();
     },
 
-    program(frame: ShaderFrame): ShaderProgram {
+    program(frame: FrameGraph): ShaderProgram {
       if (frame.target !== 'wgsl') throw new Error(`WebGPU was handed a ${frame.target} frame to draw`);
 
       // The static lifetime of §5, owned by the pipeline cache rather than compiled
@@ -981,7 +981,7 @@ export function createWebGPUBackend(
           // grouped runs below (item 1). Both are turn-independent: a swap moves
           // which texture a name resolves to, not whether the name is read again
           // or whether two passes share a render pass.
-          const current: ShaderFrame = { ...frame, passes: runs.map((run) => run.pass) };
+          const current: FrameGraph = { ...frame, passes: runs.map((run) => run.pass) };
           const stores = frameStores(current);
           const passGroups = mergeGroups(current);
 
@@ -1324,7 +1324,7 @@ export function createWebGPUBackend(
  * prefixed by. */
 function compileModules(
   device: GPUDevice,
-  frame: ShaderFrame,
+  frame: FrameGraph,
   onRefused?: (message: string) => void
 ): Map<string, GPUShaderModule> {
   const compiled = new Map<string, GPUShaderModule>();
@@ -1346,7 +1346,7 @@ function compileModules(
  * made against them. */
 function buildPipelines(
   device: GPUDevice,
-  frame: ShaderFrame,
+  frame: FrameGraph,
   compiled: Map<string, GPUShaderModule>,
   geometryOf: (name: string) => DrawnGeometry,
   fullscreen: GPUShaderModule,
@@ -1480,7 +1480,7 @@ function buildPipelines(
       // names is given its own, since a constant naming nothing in the module
       // it is handed to is refused.
       if (spec.kind === 'compute') {
-        const constants = moduleOf(frame, spec.compute.module)?.overrides;
+        const constants = moduleOf(frame, spec.compute.module)?.constants;
         return {
           pipeline: device.createComputePipeline({
             layout: pipelineLayout,
@@ -1491,7 +1491,7 @@ function buildPipelines(
         };
       }
 
-      const constants = moduleOf(frame, spec.fragment.module)?.overrides;
+      const constants = moduleOf(frame, spec.fragment.module)?.constants;
       // How one vertex is read out of the buffer, which is spent when the
       // pipeline is made and cannot be given at the draw. A pipeline naming no
       // geometry reads no buffer at all, which is the frame's own corners.

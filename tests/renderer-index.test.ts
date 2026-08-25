@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createFrameRenderer, PROGRAM_CACHE_LIMIT } from '@altpsyche/engine';
 import { wgslFrame } from '@altpsyche/engine';
-import type { ShaderFrame } from '@altpsyche/engine';
+import type { FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU, paddedFrame } from './support/fake-gpu';
 
 /**
@@ -32,7 +32,7 @@ const UNIFORMS = [
 
 /** The one-pass description of the fixture, built the way the build builds one,
  * so what these assert is the renderer rather than a shape written here. */
-const artefact = (over: { id?: string; code?: string } = {}): ShaderFrame =>
+const graph = (over: { id?: string; code?: string } = {}): FrameGraph =>
   wgslFrame(over.id ?? 'fixture', over.code ?? CODE, BLOCK, UNIFORMS);
 
 /** A renderer over a recording device, with the trace it writes to. */
@@ -68,7 +68,7 @@ describe('which backend it builds', () => {
 describe('the programs it keeps', () => {
   it('compiles one shader once however many frames are drawn from it', async () => {
     const { gpu, renderer } = await rendererOver();
-    const one = artefact();
+    const one = graph();
 
     renderer.draw(one, { u_time: 1 });
     renderer.draw(one, { u_time: 2 });
@@ -87,16 +87,16 @@ describe('the programs it keeps', () => {
     const after = '@fragment fn fragMain() -> @location(0) vec4<f32> { return vec4<f32>(0.5); }';
     expect(after).toHaveLength(before.length);
 
-    renderer.draw(artefact({ code: before }), {});
-    renderer.draw(artefact({ code: after }), {});
+    renderer.draw(graph({ code: before }), {});
+    renderer.draw(graph({ code: after }), {});
 
     expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
   });
 
   it('keeps a program per shader rather than one at a time', async () => {
     const { gpu, renderer } = await rendererOver();
-    const one = artefact({ id: 'one' });
-    const other = artefact({ id: 'other' });
+    const one = graph({ id: 'one' });
+    const other = graph({ id: 'other' });
 
     renderer.draw(one, {});
     renderer.draw(other, {});
@@ -142,7 +142,7 @@ describe('the programs it keeps', () => {
   it('builds the program to answer what the shader declares and nothing reads', async () => {
     const { gpu, renderer } = await rendererOver();
 
-    expect(renderer.unreached(artefact(), ['u_time', 'u_nowhere'])).toEqual(['u_nowhere']);
+    expect(renderer.unreached(graph(), ['u_time', 'u_nowhere'])).toEqual(['u_nowhere']);
     expect(gpu.calls('createRenderPipeline')).toHaveLength(1);
   });
 });
@@ -152,7 +152,7 @@ describe('the programs it lets go', () => {
   // shared pipeline structure, since the source and its layout do not change. That
   // is why building a program is counted through its own bind group below and not
   // through a pipeline compilation the shared cache now runs once for the whole run.
-  const edit = (n: number) => artefact({ id: `edit-${n}` });
+  const edit = (n: number) => graph({ id: `edit-${n}` });
 
   it('keeps at most the limit alive, disposing the stalest as new edits arrive', async () => {
     const { gpu, renderer } = await rendererOver();
@@ -221,7 +221,7 @@ describe('the programs it lets go', () => {
 describe('drawing against reading', () => {
   it('leaves the pixels on the canvas when it is only asked to draw', async () => {
     const { gpu, renderer } = await rendererOver();
-    renderer.draw(artefact(), { u_time: 1 });
+    renderer.draw(graph(), { u_time: 1 });
 
     expect(gpu.calls('draw')).toHaveLength(1);
     expect(gpu.calls('copyTextureToBuffer')).toHaveLength(0);
@@ -232,7 +232,7 @@ describe('drawing against reading', () => {
     renderer.resize(4, 3);
     gpu.mapped = paddedFrame(4, 3);
 
-    const pixels = await renderer.frame(artefact(), { u_time: 1 });
+    const pixels = await renderer.frame(graph(), { u_time: 1 });
 
     expect(gpu.calls('draw')).toHaveLength(1);
     expect(gpu.calls('copyTextureToBuffer')).toHaveLength(1);
@@ -253,7 +253,7 @@ describe('drawing against reading', () => {
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
     });
 
-    const pixels = await renderer.frame(artefact(), { u_time: 1 }, into);
+    const pixels = await renderer.frame(graph(), { u_time: 1 }, into);
 
     // The frame landed in the caller's texture, and the read came back out of it
     // rather than the backend's own target — with the row-stride repack owned in
@@ -268,7 +268,7 @@ describe('drawing against reading', () => {
 
   it('writes the values it was handed before it draws', async () => {
     const { gpu, renderer } = await rendererOver();
-    renderer.draw(artefact(), { u_time: 3, u_resolution: [7, 9] });
+    renderer.draw(graph(), { u_time: 3, u_resolution: [7, 9] });
 
     expect([...gpu.written()!]).toEqual([3, 0, 7, 9]);
   });
@@ -280,7 +280,7 @@ describe('drawing against reading', () => {
     // is what flushes it, so the double sees it land before the draw — the order
     // the executor guarantees rather than one setUniforms happened to leave.
     renderer.resize(320, 180);
-    renderer.draw(artefact(), { u_time: 1, u_resolution: [320, 180] });
+    renderer.draw(graph(), { u_time: 1, u_resolution: [320, 180] });
 
     // u_resolution sits at byte 8, which is float 2 in the block, so the write
     // carrying the resized width is the one whose third float is 320. The read is
@@ -301,8 +301,8 @@ describe('drawing against reading', () => {
 describe('what it gives back when it is done', () => {
   it('destroys every program it kept and takes the backend with it', async () => {
     const { gpu, renderer } = await rendererOver();
-    renderer.draw(artefact({ id: 'one' }), {});
-    renderer.draw(artefact({ id: 'other' }), {});
+    renderer.draw(graph({ id: 'one' }), {});
+    renderer.draw(graph({ id: 'other' }), {});
 
     renderer.dispose();
 
@@ -312,7 +312,7 @@ describe('what it gives back when it is done', () => {
 
   it('compiles again after a dispose rather than handing back a dead program', async () => {
     const { gpu, renderer } = await rendererOver();
-    const one = artefact();
+    const one = graph();
     renderer.draw(one, {});
     renderer.dispose();
     renderer.draw(one, {});

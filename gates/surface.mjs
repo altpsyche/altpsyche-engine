@@ -22,7 +22,7 @@ const fixture = (id) => corpus.find((one) => one.id === id);
 
 const VERTEX = 'attribute vec3 position;void main(){gl_Position=vec4(position.xy,0.0,1.0);}';
 
-const ARTEFACT = glslFrame(
+const GRAPH = glslFrame(
   'surface-probe',
   VERTEX,
   'precision highp float;uniform float u_time;uniform vec2 u_resolution;' +
@@ -129,7 +129,7 @@ await page.setContent('<body><canvas id="c" style="width:200px;height:100px"></c
 await page.addScriptTag({ path: bundle });
 
 const results = await page.evaluate(
-  async ({ artefact, second, sameLength, broken }) => {
+  async ({ graph, second, sameLength, broken }) => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const canvas = document.getElementById('c');
     const checks = [];
@@ -169,7 +169,7 @@ const results = await page.evaluate(
       }
     };
 
-    const surface = await window.createSurface(canvas, artefact, {
+    const surface = await window.createSurface(canvas, graph, {
       uniforms: (elapsed) => {
         frames++;
         return { u_time: elapsed, u_resolution: [canvas.width, canvas.height] };
@@ -219,7 +219,7 @@ const results = await page.evaluate(
 
     surface.start();
     await sleep(150);
-    const refusedSwap = surface.setArtefact(second);
+    const refusedSwap = surface.setGraph(second);
     await sleep(200);
     const afterSwap = frames;
     await sleep(200);
@@ -229,7 +229,7 @@ const results = await page.evaluate(
       detail: `centre ${centre}, ${frames - afterSwap} frames after the swap${refusedSwap ? `, refused: ${refusedSwap}` : ''}`,
     });
 
-    surface.setArtefact(sameLength);
+    surface.setGraph(sameLength);
     await sleep(200);
     checks.push({
       name: 'an edit that leaves the source the same length still reaches the card',
@@ -237,7 +237,7 @@ const results = await page.evaluate(
       detail: `centre ${centre}, both sources ${second.modules.find((m) => m.name === 'fragment').code.length} characters`,
     });
 
-    const refusedBroken = surface.setArtefact(broken);
+    const refusedBroken = surface.setGraph(broken);
     await sleep(250);
     const afterBroken = frames;
     await sleep(200);
@@ -254,7 +254,7 @@ const results = await page.evaluate(
     // keeps have to move together or part of the frame is never drawn into.
     // Every other resize here is to the size the canvas already had, which asks
     // none of that.
-    surface.setArtefact(artefact);
+    surface.setGraph(graph);
     surface.resize(320, 180);
     sampleWhole = true;
     surface.start();
@@ -305,7 +305,7 @@ const results = await page.evaluate(
     surface.dispose();
     return checks;
   },
-  { artefact: ARTEFACT, second: SECOND, sameLength: SAME_LENGTH, broken: BROKEN }
+  { graph: GRAPH, second: SECOND, sameLength: SAME_LENGTH, broken: BROKEN }
 );
 
 await browser.close();
@@ -333,7 +333,7 @@ await gpuPage.goto(`http://127.0.0.1:${PORT}/`);
 await gpuPage.addScriptTag({ path: bundle });
 
 const gpuResults = await gpuPage.evaluate(
-  async ({ artefact, broken, state, perdraw }) => {
+  async ({ graph, broken, state, perdraw }) => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const canvas = document.createElement('canvas');
     const checks = [];
@@ -382,7 +382,7 @@ const gpuResults = await gpuPage.evaluate(
       return rows;
     };
 
-    const surface = await window.createSurface(canvas, artefact, {
+    const surface = await window.createSurface(canvas, graph, {
       backend: 'webgpu',
       device,
       uniforms: (elapsed) => {
@@ -403,7 +403,7 @@ const gpuResults = await gpuPage.evaluate(
       detail: `${frames} frames in 500ms on ${surface.backend}${said.length ? `, said: ${said[0]}` : ''}`,
     });
 
-    surface.setArtefact(broken);
+    surface.setGraph(broken);
     await sleep(500);
     const afterBroken = frames;
     await sleep(300);
@@ -417,7 +417,7 @@ const gpuResults = await gpuPage.evaluate(
     // more ways to get wrong: it keeps a texture of its own, and the copy that
     // reaches a canvas names the size it last recorded, so three sizes have to
     // move together where the other backend has one.
-    surface.setArtefact(artefact);
+    surface.setGraph(graph);
     surface.resize(320, 180);
     surface.start();
     await sleep(300);
@@ -454,7 +454,7 @@ const gpuResults = await gpuPage.evaluate(
     // program outlives a stop, so what is asked here is whether that holds: a
     // paused surface reads the same twice, and a resumed one carries on rather
     // than starting from an empty grid.
-    surface.setArtefact(state);
+    surface.setGraph(state);
     surface.resize(200, 100);
     surface.start();
     await sleep(700);
@@ -566,7 +566,7 @@ const gpuResults = await gpuPage.evaluate(
     return checks;
   },
   {
-    artefact: WGSL,
+    graph: WGSL,
     broken: WGSL_BROKEN,
     state: STATE,
     perdraw: { description: perdrawDescription, texts: perdrawTexts, block: perdraw.block, uniforms: perdraw.entry.uniforms, bytes: perdrawBytes },

@@ -25,7 +25,7 @@
  * at the end of the pass whatever its source does. A depth attachment keeping
  * both halves takes a load op and a store op for each half.
  */
-import type { PipelineSpec, ResourceSpec, RenderPipelineSpec, ShaderFrame, TextureResource } from './types.js';
+import type { PipelineSpec, ResourceSpec, RenderPipelineSpec, FrameGraph, TextureResource } from './types.js';
 import { isRenderPass } from './types.js';
 import { frameStores } from './attachments.js';
 
@@ -178,7 +178,7 @@ function bindKeyOf(spec: PipelineSpec): string {
  * The cost of one frame at one size, by structure alone. Pure and deterministic:
  * it touches no device and reads nothing but the graph and the size.
  */
-export function cost(graph: ShaderFrame, size: { width: number; height: number }): FrameCost {
+export function cost(graph: FrameGraph, size: { width: number; height: number }): FrameCost {
   const pipelineOf = new Map(graph.pipelines.map((spec) => [spec.name, spec]));
 
   let draws = 0;

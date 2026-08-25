@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSurface, resolveDensity } from '@altpsyche/engine';
 import { wgslFrame } from '@altpsyche/engine';
-import type { ShaderFrame } from '@altpsyche/engine';
+import type { FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU } from './support/fake-gpu';
 
 /**
@@ -41,7 +41,7 @@ const UNIFORMS = [
 
 /** The one-pass description of the fixture, built the way the build builds one,
  * so what these assert is the renderer rather than a shape written here. */
-const artefact = (over: { id?: string; code?: string } = {}): ShaderFrame =>
+const graph = (over: { id?: string; code?: string } = {}): FrameGraph =>
   wgslFrame(over.id ?? 'fixture', over.code ?? CODE, BLOCK, UNIFORMS);
 
 /** The animation frame, driven by hand. The browser's own would make every test
@@ -59,7 +59,7 @@ function frame(at: number) {
 async function surfaceOver(options: Record<string, unknown> = {}) {
   const canvas = document.createElement('canvas');
   const gpu = createFakeGPU({ over: canvas });
-  const surface = await createSurface(canvas, artefact(), {
+  const surface = await createSurface(canvas, graph(), {
     backend: 'webgpu',
     device: gpu.device,
     uniforms: (elapsed) => ({ u_time: elapsed }),
@@ -175,23 +175,23 @@ describe('the clock', () => {
 describe('swapping the shader without taking the canvas with it', () => {
   it('draws the new source straight away, since compiling is what says it took', async () => {
     const { gpu, surface } = await surfaceOver();
-    const next = artefact({
+    const next = graph({
       id: 'next',
       code: '@fragment fn fragMain() -> @location(0) vec4<f32> { return vec4<f32>(0.5); }',
     });
 
-    expect(surface.setArtefact(next)).toBeNull();
+    expect(surface.setGraph(next)).toBeNull();
     expect(gpu.calls('createRenderPipeline')).toHaveLength(1);
     expect(gpu.calls('draw')).toHaveLength(1);
   });
 
-  it('does nothing for a swap to the artefact already on screen', async () => {
+  it('does nothing for a swap to the graph already on screen', async () => {
     const { gpu, surface } = await surfaceOver();
-    const same = artefact();
-    surface.setArtefact(same);
+    const same = graph();
+    surface.setGraph(same);
     const drawn = gpu.calls('draw').length;
 
-    expect(surface.setArtefact(same)).toBeNull();
+    expect(surface.setGraph(same)).toBeNull();
     expect(gpu.calls('draw')).toHaveLength(drawn);
   });
 
@@ -256,7 +256,7 @@ describe('when the graphics card goes away', () => {
     });
 
     const gone = vi.fn();
-    const surface = (await createSurface(canvas, artefact(), {
+    const surface = (await createSurface(canvas, graph(), {
       backend: 'webgpu',
       device: gpu.device,
       uniforms: () => ({}),

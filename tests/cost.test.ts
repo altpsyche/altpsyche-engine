@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cost } from '@altpsyche/engine';
-import type { PassSpec, PipelineSpec, ResourceSpec, ShaderFrame } from '@altpsyche/engine';
+import type { PassSpec, PipelineSpec, ResourceSpec, FrameGraph } from '@altpsyche/engine';
 
 /**
  * `cost(graph, size)` — the pure structural metric of §17 decision 9, item 21.
@@ -20,7 +20,7 @@ function frame(over: {
   pipelines?: PipelineSpec[];
   passes: PassSpec[];
   resources?: ResourceSpec[];
-}): ShaderFrame {
+}): FrameGraph {
   return {
     id: 'cost-fixture',
     target: 'wgsl',

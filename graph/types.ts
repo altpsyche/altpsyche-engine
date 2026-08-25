@@ -15,7 +15,7 @@ import type { Capability } from './capability.js';
 export type BackendName = 'webgl2' | 'webgpu';
 
 /** Which language a backend takes its shaders in. It is not the same thing as
- * the backend's name, because it is the artefact that has to be fetched for a
+ * the backend's name, because it is the graph that has to be fetched for a
  * target and a reader is sent one of them rather than both. */
 export type ShaderTarget = 'glsl' | 'wgsl';
 
@@ -37,7 +37,7 @@ export interface ModuleSpec {
    * The text is the same at every rung, so these numbers are the only thing
    * separating a phone's picture from a desktop's, and they are spent when the
    * pipeline is made rather than written into the code. */
-  overrides?: Record<string, number>;
+  constants?: Record<string, number>;
 }
 
 /** Where one uniform sits in the block Slang gathers them all into. Read off the
@@ -468,7 +468,7 @@ export interface FrameDescription {
  * description with one resource, one pipeline and one pass in it, which is why
  * the reshape adds nothing to what either backend does.
  */
-export interface ShaderFrame {
+export interface FrameGraph {
   id: string;
   target: ShaderTarget;
   /** The names and types a caller may feed. A page draws its controls from the
@@ -501,14 +501,14 @@ export interface ShaderFrame {
 }
 
 /** The one uniform block of a frame, or undefined where it describes none. */
-export function uniformResourceOf(frame: ShaderFrame): UniformResource | undefined {
+export function uniformResourceOf(frame: FrameGraph): UniformResource | undefined {
   return frame.resources.find((resource): resource is UniformResource => resource.kind === 'uniform');
 }
 
 /** One resource of a frame by the name a binding gave it, or undefined where the
  * frame declares none by that name, which is a description the renderer refuses
  * before it reaches the device. */
-export function resourceOf(frame: ShaderFrame, name: string): ResourceSpec | undefined {
+export function resourceOf(frame: FrameGraph, name: string): ResourceSpec | undefined {
   return frame.resources.find((resource) => resource.name === name);
 }
 
@@ -549,7 +549,7 @@ export function dispatchesIndirectly(dispatch: Dispatch): dispatch is { indirect
 }
 
 /** One document of a frame by the name a pipeline gave it. */
-export function moduleOf(frame: ShaderFrame, name: string): ModuleSpec | undefined {
+export function moduleOf(frame: FrameGraph, name: string): ModuleSpec | undefined {
   return frame.modules.find((module) => module.name === name);
 }
 
@@ -715,7 +715,7 @@ export interface Backend {
    * this only composes them, per [RoadToPureEngine.md](../docs/RoadToPureEngine.md)
    * §5 and [ROADMAP.md](../docs/ROADMAP.md) item 15.
    */
-  program(frame: ShaderFrame): ShaderProgram;
+  program(frame: FrameGraph): ShaderProgram;
   resize(width: number, height: number): void;
   /** Reads the frame back as RGBA, top row first on both backends. WebGL hands
    * it back bottom row first and that is corrected here, because a caller

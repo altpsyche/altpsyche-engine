@@ -26,7 +26,7 @@
  * Nothing is exported from the package door here: like the arena, the cache is a
  * mechanism the backend and the executor reach, not a type a consumer names.
  */
-import type { PipelineSpec, ShaderFrame, VertexResource } from '../graph/types.js';
+import type { PipelineSpec, FrameGraph, VertexResource } from '../graph/types.js';
 import { moduleOf, resourceOf } from '../graph/types.js';
 
 /** The brand that stops a plain number being passed where a pipeline handle is
@@ -44,7 +44,7 @@ export type PipelineHandle = number & { readonly [PIPELINE_HANDLE]: true };
  * name over different bodies key apart. The vertex layout is resolved from the
  * geometry the pipeline reads, because that layout is spent when the pipeline is
  * made. Everything else a card bakes in — entry points, formats and blend, depth
- * and stencil, sample count, the overrides a rung lands — travels on `spec`. */
+ * and stencil, sample count, the constants a rung lands — travels on `spec`. */
 export interface PipelineStructure {
   kind: PipelineSpec['kind'];
   /** The source each stage runs and the entry point inside it, resolved to the
@@ -85,7 +85,7 @@ export interface PipelineStructure {
  * module is left as empty text rather than thrown on: a structure with no code is
  * a distinct structure, and the throw belongs where the pipeline is actually built
  * against the card, not where its key is taken. */
-function stagesOf(frame: ShaderFrame, spec: PipelineSpec): { code: string; entry: string }[] {
+function stagesOf(frame: FrameGraph, spec: PipelineSpec): { code: string; entry: string }[] {
   const resolve = (named: { module: string; entry: string }) => ({
     code: moduleOf(frame, named.module)?.code ?? '',
     entry: named.entry,
@@ -98,7 +98,7 @@ function stagesOf(frame: ShaderFrame, spec: PipelineSpec): { code: string; entry
 
 /** The vertex layout a render pipeline's geometry imposes, resolved from the frame
  * so the layout rather than the name it points at is what keys the pipeline. */
-function vertexOf(frame: ShaderFrame, spec: PipelineSpec): PipelineStructure['vertex'] {
+function vertexOf(frame: FrameGraph, spec: PipelineSpec): PipelineStructure['vertex'] {
   if (spec.kind !== 'render' || spec.geometry === undefined) return undefined;
   const geometry = resourceOf(frame, spec.geometry);
   if (!geometry || geometry.kind !== 'vertices') return undefined;
@@ -109,7 +109,7 @@ function vertexOf(frame: ShaderFrame, spec: PipelineSpec): PipelineStructure['ve
  * so the resolved kind rather than the name it points at keys the pipeline. A
  * binding pointing at a resource the frame does not declare carries its group and
  * binding alone, left for the layout build to throw on rather than thrown on here. */
-function bindingsOf(frame: ShaderFrame, spec: PipelineSpec): NonNullable<PipelineStructure['bindings']> {
+function bindingsOf(frame: FrameGraph, spec: PipelineSpec): NonNullable<PipelineStructure['bindings']> {
   return spec.bindings.map((at) => {
     const fact: NonNullable<PipelineStructure['bindings']>[number] = { group: at.group, binding: at.binding };
     const resource = resourceOf(frame, at.resource);
@@ -128,7 +128,7 @@ function bindingsOf(frame: ShaderFrame, spec: PipelineSpec): NonNullable<Pipelin
  * where the module that owns pipeline structure decides what a pipeline is made
  * of, so a backend building one and this cache keying one agree by construction
  * rather than by two lists that could drift. */
-export function pipelineStructureOf(frame: ShaderFrame, spec: PipelineSpec): PipelineStructure {
+export function pipelineStructureOf(frame: FrameGraph, spec: PipelineSpec): PipelineStructure {
   return {
     kind: spec.kind,
     stages: stagesOf(frame, spec),
@@ -310,7 +310,7 @@ function canonical(value: unknown): string {
  * here move to the arena's and the executor's handles and this composite key goes
  * with them.
  */
-export function frameKey(frame: ShaderFrame): string {
+export function frameKey(frame: FrameGraph): string {
   const pipelines = frame.pipelines.map((spec) => structureKey(pipelineStructureOf(frame, spec)));
   // One canonical serialisation over an array, rather than joined field strings,
   // so the boundary between two fields is the array's own structure and no id or

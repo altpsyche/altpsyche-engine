@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { assembleFrame, documentNames } from '@altpsyche/engine';
-import type { FrameDescription, ShaderFrame } from '@altpsyche/engine';
+import type { FrameDescription, FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU } from './support/fake-gpu';
 
 /**
@@ -34,7 +34,7 @@ const description: FrameDescription = {
   passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }],
 };
 
-function assembled(): ShaderFrame {
+function assembled(): FrameGraph {
   return assembleFrame(
     'two-wgsl-documents',
     description,

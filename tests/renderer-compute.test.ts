@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { frameOf } from '@altpsyche/engine';
-import type { ShaderFrame } from '@altpsyche/engine';
+import type { FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU } from './support/fake-gpu';
 import { loadFixture } from './support/fixture';
 
@@ -28,7 +28,7 @@ const workgroup = () => {
   return pipeline.workgroup;
 };
 
-function drawn(): { gpu: ReturnType<typeof createFakeGPU>; frame: ShaderFrame } {
+function drawn(): { gpu: ReturnType<typeof createFakeGPU>; frame: FrameGraph } {
   const gpu = createFakeGPU();
   const backend = createWebGPUBackend(gpu.canvas, gpu.device);
   if (!backend) throw new Error('the fake canvas gave no WebGPU context');

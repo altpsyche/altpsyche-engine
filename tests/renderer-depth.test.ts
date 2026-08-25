@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { RenderPipelineSpec, ShaderFrame, TextureResource } from '@altpsyche/engine';
+import type { RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
 
 /**
  * Two surfaces at two distances, which is the first frame where what is drawn
@@ -52,7 +52,7 @@ const kept = (over: Partial<TextureResource> = {}): TextureResource => ({
 
 /** One pipeline testing depth over one attachment, which is the smallest frame
  * that has both halves of it. */
-const tiltedFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const tiltedFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-depth',
   target: 'wgsl',
   uniforms: [
@@ -78,7 +78,7 @@ const tiltedFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
 /** The same frame with a second pipeline drawn in front of the first without
  * leaving its own depth behind, which is what lets the far surface show through
  * the near one. Both run in one pass over one attachment. */
-const crossingFrame = (): ShaderFrame => {
+const crossingFrame = (): FrameGraph => {
   const frame = tiltedFrame();
   const behind = frame.pipelines[0] as RenderPipelineSpec;
   return {
@@ -122,7 +122,7 @@ describe('the texture a frame keeps its depth in', () => {
     const frame = tiltedFrame();
     const passes = [
       { ...(frame.passes[0] as object), depth: { resource: 'depth', clear: 0.25 } },
-    ] as ShaderFrame['passes'];
+    ] as FrameGraph['passes'];
     backend.program(tiltedFrame({ passes })).draw();
 
     // One pass tests against this depth and nothing reads it afterwards, so the
@@ -237,7 +237,7 @@ describe('the depth state a pipeline draws under', () => {
 });
 
 describe('what a description disagreeing with itself about depth is refused with', () => {
-  const refuses = (over: Partial<ShaderFrame>, said: string) => {
+  const refuses = (over: Partial<FrameGraph>, said: string) => {
     const { backend } = backendOver();
     expect(() => backend.program(tiltedFrame(over))).toThrow(said);
   };

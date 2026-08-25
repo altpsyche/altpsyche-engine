@@ -28,7 +28,7 @@
  * answer on any machine, and `cost()` can assert the store count and a trace can
  * assert the pass count with neither a card nor a browser.
  */
-import type { RenderPassSpec, RenderPipelineSpec, ShaderFrame } from './types.js';
+import type { RenderPassSpec, RenderPipelineSpec, FrameGraph } from './types.js';
 import { isRenderPass } from './types.js';
 
 /** Whether each attachment a render pass writes is kept — stored — or may be
@@ -75,7 +75,7 @@ function halvesOf(
  * because over-keeping only costs bandwidth while under-keeping is a wrong
  * picture. Everything not shown to be read is discarded.
  */
-export function frameStores(frame: ShaderFrame): PassStore[] {
+export function frameStores(frame: FrameGraph): PassStore[] {
   const present = frame.present;
   const swapped = new Set<string>();
   for (const [one, other] of frame.swap ?? []) {
@@ -165,7 +165,7 @@ export function frameStores(frame: ShaderFrame): PassStore[] {
  *   their swap partners — the one dependency that needs a pass boundary rather
  *   than raster ordering, and so the one that forbids the merge.
  */
-export function mergeGroups(frame: ShaderFrame): number[][] {
+export function mergeGroups(frame: FrameGraph): number[][] {
   const pipelineOf = new Map(frame.pipelines.map((spec) => [spec.name, spec]));
   const partner = new Map<string, string>();
   for (const [one, other] of frame.swap ?? []) {

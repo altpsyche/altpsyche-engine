@@ -30,7 +30,7 @@ import {
   drawList,
   batchOnePipeline,
   compareTraces,
-  type ShaderFrame,
+  type FrameGraph,
 } from '@altpsyche/engine';
 import { createFakeGPU, paddedFrame } from './support/fake-gpu';
 
@@ -52,7 +52,7 @@ const UNIFORMS = [
   { name: 'u_resolution', type: 'vec2' },
 ];
 
-const artefact = (): ShaderFrame => wgslFrame('consumer-check', CODE, BLOCK, UNIFORMS);
+const graph = (): FrameGraph => wgslFrame('consumer-check', CODE, BLOCK, UNIFORMS);
 
 async function main(): Promise<void> {
   const failures: string[] = [];
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   if (!renderer) throw new Error('the door gave no renderer');
   renderer.resize(4, 3);
   gpu.mapped = paddedFrame(4, 3);
-  const pixels = await renderer.frame(artefact(), { u_time: 0.5, u_resolution: [4, 3] });
+  const pixels = await renderer.frame(graph(), { u_time: 0.5, u_resolution: [4, 3] });
 
   check('the renderer reports the backend it built', renderer.backend === 'webgpu', renderer.backend);
   check('one draw reached the device', gpu.calls('draw').length === 1, gpu.calls('draw').length);

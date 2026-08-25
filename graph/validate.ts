@@ -18,7 +18,7 @@
  * make (a texture the source never samples, a binding no resource backs) stay in
  * the build, because a graph carries no source to check them against.
  */
-import type { ShaderFrame } from './types.js';
+import type { FrameGraph } from './types.js';
 import { isRenderPass, perDrawBinding, resourceOf } from './types.js';
 
 /** A dynamic offset into a uniform buffer is taken at this alignment on both
@@ -44,7 +44,7 @@ const VISIBLE_QUERY_BYTES = QUERY_BYTES;
  * name the description gave the offending piece; returns nothing when the graph
  * is sound.
  */
-export function validate(graph: ShaderFrame): void {
+export function validate(graph: FrameGraph): void {
   const id = graph.id;
 
   // The depth and stencil state a pipeline compiles in has to agree with the

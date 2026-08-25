@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createFrameRenderer, wgslFrame, uniformBlockOf, vec3, drawList, type ShaderFrame } from '@altpsyche/engine';
+import { createFrameRenderer, wgslFrame, uniformBlockOf, vec3, drawList, type FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU, paddedFrame } from './support/fake-gpu';
 
 /**
@@ -24,7 +24,7 @@ const UNIFORMS = [
   { name: 'u_resolution', type: 'vec2' },
 ];
 
-const artefact = (): ShaderFrame => wgslFrame('consumer-fixture', CODE, BLOCK, UNIFORMS);
+const graph = (): FrameGraph => wgslFrame('consumer-fixture', CODE, BLOCK, UNIFORMS);
 
 describe('a consumer reaches the engine through its one entry point', () => {
   it('builds a renderer and draws a frame through the package door', async () => {
@@ -34,7 +34,7 @@ describe('a consumer reaches the engine through its one entry point', () => {
 
     renderer.resize(4, 3);
     gpu.mapped = paddedFrame(4, 3);
-    const pixels = await renderer.frame(artefact(), { u_time: 1 });
+    const pixels = await renderer.frame(graph(), { u_time: 1 });
 
     expect(renderer.backend).toBe('webgpu');
     expect(gpu.calls('draw')).toHaveLength(1);

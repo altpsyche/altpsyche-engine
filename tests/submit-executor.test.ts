@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createWebGL2Backend } from '../gpu/webgl2';
 import { wgslFrame, glslFrame } from '@altpsyche/engine';
-import type { ShaderFrame, UniformSlot } from '@altpsyche/engine';
+import type { FrameGraph, UniformSlot } from '@altpsyche/engine';
 import { createFakeGPU } from './support/fake-gpu';
 import { createFakeGL } from './support/fake-gl';
 import { drawGL2Frame } from '../submit/gl2';
@@ -41,11 +41,11 @@ const BLOCK: UniformSlot[] = [
   { name: 'u_resolution', offset: 8, size: 8 },
 ];
 
-const wgsl = (): ShaderFrame => wgslFrame('fixture', WGSL, BLOCK, UNIFORMS);
+const wgsl = (): FrameGraph => wgslFrame('fixture', WGSL, BLOCK, UNIFORMS);
 
 const VERTEX = '#version 300 es\nin vec3 position;\nvoid main(){gl_Position=vec4(position,1.0);}';
 const FRAGMENT = '#version 300 es\nprecision highp float;\nout vec4 c;\nvoid main(){c=vec4(1.0);}';
-const glsl = (): ShaderFrame => glslFrame('fixture', VERTEX, FRAGMENT, UNIFORMS);
+const glsl = (): FrameGraph => glslFrame('fixture', VERTEX, FRAGMENT, UNIFORMS);
 
 describe('every WebGPU draw goes through submit/execute', () => {
   it('submits the frame the executor recorded, once', () => {

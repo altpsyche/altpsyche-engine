@@ -98,7 +98,7 @@ export type {
   RenderPipelineSpec,
   ResourceSpec,
   SamplerResource,
-  ShaderFrame,
+  FrameGraph,
   ShaderProgram,
   ShaderTarget,
   StencilMode,

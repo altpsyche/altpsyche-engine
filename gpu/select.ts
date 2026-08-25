@@ -19,7 +19,7 @@
  * capability it forfeits, and every one it forfeits is one GLSL ES 3.0 has no
  * syntax for.
  */
-import type { BackendName, ShaderFrame, ShaderTarget } from '../graph/types.js';
+import type { BackendName, FrameGraph, ShaderTarget } from '../graph/types.js';
 
 /**
  * What this device offers, gathered once before any backend is chosen.
@@ -72,7 +72,7 @@ const MISSING: Record<BackendName, string> = {
  * speaks the frame's language and is offered here, and it names the backend that
  * was missing.
  */
-export function selectBackend(frame: Pick<ShaderFrame, 'target'>, offer: DeviceOffer): BackendSelection {
+export function selectBackend(frame: Pick<FrameGraph, 'target'>, offer: DeviceOffer): BackendSelection {
   const backend = SPEAKS[frame.target];
   const offered = backend === 'webgpu' ? offer.webgpu : offer.webgl2;
   if (offered) return { backend };

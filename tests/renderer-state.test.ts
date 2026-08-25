@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { ShaderFrame } from '@altpsyche/engine';
+import type { FrameGraph } from '@altpsyche/engine';
 
 /**
  * A pair of textures trading places every frame, which is what a field that grows
@@ -39,7 +39,7 @@ const PAIR = (name: string) =>
     use: ['storage', 'sample'] as ('storage' | 'sample')[],
   }) as const;
 
-const stateFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const stateFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-state',
   target: 'wgsl',
   uniforms: [

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { ONE_PASS, wgslFrame } from '@altpsyche/engine';
-import type { ShaderFrame, TextureResource } from '@altpsyche/engine';
+import type { FrameGraph, TextureResource } from '@altpsyche/engine';
 import type { UniformSlot } from '@altpsyche/engine';
 import { createFakeGPU, paddedFrame } from './support/fake-gpu';
 
@@ -42,9 +42,9 @@ const UNIFORMS = [
 
 /** The one-pass description of the fixture, built the way the build builds one,
  * so what these assert is the backend rather than a shape written here. */
-const artefact = (
-  over: { code?: string; uniformBlock?: UniformSlot[]; overrides?: Record<string, number> } = {}
-): ShaderFrame => wgslFrame('fixture', over.code ?? CODE, over.uniformBlock ?? BLOCK, UNIFORMS, over.overrides);
+const graph = (
+  over: { code?: string; uniformBlock?: UniformSlot[]; constants?: Record<string, number> } = {}
+): FrameGraph => wgslFrame('fixture', over.code ?? CODE, over.uniformBlock ?? BLOCK, UNIFORMS, over.constants);
 
 /** A backend over a recording device, with the trace it writes to. */
 function backendOver({ connected = false } = {}) {
@@ -68,7 +68,7 @@ describe('the backend it is handed', () => {
 
   it('refuses a frame for the other backend by naming the target it got', () => {
     const { backend } = backendOver();
-    const glsl = { id: 'x', target: 'glsl' } as ShaderFrame;
+    const glsl = { id: 'x', target: 'glsl' } as FrameGraph;
     expect(() => backend.program(glsl)).toThrow('WebGPU was handed a glsl frame to draw');
   });
 });
@@ -76,7 +76,7 @@ describe('the backend it is handed', () => {
 describe('the pipeline it builds', () => {
   it('writes the vertex program itself and takes the fragment from the frame', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
 
     const modules = gpu.calls('createShaderModule');
     expect(modules).toHaveLength(2);
@@ -86,7 +86,7 @@ describe('the pipeline it builds', () => {
 
   it('starts the fragment at the entry point the build compiles, and the vertex at its own', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
 
     const descriptor = gpu.calls('createRenderPipeline')[0]!.descriptor as GPURenderPipelineDescriptor;
     expect(descriptor.vertex.entryPoint).toBe('main');
@@ -97,7 +97,7 @@ describe('the pipeline it builds', () => {
 
   it('hands a rung its overridable constants, and only to the stage that declares them', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact({ overrides: { STEPS: 32 } }));
+    backend.program(graph({ constants: { STEPS: 32 } }));
 
     const descriptor = gpu.calls('createRenderPipeline')[0]!.descriptor as GPURenderPipelineDescriptor;
     expect(descriptor.fragment?.constants).toEqual({ STEPS: 32 });
@@ -106,7 +106,7 @@ describe('the pipeline it builds', () => {
 
   it('passes no constants at all where the rung asks for the source numbers', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
 
     const descriptor = gpu.calls('createRenderPipeline')[0]!.descriptor as GPURenderPipelineDescriptor;
     expect('constants' in (descriptor.fragment ?? {})).toBe(false);
@@ -121,7 +121,7 @@ describe('the pipeline it builds', () => {
     ] as unknown as GPUCompilationMessage[];
 
     const backend = createWebGPUBackend(gpu.canvas, gpu.device, refused);
-    backend!.program(artefact());
+    backend!.program(graph());
     await Promise.resolve();
     await Promise.resolve();
 
@@ -135,7 +135,7 @@ describe('the pipeline it builds', () => {
       { type: 'warning', message: 'unused', lineNum: 9, linePos: 1 },
     ] as unknown as GPUCompilationMessage[];
 
-    createWebGPUBackend(gpu.canvas, gpu.device, refused)!.program(artefact());
+    createWebGPUBackend(gpu.canvas, gpu.device, refused)!.program(graph());
     await Promise.resolve();
     await Promise.resolve();
 
@@ -156,7 +156,7 @@ describe('the pipeline it builds', () => {
 describe('the layout it builds rather than infers', () => {
   it('never asks the driver where its bindings are', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
 
     expect(gpu.calls('getBindGroupLayout')).toHaveLength(0);
     const descriptor = gpu.calls('createRenderPipeline')[0]!.descriptor as GPURenderPipelineDescriptor;
@@ -165,7 +165,7 @@ describe('the layout it builds rather than infers', () => {
 
   it('builds the layout from what the description says, at the number the source declares', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
 
     const layouts = gpu.calls('createBindGroupLayout');
     expect(layouts).toHaveLength(1);
@@ -175,7 +175,7 @@ describe('the layout it builds rather than infers', () => {
 
   it('names the fragment stage alone, since the vertex half is the backend’s own triangle', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
 
     const entries = gpu.calls('createBindGroupLayout')[0]!.entries as { visibility: number }[];
     // A visibility wider than the stages that read the resource is accepted by
@@ -187,7 +187,7 @@ describe('the layout it builds rather than infers', () => {
 
   it('passes that layout to the pipeline rather than a second one', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
 
     const passed = gpu.calls('createPipelineLayout');
     expect(passed).toHaveLength(1);
@@ -200,7 +200,7 @@ describe('the layout it builds rather than infers', () => {
     const { gpu, backend } = backendOver();
     // A fragment shader reading only its pixel position is this case, and a
     // layout invented for it would claim a binding nothing fills.
-    backend.program(artefact({ code: NO_BLOCK }));
+    backend.program(graph({ code: NO_BLOCK }));
 
     expect(gpu.calls('createBindGroupLayout')[0]!.entries).toEqual([]);
     expect(gpu.calls('createBindGroup')[0]).toBeDefined();
@@ -208,7 +208,7 @@ describe('the layout it builds rather than infers', () => {
 
   it('refuses a group past the first with no group below it, since a layout is read by position', () => {
     const { backend } = backendOver();
-    const frame = artefact();
+    const frame = graph();
     // A binding at group one with nothing at group zero is a pipeline layout with
     // a hole in it, which the card reads by position and cannot be handed.
     const pipelines = frame.pipelines.map((pipeline) => ({
@@ -224,7 +224,7 @@ describe('the layout it builds rather than infers', () => {
 describe('the uniform block it fills', () => {
   it('measures the buffer off the block and rounds it up to a whole lump', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
 
     const buffer = gpu.calls('createBuffer')[0]!;
     // The block ends at 16, which is already a whole lump; a block ending at 20
@@ -235,13 +235,13 @@ describe('the uniform block it fills', () => {
 
   it('rounds a block that does not end on a lump up to the next one', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact({ uniformBlock: [...BLOCK, { name: 'u_dive', offset: 16, size: 4 }] }));
+    backend.program(graph({ uniformBlock: [...BLOCK, { name: 'u_dive', offset: 16, size: 4 }] }));
     expect(gpu.calls('createBuffer')[0]!.size).toBe(32);
   });
 
   it('binds that buffer at the number the source declares', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
 
     const descriptor = gpu.calls('createBindGroup')[0]!.descriptor as GPUBindGroupDescriptor;
     const entries = [...descriptor.entries];
@@ -251,7 +251,7 @@ describe('the uniform block it fills', () => {
 
   it('writes each value where the build said that value sits', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.program(artefact());
+    const program = backend.program(graph());
     program.setUniforms({ u_time: 3, u_resolution: [7, 9] });
     // The write is queued against the frame, so the draw is what flushes it to
     // the device — it lands there in order rather than the moment it was handed in.
@@ -264,7 +264,7 @@ describe('the uniform block it fills', () => {
 
   it('drops a name the block has nowhere to put rather than writing it somewhere', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.program(artefact());
+    const program = backend.program(graph());
     program.setUniforms({ u_time: 1, u_nothing: 5 });
     program.draw();
     expect([...gpu.written()!]).toEqual([1, 0, 0, 0]);
@@ -272,7 +272,7 @@ describe('the uniform block it fills', () => {
 
   it('answers which of the names it was given the block has no place for', () => {
     const { backend } = backendOver();
-    const program = backend.program(artefact());
+    const program = backend.program(graph());
     expect(program.unreached(['u_time', 'u_resolution', 'u_dive'])).toEqual(['u_dive']);
   });
 });
@@ -280,7 +280,7 @@ describe('the uniform block it fills', () => {
 describe('the frame it draws', () => {
   it('draws into a texture of its own that a read can be copied out of, and into', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact()).draw();
+    backend.program(graph()).draw();
 
     const texture = gpu.calls('createTexture')[0]!;
     expect(texture.format).toBe('rgba8unorm');
@@ -293,7 +293,7 @@ describe('the frame it draws', () => {
 
   it('covers the frame with one triangle and clears it first', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact()).draw();
+    backend.program(graph()).draw();
 
     const attachments = gpu.calls('beginRenderPass')[0]!.attachments as GPURenderPassColorAttachment[];
     expect(attachments[0]!.loadOp).toBe('clear');
@@ -304,7 +304,7 @@ describe('the frame it draws', () => {
 
   it('records the draws into a bundle and replays them in the pass', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact()).draw();
+    backend.program(graph()).draw();
 
     // The pipeline, the group and the draw are recorded once into a bundle, in
     // that order, rather than issued every frame.
@@ -325,7 +325,7 @@ describe('the frame it draws', () => {
 
   it('keeps the same texture across frames of one size and replaces it on a resize', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.program(artefact());
+    const program = backend.program(graph());
     program.draw();
     program.draw();
     expect(gpu.calls('createTexture')).toHaveLength(1);
@@ -339,7 +339,7 @@ describe('the frame it draws', () => {
 
   it('records the pass once and replays it, so more frames do not re-issue the draws', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.program(artefact());
+    const program = backend.program(graph());
     const FRAMES = 8;
     for (let frame = 0; frame < FRAMES; frame++) program.draw();
 
@@ -356,7 +356,7 @@ describe('the frame it draws', () => {
 describe('the canvas it shows a frame on', () => {
   it('leaves a canvas nobody can see unconfigured, because configuring one costs a read', () => {
     const { gpu, backend } = backendOver({ connected: false });
-    backend.program(artefact()).draw();
+    backend.program(graph()).draw();
 
     expect(gpu.context.configured).toBe(0);
     expect(gpu.calls('copyTextureToTexture')).toHaveLength(0);
@@ -364,7 +364,7 @@ describe('the canvas it shows a frame on', () => {
 
   it('configures a canvas a reader can see once, and copies every frame to it', () => {
     const { gpu, backend } = backendOver({ connected: true });
-    const program = backend.program(artefact());
+    const program = backend.program(graph());
     program.draw();
     program.draw();
 
@@ -381,7 +381,7 @@ describe('the pixels it hands back', () => {
     const { gpu, backend } = backendOver();
     backend.resize(4, 3);
     gpu.mapped = paddedFrame(4, 3);
-    backend.program(artefact()).draw();
+    backend.program(graph()).draw();
 
     const pixels = await backend.readPixels();
     expect(pixels).toHaveLength(4 * 3 * 4);
@@ -396,7 +396,7 @@ describe('the pixels it hands back', () => {
     const { gpu, backend } = backendOver();
     backend.resize(4, 3);
     gpu.mapped = paddedFrame(4, 3);
-    backend.program(artefact()).draw();
+    backend.program(graph()).draw();
     await backend.readPixels();
 
     expect(gpu.calls('copyTextureToBuffer')[0]!.stride).toBe(256);
@@ -431,7 +431,7 @@ describe('a frame captured into a caller-supplied texture', () => {
     const { gpu, backend } = backendOver();
     backend.resize(4, 3);
     const into = captureTexture(gpu);
-    backend.program(artefact()).draw(into);
+    backend.program(graph()).draw(into);
 
     // The frame the backend drew into its own target is copied into the
     // caller's texture, off that target, so both hold the same picture.
@@ -448,7 +448,7 @@ describe('a frame captured into a caller-supplied texture', () => {
     backend.resize(4, 3);
     gpu.mapped = paddedFrame(4, 3);
     const into = captureTexture(gpu);
-    backend.program(artefact()).draw(into);
+    backend.program(graph()).draw(into);
 
     const pixels = await backend.readPixels(into);
     // The read copied out of the caller's own texture, not the backend's target.
@@ -464,7 +464,7 @@ describe('a frame captured into a caller-supplied texture', () => {
   it('leaves the frame out of any caller texture when none is given', () => {
     const { gpu, backend } = backendOver({ connected: true });
     backend.resize(4, 3);
-    backend.program(artefact()).draw();
+    backend.program(graph()).draw();
 
     // With a canvas to composite onto, the only texture-to-texture copy is the
     // present onto the drawable — none into a caller texture.
@@ -477,13 +477,13 @@ describe('a frame captured into a caller-supplied texture', () => {
 describe('what it gives back when it is done', () => {
   it('destroys a program own buffer and leaves the backend usable', () => {
     const { gpu, backend } = backendOver();
-    backend.program(artefact()).dispose();
+    backend.program(graph()).dispose();
     expect(gpu.calls('buffer.destroy')).toHaveLength(1);
   });
 
   it('destroys its texture and unconfigures a canvas it had configured', () => {
     const { gpu, backend } = backendOver({ connected: true });
-    backend.program(artefact()).draw();
+    backend.program(graph()).draw();
     backend.dispose();
 
     expect(gpu.calls('texture.destroy')).toHaveLength(1);
@@ -492,7 +492,7 @@ describe('what it gives back when it is done', () => {
 
   it('unconfigures nothing where nothing was ever shown', () => {
     const { gpu, backend } = backendOver({ connected: false });
-    backend.program(artefact()).draw();
+    backend.program(graph()).draw();
     backend.dispose();
 
     expect(gpu.context.unconfigured).toBe(0);
@@ -514,7 +514,7 @@ fn computeMain(@builtin(global_invocation_id) at: vec3<u32>) {
   textureStore(picture, vec2<i32>(at.xy), vec4<f32>(uniforms.u_time));
 }`;
 
-const computeFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const computeFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-compute',
   target: 'wgsl',
   uniforms: UNIFORMS,
@@ -563,7 +563,7 @@ describe('the compute pipeline it builds', () => {
 
   it('hands a rung its overridable constants through the compute stage', () => {
     const { gpu, backend } = backendOver();
-    backend.program(computeFrame({ modules: [{ name: 'compute', code: COMPUTE, overrides: { STEPS: 32 } }] }));
+    backend.program(computeFrame({ modules: [{ name: 'compute', code: COMPUTE, constants: { STEPS: 32 } }] }));
 
     expect(gpu.calls('createComputePipeline')[0]!.constants).toEqual({ STEPS: 32 });
   });
@@ -749,7 +749,7 @@ fn fragMain(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
  * read off the wrong axis visible rather than plausible. */
 const GRAIN = new Uint8Array(4 * 4 * 4).map((_, at) => Math.floor(at / 16) + 1);
 
-const sampledFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const sampledFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-sampled',
   target: 'wgsl',
   uniforms: UNIFORMS,

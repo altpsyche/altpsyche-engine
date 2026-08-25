@@ -25,7 +25,7 @@
  * **The camera orbits by rebuilding the graph.** `sceneView` bakes each view's
  * matrix into a storage buffer rather than feeding it as a uniform, on purpose
  * (item 32), so a moving camera is a new graph each frame rather than a new
- * uniform — `surface.setArtefact(build(theta))` on every animation frame, off one
+ * uniform — `surface.setGraph(build(theta))` on every animation frame, off one
  * arena whose resident buffers are reused while the world keeps its shape. That is
  * the honest cost of a producer whose output is data, and driving it here is what
  * the exit criterion is for: if it were painful the API would be wrong, and this
@@ -67,7 +67,7 @@ import type {
   RenderPipelineSpec,
   Scene,
   SceneViewOptions,
-  ShaderFrame,
+  FrameGraph,
 } from '@altpsyche/engine';
 
 /** The grid the objects stand on: seven by seven is forty-nine, which is "around
@@ -322,7 +322,7 @@ function orbit(theta: number): Camera {
 const arena = new Arena<Uint8Array>(() => {});
 const scene = world();
 const producer = sceneView(arena, options);
-const build = (theta: number): ShaderFrame => producer.graph(scene, [orbit(theta)]);
+const build = (theta: number): FrameGraph => producer.graph(scene, [orbit(theta)]);
 
 // The WebGL 2 stand-in: a fullscreen fragment that draws the same idea — a grid of
 // lit blocks with shadows cast along the light — analytically, because that
@@ -393,7 +393,7 @@ const offer = {
 const wgpu = selectBackend(build(0), offer);
 if ('backend' in wgpu && device) {
   // The scene tier on WebGPU: rebuild the graph each frame with the camera one
-  // step further round its orbit, and swap it in. `setArtefact` draws the new
+  // step further round its orbit, and swap it in. `setGraph` draws the new
   // graph, so this drives the loop itself rather than calling `start()` — a moving
   // camera is a new graph, not a new uniform (item 32).
   const surface = await createSurface(canvas, build(0), {
@@ -409,7 +409,7 @@ if ('backend' in wgpu && device) {
     addEventListener('resize', fit);
     fit();
     const orbitLoop = (now: number) => {
-      surface.setArtefact(build(now * 0.0003));
+      surface.setGraph(build(now * 0.0003));
       requestAnimationFrame(orbitLoop);
     };
     requestAnimationFrame(orbitLoop);

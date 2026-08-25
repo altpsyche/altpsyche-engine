@@ -193,7 +193,7 @@ const MATERIAL_VIEW = Array.from(mat4.pack(viewProjection(MATERIAL_CAMERA)));
  * The shaders that exist to exercise one capability of the renderer.
  *
  * Each one is reached by nothing a reader can click. They are here so the gates
- * that draw every artefact have something to draw for every capability, which is
+ * that draw every graph have something to draw for every capability, which is
  * the condition a capability built ahead of a lesson is worth having under, and a
  * gate reading these rather than some website's build is what lets a clone of this
  * package measure itself with nothing else on the machine.

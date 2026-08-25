@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { BufferResource, ShaderFrame } from '@altpsyche/engine';
+import type { BufferResource, FrameGraph } from '@altpsyche/engine';
 
 /**
  * A block of bytes a shader reads or writes.
@@ -36,7 +36,7 @@ const counts = (over: Partial<BufferResource> = {}): BufferResource => ({
   ...over,
 });
 
-const holding = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const holding = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-buffer',
   target: 'wgsl',
   uniforms: [
@@ -162,7 +162,7 @@ const dial = (over: Partial<BufferResource> = {}): BufferResource => ({
   ...over,
 });
 
-const withDial = (over: Partial<BufferResource> = {}): ShaderFrame =>
+const withDial = (over: Partial<BufferResource> = {}): FrameGraph =>
   holding({ resources: [holding().resources[0] as BufferResource, counts(), dial(over)] });
 
 describe('the contents a caller writes in', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { BufferResource, RenderPassSpec, ShaderFrame } from '@altpsyche/engine';
+import type { BufferResource, RenderPassSpec, FrameGraph } from '@altpsyche/engine';
 
 /**
  * What the card says about the work it just did.
@@ -39,7 +39,7 @@ const held = (over: Partial<BufferResource> = {}): BufferResource => ({
   ...over,
 });
 
-const frameOf = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const frameOf = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-queries',
   target: 'wgsl',
   uniforms: [

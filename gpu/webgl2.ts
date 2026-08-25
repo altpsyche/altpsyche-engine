@@ -12,7 +12,7 @@
  * frame on every reader's device so that a build script can screenshot after the
  * fact. A caller that wants pixels draws and reads in the same step instead.
  */
-import type { Backend, DeviceReport, FrameTraffic, ShaderFrame, ShaderProgram, UniformValue } from '../graph/types.js';
+import type { Backend, DeviceReport, FrameTraffic, FrameGraph, ShaderProgram, UniformValue } from '../graph/types.js';
 import { componentsOf, drawsCorners, isRenderPass, moduleOf } from '../graph/types.js';
 import { Arena } from '../resource/arena.js';
 import { drawGL2Frame } from '../submit/gl2.js';
@@ -140,7 +140,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       arena.resetTraffic();
     },
 
-    program(frame: ShaderFrame): ShaderProgram {
+    program(frame: FrameGraph): ShaderProgram {
       if (frame.target !== 'glsl') throw new Error(`WebGL 2 was handed a ${frame.target} frame to draw`);
       // Every rule about the graph is checked in one place; the WebGL 2 path does
       // not reach `submit/plan.ts`, so it reads the same function directly (item
@@ -169,7 +169,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // One pass drawing the frame's own colour target through one pipeline is
       // the whole of what this backend implements, and it is the description a
       // shader with a GLSL target is built as. Anything above that line is
-      // WebGPU's, and a shader needing it has no GLSL target for `loadArtefact`
+      // WebGPU's, and a shader needing it has no GLSL target for `loadGraph`
       // to fetch, so it is refused before a program is ever asked for.
       const pass = frame.passes[0];
       const spec = pass ? frame.pipelines.find((candidate) => candidate.name === pass.pipeline) : undefined;
@@ -263,7 +263,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // number nobody delivered (item 61). The value's JavaScript shape cannot
       // say this — 3 is 3 whether the source wants a float or an int — so the
       // declared type is captured here, off the field §14 retires from the graph;
-      // when `ShaderFrame.uniforms` goes (item 38), this type moves to the
+      // when `FrameGraph.uniforms` goes (item 38), this type moves to the
       // binding or the pipeline with it.
       const declaredType = new Map(frame.uniforms.map((uniform) => [uniform.name, uniform.type]));
       const isInt = (name: string) => declaredType.get(name) === 'int';

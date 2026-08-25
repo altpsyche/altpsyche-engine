@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { ShaderFrame, TextureResource } from '@altpsyche/engine';
+import type { FrameGraph, TextureResource } from '@altpsyche/engine';
 
 /**
  * A texture carrying a ladder of smaller copies of itself, so it can be read at
@@ -43,7 +43,7 @@ const grain = (over: Partial<TextureResource> = {}): TextureResource => ({
   ...over,
 });
 
-const laddered = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const laddered = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-mips',
   target: 'wgsl',
   uniforms: [

@@ -22,7 +22,7 @@
  * `compute` is answered by not asking for compute, where the backend's name is
  * answered by nothing.
  */
-import type { BackendName, ShaderFrame } from './types.js';
+import type { BackendName, FrameGraph } from './types.js';
 import type { Capability } from './capability.js';
 
 /** What a device is, for the one question this answers: which backend it is and
@@ -64,7 +64,7 @@ function lacks(backend: BackendName, count: number): string {
  * likewise null: the device can draw it, and refusal is silence.
  */
 export function refusal(
-  graph: Pick<ShaderFrame, 'id' | 'requires'>,
+  graph: Pick<FrameGraph, 'id' | 'requires'>,
   device: DeviceCapabilities
 ): string | null {
   const required = graph.requires ?? [];

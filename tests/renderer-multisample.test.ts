@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { RenderPassSpec, RenderPipelineSpec, ShaderFrame, TextureResource } from '@altpsyche/engine';
+import type { RenderPassSpec, RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
 
 /**
  * A pass keeping several samples of every pixel, averaged into a picture keeping
@@ -58,7 +58,7 @@ const into = (over: Partial<RenderPassSpec> = {}): RenderPassSpec => ({
   ...over,
 });
 
-const averaged = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const averaged = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-multisample',
   target: 'wgsl',
   uniforms: [
@@ -181,7 +181,7 @@ describe('the pipeline and the pass a multisampled attachment is drawn by', () =
 });
 
 describe('what a description keeping several samples a pixel is refused for', () => {
-  const refused = (frame: ShaderFrame, message: string) => {
+  const refused = (frame: FrameGraph, message: string) => {
     const { backend } = backendOver();
     expect(() => backend.program(frame)).toThrow(message);
   };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cost } from '@altpsyche/engine';
-import type { FrameCost, ShaderFrame } from '@altpsyche/engine';
+import type { FrameCost, FrameGraph } from '@altpsyche/engine';
 
 /**
  * The cost of a thousand objects, which is Phase 3's whole point: `instanced-cubes`
@@ -23,7 +23,7 @@ const SIZE = { width: 800, height: 600 };
  * not transient), one frame-sized depth attachment (transient), one render pipeline
  * reading the geometry and testing depth, and one pass issuing a single instanced
  * draw into the frame's own colour target. */
-const wgslCubes: ShaderFrame = {
+const wgslCubes: FrameGraph = {
   id: 'instanced-cubes',
   target: 'wgsl',
   uniforms: [
@@ -63,7 +63,7 @@ const wgslCubes: ShaderFrame = {
 
 /** The WebGL 2 authoring: the backend's own corners, one instanced draw covering
  * the thousand objects, no depth and no vertex buffer of its own. */
-const glslCubes: ShaderFrame = {
+const glslCubes: FrameGraph = {
   id: 'instanced-cubes',
   target: 'glsl',
   uniforms: [

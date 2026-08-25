@@ -9,7 +9,7 @@
  * There is no React here. The hook that binds a surface to a component is the
  * only file in this stack that imports it.
  */
-import type { BackendName, ShaderFrame, UniformValue } from '../graph/types.js';
+import type { BackendName, FrameGraph, UniformValue } from '../graph/types.js';
 import { createFrameRenderer, type FrameRenderer, type RendererOptions } from '../gpu/renderer.js';
 
 export interface SurfaceOptions extends RendererOptions {
@@ -53,8 +53,8 @@ export interface Surface {
    * error and the picture rather than a blank rectangle. Null means the swap
    * took.
    */
-  setArtefact(next: ShaderFrame): string | null;
-  /** Which of the names the artefact on screen declares the program has nowhere
+  setGraph(next: FrameGraph): string | null;
+  /** Which of the names the graph on screen declares the program has nowhere
    * to put, which is empty while there is nothing drawing. */
   unreached(names: string[]): string[];
   /** In CSS pixels. What the drawing buffer becomes is this times the resolved
@@ -77,18 +77,18 @@ export function resolveDensity(dpr: [number, number] | undefined, offered: numbe
 
 export async function createSurface(
   canvas: HTMLCanvasElement,
-  artefact: ShaderFrame,
+  graph: FrameGraph,
   options: SurfaceOptions
 ): Promise<Surface | null> {
-  let current = artefact;
+  let current = graph;
   // What was drawing before the last swap, kept because a refusal can arrive
   // after the swap has been accepted. One backend answers whether a source
   // compiles from the call that compiles it and the other answers a moment
   // later, so the only way to leave a reader the picture they had is to be able
-  // to go back to it. It cannot be the artefact that was last drawn without
+  // to go back to it. It cannot be the graph that was last drawn without
   // throwing: a WebGPU draw of a module that did not compile throws nothing, so
   // that reading would call the refused one good and keep drawing it.
-  let before = artefact;
+  let before = graph;
 
   // A refusal is not a surface that failed. The context is fine and the picture
   // is still there, so it goes to the caller's refusal handler where there is
@@ -220,7 +220,7 @@ export async function createSurface(
     },
     start,
     stop,
-    setArtefact(next) {
+    setGraph(next) {
       if (next === current) return null;
       const previous = current;
       current = next;

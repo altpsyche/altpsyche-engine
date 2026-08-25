@@ -15,7 +15,7 @@
  * before any mesh exists; then `loadCubeMesh()` fetches the glTF document and its
  * buffer (both `data:` URIs here, fetched asynchronously exactly as a network asset
  * would be, so the mesh is genuinely not present at first paint), parses them, and
- * `surface.setArtefact` swaps in the scene that draws the mesh. The new geometry is
+ * `surface.setGraph` swaps in the scene that draws the mesh. The new geometry is
  * uploaded into the already-running surface, which is item 11's queued-upload path
  * ordering the vertex and index bytes before the draw that reads them.
  *
@@ -56,7 +56,7 @@ import type {
   RenderPipelineSpec,
   Scene,
   SceneViewOptions,
-  ShaderFrame,
+  FrameGraph,
 } from '@altpsyche/engine';
 
 /**
@@ -399,15 +399,15 @@ async function drawOnWebGPU(gpu: GPUDevice): Promise<void> {
 
   const arena = new Arena<Uint8Array>(() => {});
   const producer = sceneView(arena, optionsFor(mesh));
-  const build = (theta: number): ShaderFrame => producer.graph(spinning(theta), [camera()]);
+  const build = (theta: number): FrameGraph => producer.graph(spinning(theta), [camera()]);
   console.log('gltf-cube scene cost', cost(build(0), { width: canvas.width || 800, height: canvas.height || 600 }));
 
   // Stop the loading loop and drive the scene ourselves: a spinning cube is a new
-  // graph each frame, swapped in by `setArtefact` (item 32), and the first swap is
+  // graph each frame, swapped in by `setGraph` (item 32), and the first swap is
   // where the loaded mesh appears mid-session.
   surface.stop();
   const spin = (now: number) => {
-    surface.setArtefact(build(now * 0.0009));
+    surface.setGraph(build(now * 0.0009));
     requestAnimationFrame(spin);
   };
   requestAnimationFrame(spin);

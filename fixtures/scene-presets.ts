@@ -22,7 +22,7 @@ import { Arena } from '../resource/arena.js';
 import { mat4, vec3 } from '@altpsyche/engine';
 import type { Camera, Scene } from '@altpsyche/engine';
 import type { Material, MaterialDraw } from '@altpsyche/engine';
-import type { ModuleSpec, RenderPipelineSpec, ShaderFrame } from '@altpsyche/engine';
+import type { ModuleSpec, RenderPipelineSpec, FrameGraph } from '@altpsyche/engine';
 import { sceneView } from '@altpsyche/engine';
 import type { SceneViewOptions } from '@altpsyche/engine';
 
@@ -136,10 +136,10 @@ const SURFACE_AND_GLOW: SceneViewOptions<Panel> = {
  * a previous preset left resident. */
 export interface ScenePreset {
   id: string;
-  frame(): ShaderFrame;
+  frame(): FrameGraph;
 }
 
-const build = (options: SceneViewOptions<Panel>, world: Scene, views: readonly Camera[]): (() => ShaderFrame) => {
+const build = (options: SceneViewOptions<Panel>, world: Scene, views: readonly Camera[]): (() => FrameGraph) => {
   return () => sceneView(new Arena<Uint8Array>(() => undefined as never), options).graph(world, views);
 };
 

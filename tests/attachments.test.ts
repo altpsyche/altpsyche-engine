@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { frameStores, mergeGroups } from '../graph/attachments';
-import type { PassSpec, PipelineSpec, ShaderFrame } from '@altpsyche/engine';
+import type { PassSpec, PipelineSpec, FrameGraph } from '@altpsyche/engine';
 
 /**
  * The two pure frame-attachment analyses of item 1, tested off the graph alone —
@@ -25,7 +25,7 @@ const RENDER = (name: string, over: Partial<Extract<PipelineSpec, { kind: 'rende
   ...over,
 });
 
-function frame(over: { pipelines: PipelineSpec[]; passes: PassSpec[] } & Partial<ShaderFrame>): ShaderFrame {
+function frame(over: { pipelines: PipelineSpec[]; passes: PassSpec[] } & Partial<FrameGraph>): FrameGraph {
   return {
     id: 'attachments-fixture',
     target: 'wgsl',

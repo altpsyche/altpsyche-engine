@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { ShaderFrame, VertexResource } from '@altpsyche/engine';
+import type { FrameGraph, VertexResource } from '@altpsyche/engine';
 
 /**
  * The backend's pipeline cache is shared across every program it builds (item 63),
@@ -41,7 +41,7 @@ const geometry = (data: Uint8Array<ArrayBuffer>): VertexResource => ({
   data,
 });
 
-const meshFrame = (data: Uint8Array<ArrayBuffer>): ShaderFrame => ({
+const meshFrame = (data: Uint8Array<ArrayBuffer>): FrameGraph => ({
   id: `mesh-${data[0]}`,
   target: 'wgsl',
   uniforms: [{ name: 'u_time', type: 'float' }],

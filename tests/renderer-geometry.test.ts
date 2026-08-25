@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { ShaderFrame, VertexResource } from '@altpsyche/engine';
+import type { FrameGraph, VertexResource } from '@altpsyche/engine';
 
 /**
  * Geometry read out of a buffer, which is the first frame whose vertex stage is
@@ -48,7 +48,7 @@ const geometry = (over: Partial<VertexResource> = {}): VertexResource => ({
   ...over,
 });
 
-const gridFrame = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const gridFrame = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-geometry',
   target: 'wgsl',
   uniforms: [
@@ -252,7 +252,7 @@ describe('what a drawn frame is refused for', () => {
       backend.program({
         ...frame,
         pipelines: [{ ...(frame.pipelines[0] as { kind: 'render' } & object), geometry: 'uniforms' }],
-      } as ShaderFrame)
+      } as FrameGraph)
     ).toThrow(/draws "uniforms", which is no geometry it declares/);
   });
 
@@ -301,7 +301,7 @@ describe('what a drawn frame is refused for', () => {
             bindings: [{ group: 0, binding: 1, resource: 'grid', visibility: ['vertex'] }],
           },
         ],
-      } as ShaderFrame)
+      } as FrameGraph)
     ).toThrow(/binds "grid", which is geometry rather than a binding/);
   });
 });

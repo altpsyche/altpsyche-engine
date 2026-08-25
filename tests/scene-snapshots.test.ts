@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { ShaderFrame } from '@altpsyche/engine';
+import type { FrameGraph } from '@altpsyche/engine';
 import { SCENE_PRESETS } from '../fixtures/scene-presets';
 
 /**
@@ -27,7 +27,7 @@ import { SCENE_PRESETS } from '../fixtures/scene-presets';
  * rather than as raw bytes — a scene change (a moved object, a different colour) then
  * shows as a changed number in the diff rather than as a wall of bytes nobody reads.
  */
-const snapshotOf = (frame: ShaderFrame): string =>
+const snapshotOf = (frame: FrameGraph): string =>
   JSON.stringify(
     frame,
     (_key, value) =>

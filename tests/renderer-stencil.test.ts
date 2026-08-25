@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { RenderPassSpec, RenderPipelineSpec, ShaderFrame, TextureResource } from '@altpsyche/engine';
+import type { RenderPassSpec, RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
 
 /**
  * A mask one surface leaves behind for another to be cut by.
@@ -53,7 +53,7 @@ const mask = (over: Partial<TextureResource> = {}): TextureResource => ({
 
 /** One pass marking the mask and one drawn only inside the mark, which is the
  * smallest frame a stencil does anything in. */
-const masked = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const masked = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-stencil',
   target: 'wgsl',
   uniforms: [
@@ -97,7 +97,7 @@ function backendOver() {
 
 /** What the description says, refused by a message naming both halves of the
  * disagreement rather than whichever call the card took second. */
-function refuses(over: Partial<ShaderFrame>, said: string) {
+function refuses(over: Partial<FrameGraph>, said: string) {
   const { backend } = backendOver();
   expect(() => backend.program(masked(over)).draw()).toThrow(said);
 }

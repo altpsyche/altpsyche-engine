@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { BufferResource, ShaderFrame } from '@altpsyche/engine';
+import type { BufferResource, FrameGraph } from '@altpsyche/engine';
 
 /**
  * A draw and a dispatch whose counts come out of a buffer rather than out of the
@@ -49,7 +49,7 @@ const counts = (over: Partial<BufferResource> = {}): BufferResource => ({
 const VERTICES = new Uint8Array(9 * 16);
 const INDICES = new Uint8Array(24 * 2);
 
-const planned = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const planned = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-indirect',
   target: 'wgsl',
   uniforms: [
@@ -98,7 +98,7 @@ const planned = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
 
 /** The same frame with geometry under the drawn pass, which is the one thing that
  * changes which of the two indirect draw calls the card is given. */
-const ordered = (over: Partial<ShaderFrame> = {}): ShaderFrame => {
+const ordered = (over: Partial<FrameGraph> = {}): FrameGraph => {
   const base = planned();
   return planned({
     resources: [
@@ -203,7 +203,7 @@ describe('a pass whose count comes out of a buffer', () => {
 });
 
 describe('what a count read out of a buffer is refused for', () => {
-  const refused = (frame: ShaderFrame, message: string) => {
+  const refused = (frame: FrameGraph, message: string) => {
     const { backend } = backendOver();
     expect(() => backend.program(frame)).toThrow(message);
   };

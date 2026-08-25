@@ -75,13 +75,13 @@ Read it as four crossings rather than nine boxes. A person writes a file and an 
 
 ## What each layer owns
 
-**A source file is the whole shader and the build adds nothing to it.** That is D55, which also says nothing is injected into a source and a constant is declared in the source that uses it. A desktop artefact is byte identical to the file a reader opens in the playground. The only edit the build may make is rewriting a value on a declaration the source already carries, and only for the two reduced phone rungs.
+**A source file is the whole shader and the build adds nothing to it.** That is D55, which also says nothing is injected into a source and a constant is declared in the source that uses it. A desktop graph is byte identical to the file a reader opens in the playground. The only edit the build may make is rewriting a value on a declaration the source already carries, and only for the two reduced phone rungs.
 
 **An entry says the seven things a source cannot say about itself.** How big each resource is, which pipeline runs at what dispatch, which resource is the picture, which picture the build writes into a texture the shader samples, how the card reads that texture at its edges, which two textures trade places every frame, and which primitive the build generates the vertices of. Everything else is read out of the source: its bindings, the format of every texture it writes, the block size a compute entry point runs in, and whether a pass dispatches or draws.
 
 **The build writes a description per target, not per shader.** A description written in GLSL is two documents and a pipeline whose vertex stage is the shader's own. A description written in WGSL is one document and a pipeline asking for the backend's three corners. Only the resources and the passes coincide, which is why the split is by target.
 
-**The runtime reads that description and never invents one.** The site's artefact adapter asks the manifest which files a variant is, `frame.ts` fills the documents in, and the result is a `ShaderFrame`. The gates that matter fill in the build's own description for the same reason: a gate assembling a description of its own is a gate measuring its own idea of one.
+**The runtime reads that description and never invents one.** The site's graph adapter asks the manifest which files a variant is, `frame.ts` fills the documents in, and the result is a `FrameGraph`. The gates that matter fill in the build's own description for the same reason: a gate assembling a description of its own is a gate measuring its own idea of one.
 
 **A backend receives a description and has no capability methods.** The rule at the top of `graph/types.ts` is that a method one backend has to throw from is the wrong method. A backend that grew `createComputePipeline` and `createSampler` would be a backend where WebGL 2 throws from most of its own interface, and a caller asking whether its backend has compute is a caller branching on which backend it holds. What a backend cannot build it never receives, because the manifest is the only thing deciding which backend a shader can be drawn by.
 
@@ -112,7 +112,7 @@ Every disagreement between two of those stops the build rather than reaching the
 
 ## What holds it, and it is the part worth protecting
 
-The fast suite drives the backend against a stand in for a graphics card that records every call. The trace contract wraps a real device in that same recorder, draws the same artefact, and compares the two traces call for call. Twelve presets agree today. Each capability also has a preset in the corpus that no page publishes and every relevant gate draws, so a trace saying the right calls were made is joined by a frame saying a picture came out.
+The fast suite drives the backend against a stand in for a graphics card that records every call. The trace contract wraps a real device in that same recorder, draws the same graph, and compares the two traces call for call. Twelve presets agree today. Each capability also has a preset in the corpus that no page publishes and every relevant gate draws, so a trace saying the right calls were made is joined by a frame saying a picture came out.
 
 **This works because the renderer is small.** Each new layer multiplies the states a gate has to cover, and the first property lost is the useful one: that a red gate names the call that went wrong rather than telling you the picture moved.
 

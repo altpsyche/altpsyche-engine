@@ -17,7 +17,7 @@ import { uniformBindingOf } from '../wgsl-binding.js';
 import type {
   FrameDescription,
   ResourceSpec,
-  ShaderFrame,
+  FrameGraph,
   UniformResource,
   UniformSlot,
 } from '../graph/types.js';
@@ -134,9 +134,9 @@ export function frameOf(
   texts: Record<string, string>,
   uniforms: { name: string; type: string }[],
   block?: UniformSlot[],
-  overrides?: Record<string, number>,
+  constants?: Record<string, number>,
   generated?: Map<string, Uint8Array<ArrayBuffer>>
-): ShaderFrame {
+): FrameGraph {
   const seen = new Set<string>();
   const repeated = description.documents.find((document) => {
     if (seen.has(document.name)) return true;
@@ -168,7 +168,7 @@ export function frameOf(
     modules: description.documents.map((document) => ({
       name: document.name,
       code: texts[document.name] as string,
-      ...(overrides && description.target === 'wgsl' ? { overrides } : {}),
+      ...(constants && description.target === 'wgsl' ? { constants } : {}),
     })),
     pipelines: description.pipelines,
     passes: description.passes,
@@ -201,7 +201,7 @@ export const generatedResources = (
  * A description and everything a loader fetched for it become the frame a backend
  * draws.
  *
- * This is the half of loading an artefact that fetches nothing and resolves no
+ * This is the half of loading an graph that fetches nothing and resolves no
  * path: the caller has already turned each document's name into a file and read
  * its text, and each generated resource's source into its bytes. It carries the
  * fetched texts, keyed by the one name a document has, straight through to the
@@ -215,15 +215,15 @@ export function assembleFrame(
   generated: Map<string, Uint8Array<ArrayBuffer>>,
   uniforms: { name: string; type: string }[],
   block?: UniformSlot[],
-  overrides?: Record<string, number>
-): ShaderFrame {
+  constants?: Record<string, number>
+): FrameGraph {
   return frameOf(
     id,
     description,
     Object.fromEntries(description.documents.map((document) => [document.name, texts.get(document.name) as string])),
     uniforms,
     block,
-    overrides,
+    constants,
     generated
   );
 }
@@ -236,9 +236,9 @@ export function wgslFrame(
   code: string,
   block: UniformSlot[],
   uniforms: { name: string; type: string }[],
-  overrides?: Record<string, number>
-): ShaderFrame {
-  return frameOf(id, wgslDescription(code), { [WGSL_DOCUMENT]: code }, uniforms, block, overrides);
+  constants?: Record<string, number>
+): FrameGraph {
+  return frameOf(id, wgslDescription(code), { [WGSL_DOCUMENT]: code }, uniforms, block, constants);
 }
 
 /** One GLSL pair as a frame, for the same callers. */
@@ -247,6 +247,6 @@ export function glslFrame(
   vertex: string,
   fragment: string,
   uniforms: { name: string; type: string }[]
-): ShaderFrame {
+): FrameGraph {
   return frameOf(id, glslDescription(), { vertex, fragment }, uniforms);
 }

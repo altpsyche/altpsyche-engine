@@ -30,7 +30,7 @@ Every one of these is a WebGPU word and every one is used here in the specificat
 - **A pass** is a run of work inside a frame. A render pass draws into attachments, which are the textures it writes to. A compute pass runs a program over a grid of work items with no attachments at all.
 - **A dispatch** is what starts a compute pass. It names how many **workgroups** to run, a workgroup being the small block of work items that can share memory with each other.
 - **A frame description** is the whole of the above for one shader: its documents, its resources, its pipelines and the ordered list of passes that make one picture.
-- **An artefact** is what the build wrote for one shader at one rung and what the runtime fetches. Under this design an artefact is a frame description.
+- **An graph** is what the build wrote for one shader at one rung and what the runtime fetches. Under this design an graph is a frame description.
 - **A rung** is one entry on the ladder of how much work a shader does, named in the site's build-tier list as `desktop`, `optimized` and `minimal`.
 - **A preset** is a source in the corpus that no page publishes and no gallery lists, marked `preset` in the manifest. The three language bases are presets today and every capability below lands with one.
 - **A trace** is the ordered list of calls the backend made on a device, which is what the stand-in in the engine's own `tests/support/fake-gpu.ts` records and what the fast tests assert.
@@ -48,7 +48,7 @@ None of the four is a decision entry of its own. D83 is the decision they serve,
 
 ## The shape: a frame is a description
 
-**An artefact stops being one source and becomes a small description of a frame.** The caller passes what the shader is, and the backend builds it. Today's single full-screen fragment shader is that description with one resource and one pass in it, so nothing about the two art shaders changes.
+**An graph stops being one source and becomes a small description of a frame.** The caller passes what the shader is, and the backend builds it. Today's single full-screen fragment shader is that description with one resource and one pass in it, so nothing about the two art shaders changes.
 
 **Why this rather than capability objects on the backend.** The rule at the top of `graph/types.ts` is that a method one backend has to throw from is the wrong method. A backend that grew `createComputePipeline`, `createSampler` and `createVertexBuffer` would be a backend where WebGL 2 throws from most of its own interface, and a caller asking whether its backend has compute is a caller branching on which backend it holds, which is the thing that rule exists to stop. A description has no such method. What a backend cannot build, it never receives, because the manifest is the only thing deciding what a shader can be drawn by, exactly as it already refuses a GLSL target to a shader written in WGSL.
 
@@ -58,11 +58,11 @@ None of the four is a decision entry of its own. D83 is the decision they serve,
 
 **The authority for the text of these types is `graph/types.ts`, and these blocks are the record of which idea owns which field.** They were written as sketches before the work and they are kept because the reason a field sits where it does is not readable off a declaration. Every place the tree came out differently from a sketch is written under the block it belongs to, so a reader comparing the two is reading a correction rather than finding a contradiction. Where a sketch and the file disagree about the text, the file is right.
 
-### What an artefact becomes
+### What an graph becomes
 
 ```ts
 /** One shader at one rung, as the build wrote it and the manifest named it. */
-export interface ShaderFrame {
+export interface FrameGraph {
   id: string;
   target: ShaderTarget;
   /** The names and types a caller may feed, unchanged from today. A page draws
@@ -85,9 +85,9 @@ export interface ShaderFrame {
 
 **`present` arrived with the compute pass of step 7 and was not in this sketch.** A render pass names the textures it writes and a compute pass names none, because what it writes are its bindings, and a storage texture cannot be an attachment of the pass that writes it. So a frame whose last word is a compute pass has a picture sitting in a texture with nothing saying it is the picture. The alternative was reading it off the usage flags, which means the renderer guessing which of several textures the reader is meant to see. The frame says so instead, and the backend copies that texture into the target the read and the canvas both come out of.
 
-`ShaderArtefact` stays as the name a caller uses, and it becomes `ShaderFrame`. The two present shapes, `GlslArtefact` and `WgslArtefact`, stop being a union a caller narrows: what differs between the languages moves into the module and the pipeline, where it belongs.
+`ShaderArtefact` stays as the name a caller uses, and it becomes `FrameGraph`. The two present shapes, `GlslArtefact` and `WgslArtefact`, stop being a union a caller narrows: what differs between the languages moves into the module and the pipeline, where it belongs.
 
-**`swap` arrived with step 10 and `modules` came out as `documents`.** A pair of textures that trade places every frame is two names the backend exchanges after every pass has run, and it is on the frame rather than on either texture because neither half can say on its own that it is half of a pair. **The description and the frame are two types rather than one, and they name the shader's files differently.** `FrameDescription` is what the build wrote and it carries `documents`, each one an address and which of a rung's file names that address is. `ShaderFrame` is the same thing with those documents fetched and it carries `modules`, each one the code itself. It is the split the texture note below describes: an address is what the manifest can hold and the bytes are not.
+**`swap` arrived with step 10 and `modules` came out as `documents`.** A pair of textures that trade places every frame is two names the backend exchanges after every pass has run, and it is on the frame rather than on either texture because neither half can say on its own that it is half of a pair. **The description and the frame are two types rather than one, and they name the shader's files differently.** `FrameDescription` is what the build wrote and it carries `documents`, each one an address and which of a rung's file names that address is. `FrameGraph` is the same thing with those documents fetched and it carries `modules`, each one the code itself. It is the split the texture note below describes: an address is what the manifest can hold and the bytes are not.
 
 ### The resources
 
@@ -186,7 +186,7 @@ export interface ModuleSpec {
    * value for. Absent where the rung asks for the source's own numbers. The
    * module is the same text at every rung, so these numbers are the only thing
    * separating a phone's picture from a desktop's. */
-  overrides?: Record<string, number>;
+  constants?: Record<string, number>;
 }
 
 export type PipelineSpec = RenderPipelineSpec | ComputePipelineSpec;
@@ -307,7 +307,7 @@ That is the difference between a method a backend has nothing to say through and
 
 `draw()` runs every pass of the description in order on one command encoder and submits once. A frame with one pass in it makes exactly the calls the backend makes today, which is what lets the characterization tests from step 1 stand through the reshape.
 
-`Backend` also keeps every method it has. `createProgram` takes a `ShaderFrame` instead of a `ShaderArtefact`, `resize`, `readPixels` and `dispose` are untouched, and neither backend gains a method the other has to throw from.
+`Backend` also keeps every method it has. `createProgram` takes a `FrameGraph` instead of a `ShaderArtefact`, `resize`, `readPixels` and `dispose` are untouched, and neither backend gains a method the other has to throw from.
 
 **One thing about the renderer's own type checking.** The site's renderer tsconfig held this stack to `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`, so every array read above is a value that may be undefined and every optional field is absent rather than set to undefined. That is why the optional fields are written as `field?: T` and never as `field: T | undefined`, and why a description is walked with `for (const pass of passes)` rather than by index.
 
@@ -323,7 +323,7 @@ That is the difference between a method a backend has nothing to say through and
 
 **A capability preset is called `core-<capability>`.** So `core-compute`, `core-texture`, `core-state`, `core-geometry`, `core-perdraw`, `core-depth`, `core-target`, `core-mips`, `core-multisample`, `core-indirect`, `core-report`, `core-stencil` and `core-scene`, which is thirteen of the fifteen the engine's own fixture corpus holds, `core-draw-list` and `core-material` being the two added since. That corpus is the engine repository's and no preset is a source here any more. The last of them is the engine's rather than a new device capability: it draws one object whose matrix the engine worked out from a scene, using the mat4 uniforms and the buffer geometry the device layer already had. The three language bases keep `base-<language>`, since they are named for the language they open the playground in and a capability preset is named for what it proves.
 
-**A rung's numbers still ride beside the file names.** Nothing about the ladder changes. A WGSL document is the same text at every rung and its rung values are spent when the pipeline is created, which is D77, where a WGSL shader reduces per rung through pipeline overridable constants. A description with several modules carries the overrides per module, since two documents of one shader may each declare their own constants.
+**A rung's numbers still ride beside the file names.** Nothing about the ladder changes. A WGSL document is the same text at every rung and its rung values are spent when the pipeline is created, which is D77, where a WGSL shader reduces per rung through pipeline overridable constants. A description with several modules carries the constants per module, since two documents of one shader may each declare their own constants.
 
 ## Ownership and lifetime
 
@@ -350,7 +350,7 @@ That is the difference between a method a backend has nothing to say through and
 
 **WebGL 2 implements one shape and refuses everything above it:** one render pass, one uniform block, the backend's own full-screen triangle, and one colour target which is the frame. It has no compute pipeline, no storage buffer, no second pass, no depth attachment and no instancing, and it never grows one, because every capability above that line is the reason WebGPU is here.
 
-**Nothing branches on the backend to make that true.** The manifest is what decides. A preset above the subset has no GLSL target, so `hasWgslTarget` is true for it, `chooseBackend` asks for a card, and a browser that gives none falls back to WebGL 2 where `loadArtefact` refuses with `shader "<id>" has no GLSL target`. That refusal is the case D63 already built a surface for, WGSL being publishable and a reader with no WebGPU getting the captured frame: the reader is shown the captured frame and the reason, in the words the site's refusal module holds and the treatment its `WgslRefusal` component gives. So a compute preset on a browser with no WebGPU is a case the site already handles, and no new refusal surface is written for it.
+**Nothing branches on the backend to make that true.** The manifest is what decides. A preset above the subset has no GLSL target, so `hasWgslTarget` is true for it, `chooseBackend` asks for a card, and a browser that gives none falls back to WebGL 2 where `loadGraph` refuses with `shader "<id>" has no GLSL target`. That refusal is the case D63 already built a surface for, WGSL being publishable and a reader with no WebGPU getting the captured frame: the reader is shown the captured frame and the reason, in the words the site's refusal module holds and the treatment its `WgslRefusal` component gives. So a compute preset on a browser with no WebGPU is a case the site already handles, and no new refusal surface is written for it.
 
 **What the two art shaders are held to across the whole arc.** `deep-field` and `gyroid-dreams` are hand-written GLSL, they are one pass, and they stay byte-identical in `out/` from the first step of this work to the last.
 
@@ -364,13 +364,13 @@ That is the difference between a method a backend has nothing to say through and
 2. **A pipeline the driver will not accept, for a reason that is not the code.** A workgroup size over the device limit, a binding whose visibility does not match the stage that reads it, a colour format the device does not allow as a target. WebGPU reports these as validation errors rather than compilation ones, so pipeline creation is wrapped in an error scope and what comes back goes to the same `onRefused` callback with the same words. Without that they arrive as uncaptured device errors, which is a run's worth of noise and no message for the reader: it was 366 uncaptured errors in one run before the rollback below existed.
 3. **A description the renderer itself will not build**, which is a resource named by a binding and never declared, or a pass naming a pipeline that is not there. That is caught before any device call, thrown from `createProgram`, and it is a defect in the build rather than in a reader's source.
 
-**What a refusal rolls back to.** The last description that drew, held whole rather than per document. A WebGPU draw of a module that did not compile throws nothing, so the last artefact that drew without throwing names the refused one and keeps drawing it, which is the reason `host/surface.ts` holds `before` rather than reading the current value. With several documents the same rule applies to the whole description, because one document changing is a new description, and going back a document at a time would leave a pipeline built from two halves that were never compiled together.
+**What a refusal rolls back to.** The last description that drew, held whole rather than per document. A WebGPU draw of a module that did not compile throws nothing, so the last graph that drew without throwing names the refused one and keeps drawing it, which is the reason `host/surface.ts` holds `before` rather than reading the current value. With several documents the same rule applies to the whole description, because one document changing is a new description, and going back a document at a time would leave a pipeline built from two halves that were never compiled together.
 
 ## A shader of several documents
 
-**Today every surface assumes one.** `loadShaderSource` returns one text, the playground's editor holds one document, `setArtefact` swaps one artefact, and `check:code-parity` and `check:complete-blocks` hold an article against one source. The first preset with a compute pass owns two, and that is the point at which those assumptions cost something.
+**Today every surface assumes one.** `loadShaderSource` returns one text, the playground's editor holds one document, `setGraph` swaps one graph, and `check:code-parity` and `check:complete-blocks` hold an article against one source. The first preset with a compute pass owns two, and that is the point at which those assumptions cost something.
 
-**What this document settles about it, which is the mechanism.** A description carries its documents as a list, and a reader's edit rebuilds the description with one document replaced and hands the whole thing to `setArtefact`. That call compares by identity and a rebuilt description is a new object, so nothing about the swap changes. A refusal rolls back the whole description, per the rule above.
+**What this document settles about it, which is the mechanism.** A description carries its documents as a list, and a reader's edit rebuilds the description with one document replaced and hands the whole thing to `setGraph`. That call compares by identity and a rebuilt description is a new object, so nothing about the swap changes. A refusal rolls back the whole description, per the rule above.
 
 **The surface was settled on 2026-08-21 as D85**, where every hand-written document of a shader is editable and every generated one is read only. It amends D51, which opens the playground on a language the reader picks, and D57, which is the control split above, because both of those rested on a shader being one editable document. That entry is what says how the playground shows a shader of several documents, which is one tab per document with every hand-written one editable and every generated one read only, and it is the home for that question rather than this file. **What it leaves open is the article rather than the editor**: no post quotes a shader of several documents yet, so what `check:code-parity` holds such a post to is a question the first one asks and nothing has answered.
 
@@ -402,7 +402,7 @@ That is the difference between a method a backend has nothing to say through and
 
 **What the rows point at from this repository, checked row by row when the table arrived here on 2026-08-24.** Every `core-*` name in this document is a file in `fixtures/source/`, **15 of 15**, and the table itself carries **13** of them: `core-draw-list` and `core-material` are fixtures with no row, named only where the naming convention is given. **Four rows name `base-glsl`, `base-slang` and `base-wgsl`**, which are the `altpsyche-dev` site's own shaders rather than fixtures here, because the capability they prove shipped before this repository had a corpus of its own, and a Slang base cannot travel. In the last column, `the trace`, `the fast suite` and `surface` are this repository's gates, and `backends`, `preview` and `hardware` are that site's.
 
-**The readings the table was verified against, all taken on 2026-08-21 against one build of the `altpsyche-dev` site, when the eleven capability presets and the renderer both still lived in that tree.** They are what the table was accepted on and they are not re-taken here, so read them as a record rather than as this repository's numbers: the corpus is fifteen fixtures here now and the counts below cannot be reproduced against it. `backends` draws **21 artefacts with 19 skips, each skip naming its reason**, and the eleven capability presets are all among the 21. The trace contract is **12 of 12 agreeing**. The fast suite is **1,016 tests over 62 files, 1,015 passing and 1 skipped**, of which the renderer's own files are 21 holding 337 tests, every one of them passing: the eighteen under `tests/renderer-*`, plus the description, the frame and the artefact loader. `out/` is **257 files and 32,099,816 bytes**.
+**The readings the table was verified against, all taken on 2026-08-21 against one build of the `altpsyche-dev` site, when the eleven capability presets and the renderer both still lived in that tree.** They are what the table was accepted on and they are not re-taken here, so read them as a record rather than as this repository's numbers: the corpus is fifteen fixtures here now and the counts below cannot be reproduced against it. `backends` draws **21 artefacts with 19 skips, each skip naming its reason**, and the eleven capability presets are all among the 21. The trace contract is **12 of 12 agreeing**. The fast suite is **1,016 tests over 62 files, 1,015 passing and 1 skipped**, of which the renderer's own files are 21 holding 337 tests, every one of them passing: the eighteen under `tests/renderer-*`, plus the description, the frame and the graph loader. `out/` is **257 files and 32,099,816 bytes**.
 
 **Three of those capabilities have no picture, and what they report is a number.** The pass a query times and the samples a draw has counted are read back through `readBuffer`, and the count moves exactly as the near sheet covers the far one: **0 samples with it centred, 82,240 with it half aside and 102,400 with it clear**, at 269,880, 239,497 and 102,400 of 480,000 pixels lit. The pass took 178,313, 190,093 and 188,904 ns on the software renderer, and on the card the counts and the lit totals are identical while the times are 512, 1,536 and 1,792 ns, which climbs with how much was drawn where the software renderer's does not. **Those numbers were read by a probe inside the step that landed them rather than by a standing gate**, which is worth saying plainly: the site's `backends` gate draws `core-report` and prints its lit count, and nothing in the harness prints the count or the times on every run. What is held every run is the behaviour, by `renderer-queries`: a pass whose device has no timing draws with no query set at all rather than refusing the frame, leaves the buffer as it found it, and still counts samples, since a sample count needs nothing optional.
 

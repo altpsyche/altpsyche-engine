@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { PassSpec, ShaderFrame } from '@altpsyche/engine';
+import type { PassSpec, FrameGraph } from '@altpsyche/engine';
 
 /**
  * A description whose pass list changes while the program runs.
@@ -38,7 +38,7 @@ const both: PassSpec[] = [
   { pipeline: 'over', draws: [{ vertices: 3 }] },
 ];
 
-const holding = (over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const holding = (over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-passes',
   target: 'wgsl',
   uniforms: [

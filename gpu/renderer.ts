@@ -15,7 +15,7 @@
  * outside React had to build its own, which is why one of them never injected
  * the values the others did: they were written separately and drifted.
  */
-import type { BackendName, DeviceReport, ShaderFrame, UniformValue } from '../graph/types.js';
+import type { BackendName, DeviceReport, FrameGraph, UniformValue } from '../graph/types.js';
 import { frameKey } from '../pipeline/cache.js';
 
 /** How many compiled programs one renderer keeps warm at once. A program owns
@@ -35,7 +35,7 @@ export interface FrameRenderer {
    * so a capture reads its own texture with the row-stride arithmetic owned in
    * the library rather than in the consumer (§17 decision 7, item 29). Absent,
    * it reads the backend's own target, exactly as before. */
-  frame(shader: ShaderFrame, uniforms: Record<string, UniformValue>, into?: GPUTexture): Promise<Uint8Array>;
+  frame(shader: FrameGraph, uniforms: Record<string, UniformValue>, into?: GPUTexture): Promise<Uint8Array>;
   /** Draws and leaves the pixels on the canvas for the browser to composite.
    * Reading them back costs a stall the caller waits on: measured on one
    * full-screen shader at 1200x750, drawing is 1.9 to 2.5 ms a frame and
@@ -45,11 +45,11 @@ export interface FrameRenderer {
    * `into` lands the frame in a caller-supplied texture as well as the canvas —
    * an XR layer's target the compositor consumes, drawn without a read-back
    * stall (item 29). Absent, the frame lands only in the target and the canvas. */
-  draw(shader: ShaderFrame, uniforms: Record<string, UniformValue>, into?: GPUTexture): void;
+  draw(shader: FrameGraph, uniforms: Record<string, UniformValue>, into?: GPUTexture): void;
   /** Which of the names this frame declares the compiled program has nowhere to
    * put. The program is built if it has not been drawn yet, since compiling is
    * the only thing that can answer it and the result is kept either way. */
-  unreached(shader: ShaderFrame, names: string[]): string[];
+  unreached(shader: FrameGraph, names: string[]): string[];
   /** What the device behind this backend says about itself, which is every
    * ceiling it names and every optional part of its API it has. It is here
    * because a caller deciding whether a frame is drawable at all reads a ceiling
@@ -136,8 +136,8 @@ export async function createFrameRenderer(
   // frame every tick, builds this string once rather than every frame: a frame is a
   // fresh object per edit and its fields never change after it is made, so its
   // identity is enough to key the string by.
-  const keys = new WeakMap<ShaderFrame, string>();
-  const key = (shader: ShaderFrame) => {
+  const keys = new WeakMap<FrameGraph, string>();
+  const key = (shader: FrameGraph) => {
     const held = keys.get(shader);
     if (held !== undefined) return held;
     const built = frameKey(shader);
@@ -145,7 +145,7 @@ export async function createFrameRenderer(
     return built;
   };
 
-  const programFor = (shader: ShaderFrame) => {
+  const programFor = (shader: FrameGraph) => {
     const k = key(shader);
     const cached = programs.get(k);
     if (cached) {
@@ -168,7 +168,7 @@ export async function createFrameRenderer(
     return program;
   };
 
-  const drawOne = (shader: ShaderFrame, uniforms: Record<string, UniformValue>, into?: GPUTexture) => {
+  const drawOne = (shader: FrameGraph, uniforms: Record<string, UniformValue>, into?: GPUTexture) => {
     const program = programFor(shader);
     program.setUniforms(uniforms);
     program.draw(into);

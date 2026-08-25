@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
-import type { DrawSpec, ShaderFrame } from '@altpsyche/engine';
+import type { DrawSpec, FrameGraph } from '@altpsyche/engine';
 
 /**
  * One slice of a per-draw buffer per draw (item 27): a `hasDynamicOffset` uniform
@@ -30,7 +30,7 @@ const WGSL = `struct Cube { transform: mat4x4<f32> };
 const RECORD = 64;
 const SLOT = 256;
 
-const perDrawFrame = (draws: DrawSpec[], count: number, over: Partial<ShaderFrame> = {}): ShaderFrame => ({
+const perDrawFrame = (draws: DrawSpec[], count: number, over: Partial<FrameGraph> = {}): FrameGraph => ({
   id: 'fixture-perdraw',
   target: 'wgsl',
   uniforms: [],

@@ -18,7 +18,7 @@ import type {
   IndexResource,
   RenderPassSpec,
   RenderPipelineSpec,
-  ShaderFrame,
+  FrameGraph,
   TextureResource,
   UniformSlot,
   VertexResource,
@@ -46,7 +46,7 @@ export type PlannedPass = FramePlan[number];
  * replays every frame. Nothing here touches the card: each pass is checked
  * against its pipeline and against what earlier passes of the same frame have
  * written, so the loop that submits the frame does no lookups of its own. */
-export function planFramePasses(frame: ShaderFrame, geometryOf: (name: string) => DrawnGeometry) {
+export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) => DrawnGeometry) {
   // Every rule about the graph itself lives in one place now, and this is where
   // the plan reads it before turning the graph into passes: a frame that would
   // draw wrong is refused here, in the words a build would use for the same
@@ -278,7 +278,7 @@ export function planFramePasses(frame: ShaderFrame, geometryOf: (name: string) =
  * is `submit/`: a graph becomes a plan here and then commands in
  * [execute.ts](execute.ts). Between the two sits exactly one translation —
  * `frameOf`, which fills a description's documents with the text a loader fetched
- * and its generated resources with their bytes, producing the `ShaderFrame` graph
+ * and its generated resources with their bytes, producing the `FrameGraph` graph
  * `planFramePasses` reads. This function is that translation named as the seam, so
  * a caller holding a description reaches the new path with one call and nothing
  * above the seam has to know how a graph is shaped or how a plan is built.
@@ -299,7 +299,7 @@ export function planFramePasses(frame: ShaderFrame, geometryOf: (name: string) =
  * `createProgram` — each lifetime now reaches its own module and no method both
  * allocates resources and compiles pipelines — but it did so without routing a
  * runtime draw through this seam: a backend receives an already-assembled
- * `ShaderFrame` and plans it with `planFramePasses` directly, never holding a
+ * `FrameGraph` and plans it with `planFramePasses` directly, never holding a
  * `FrameDescription` to feed here. This composition waits for the caller that does
  * hold one, the `submit(graph)` model of items 26 to 29; see item 15's
  * [JOURNAL.md](../docs/JOURNAL.md) row.
@@ -312,10 +312,10 @@ export function planFromDescription(
   geometryOf: (name: string) => DrawnGeometry,
   extras: {
     block?: UniformSlot[];
-    overrides?: Record<string, number>;
+    constants?: Record<string, number>;
     generated?: Map<string, Uint8Array<ArrayBuffer>>;
   } = {}
 ): FramePlan {
-  const frame = frameOf(id, description, texts, uniforms, extras.block, extras.overrides, extras.generated);
+  const frame = frameOf(id, description, texts, uniforms, extras.block, extras.constants, extras.generated);
   return planFramePasses(frame, geometryOf);
 }

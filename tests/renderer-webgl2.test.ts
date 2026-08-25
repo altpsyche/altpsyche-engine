@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGL2Backend } from '../gpu/webgl2';
 import { glslFrame } from '@altpsyche/engine';
-import type { RenderPipelineSpec, ShaderFrame } from '@altpsyche/engine';
+import type { RenderPipelineSpec, FrameGraph } from '@altpsyche/engine';
 import { bottomUpFrame, createFakeGL } from './support/fake-gl';
 
 /**
@@ -29,7 +29,7 @@ const UNIFORMS = [
 
 /** The one-pass description of the fixture, built the way the build builds one,
  * so what these assert is the backend rather than a shape written here. */
-const artefact = (over: { vertex?: string; fragment?: string } = {}): ShaderFrame =>
+const graph = (over: { vertex?: string; fragment?: string } = {}): FrameGraph =>
   glslFrame('fixture', over.vertex ?? VERTEX, over.fragment ?? FRAGMENT, UNIFORMS);
 
 function backendOver(setup: (gl: ReturnType<typeof createFakeGL>) => void = () => {}) {
@@ -63,7 +63,7 @@ describe('the context it asks for', () => {
 
   it('refuses a frame for the other backend by naming the target it got', () => {
     const { backend } = backendOver();
-    const wgsl = { id: 'x', target: 'wgsl' } as ShaderFrame;
+    const wgsl = { id: 'x', target: 'wgsl' } as FrameGraph;
     expect(() => backend.program(wgsl)).toThrow('WebGL 2 was handed a wgsl frame to draw');
   });
 });
@@ -75,11 +75,11 @@ describe('the context it asks for', () => {
  * One render pass through one pipeline into the frame's own colour target is the
  * whole of it, and every capability above that line is the reason WebGPU is here.
  * Nothing branches on the backend to keep that true: a description above the
- * subset has no GLSL target, so `loadArtefact` refuses it by name before a
+ * subset has no GLSL target, so `loadGraph` refuses it by name before a
  * program is asked for and this is the second door rather than the first.
  */
 describe('a description above the subset', () => {
-  const glsl = (over: Partial<ShaderFrame>): ShaderFrame => ({ ...artefact(), ...over });
+  const glsl = (over: Partial<FrameGraph>): FrameGraph => ({ ...graph(), ...over });
 
   it('refuses a frame with no pass in it rather than drawing nothing', () => {
     const { backend } = backendOver();
@@ -90,7 +90,7 @@ describe('a description above the subset', () => {
 
   it('refuses a pass naming a pipeline the frame does not carry', () => {
     const { backend } = backendOver();
-    const frame = artefact();
+    const frame = graph();
     expect(() => backend.program(glsl({ passes: [{ pipeline: 'second', draws: [{ vertices: 3 }] }] }))).toThrow(
       'the frame for "fixture" describes no pass this backend can draw'
     );
@@ -101,7 +101,7 @@ describe('a description above the subset', () => {
     const { backend } = backendOver();
     // A GLSL pair is two documents and the vertex half is the shader's own, so
     // `fullscreen` is a WGSL description that reached the wrong backend.
-    const pipelines = artefact().pipelines.map((pipeline) => ({ ...pipeline, vertex: 'fullscreen' as const }));
+    const pipelines = graph().pipelines.map((pipeline) => ({ ...pipeline, vertex: 'fullscreen' as const }));
     expect(() => backend.program(glsl({ pipelines }))).toThrow(
       'the frame for "fixture" carries no vertex document'
     );
@@ -109,7 +109,7 @@ describe('a description above the subset', () => {
 
   it('refuses a pipeline naming a document the frame does not carry', () => {
     const { backend } = backendOver();
-    const modules = artefact().modules.filter((document) => document.name !== 'vertex');
+    const modules = graph().modules.filter((document) => document.name !== 'vertex');
     expect(() => backend.program(glsl({ modules }))).toThrow(
       'the frame for "fixture" names a document it does not carry'
     );
@@ -131,7 +131,7 @@ describe('a description above the subset', () => {
 
   it('refuses a second pass rather than drawing the first and dropping the rest', () => {
     const { backend } = backendOver();
-    const pass = artefact().passes[0]!;
+    const pass = graph().passes[0]!;
     expect(() => backend.program(glsl({ passes: [pass, pass] }))).toThrow(
       'the frame for "fixture" runs more than one pass'
     );
@@ -140,7 +140,7 @@ describe('a description above the subset', () => {
   it('refuses a pipeline writing more than one colour, since the frame is the only one it has', () => {
     const { backend } = backendOver();
     const several = {
-      ...(artefact().pipelines[0] as RenderPipelineSpec),
+      ...(graph().pipelines[0] as RenderPipelineSpec),
       targets: [{ format: 'rgba8unorm' as const }, { format: 'rgba8unorm' as const }],
     };
     expect(() => backend.program(glsl({ pipelines: [several] }))).toThrow(
@@ -151,7 +151,7 @@ describe('a description above the subset', () => {
   it('refuses a pipeline that tests depth, since one surface covering the frame has nothing behind it', () => {
     const { backend } = backendOver();
     const tested = {
-      ...(artefact().pipelines[0] as RenderPipelineSpec),
+      ...(graph().pipelines[0] as RenderPipelineSpec),
       depth: { format: 'depth24plus' as const, compare: 'less' as const, write: true },
     };
     expect(() => backend.program(glsl({ pipelines: [tested] }))).toThrow(
@@ -162,7 +162,7 @@ describe('a description above the subset', () => {
   it('refuses a texture the description declares, since it has nowhere to write one', () => {
     const { backend } = backendOver();
     const resources = [
-      ...artefact().resources,
+      ...graph().resources,
       {
         kind: 'texture' as const,
         name: 'picture',
@@ -189,9 +189,9 @@ describe('a description above the subset', () => {
 });
 
 describe('building a program', () => {
-  it('compiles the vertex and the fragment the artefact carries', () => {
+  it('compiles the vertex and the fragment the graph carries', () => {
     const { gl, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
 
     const sources = gl.of('shaderSource').map((entry) => entry.source as string);
     expect(sources).toHaveLength(2);
@@ -203,7 +203,7 @@ describe('building a program', () => {
     expect(() =>
       backendOver((gl) => {
         gl.compileLog = 'ERROR: 0:8: syntax error';
-      }).backend.program(artefact())
+      }).backend.program(graph())
     ).toThrow('ERROR: 0:8: syntax error');
   });
 
@@ -211,13 +211,13 @@ describe('building a program', () => {
     expect(() =>
       backendOver((gl) => {
         gl.linkLog = 'the varyings do not match';
-      }).backend.program(artefact())
+      }).backend.program(graph())
     ).toThrow('the varyings do not match');
   });
 
   it('deletes the shaders it attached, since the linked program holds what it needs', () => {
     const { gl, backend } = backendOver();
-    backend.program(artefact());
+    backend.program(graph());
     expect(gl.of('deleteShader')).toHaveLength(2);
   });
 });
@@ -234,7 +234,7 @@ describe('where the values go', () => {
       fake.blockBytes = 16;
     });
 
-    backend.program(artefact()).setUniforms({ u_time: 3, u_resolution: [7, 9] });
+    backend.program(graph()).setUniforms({ u_time: 3, u_resolution: [7, 9] });
 
     const upload = gl.of('bufferData').at(-1)!;
     expect(upload.floats).toEqual([7, 9, 3, 0]);
@@ -247,13 +247,13 @@ describe('where the values go', () => {
       fake.blockBytes = 4;
     });
 
-    backend.program(artefact()).setUniforms({ u_time: 5 });
+    backend.program(graph()).setUniforms({ u_time: 5 });
     expect(gl.of('bufferData').at(-1)!.floats).toEqual([5]);
   });
 
   it('goes through loose uniforms where the program reports no block', () => {
     const { gl, backend } = backendOver();
-    backend.program(artefact()).setUniforms({ u_time: 3, u_resolution: [7, 9] });
+    backend.program(graph()).setUniforms({ u_time: 3, u_resolution: [7, 9] });
 
     expect(gl.of('uniform1f').at(-1)).toMatchObject({ name: 'u_time', value: 3 });
     expect(gl.of('uniform2fv').at(-1)).toMatchObject({ name: 'u_resolution', value: [7, 9] });
@@ -262,7 +262,7 @@ describe('where the values go', () => {
 
   it('picks the loose call by how many components the value has', () => {
     const { gl, backend } = backendOver();
-    backend.program(artefact()).setUniforms({ a: [1, 2], b: [1, 2, 3], c: [1, 2, 3, 4] });
+    backend.program(graph()).setUniforms({ a: [1, 2], b: [1, 2, 3], c: [1, 2, 3, 4] });
 
     expect(gl.of('uniform2fv')).toHaveLength(1);
     expect(gl.of('uniform3fv')).toHaveLength(1);
@@ -325,7 +325,7 @@ describe('where the values go', () => {
       fake.missing = ['u_dropped'];
     });
 
-    backend.program(artefact()).setUniforms({ u_dropped: 1 });
+    backend.program(graph()).setUniforms({ u_dropped: 1 });
     expect(gl.of('uniform1f')).toHaveLength(0);
   });
 });
@@ -337,7 +337,7 @@ describe('which names the program never got', () => {
       fake.blockBytes = 4;
     });
 
-    expect(backend.program(artefact()).unreached(['u_time', 'u_gone'])).toEqual(['u_gone']);
+    expect(backend.program(graph()).unreached(['u_time', 'u_gone'])).toEqual(['u_gone']);
   });
 
   it('answers off the locations where the uniforms are loose', () => {
@@ -345,7 +345,7 @@ describe('which names the program never got', () => {
       fake.missing = ['u_gone'];
     });
 
-    expect(backend.program(artefact()).unreached(['u_time', 'u_gone'])).toEqual(['u_gone']);
+    expect(backend.program(graph()).unreached(['u_time', 'u_gone'])).toEqual(['u_gone']);
   });
 });
 
@@ -353,7 +353,7 @@ describe('the frame it draws', () => {
   it('covers the frame with one triangle at the size it was resized to', () => {
     const { gl, backend } = backendOver();
     backend.resize(320, 180);
-    backend.program(artefact()).draw();
+    backend.program(graph()).draw();
 
     expect(gl.of('viewport').at(-1)).toMatchObject({ x: 0, y: 0, width: 320, height: 180 });
     expect(gl.of('drawArrays').at(-1)).toMatchObject({ mode: 0x0004, first: 0, count: 3 });
@@ -364,7 +364,7 @@ describe('the frame it draws', () => {
     backend.resize(320, 180);
     // One fullscreen pass, two corners-draws: the backend draws each rather than
     // the first alone, so a pass carrying many draws is not merely typeable here.
-    backend.program({ ...artefact(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }, { vertices: 3 }] }] }).draw();
+    backend.program({ ...graph(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }, { vertices: 3 }] }] }).draw();
 
     expect(gl.of('drawArrays')).toHaveLength(2);
   });
@@ -375,7 +375,7 @@ describe('the frame it draws', () => {
     // One corners-draw carrying an instance count: the card makes one draw call
     // that reads a thousand instances, rather than the count being silently
     // dropped and one copy drawn.
-    backend.program({ ...artefact(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3, instances: 1000 }] }] }).draw();
+    backend.program({ ...graph(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3, instances: 1000 }] }] }).draw();
 
     expect(gl.of('drawArrays')).toHaveLength(0);
     expect(gl.of('drawArraysInstanced')).toHaveLength(1);
@@ -385,7 +385,7 @@ describe('the frame it draws', () => {
   it('leaves a draw with no instance count a plain drawArrays, the call every shader on the site makes (item 28)', () => {
     const { gl, backend } = backendOver();
     backend.resize(320, 180);
-    backend.program({ ...artefact(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }] }).draw();
+    backend.program({ ...graph(), passes: [{ pipeline: 'frame', draws: [{ vertices: 3 }] }] }).draw();
 
     expect(gl.of('drawArraysInstanced')).toHaveLength(0);
     expect(gl.of('drawArrays')).toHaveLength(1);
@@ -413,7 +413,7 @@ describe('what it gives back when it is done', () => {
       fake.blockBytes = 4;
     });
 
-    backend.program(artefact()).dispose();
+    backend.program(graph()).dispose();
     expect(gl.of('deleteProgram')).toHaveLength(1);
     expect(gl.of('deleteBuffer')).toHaveLength(1);
   });
@@ -431,7 +431,7 @@ describe('the words a caller asks it for', () => {
     // empty reading from the one that keeps no such numbers, so nothing has to
     // know which backend it holds before asking.
     const { backend } = backendOver();
-    expect([...(await backend.program(artefact()).readBuffer('counts'))]).toEqual([]);
+    expect([...(await backend.program(graph()).readBuffer('counts'))]).toEqual([]);
   });
 });
 
@@ -444,7 +444,7 @@ describe('a WebGPU texture handed to the WebGL 2 backend', () => {
 
   it('refuses to draw a frame into it, naming what it cannot do', () => {
     const { backend } = backendOver();
-    expect(() => backend.program(artefact()).draw(foreign)).toThrow(
+    expect(() => backend.program(graph()).draw(foreign)).toThrow(
       'WebGL 2 was handed a WebGPU texture to draw into, which it cannot land a frame in'
     );
   });
@@ -458,7 +458,7 @@ describe('a WebGPU texture handed to the WebGL 2 backend', () => {
 
   it('draws and reads as before when it is handed none', async () => {
     const { backend } = backendOver();
-    expect(() => backend.program(artefact()).draw()).not.toThrow();
+    expect(() => backend.program(graph()).draw()).not.toThrow();
     expect(await backend.readPixels()).toHaveLength(800 * 600 * 4);
   });
 });
