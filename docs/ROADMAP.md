@@ -1846,3 +1846,15 @@ is deliberate and sanctioned by the item:** a compute pass's group count no long
 resize — the backend dispatches the producer's count as given. A consumer wanting a resize to
 re-cover the frame rebuilds the graph with a fresh count, which is what `compute-field` now does;
 the old auto-tracking is gone by design (§7, §14). See [JOURNAL.md](JOURNAL.md).
+
+### 73. `bench:traffic` runs again, and something runs it
+
+**Status.** open
+
+**Asks for.** `npm run bench:traffic` to print its two readings, and for a gate to notice when it stops. It has printed nothing since item 26.
+
+**Done when.** `npm run bench:traffic` prints a row for every frame in its list and exits zero, **and** a gate fails when it does not — `npm test` is the cheap place, since the script needs no browser and no card. A reader who did not do the work can check both by running the two commands.
+
+**Needs.** nothing.
+
+**Why it exists.** Found on 2026-08-25 by the closing browser batch over `b3241fc..f734de7`, while checking what that batch's renames touched that a browser gate cannot see. `gates/traffic.mjs`'s `gridFrame` declares `passes: [{ pipeline: 'warp', draw: { instances: 3 } }]` — the singular field item 26 renamed to `draws` — so `isRenderPass`, which tests `'draws' in pass`, takes that render pass for a compute pass. At `b3241fc` that reached a clean refusal (`the pass on "warp" asks for the other kind of work than the pipeline does`); at `f734de7` it is a `TypeError` from `groupsIndirectly` reading `'indirect' in undefined`, because item 72's guard dropped the `typeof === 'object'` arm that had been absorbing the `undefined`. Either way the script dies on its first frame and has since item 26 (`db1f6b3`, 31 commits back): only items 22, 37 and 72 have ever touched the file, and none of them is item 26. **Two things are wrong and the second is the item.** The fixture is one word stale, which is a one-line fix. The reason nobody noticed for 31 commits is that `gates/traffic.mjs` is a `.mjs` outside `tsconfig`, so `type-check` cannot see it, and it is not in `gates/all.mjs`'s list — deliberately, since it asserts nothing and is not a gate — so no command in the repository runs it. That leaves the two readings it exists to keep apart, `cost().transientBytes` against `arena.traffic()` (§12 point 6, §17 decision 9), unprinted and unlooked-at for 31 commits. A node test that runs the script and asserts it exits zero with a row per frame is enough; it need not assert the numbers, which are what a person reads. See [JOURNAL.md](JOURNAL.md).
