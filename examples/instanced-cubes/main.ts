@@ -35,7 +35,7 @@ import {
   uniformBlockOf,
   WGSL_DOCUMENT,
 } from '@altpsyche/engine';
-import type { FrameDescription } from '@altpsyche/engine';
+import type { FrameGraph } from '@altpsyche/engine';
 
 /** How many objects the one instanced draw covers. A thousand is Phase 3's bar. */
 const COUNT = 1000;
@@ -150,7 +150,7 @@ const VERTEX_STRIDE = 24;
 // testing depth, and one pass issuing a single draw of `COUNT` instances into the
 // frame's own colour target. `draws: [{ instances }]` is the one instanced draw —
 // the vertex count is the geometry's, so it is not written a second time here.
-const WGSL_DESCRIPTION: FrameDescription = {
+const WGSL_DESCRIPTION: FrameGraph = {
   target: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms' },
@@ -171,7 +171,7 @@ const WGSL_DESCRIPTION: FrameDescription = {
     // store rather than writing it back.
     { kind: 'texture', name: 'depth', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
   ],
-  documents: [{ name: WGSL_DOCUMENT }],
+  modules: [{ name: WGSL_DOCUMENT, code: '' }],
   pipelines: [
     {
       kind: 'render',
@@ -233,10 +233,10 @@ void main() {
 // The WebGL 2 backend draws its own corners, so the draw counts vertices and the
 // instance count rides beside them: `{ vertices: 3, instances: COUNT }` is one
 // `drawArraysInstanced` (item 28) covering the thousand objects in one pass.
-const GLSL_DESCRIPTION: FrameDescription = {
+const GLSL_DESCRIPTION: FrameGraph = {
   target: 'glsl',
   resources: [{ kind: 'uniform', name: 'uniforms' }],
-  documents: [{ name: 'vertex' }, { name: 'fragment' }],
+  modules: [{ name: 'vertex', code: '' }, { name: 'fragment', code: '' }],
   pipelines: [
     {
       kind: 'render',

@@ -32,7 +32,7 @@ import { GEOMETRY_PRIMITIVE } from '@altpsyche/engine';
 import { BLEND_MODE } from './shader-blend';
 import type {
   BindingSpec,
-  FrameDescription,
+  FrameGraph,
   PassSpec,
   PipelineSpec,
   RenderPassSpec,
@@ -132,7 +132,7 @@ export const indexResourceName = (name: string): string => `${name}-indices`;
  * nothing binds is a picture that stays whatever the memory held, and a present
  * naming nothing is a frame that copies out the wrong texture.
  */
-export function declaredFrame(id: string, code: string, declared: DeclaredFrame): FrameDescription {
+export function declaredFrame(id: string, code: string, declared: DeclaredFrame): FrameGraph {
   const entries = new Map(computeEntriesOf(code).map((found) => [found.entry, found]));
 
   // One pipeline per entry point a pass names, in the order the passes name them,
@@ -722,7 +722,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   return {
     target: 'wgsl',
     resources,
-    documents: [{ name: WGSL_DOCUMENT }],
+    modules: [{ name: WGSL_DOCUMENT, code: '' }],
     pipelines,
     passes,
     ...(declared.present !== undefined ? { present: declared.present } : {}),

@@ -3,7 +3,7 @@
  * shadow-casting light, and around fifty objects — a scene, drawn through the
  * scene tier's producer.
  *
- * Where `instanced-cubes` (item 30) hand-wrote its `FrameDescription` because no
+ * Where `instanced-cubes` (item 30) hand-wrote its build-time frame because no
  * producer existed yet, this is what Phase 4 built: `sceneView(arena, options)`
  * (item 32) turns a world and the cameras watching it into a frame, and the
  * one-pipeline restriction is gone (item 33), so the scene spans two pipelines —

@@ -122,7 +122,7 @@ const frames = [
   { frame: computeFrame, values: { u_time: 1, u_resolution: [W, H] } },
 ];
 
-const idWidth = Math.max(...frames.map((f) => f.frame.id.length), 'frame'.length);
+const idWidth = Math.max(...frames.map((f) => (f.frame.id ?? '').length), 'frame'.length);
 /** @param {unknown} text @param {number} width */
 const pad = (text, width) => String(text).padEnd(width);
 /** @param {unknown} value @param {number} width */

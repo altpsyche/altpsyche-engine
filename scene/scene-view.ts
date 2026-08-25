@@ -1,7 +1,7 @@
 /**
  * `sceneView`, the scene tier's producer: a world and the cameras watching it
- * become a `FrameGraph` (the §14 name, landed by item 70; `FrameDescription` is
- * still to fold in). It is [RoadToPureEngine.md](../docs/RoadToPureEngine.md) Stage 4's
+ * become a `FrameGraph` (the §14 name, landed by item 70; the build-time frame
+ * folded into it at item 86). It is [RoadToPureEngine.md](../docs/RoadToPureEngine.md) Stage 4's
  * `sceneView(arena, options).graph(world, views)`.
  *
  * A producer, not a backend: it imports the graph authoring layer (`graph/`) and

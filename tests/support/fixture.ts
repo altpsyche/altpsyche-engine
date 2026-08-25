@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { FrameDescription } from '@altpsyche/engine';
+import type { FrameGraph } from '@altpsyche/engine';
 import { CAPABILITY_FIXTURES } from '../../fixtures/capability-fixtures';
 import { declaredFrame, generatedBytes } from '../../fixtures/shader-describe';
 
@@ -21,7 +21,7 @@ import { declaredFrame, generatedBytes } from '../../fixtures/shader-describe';
  * whether it was still right.
  */
 export interface Fixture {
-  description: FrameDescription;
+  description: FrameGraph;
   code: string;
   /** Everything the declaration asked to be generated, keyed by the address the
    * description sends a reader to. Empty for a fixture that generates nothing. */

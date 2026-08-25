@@ -53,7 +53,7 @@ const FULLSCREEN_TRIANGLE = new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]);
  * refusal the item allows for a topology this backend could not draw — a guard
  * that only fires if the union grows a member with no GL mode.
  */
-function modeOfTopology(gl: WebGL2RenderingContext, topology: GPUPrimitiveTopology, frameId: string, geometryName: string): number {
+function modeOfTopology(gl: WebGL2RenderingContext, topology: GPUPrimitiveTopology, frameId: string | undefined, geometryName: string): number {
   switch (topology) {
     case 'point-list':
       return gl.POINTS;

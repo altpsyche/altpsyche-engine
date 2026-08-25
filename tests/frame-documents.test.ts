@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { assembleFrame, documentNames } from '@altpsyche/engine';
-import type { FrameDescription, FrameGraph } from '@altpsyche/engine';
+import type { FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU } from './support/fake-gpu';
 
 /**
@@ -18,10 +18,10 @@ import { createFakeGPU } from './support/fake-gpu';
 const VERTEX = '@vertex fn main(@builtin(vertex_index) i : u32) -> @builtin(position) vec4f { return vec4f(0); }';
 const FRAGMENT = '@fragment fn fragMain() -> @location(0) vec4f { return vec4f(1); }';
 
-const description: FrameDescription = {
+const description: FrameGraph = {
   target: 'wgsl',
   resources: [{ kind: 'uniform', name: 'uniforms' }],
-  documents: [{ name: 'corners' }, { name: 'shade' }],
+  modules: [{ name: 'corners', code: '' }, { name: 'shade', code: '' }],
   pipelines: [
     {
       kind: 'render',
@@ -78,10 +78,10 @@ describe('a description naming two distinct WGSL documents', () => {
  * the hole it leaves open — nothing checked the names differ — closed by a refusal
  * at the same site that already refuses a document with no text.
  */
-const collision: FrameDescription = {
+const collision: FrameGraph = {
   target: 'wgsl',
   resources: [{ kind: 'uniform', name: 'uniforms' }],
-  documents: [{ name: 'shade' }, { name: 'shade' }],
+  modules: [{ name: 'shade', code: '' }, { name: 'shade', code: '' }],
   pipelines: [
     {
       kind: 'render',

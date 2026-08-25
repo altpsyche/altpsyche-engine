@@ -94,9 +94,9 @@ function webgl2Frame({ id, description, bytes }) {
     const why = refused.find((/** @type {any} */ r) => r.entry === missing);
     return { skip: why ? `${missing} needs ${why.capability}, which WebGL 2 has not got` : `${missing} baked no GLSL` };
   }
-  const documents = [...names].map((name) => ({ name }));
+  const modules = [...names].map((name) => ({ name, code: '' }));
   const texts = Object.fromEntries([...names].map((name) => [name, baked[name].glsl]));
-  const glsl = { ...description, target: 'glsl', documents, pipelines };
+  const glsl = { ...description, target: 'glsl', modules, pipelines };
   // Bytes do not survive the trip through `page.evaluate`, so they cross as arrays
   // and are rebuilt into a Uint8Array map inside the page (the shape surface.mjs
   // uses for the same reason).

@@ -3154,7 +3154,7 @@ a record rather than a queue entry.
 
 ### 86. `FrameDescription` folds into `FrameGraph`, names kept
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The first half of item 67: one graph type where there are two shapes today, with
 string names left exactly as they are. `FrameDescription` ([graph/types.ts](../graph/types.ts)

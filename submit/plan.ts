@@ -14,7 +14,6 @@
  * trace presets still agree call for call.
  */
 import type {
-  FrameDescription,
   IndexResource,
   RenderPassSpec,
   RenderPipelineSpec,
@@ -271,10 +270,10 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) =>
 }
 
 /**
- * The seam: today's `FrameDescription` translated onto the new path in one place.
+ * The seam: a build-time frame filled onto the new path in one place.
  *
- * A `FrameDescription` is the build-time shape a producer hands over — it names
- * its documents rather than carrying their text, and says nothing about a device.
+ * A build-time `FrameGraph` is the shape a producer hands over — it names its
+ * modules rather than carrying their text, and says nothing about a device.
  * The new path of Stage 1 ([RoadToPureEngine.md](../docs/RoadToPureEngine.md) §15)
  * is `submit/`: a graph becomes a plan here and then commands in
  * [execute.ts](execute.ts). Between the two sits exactly one translation —
@@ -299,15 +298,15 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (name: string) =>
  * [ROADMAP.md](../docs/ROADMAP.md) item 15 has since removed the fused
  * `createProgram` — each lifetime now reaches its own module and no method both
  * allocates resources and compiles pipelines — but it did so without routing a
- * runtime draw through this seam: a backend receives an already-assembled
+ * runtime draw through this seam: a backend receives an already-filled
  * `FrameGraph` and plans it with `planFramePasses` directly, never holding a
- * `FrameDescription` to feed here. This composition waits for the caller that does
+ * build-time frame to feed here. This composition waits for the caller that does
  * hold one, the `submit(graph)` model of items 26 to 29; see item 15's
  * [JOURNAL.md](../docs/JOURNAL.md) row.
  */
 export function planFromDescription(
   id: string,
-  description: FrameDescription,
+  description: FrameGraph,
   texts: Record<string, string>,
   geometryOf: (name: string) => DrawnGeometry,
   extras: {

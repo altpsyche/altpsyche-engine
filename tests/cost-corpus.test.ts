@@ -37,7 +37,7 @@ function corpusFrame(id: string) {
     if (!('source' in resource) || !resource.source) continue;
     bytes.set(resource.name, generated.get(resource.source)!);
   }
-  const texts = new Map(description.documents.map((document) => [document.name, code]));
+  const texts = new Map(description.modules.map((module) => [module.name, code]));
   return assembleFrame(id, description, texts, bytes);
 }
 

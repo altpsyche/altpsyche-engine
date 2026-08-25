@@ -5,7 +5,7 @@ import { createWebGL2Backend } from '../gpu/webgl2';
 import { frameOf } from '../toy/frame';
 import { loadFixture } from './support/fixture';
 import { createFakeGL } from './support/fake-gl';
-import type { FrameDescription } from '@altpsyche/engine';
+import type { FrameGraph } from '@altpsyche/engine';
 
 /**
  * Item 79's frame assembly, read independently of the gate that uses it.
@@ -36,7 +36,7 @@ const artifact = (): {
  * bindings drop away because a GLSL program answers where its block sits. Returns
  * null where the bake carries no GLSL for an entry the pipelines need — a
  * fullscreen WGSL frame (no vertex baked) or a stage naga refused. */
-function glslFrameOf(id: string, description: FrameDescription, bytes: Map<string, Uint8Array<ArrayBuffer>>) {
+function glslFrameOf(id: string, description: FrameGraph, bytes: Map<string, Uint8Array<ArrayBuffer>>) {
   const baked = artifact().presets[id]?.entries ?? {};
   const names = new Set<string>();
   let unbaked: string | null = null;
@@ -63,20 +63,20 @@ function glslFrameOf(id: string, description: FrameDescription, bytes: Map<strin
     return { ...pipeline, vertex, fragment: { module: pipeline.fragment.entry, entry: 'main' as const }, bindings };
   });
   if (unbaked) return null;
-  const documents = [...names].map((name) => ({ name }));
+  const modules = [...names].map((name) => ({ name, code: '' }));
   const texts = Object.fromEntries([...names].map((name) => [name, baked[name].glsl]));
   const glsl = {
     ...description,
     target: 'glsl',
-    documents,
-    pipelines: pipelines as FrameDescription['pipelines'],
-  } as FrameDescription;
+    modules,
+    pipelines: pipelines as FrameGraph['pipelines'],
+  } as FrameGraph;
   return frameOf(id, glsl, texts, undefined, undefined, bytes);
 }
 
 /** The bytes the loader fetched, keyed by the resource that reads them — the same
  * rekey `gates/lib.mjs`'s `loadCorpus` does. */
-function bytesOf(description: FrameDescription, generated: Map<string, Uint8Array<ArrayBuffer>>) {
+function bytesOf(description: FrameGraph, generated: Map<string, Uint8Array<ArrayBuffer>>) {
   const bytes = new Map<string, Uint8Array<ArrayBuffer>>();
   for (const resource of description.resources) {
     const source = 'source' in resource ? resource.source : undefined;

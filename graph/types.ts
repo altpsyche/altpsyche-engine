@@ -23,13 +23,19 @@ export type ShaderTarget = 'glsl' | 'wgsl';
 export type UniformValue = number | number[];
 
 /**
- * One shader document, already fetched.
+ * One shader document.
  *
  * A shader written in WGSL or Slang is one of these and a shader written in GLSL
  * is two, which is the whole of what the two languages differ by here: the pair
  * a WebGL 2 program links from and the single module a WebGPU pipeline is made
  * from are both a list of documents with a pipeline naming which one runs at
  * which stage.
+ *
+ * The `code` is the fetched text on a frame a backend draws, and an empty string
+ * on the build-time shape a producer names but a loader has not filled yet: a
+ * document is named, carried and referenced by the one name it has, which a role
+ * fixed to a three-value union — fragment, vertex, wgsl — could not, since two
+ * WGSL documents share one role between them and carry two distinct texts.
  */
 export interface ModuleSpec {
   name: string;
@@ -426,44 +432,6 @@ export interface ComputePassSpec {
  * nothing could resolve. */
 export type PassSpec = RenderPassSpec | ComputePassSpec;
 
-/** One document of a frame before it has been fetched, which is the name a
- * pipeline calls it by and the name a loader fetches its text under. There is no
- * second key: a document is fetched, carried and referenced by the one name,
- * because a role fixed to a three-value union — fragment, vertex, wgsl — cannot
- * describe a description that names two WGSL documents, which have one role
- * between them and two distinct texts. */
-export interface DocumentSpec {
-  name: string;
-}
-
-/**
- * A frame with its documents named rather than fetched, which is what the build
- * writes and the manifest carries.
- *
- * It is per target rather than per shader, because the two targets of one shader
- * are different descriptions: a GLSL description carries two documents and a
- * pipeline whose vertex stage is the shader's own, a WGSL description carries one
- * document and a pipeline asking for the backend's three corners, and only the
- * resources and the passes coincide.
- *
- * A uniform resource here carries no positions. The block is what the shader's
- * own struct lays out, so it is the same on every target that has one and it is
- * asked of the linked program on the one target that has none, which makes it the
- * shader's rather than the description's.
- */
-export interface FrameDescription {
-  target: ShaderTarget;
-  resources: ResourceSpec[];
-  documents: DocumentSpec[];
-  pipelines: PipelineSpec[];
-  passes: PassSpec[];
-  present?: string;
-  /** Pairs of resources that trade places every frame, which is what a field
-   * growing out of its own last state needs: a shader cannot read the texture it
-   * is writing, so one of the pair is read this frame and written the next. */
-  swap?: [string, string][];
-}
-
 /**
  * One shader at one rung, as the build wrote it and the manifest named it.
  *
@@ -472,9 +440,23 @@ export interface FrameDescription {
  * backend would have to throw from. Today every shader on the site is this
  * description with one resource, one pipeline and one pass in it, which is why
  * the reshape adds nothing to what either backend does.
+ *
+ * One type covers a frame in either state of a fetch. The build writes it with
+ * its modules named rather than filled — a `code: ''` placeholder the loader
+ * overwrites — and with no `id`, because the identity is the manifest key a
+ * loader stamps on when it hands the frame across (`frameOf`). A frame a backend
+ * draws is the same shape with every module's text in it and its `id` set: there
+ * is no second graph type it has to be translated into, only fields that were
+ * empty becoming full. A uniform resource carries no positions until then either,
+ * for the same reason — the block is the shader's, the same on every target that
+ * has one, and asked of the linked program on the one target that has none.
  */
 export interface FrameGraph {
-  id: string;
+  /** The manifest key a loader stamps on when it fills the frame, absent on the
+   * build-time shape a producer hands over — the identity is not the producer's
+   * to invent, since one description is filled under whatever id a caller draws it
+   * by. Every frame a backend draws has it, because `frameOf` sets it. */
+  id?: string;
   target: ShaderTarget;
   /** The names and types a caller may feed are no longer written down here: they
    * are read from the source by `reflect(frame)` (item 69), because a source and

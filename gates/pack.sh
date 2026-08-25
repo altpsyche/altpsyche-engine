@@ -90,15 +90,15 @@ npx --yes tsx draw.ts
 # and this is the only check here that would notice.
 cat > bundled.mjs <<'JS'
 import { wgslDescription, WGSL_DOCUMENT } from '@altpsyche/engine';
-const documents = wgslDescription('x').documents;
-if (WGSL_DOCUMENT !== 'wgsl' || documents[0]?.name !== 'wgsl') {
+const modules = wgslDescription('x').modules;
+if (WGSL_DOCUMENT !== 'wgsl' || modules[0]?.name !== 'wgsl') {
   console.error(
     'a bundler lost the door\'s re-exports: WGSL_DOCUMENT=' + JSON.stringify(WGSL_DOCUMENT) +
-    ' documents=' + JSON.stringify(documents)
+    ' modules=' + JSON.stringify(modules)
   );
   process.exit(1);
 }
-console.log('bundled by esbuild, the door keeps its re-exports: ' + JSON.stringify(documents));
+console.log('bundled by esbuild, the door keeps its re-exports: ' + JSON.stringify(modules));
 JS
 
 npx --yes esbuild bundled.mjs --bundle --format=esm --outfile=bundled.out.mjs >/dev/null

@@ -4,13 +4,13 @@ import { frameOf, wgslDescription, glslDescription, ONE_PASS, WGSL_DOCUMENT } fr
 import type { DrawnGeometry } from '../submit/plan';
 
 /**
- * The seam of [ROADMAP.md](../docs/ROADMAP.md) item 14: today's `FrameDescription`
- * translated onto the new path in one place.
+ * The seam of [ROADMAP.md](../docs/ROADMAP.md) item 14: a build-time frame filled
+ * onto the new path in one place.
  *
  * `submit/` is the new path — a graph becomes a plan and then commands. A
- * `FrameDescription` is the build-time shape above it, naming its documents rather
+ * build-time `FrameGraph` is the shape above it, naming its modules rather
  * than carrying their text. `planFromDescription` is the single call that carries
- * one across: it fills the description's documents through `frameOf` and plans the
+ * one across: it fills the frame's modules through `frameOf` and plans the
  * resulting graph through `planFramePasses`. What this file asserts is that the
  * seam is exactly that composition and nothing more — the same plan the two steps
  * produce by hand, the same refusals `frameOf` already makes, and no device

@@ -33,7 +33,7 @@ import {
   createSurface,
   WGSL_DOCUMENT,
 } from '@altpsyche/engine';
-import type { Capability, DeviceProfile, FrameDescription } from '@altpsyche/engine';
+import type { Capability, DeviceProfile, FrameGraph } from '@altpsyche/engine';
 
 // The compute source: a plasma written one pixel at a time. The uniform block is
 // the clock and the picture's size, gathered into one struct behind the uniform
@@ -92,7 +92,7 @@ function groupsCovering(width: number, height: number): [number, number, number]
 // the source's own — the uniform block at 0 and the storage texture at 1, both
 // reached only by the compute stage. The pass's group count is the one thing that
 // depends on the size drawn at, so the description is built per size.
-const descriptionAt = (groups: [number, number, number]): FrameDescription => ({
+const descriptionAt = (groups: [number, number, number]): FrameGraph => ({
   target: 'wgsl',
   resources: [
     { kind: 'uniform', name: 'uniforms' },
@@ -107,7 +107,7 @@ const descriptionAt = (groups: [number, number, number]): FrameDescription => ({
       use: ['storage'],
     },
   ],
-  documents: [{ name: WGSL_DOCUMENT }],
+  modules: [{ name: WGSL_DOCUMENT, code: '' }],
   pipelines: [
     {
       kind: 'compute',
