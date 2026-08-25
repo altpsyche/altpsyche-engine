@@ -1945,7 +1945,14 @@ not do the work could check once and for all. Same treatment as items 53 and 57.
 
 **Done when.** A deprecated export warns once per session and appears struck through in an editor.
 
-**Needs.** item 70, item 81. Required by 1.0, not before.
+**Needs.** item 70, item 94. Required by 1.0, not before.
+
+**Repointed 2026-08-25 again, off the lifted item 81.** It named `item 81`, which lifted needs
+decomposition, and `lifted` never satisfies a `Needs`, so leaving it here strands this item. What it
+wants is that the names a consumer writes have stopped moving; §14's `ShaderSource` row lands its new
+field names (`authored`, `wgsl`, `glsl`, and `frame.target` gone) in **item 94**, the doable half of
+the split. Item 95 refines the `glsl` field's internal grouping (a shape, not a new name), so it is
+not named here. **Reverse:** restore `**Needs.** item 70, item 81.` and delete this paragraph.
 
 **Repointed 2026-08-25, off the spent item 38.** It named `item 38`, which is `lifted` and has no
 work left in it — every row it held moved to items 66 through 72 — so this item was blocked on
@@ -2916,7 +2923,40 @@ capability the consuming repository's decision log does not turn on.
 
 ### 81. `ShaderSource` becomes a union discriminated on `authored`
 
-**Status.** open
+**Status.** lifted needs decomposition
+
+**Lifted 2026-08-25: the asked shape cannot hold the data the same `Done when` names.** The row asks
+for §9's `ShaderSource` in that shape exactly — the `wgsl` arm is
+`{ authored: 'wgsl'; wgsl; glsl?: GlslPair; constants? }` and `GlslPair` is `{ vertex; fragment }`,
+one vertex and one fragment — and its `Done when` requires "the GLSL item 41 bakes travels in the
+`wgsl` arm's `glsl`". Item 41's bake (`fixtures/source/glsl/corpus.generated.json`) carries, per
+preset, one GLSL function per entry point, and several presets have more than one vertex and more
+than one fragment: `core-depth` bakes `away`/`toward` (vertex) and `farther`/`nearer` (fragment),
+`core-report` the same four, `core-stencil` and `core-target` one vertex and two fragments each. A
+single `GlslPair` holds exactly one vertex and one fragment, so it cannot carry any of those four
+presets' bakes. The reason is structural, not incidental: today one WGSL source feeds *several*
+render pipelines (`shader-describe.ts` — "a drawn pipeline runs two stages out of the same file"),
+so the bake for one source is many entry points, while §9's `GlslPair` is the shape of **one render
+pipeline's** two stages. Making the bake fit a `GlslPair` requires a source per render pipeline —
+per-shader source identity — which this item's `Needs` (item 41, item 70) never name and nothing it
+depends on establishes. Item 66's lift note called "the union half … reachable today"; that was true
+of the *dependencies* and untrue of the *shape*, and this is the closer look the register exists to
+force.
+
+**What is separable.** Two parts, filed as items 94 and 95:
+
+- **Item 94 — the discriminant, doable on item 41 and item 70 as this row's `Needs` say.** Language
+  read off one discriminated `authored` value instead of `frame.target`, and no module carrying a
+  bare `code` string. The bake travels with its source, keyed by entry point as item 41 already
+  stores it — not folded into a `GlslPair`. This delivers two of the three `Done when` clauses
+  literally and the third in the only shape the current multi-pipeline graph can hold.
+- **Item 95 — §9's exact `GlslPair` shape.** One `ShaderSource` per render pipeline, its `glsl` a
+  single `{ vertex; fragment }`. Needs a source-per-pipeline identity that the handle migration
+  (item 87) is where the graph gains, so it needs item 87 as well as item 94, and may decompose
+  further when reached.
+
+**Reverse:** set this item's `Status` back to `open`, delete this paragraph and the two above it, and
+delete items 94 and 95; restore item 56's `Needs` to `item 70, item 81`.
 
 **Asks for.** §14's row "`ShaderSource` with optional language fields → a union discriminated on `authored`", in the shape §9 spells out: `{ authored: 'wgsl'; wgsl; glsl?: GlslPair; constants? }` or `{ authored: 'glsl'; glsl: GlslPair; constants? }`. The `glsl` field means a cached translation on one arm and the authored truth on the other, which is why it may not be one optional field on one record.
 
@@ -3315,3 +3355,56 @@ routing (item 91) and the backend capability (item 92) it silently required are 
 It carries item 52's title and decision 1's answer forward, so the subject is tracked rather than
 dropped by the lift. **Reverse:** delete this item; item 52's cross-backend reading is tracked by
 nothing. `carry`: decision 1's answer belongs in the consuming repository's log.
+
+### 94. The authoring language becomes a discriminant, not `frame.target` or `module.code`
+
+**Status.** open
+
+**Asks for.** The half of item 81 that its `Needs` (item 41, item 70) actually reach: a shader's
+authoring language read off one discriminated `authored` value rather than off the frame-level
+`frame.target` field or off which fields a record happens to carry, and no module carrying a bare
+`code: string` whose language something else decides. The baked GLSL item 41 produces travels with
+its source, keyed by entry point exactly as `fixtures/source/glsl/corpus.generated.json` already
+stores it — **not** folded into a §9 `GlslPair`, which item 81's lift note shows cannot hold a
+multi-pipeline preset's bake. `frame.target` (`graph/types.ts` L455, L478) and `ModuleSpec.code`
+(L34) both go; `selectBackend`'s `SPEAKS` map (`gpu/select.ts` L56), both backends' target guard and
+module compile, `pipeline/cache.ts`, `toy/reflect.ts`, `toy/frame.ts`, `scene/scene-view.ts` and the
+corpus fixtures read the discriminant.
+
+**Done when.** No frame carries a `target` field and no module carries a bare `code` string;
+`select`, both backends and `reflect` read the authoring language off one discriminated value; item
+41's bake reaches the WebGL 2 corpus column through the source that carries it rather than through a
+gate-local stitch; the node suite and `type-check` are green; and the browser batch still agrees 15
+of 15 — which is the only gate that proves the WebGL 2 baked-GLSL path still draws, so it is run
+before the item is claimed, not after (the same warning item 87 carries).
+
+**Needs.** item 41, item 70.
+
+**Filed 2026-08-25 by the lift of item 81.** It is one of the two halves item 81 split into; the
+other is item 95. **Reverse:** delete this item; item 81 reverts to `open` and its `Needs` stand.
+`carry`: the module and frame shape a consumer authors against changes with this.
+
+### 95. `ShaderSource` takes §9's exact `GlslPair` shape
+
+**Status.** open
+
+**Asks for.** §9's `ShaderSource` in the shape item 81 named exactly — the `wgsl` arm
+`{ authored: 'wgsl'; wgsl; glsl?: GlslPair; constants? }` and the `glsl` arm
+`{ authored: 'glsl'; glsl: GlslPair; constants? }`, where `GlslPair` is one vertex and one fragment.
+This is the half of item 81 its own `Needs` did not reach: a `GlslPair` is the shape of **one render
+pipeline's** two stages, so it presupposes a source per render pipeline rather than one WGSL source
+feeding several pipelines (`shader-describe.ts` — "a drawn pipeline runs two stages out of the same
+file"). That per-pipeline source identity is what the handle migration gives the graph.
+
+**Done when.** Every shader source is a `ShaderSource` in §9's exact shape, one per render pipeline,
+its `glsl` a single `{ vertex; fragment }`; item 41's bake for each pipeline travels in that
+pipeline's source's `glsl`; the node suite and `type-check` are green; and the browser batch agrees
+15 of 15.
+
+**Needs.** item 87, item 94.
+
+**Filed 2026-08-25 by the lift of item 81, and may decompose further when reached.** Establishing a
+source per render pipeline may itself be separable from adopting the `GlslPair` shape over it; a
+curator meeting this once item 87 lands decides. **Reverse:** delete this item; item 81 reverts to
+`open` and its `Needs` stand. `carry`: the shader-source shape a consumer authors against changes
+with this.
