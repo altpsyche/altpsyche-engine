@@ -19,10 +19,12 @@
 export {
   PROGRAM_CACHE_LIMIT,
   createFrameRenderer,
+  submit,
 } from './gpu/renderer.js';
 export type {
   FrameRenderer,
   RendererOptions,
+  SubmitOptions,
 } from './gpu/renderer.js';
 export {
   createSurface,

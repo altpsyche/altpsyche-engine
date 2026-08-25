@@ -3213,7 +3213,7 @@ with this.
 
 ### 88. `submit(graph, { into })` exists, beside `ShaderProgram`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The top-level primitive §17 decision 7 names, added and nothing removed. There is no
 `submit` export anywhere today; the surface already sits at `renderer.draw(graph, uniforms)`, which

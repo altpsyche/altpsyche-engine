@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createFrameRenderer, PROGRAM_CACHE_LIMIT } from '@altpsyche/engine';
+import { createFrameRenderer, PROGRAM_CACHE_LIMIT, submit } from '@altpsyche/engine';
 import { missing, wgslFrame } from '@altpsyche/engine';
 import type { FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU, paddedFrame } from './support/fake-gpu';
@@ -215,6 +215,47 @@ describe('the programs it lets go', () => {
     expect(gpu.calls('createBindGroup')).toHaveLength(built);
     renderer.draw(edit(1), {});
     expect(gpu.calls('createBindGroup')).toHaveLength(built + 1);
+  });
+});
+
+describe('the submit primitive', () => {
+  it('lands a frame on the card, the same landing a bare draw makes', async () => {
+    const { gpu, renderer } = await rendererOver();
+    // The top-level primitive §17 decision 7 names: a consumer driving its own
+    // loop reaches the card through this rather than around it. It leaves the
+    // pixels on the target for the browser to composite, reading nothing back —
+    // one draw, no copy-out, exactly as `renderer.draw` does.
+    submit(renderer, graph(), { u_time: 1 });
+
+    expect(gpu.calls('draw')).toHaveLength(1);
+    expect(gpu.calls('copyTextureToBuffer')).toHaveLength(0);
+  });
+
+  it('lands the frame in the caller-supplied target it is handed', async () => {
+    const { gpu, renderer } = await rendererOver();
+    renderer.resize(4, 3);
+    // `{ into }` is where the frame lands — the caller's, not the library's. An
+    // XR layer's target the compositor consumes, drawn without a read-back stall.
+    const into = gpu.device.createTexture({
+      label: 'layer',
+      size: [4, 3],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+    });
+
+    submit(renderer, graph(), { u_time: 1 }, { into });
+
+    expect(gpu.calls('copyTextureToTexture')).toContainEqual(
+      expect.objectContaining({ from: 'frame', to: 'layer' })
+    );
+    expect(gpu.calls('copyTextureToBuffer')).toHaveLength(0);
+  });
+
+  it('writes the values it was handed before it draws', async () => {
+    const { gpu, renderer } = await rendererOver();
+    submit(renderer, graph(), { u_time: 3, u_resolution: [7, 9] });
+
+    expect([...gpu.written()!]).toEqual([3, 0, 7, 9]);
   });
 });
 

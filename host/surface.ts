@@ -10,7 +10,7 @@
  * only file in this stack that imports it.
  */
 import type { BackendName, FrameGraph, UniformValue } from '../graph/types.js';
-import { createFrameRenderer, type FrameRenderer, type RendererOptions } from '../gpu/renderer.js';
+import { createFrameRenderer, submit, type FrameRenderer, type RendererOptions } from '../gpu/renderer.js';
 
 export interface SurfaceOptions extends RendererOptions {
   /** Read once per frame rather than passed once, because the values a page
@@ -122,7 +122,7 @@ export async function createSurface(
   const drawOne = () => {
     if (!renderer || lost) return;
     try {
-      renderer.draw(current, options.uniforms(elapsed));
+      submit(renderer, current, options.uniforms(elapsed));
     } catch (e) {
       options.onError?.(String((e as Error).message ?? e));
       stop();
@@ -228,7 +228,7 @@ export async function createSurface(
       // compiled, and a paused surface would otherwise keep the old picture with
       // no error to show for it.
       try {
-        renderer.draw(next, options.uniforms(elapsed));
+        submit(renderer, next, options.uniforms(elapsed));
         return null;
       } catch (e) {
         current = previous;

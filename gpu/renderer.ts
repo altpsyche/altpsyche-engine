@@ -56,6 +56,39 @@ export interface FrameRenderer {
   dispose(): void;
 }
 
+export interface SubmitOptions {
+  /** Where the frame lands, per §17 decision 7: the caller's target, not the
+   * library's. Absent, the frame lands in the backend's own target — and, on the
+   * live path, the canvas the browser composites — exactly as a bare draw does.
+   * A caller that owns an XR layer's texture or a capture target names it here. */
+  into?: GPUTexture;
+}
+
+/**
+ * The top-level primitive §17 decision 7 names: land one frame on the card.
+ *
+ * The consumer owns the frame loop and calls this once per frame; `createSurface`
+ * is a convenience built over it, not a rival to it. It is a free function rather
+ * than a method because the primitive is the thing named on the door — a loop the
+ * caller drives reaches the card through `submit(renderer, graph, uniforms)`,
+ * where `renderer` is the engine that holds the chosen backend and the pipeline
+ * cache. `{ into }` is where the frame lands; the loop is not the library's.
+ *
+ * It reaches the card through `FrameRenderer.draw`, the interface that already
+ * owns the backend, so the primitive adds a name and a landing target and takes
+ * nothing away: `ShaderProgram` is untouched and the readback door is elsewhere
+ * (the arena's, per §9), because a frame that lands and a buffer that is read are
+ * two lifetimes and this is only the first.
+ */
+export function submit(
+  renderer: FrameRenderer,
+  graph: FrameGraph,
+  uniforms: Record<string, UniformValue>,
+  options: SubmitOptions = {}
+): void {
+  renderer.draw(graph, uniforms, options.into);
+}
+
 export interface RendererOptions {
   /** Names the backend to use instead of the one that would be picked. It exists
    * so a measurement can compare the two, and so a problem found after release
