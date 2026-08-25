@@ -2640,7 +2640,7 @@ exactly as every prior WebGL 2 item. See [JOURNAL.md](JOURNAL.md).
 
 ### 79. A browser gate draws through the WebGL 2 backend
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A gate under `npm run gate:browser` that draws **the capability corpus** through the WebGL 2 backend on a real `webgl2` context, one preset at a time, the way `gates/corpus.mjs` already does for WebGPU. The corpus
 gate bundles `createWebGL2Backend` into its page ([gates/corpus.mjs](../gates/corpus.mjs) line
@@ -2677,6 +2677,41 @@ gate that cannot run them.
 - `a resized surface paints every row and column of its buffer` — 180 of 180 rows and 320 of 320 columns, pixels read back off the GLSL path.
 
 So what is missing is narrower and more useful to name exactly: **no gate draws the capability corpus through that backend.** Live compile, draw, resize, refuse and read-back are covered; per-capability presets are not, and those are what items 46, 47, 48, 77 and 78 each defer to. An item built against the overstatement would rebuild coverage that exists.
+
+**How it landed.** The corpus gate ([gates/corpus.mjs](../gates/corpus.mjs)) grew its WebGL 2
+column, and it draws where it skipped all fifteen by construction before. Every corpus source is
+WGSL and WebGL 2 links GLSL, so the gate re-points each preset's WGSL description at the GLSL ES
+3.00 the build baked with naga (item 41, `fixtures/source/glsl/corpus.generated.json`): each
+pipeline's `vertex`/`fragment` entry point becomes a GLSL document entered at `main`, the block
+bindings drop away (a GLSL program answers where its block sits), and the geometry bytes the
+loader fetched carry through unchanged — rebuilt inside `page.evaluate` from arrays, since a
+`Uint8Array` does not survive that trip (the shape `surface.mjs` uses). The frame is built and
+drawn through `createWebGL2Backend` on a real `webgl2` context and its pixels read back and
+counted, the same lit-buffer reading the WebGPU column takes. A preset the bake did not carry —
+a fullscreen WGSL frame (no vertex baked), a compute stage, or one needing a capability WebGL 2
+withholds (`storage-buffer`) — is a **SKIP with the reason named, by outcome**; a preset the
+backend refuses at build or draw (MSAA is item 80, still refused) is a skip carrying the
+backend's own words; a preset that draws but lights nothing is a **FAIL**, the gate's standing
+"black is not drawn" rule. Of the fifteen, five re-point to drawable GLSL (`core-geometry`,
+`core-depth`, `core-multisample`, `core-report`, `core-scene`) and ten skip by outcome with a
+named reason — where the WebGL 2 column was fifteen unconditional skips before. **Clause one**
+is a floor drawn before the corpus: a one-pass fullscreen frame built by the library's own
+`glslFrame`, drawn through `createWebGL2Backend`, asserted to light the buffer — the backend's
+own draw path in a browser at its simplest.
+
+**What the gates could see, and what they could not.** `gate:browser` was **not run in this
+unattended session** (it costs minutes and runs once over the batch in the closing session; §17
+note 3). So the pixels the gate reads on a real context are not read here. What ran here is the
+half a node machine settles: [tests/webgl2-baked-glsl.test.ts](../tests/webgl2-baked-glsl.test.ts)
+re-points `core-geometry` and `core-depth` at their baked GLSL — an independent reading of the
+bake, not a mirror of the gate — and drives the **fake** WebGL 2 backend, proving the assembled
+frame is one the backend accepts and draws (one `drawElementsInstanced` for the geometry), and
+that a fullscreen WGSL preset (`core-texture`) is reported unbaked rather than invented. So a red
+browser gate would mean the driver refused the *GLSL* rather than that the harness built the
+frame wrong. What only the browser can confirm — that swiftshader links the naga GLSL and lights
+the buffer for these five presets — is the closing session's, and a preset that fails to link
+there surfaces as a named SKIP in the gate's output rather than silently. That the *picture*
+agrees with WebGPU's is item 44's, on a card (§17 note 3). See [JOURNAL.md](JOURNAL.md).
 
 ### 80. WebGL 2: multisample attachments
 

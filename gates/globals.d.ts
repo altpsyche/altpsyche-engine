@@ -19,6 +19,7 @@
 // library is written.
 import type * as Door from '../index.js';
 import type { createWebGPUBackend } from '../gpu/webgpu.js';
+import type { createWebGL2Backend } from '../gpu/webgl2.js';
 import type { vec3 } from '../scene/maths.js';
 import type { readFrameCoverage } from '../trace/frame-coverage.js';
 import type { compareFrames } from './compare.js';
@@ -34,6 +35,7 @@ declare global {
     projectTrace: typeof Door.projectTrace;
     wrapDevice: typeof Door.wrapDevice;
     createWebGPUBackend: typeof createWebGPUBackend;
+    createWebGL2Backend: typeof createWebGL2Backend;
     vec3: typeof vec3;
     readFrameCoverage: typeof readFrameCoverage;
     compareFrames: typeof compareFrames;

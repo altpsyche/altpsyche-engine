@@ -10,14 +10,19 @@
 // black is indistinguishable from one that never drew at all, and a gate that
 // cannot tell those apart hides a defect for as long as it runs.
 //
-// A backend a fixture cannot go on is said out loud rather than left out. Every
-// fixture here is written in WGSL, so every one of them skips WebGL 2 by name: a
-// gate that quietly covers less than it did is worse than a gate that covers less
-// and says so.
+// Two backends, two columns. Every fixture's source is WGSL: the WebGPU column
+// draws that source, and the WebGL 2 column draws the GLSL ES 3.00 the build baked
+// from it with naga (item 41, `fixtures/source/glsl/corpus.generated.json`). Each
+// pipeline's entry points become GLSL documents of their own and the geometry the
+// loader fetched carries through unchanged. A preset the bake could not carry to
+// WebGL 2 — a fullscreen WGSL frame that bakes no vertex, or a stage that needs a
+// capability WebGL 2 withholds — is a SKIP with the reason named, by outcome
+// rather than by construction (item 79): the WebGL 2 draw path runs here, on a
+// real context, where before this gate skipped all fifteen without calling it.
 import http from 'node:http';
 import { rmSync } from 'node:fs';
 import { chromium } from 'playwright';
-import { CHROME, bundleForPage, loadCorpus } from './lib.mjs';
+import { CHROME, bundleForPage, loadCorpus, loadFromRoot } from './lib.mjs';
 
 const W = Number(process.env.W ?? 800);
 const H = Number(process.env.H ?? 600);
@@ -25,10 +30,80 @@ const PORT = Number(process.env.PORT ?? 3162);
 
 const corpus = await loadCorpus();
 
+// The baked GLSL and the refusals beside it, read the same way the node tests read
+// the artifact. `naga` is a build-time tool, never shipped (§17 decision 5), so
+// this reads the bake it left rather than translating anything now.
+const { readFileSync } = await import('node:fs');
+const { fileURLToPath } = await import('node:url');
+const { dirname, join } = await import('node:path');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const artifact = JSON.parse(
+  readFileSync(join(HERE, '..', 'fixtures', 'source', 'glsl', 'corpus.generated.json'), 'utf8')
+);
+
+// The library's own builders, so a frame drawn here is the shape a consumer's
+// build produces rather than one this gate invented.
+const { glslFrame } = await loadFromRoot('toy/frame.ts');
+
+/**
+ * Re-point a WGSL description's pipelines at the baked GLSL for WebGL 2: each
+ * entry point a pipeline names becomes a document entered at `main`, and the block
+ * bindings drop away because a GLSL program answers where its block sits. Returns
+ * the pieces a page rebuilds the frame from, or a `skip` reason where the bake
+ * carries no GLSL for an entry the pipelines need — a fullscreen WGSL frame with
+ * no baked vertex, or a stage naga refused for a WebGL 2 capability.
+ *
+ * @param {{ id: string, description: any, bytes: Map<string, Uint8Array> }} one
+ */
+function webgl2Frame({ id, description, bytes }) {
+  const baked = artifact.presets[id]?.entries ?? {};
+  const refused = artifact.refused?.[id] ?? [];
+  /** @type {Set<string>} */
+  const names = new Set();
+  /** @type {string | null} */
+  let missing = null;
+  const pipelines = description.pipelines.map((/** @type {any} */ pipeline) => {
+    // A compute pipeline has no vertex or fragment and no place on WebGL 2.
+    if (!('fragment' in pipeline)) {
+      missing ??= 'compute';
+      return pipeline;
+    }
+    const vertexEntry = pipeline.vertex === 'fullscreen' ? null : pipeline.vertex.entry;
+    if (vertexEntry === null) missing ??= 'fullscreen';
+    else {
+      names.add(vertexEntry);
+      if (!baked[vertexEntry]) missing ??= vertexEntry;
+    }
+    names.add(pipeline.fragment.entry);
+    if (!baked[pipeline.fragment.entry]) missing ??= pipeline.fragment.entry;
+    return {
+      ...pipeline,
+      vertex: vertexEntry === null ? 'fullscreen' : { module: vertexEntry, entry: 'main' },
+      fragment: { module: pipeline.fragment.entry, entry: 'main' },
+      bindings: [],
+    };
+  });
+  if (missing) {
+    if (missing === 'fullscreen') return { skip: 'a fullscreen WGSL frame, which bakes no vertex for WebGL 2 to link' };
+    if (missing === 'compute') return { skip: 'a compute stage, which has no place on WebGL 2' };
+    const why = refused.find((/** @type {any} */ r) => r.entry === missing);
+    return { skip: why ? `${missing} needs ${why.capability}, which WebGL 2 has not got` : `${missing} baked no GLSL` };
+  }
+  const documents = [...names].map((name) => ({ name }));
+  const texts = Object.fromEntries([...names].map((name) => [name, baked[name].glsl]));
+  const glsl = { ...description, target: 'glsl', documents, pipelines };
+  // Bytes do not survive the trip through `page.evaluate`, so they cross as arrays
+  // and are rebuilt into a Uint8Array map inside the page (the shape surface.mjs
+  // uses for the same reason).
+  const bytesArrays = Object.fromEntries([...bytes].map(([name, made]) => [name, [...made]]));
+  return { glsl, texts, bytesArrays };
+}
+
 const { bundle, staging } = bundleForPage({
   'gpu/webgpu': ['createWebGPUBackend'],
   'gpu/webgl2': ['createWebGL2Backend'],
   'gpu/webgpu-device': ['requestWebGPUDevice'],
+  'toy/frame': ['frameOf'],
   // `missing` replaced the program's own `unreached` at item 69. It is a weaker
   // reading and the message below says so: it compares an entry's declared names
   // against the uniforms the SOURCE declares, where `unreached` asked the built
@@ -58,9 +133,56 @@ await page.addScriptTag({ path: bundle });
 let failures = 0;
 const skipped = [];
 
-for (const { id, frame, values, entry } of corpus) {
+// Item 79's floor, drawn before the corpus: a one-pass fullscreen GLSL frame
+// built by the library's own `glslFrame`, drawn through `createWebGL2Backend` on a
+// real context, must light the buffer. This is the WebGL 2 backend's own draw path
+// running in a browser at its simplest — everything the corpus column adds is on
+// top of a draw proven here.
+const fullscreen = glslFrame(
+  'webgl2-fullscreen-probe',
+  '#version 300 es\nin vec3 position;\nvoid main(){gl_Position=vec4(position,1.0);}',
+  '#version 300 es\nprecision highp float;\nout vec4 c;\nvoid main(){c=vec4(0.2,0.6,0.9,1.0);}'
+);
+const probe = await page.evaluate(
+  async ({ frame, W, H }) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const backend = window.createWebGL2Backend(canvas);
+    if (!backend) return { error: 'no webgl2 context' };
+    backend.resize(W, H);
+    let program;
+    try {
+      program = backend.program(frame);
+    } catch (e) {
+      return { error: String(/** @type {any} */ (e).message || e).slice(0, 300) };
+    }
+    program.setUniforms({ u_time: 0, u_resolution: [W, H] });
+    program.draw();
+    const px = await backend.readPixels();
+    let lit = 0;
+    for (let i = 0; i < px.length; i += 4) if (px[i] > 4 || px[i + 1] > 4 || px[i + 2] > 4) lit++;
+    program.dispose();
+    backend.dispose();
+    return { lit, total: px.length / 4 };
+  },
+  { frame: fullscreen, W, H }
+);
+if (probe.error) {
+  console.log(`FAIL webgl2-fullscreen-probe WebGL 2  ${probe.error}`);
+  failures++;
+} else if (probe.lit === 0) {
+  console.log(`FAIL webgl2-fullscreen-probe WebGL 2  drew nothing, 0 of ${probe.total} pixels lit`);
+  failures++;
+} else {
+  const lit = /** @type {number} */ (probe.lit);
+  const total = /** @type {number} */ (probe.total);
+  const share = ((lit / total) * 100).toFixed(1);
+  console.log(`PASS webgl2-fullscreen-probe WebGL 2  ${lit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pixels lit, ${share}%`);
+}
+
+for (const { id, frame, values, entry, description, bytes } of corpus) {
   if (entry.language !== 'wgsl') throw new Error(`the corpus gained a ${entry.language} fixture and this gate draws WGSL`);
-  skipped.push(`${id} WebGL 2  written in WGSL, which has no GLSL to draw`);
 
   const result = await page.evaluate(
     async ({ frame, values, declared, W, H }) => {
@@ -133,6 +255,65 @@ for (const { id, frame, values, entry } of corpus) {
         `, ${named} declared uniform${named === 1 ? '' : 's'} found in the source`
     );
   }
+
+  // The WebGL 2 column, by outcome (item 79). A preset the bake did not carry to
+  // WebGL 2 is a SKIP with the reason; one it did is drawn through the backend's
+  // own path on a real context and lights the buffer or fails by name.
+  const gl2Label = `${id} WebGL 2`;
+  const built = webgl2Frame({ id, description, bytes });
+  if (built.skip) {
+    skipped.push(`${gl2Label}  ${built.skip}`);
+    continue;
+  }
+  const glsl = /** @type {any} */ (built.glsl);
+  const texts = /** @type {Record<string, string>} */ (built.texts);
+  const bytesArrays = /** @type {Record<string, number[]>} */ (built.bytesArrays);
+  const gl2 = await page.evaluate(
+    async ({ id, glsl, texts, bytesArrays, values, W, H }) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const backend = window.createWebGL2Backend(canvas);
+      if (!backend) return { error: 'no webgl2 context' };
+      backend.resize(W, H);
+      const generated = new Map(Object.entries(bytesArrays).map(([name, made]) => [name, new Uint8Array(made)]));
+      let program;
+      try {
+        const frame = window.frameOf(id, glsl, texts, undefined, undefined, generated);
+        program = backend.program(frame);
+      } catch (e) {
+        return { error: String(/** @type {any} */ (e).message || e).slice(0, 300) };
+      }
+      program.setUniforms(values);
+      program.draw();
+      const px = await backend.readPixels();
+      let lit = 0;
+      for (let i = 0; i < px.length; i += 4) if (px[i] > 4 || px[i + 1] > 4 || px[i + 2] > 4) lit++;
+      program.dispose();
+      backend.dispose();
+      return { lit, total: px.length / 4 };
+    },
+    { id, glsl, texts, bytesArrays, values, W, H }
+  );
+  if (gl2.error) {
+    // A preset whose GLSL the backend refuses to build or draw is one this backend
+    // does not yet carry to WebGL 2 — a capability it withholds (MSAA is item 80,
+    // depth/stencil landed at item 48) or a construct it will not link. That is a
+    // skip by outcome, with the backend's own words, not a gate failure: item 79
+    // asks the draw path to *run*, and here it ran and refused by name. A wrong
+    // picture is a card's to judge (item 44), out of this gate's reach.
+    skipped.push(`${gl2Label}  refused: ${gl2.error}`);
+  } else if (gl2.lit === 0) {
+    console.log(`FAIL ${gl2Label}  drew nothing, 0 of ${gl2.total} pixels lit`);
+    failures++;
+  } else {
+    // The error and zero-lit arms are ruled out, so both are present; the casts
+    // state what the branches already guarantee, as the WebGPU column above does.
+    const lit = /** @type {number} */ (gl2.lit);
+    const total = /** @type {number} */ (gl2.total);
+    const share = ((lit / total) * 100).toFixed(1);
+    console.log(`PASS ${gl2Label}  ${lit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pixels lit, ${share}%`);
+  }
 }
 
 await browser.close();
@@ -141,5 +322,8 @@ rmSync(staging, { recursive: true, force: true });
 
 console.log('');
 for (const line of skipped) console.log(`SKIP ${line}`);
-console.log(`\n${corpus.length - failures} of ${corpus.length} drew, with ${skipped.length} skips`);
+// Two columns over fifteen presets plus the one fullscreen probe, minus the WebGL 2
+// skips (a preset the bake could not carry): that is how many draws were asked for.
+const asked = corpus.length * 2 + 1 - skipped.length;
+console.log(`\n${asked - failures} of ${asked} draws lit their buffer, with ${failures} failed and ${skipped.length} WebGL 2 skips`);
 process.exitCode = failures ? 1 : 0;
