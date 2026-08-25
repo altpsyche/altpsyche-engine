@@ -390,6 +390,12 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     bindRenderbuffer: (target: number) => record('bindRenderbuffer', { target }),
     renderbufferStorage: (target: number, internal: number, width: number, height: number) =>
       record('renderbufferStorage', { target, internal, width, height }),
+    // The multisample colour renderbuffer a pass keeps several samples of a pixel
+    // in (item 80), averaged into a single-sample resolve target through a blit.
+    // The fake keeps no pixels — a real driver's are `backends.mjs`'s to hold — so
+    // this records the sample count and format the backend asked for.
+    renderbufferStorageMultisample: (target: number, samples: number, internal: number, width: number, height: number) =>
+      record('renderbufferStorageMultisample', { target, samples, internal, width, height }),
     framebufferRenderbuffer: (target: number, attachment: number) =>
       record('framebufferRenderbuffer', { target, attachment }),
 

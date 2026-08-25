@@ -242,21 +242,96 @@ describe('a description above the subset', () => {
     );
   });
 
-  it('refuses a texture keeping several samples a pixel, the msaa capability item 80 tracks', () => {
-    const { backend } = backendOver();
-    const resources = [
-      ...graph().resources,
+  /**
+   * A pass keeping four samples of every pixel in a multisample colour
+   * renderbuffer, averaged into a single-sample resolve target through a blit —
+   * the `msaa` capability item 80 lands on this backend. The shape mirrors the
+   * `core-multisample` preset: one four-sample `edges` attachment resolved into a
+   * single-sample `flat`, which the frame shows.
+   *
+   * Whether the resolved picture agrees with WebGPU's is a card's or a browser's
+   * (§17 note 3); what these hold is that the backend keeps the samples in a
+   * multisample renderbuffer and averages them through the resolve blit, and that
+   * everything a multisample attachment cannot be is still refused by name.
+   */
+  const multisample = (over: Partial<FrameGraph> = {}, edgesOver: Partial<TextureResource> = {}): FrameGraph => ({
+    id: 'fixture',
+    target: 'glsl',
+    resources: [
+      { kind: 'uniform', name: 'uniforms' },
+      { kind: 'texture', name: 'edges', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'], samples: 4, ...edgesOver },
+      { kind: 'texture', name: 'flat', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
+    ],
+    modules: [
+      { name: 'vertex', code: VERTEX },
+      { name: 'fragment', code: FRAGMENT },
+    ],
+    pipelines: [
       {
-        kind: 'texture' as const,
-        name: 'picture',
-        size: { scale: 1 },
-        format: 'rgba8unorm' as const,
-        use: ['attachment' as const],
-        samples: 4 as const,
+        kind: 'render',
+        name: 'shade',
+        vertex: { module: 'vertex', entry: 'main' },
+        fragment: { module: 'fragment', entry: 'main' },
+        targets: [{ format: 'rgba8unorm' }],
+        samples: 4,
+        bindings: [],
       },
-    ];
-    expect(() => backend.program(glsl({ resources }))).toThrow(
-      'the frame for "fixture" keeps several samples of "picture", and this backend keeps one'
+    ],
+    passes: [{ pipeline: 'shade', draws: [{ vertices: 3 }], colour: [{ resource: 'edges', clear: [0, 0, 0, 0], resolve: 'flat' }] }],
+    present: 'flat',
+    ...over,
+  });
+
+  it('keeps a multisample attachment in a multisample renderbuffer and resolves it through a blit (item 80)', () => {
+    const { gl, backend } = backendOver();
+    const program = backend.program(multisample());
+    program.draw();
+    // The four samples of `edges` are kept in a multisample renderbuffer sized to
+    // the frame, at the four-sample count the attachment declared.
+    const multisampled = gl.of('renderbufferStorageMultisample');
+    expect(multisampled).toHaveLength(1);
+    expect(multisampled[0]).toMatchObject({ samples: 4, width: 800, height: 600 });
+    // The renderbuffer is attached to a framebuffer of its own at colour point 0.
+    expect(gl.of('framebufferRenderbuffer').some((call) => call.attachment === 0x8ce0)).toBe(true);
+    // Two blits: the resolve of `edges` into `flat`, then `flat` shown on the
+    // canvas. A single-sample present frame issues one; the resolve is the second.
+    expect(gl.of('blitFramebuffer')).toHaveLength(2);
+    expect(gl.of('blitFramebuffer').every((call) => call.mask === 0x4000)).toBe(true);
+  });
+
+  it('refuses a multisample attachment that averages its samples nowhere (item 80)', () => {
+    const { backend } = backendOver();
+    const passes = [{ pipeline: 'shade', draws: [{ vertices: 3 }], colour: [{ resource: 'edges', clear: [0, 0, 0, 0] as [number, number, number, number] }] }];
+    expect(() => backend.program(multisample({ passes, present: undefined }))).toThrow(
+      'the frame for "fixture" keeps several samples a pixel in "edges" and averages them nowhere'
+    );
+  });
+
+  it('refuses averaging a single-sample attachment, which has nothing to average (item 80)', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(multisample({}, { samples: undefined }))).toThrow(
+      'the frame for "fixture" averages "edges" into "flat" and it keeps one sample a pixel'
+    );
+  });
+
+  it('refuses a multisampled depth, which is item 80 colour-attachment scope alone', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(multisample({}, { format: 'depth24plus', use: ['attachment'] }))).toThrow(
+      'the frame for "fixture" keeps several samples of the depth in "edges", and this backend keeps one'
+    );
+  });
+
+  it('refuses binding a multisample attachment to a shader, which cannot read one (item 80)', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(multisample({}, { use: ['attachment', 'sample'] }))).toThrow(
+      'the frame for "fixture" binds "edges", which keeps several samples a pixel'
+    );
+  });
+
+  it('refuses showing a multisample attachment, which nothing copies out of (item 80)', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(multisample({ present: 'edges' }))).toThrow(
+      'the frame for "fixture" shows "edges", which keeps several samples a pixel'
     );
   });
 

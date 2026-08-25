@@ -2885,7 +2885,7 @@ agrees with WebGPU's is item 44's, on a card (§17 note 3). See [JOURNAL.md](JOU
 
 ### 80. WebGL 2: multisample attachments
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The WebGL 2 backend keeps several samples of an attachment and averages them into a
 single-sample target, where today it refuses any texture carrying `samples` by name

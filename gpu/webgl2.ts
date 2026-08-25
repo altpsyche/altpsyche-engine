@@ -240,13 +240,13 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // samplers that say how a texture is read between its pixels, a colour texture
       // a pass draws and a later pass samples (the multi-pass shape of item 46), and
       // a depth or stencil attachment a pass tests against (item 48), a resident
-      // texture arriving with contents of its own, uploaded once (item 78), and a
-      // ladder generated off those contents (item 50). The narrower texture kinds are
-      // each a later item and refused here by name: a storage texture is a compute
-      // output and this backend has no compute stage, and several samples a pixel is
-      // the `msaa` capability item 80 tracks. A depth or stencil attachment reaching one of
-      // those refusals — a multisampled depth, say — is refused the same, which is
-      // the safe direction until that item lands.
+      // texture arriving with contents of its own, uploaded once (item 78), a
+      // ladder generated off those contents (item 50), and a colour attachment
+      // keeping several samples a pixel, averaged into a single-sample target
+      // (item 80). The one narrower texture kind still refused here is a storage
+      // texture, a compute output this backend has no compute stage to fill. A
+      // multisampled *depth* stays refused too — item 80 is colour-attachment MSAA
+      // alone — which is the safe direction until a later item lands it.
       const samplerSpecs = frame.resources.filter((resource): resource is SamplerResource => resource.kind === 'sampler');
       for (const resource of frame.resources) {
         // The uniform block, the samplers, and the vertex/index buffers of the
@@ -275,8 +275,23 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         if (resource.mips && !resource.data && !resource.source) {
           throw new Error(`the frame for "${frame.id}" gives "${resource.name}" a ladder and no contents to build it from`);
         }
+        // A texture keeping several samples of a pixel is a multisample colour
+        // attachment (item 80): built as a multisample renderbuffer below, drawn
+        // into, and averaged into a single-sample resolve target through a blit.
+        // It is the narrowest kind there is, so everything else is closed to it,
+        // the same reasons and words the WebGPU backend uses: nothing uploads
+        // into one, nothing samples one, and a multisampled *depth* is a later
+        // refinement this backend still refuses (colour attachments alone).
         if (resource.samples) {
-          throw new Error(`the frame for "${frame.id}" keeps several samples of "${resource.name}", and this backend keeps one`);
+          if (depthStencilOf(resource.format) !== null) {
+            throw new Error(`the frame for "${frame.id}" keeps several samples of the depth in "${resource.name}", and this backend keeps one`);
+          }
+          if (resource.data || resource.source) {
+            throw new Error(`the frame for "${frame.id}" gives "${resource.name}" contents and several samples a pixel`);
+          }
+          if (resource.use.includes('sample')) {
+            throw new Error(`the frame for "${frame.id}" binds "${resource.name}", which keeps several samples a pixel`);
+          }
         }
         // A texture arriving with contents is uploaded now (item 78) — but the
         // contents are a fixed-size image, so a content texture the frame's own
@@ -294,11 +309,24 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       if (shown !== undefined && !textureSpecs.some((resource) => resource.name === shown)) {
         throw new Error(`the frame for "${frame.id}" shows a resource "${shown}" it does not declare`);
       }
+      // The picture the reader sees is a single-sample texture the backend blits
+      // onto the canvas; a multisample attachment is a renderbuffer nothing copies
+      // out of, so showing one is refused by name, the same words the WebGPU
+      // backend uses. Its samples reach the canvas through the single-sample
+      // resolve target instead.
+      const shownMultisample = shown !== undefined && textureSpecs.find((resource) => resource.name === shown && resource.samples);
+      if (shownMultisample) {
+        throw new Error(`the frame for "${frame.id}" shows "${shown}", which keeps several samples a pixel`);
+      }
       // A texture declared in a depth or stencil format is a renderbuffer this
       // backend tests against rather than a colour texture it draws into or samples
-      // (item 48), so the two are built through different arenas. A frame the reader
-      // sees is never a depth format, so the present above is a colour texture.
-      const colourSpecs = textureSpecs.filter((resource) => depthStencilOf(resource.format) === null);
+      // (item 48), so the two are built through different arenas. A colour texture
+      // keeping several samples a pixel is a third: a multisample renderbuffer
+      // averaged into a single-sample resolve target (item 80). A frame the reader
+      // sees is never a depth format and never multisampled, so the present above
+      // is a single-sample colour texture.
+      const colourSpecs = textureSpecs.filter((resource) => depthStencilOf(resource.format) === null && !resource.samples);
+      const multisampleSpecs = textureSpecs.filter((resource) => depthStencilOf(resource.format) === null && resource.samples);
       const depthSpecs = textureSpecs.filter((resource) => depthStencilOf(resource.format) !== null);
 
       // The static lifetime of §5: the linked program a shader compiles to, keyed
@@ -494,6 +522,56 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         depthTargets.set(spec.name, record);
         buildDepth(record);
       }
+
+      // The multisample colour attachments the frame declares (item 80): each a
+      // multisample renderbuffer through the same arena the depth targets use — a
+      // renderbuffer is a renderbuffer whatever it holds — carrying a framebuffer
+      // of its own so a pass draws into it and the resolve blit reads out of it.
+      // The card keeps several samples of every pixel here and averages them into
+      // the single-sample resolve target the pass names, which is the
+      // `resolveTarget` the WebGPU backend hands its colour attachment. A
+      // multisampled attachment follows the frame like the colour and depth
+      // targets beside it, remade at the new size on a resize, since an average
+      // and the samples it came from have to be the same picture. `MAX_SAMPLES`
+      // bounds how many a device keeps; more than it reports is refused by name.
+      const maxSamples = gl.getParameter(gl.MAX_SAMPLES) as number;
+      interface MultisampleRecord {
+        spec: TextureResource;
+        handle: Handle;
+        fboHandle: Handle;
+        samples: number;
+        follows: boolean;
+        width: number;
+        height: number;
+      }
+      const multisampleColours = new Map<string, MultisampleRecord>();
+      const buildMultisample = (record: MultisampleRecord) => {
+        const { width: across, height: down } = sizeAt(record.spec.size, { width, height });
+        record.width = across;
+        record.height = down;
+        gl.bindRenderbuffer(gl.RENDERBUFFER, renderbufferArena.resolve(record.handle));
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, record.samples, gl.RGBA8, across, down);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebufferArena.resolve(record.fboHandle));
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, renderbufferArena.resolve(record.handle));
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      };
+      for (const spec of multisampleSpecs) {
+        const samples = spec.samples as number;
+        if (samples > maxSamples) {
+          throw new Error(`the frame for "${frame.id}" keeps ${samples} samples of "${spec.name}", and this device keeps ${maxSamples}`);
+        }
+        const record: MultisampleRecord = {
+          spec,
+          handle: renderbufferArena.allocate(() => gl.createRenderbuffer() as WebGLRenderbuffer),
+          fboHandle: framebufferArena.allocate(() => gl.createFramebuffer() as WebGLFramebuffer),
+          samples,
+          follows: followsFrame(spec.size),
+          width: 0,
+          height: 0,
+        };
+        multisampleColours.set(spec.name, record);
+        buildMultisample(record);
+      }
       // Whether any pass tests depth or masks with a stencil, so a frame with none —
       // every fullscreen toy the backend drew before item 48 — sets no depth/stencil
       // state at all and its call stream is exactly what it was.
@@ -590,8 +668,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         instances: (number | undefined)[];
         // The colours this pass writes, in the fragment stage's output order:
         // empty for a pass drawing the canvas, one for a single attachment, several
-        // for multiple render targets (item 47). `clear` is what each is emptied to.
-        targets: { resource: string; clear?: [number, number, number, number] }[];
+        // for multiple render targets (item 47). `clear` is what each is emptied
+        // to. `resolve` names the single-sample target a multisample attachment's
+        // samples are averaged into at the end of the pass (item 80), absent for a
+        // single-sample attachment.
+        targets: { resource: string; clear?: [number, number, number, number]; resolve?: string }[];
         // The framebuffer a multiple-target pass draws through, carrying every
         // colour at a successive attachment point; null for a canvas or
         // single-attachment pass, which keeps the framebuffer item 46 gave it.
@@ -712,7 +793,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           );
         }
         for (const attachment of colour) {
-          const record = textures.get(attachment.resource);
+          // An attachment a pass draws into is a single-sample colour texture or a
+          // multisample renderbuffer (item 80); either is an attachment the frame
+          // declared, and one it did not is refused by name.
+          const record = textures.get(attachment.resource) ?? multisampleColours.get(attachment.resource);
           if (!record || !record.spec.use.includes('attachment')) {
             throw new Error(`the frame for "${frame.id}" draws into "${attachment.resource}", which is no attachment it declares`);
           }
@@ -729,7 +813,32 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // A pass writing several colours draws through a framebuffer of its own
         // carrying all of them; one or none keeps the single-texture framebuffer or
         // the canvas it had (item 46), so only a multiple-target pass allocates one.
-        const targets = colour.map((attachment) => ({ resource: attachment.resource, clear: attachment.clear }));
+        const targets = colour.map((attachment) => ({ resource: attachment.resource, clear: attachment.clear, resolve: attachment.resolve }));
+        // A multisample attachment averages its samples into the single-sample
+        // resolve target the pass names (item 80). One that names none averages
+        // them nowhere and nothing can read a multisample renderbuffer, so it is
+        // refused; a single-sample attachment naming a resolve has nothing to
+        // average and is refused too — the same words `submit/plan.ts` refuses the
+        // WebGPU side with. The resolve target is a single-sample colour
+        // attachment the frame declares. Averaging several samples across the many
+        // targets of one pass is not in item 80's scope and is refused by name.
+        if (targets.length > 1 && targets.some((target) => multisampleColours.has(target.resource))) {
+          throw new Error(`the frame for "${frame.id}" keeps several samples in one of a pass's several targets, which this backend does not average`);
+        }
+        for (const target of targets) {
+          const multisample = multisampleColours.get(target.resource);
+          if (multisample) {
+            if (target.resolve === undefined) {
+              throw new Error(`the frame for "${frame.id}" keeps several samples a pixel in "${target.resource}" and averages them nowhere`);
+            }
+            const into = textures.get(target.resolve);
+            if (!into || !into.spec.use.includes('attachment')) {
+              throw new Error(`the frame for "${frame.id}" averages "${target.resource}" into "${target.resolve}", which is no attachment it declares`);
+            }
+          } else if (target.resolve !== undefined) {
+            throw new Error(`the frame for "${frame.id}" averages "${target.resource}" into "${target.resolve}" and it keeps one sample a pixel`);
+          }
+        }
         let mrtFbo: Handle | null = null;
         if (targets.length > 1) {
           mrtFbo = framebufferArena.allocate(() => gl.createFramebuffer() as WebGLFramebuffer);
@@ -751,6 +860,13 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           }
           if (targets.length === 0) {
             throw new Error(`the frame for "${frame.id}" tests depth while drawing the frame directly, and a depth buffer cannot attach to the canvas`);
+          }
+          // A single-sample depth renderbuffer cannot share a framebuffer with a
+          // multisample colour target, and a multisample depth is out of item 80's
+          // scope, so a depth pass drawing a multisample attachment is refused by
+          // name rather than reaching the single-sample framebuffer lookup below.
+          if (multisampleColours.has(targets[0].resource)) {
+            throw new Error(`the frame for "${frame.id}" tests depth against the multisample target "${targets[0].resource}", which this backend does not`);
           }
           const fbo = targets.length === 1 ? ((textures.get(targets[0].resource) as TextureRecord).fboHandle as Handle) : (mrtFbo as Handle);
           attachDepth(fbo, record);
@@ -884,6 +1000,12 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             // beside the colour targets (item 48).
             for (const record of depthTargets.values()) if (record.follows) buildDepth(record);
             for (const plan of plans) if (plan.depth) attachDepth(plan.depth.fbo, plan.depth.record);
+            // A multisample attachment follows the frame the same way, so its
+            // renderbuffer is respecified at the new size and re-attached to its
+            // framebuffer beside the colour targets (item 80); `buildMultisample`
+            // does both. An average and the samples it came from stay the same
+            // picture across a resize this way.
+            for (const record of multisampleColours.values()) if (record.follows) buildMultisample(record);
             built.width = width;
             built.height = height;
           }
@@ -893,12 +1015,18 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // sampling any earlier pass's texture bound to a unit. This is the
           // multi-pass loop items 48 to 52 extend (item 46).
           for (const plan of plans) {
-            const primary = plan.targets[0] ? (textures.get(plan.targets[0].resource) as TextureRecord) : null;
+            // The pass's first target is a single-sample colour texture or a
+            // multisample renderbuffer (item 80); both carry a framebuffer and a
+            // size, so the draw reads either through the one `primary`.
+            const primaryName = plan.targets[0]?.resource;
+            const primaryMultisample = primaryName === undefined ? undefined : multisampleColours.get(primaryName);
+            const primary =
+              primaryName === undefined ? null : primaryMultisample ?? (textures.get(primaryName) as TextureRecord);
             const framebuffer =
               plan.targets.length === 0
                 ? null
                 : plan.targets.length === 1
-                  ? framebufferArena.resolve((primary as TextureRecord).fboHandle as Handle)
+                  ? framebufferArena.resolve((primary as { fboHandle: Handle }).fboHandle)
                   : framebufferArena.resolve(plan.mrtFbo as Handle);
             gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
             const passWidth = primary ? primary.width : width;
@@ -979,6 +1107,21 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
               height: passHeight,
               ...(plan.geometry ? { geometry: plan.geometry } : {}),
             });
+            // A pass drawing a multisample attachment averages its samples into the
+            // single-sample resolve target by blitting the multisample framebuffer
+            // onto the resolve target's, the same average WebGPU takes through a
+            // `resolveTarget` on its colour attachment (item 80). Same size and
+            // format either side, so the blit resolves rather than scales, and the
+            // resolve target — a single-sample colour texture — is what the frame
+            // then shows.
+            const resolveOut = plan.targets[0]?.resolve;
+            if (primaryMultisample && resolveOut !== undefined) {
+              const into = textures.get(resolveOut) as TextureRecord;
+              gl.bindFramebuffer(gl.READ_FRAMEBUFFER, framebufferArena.resolve(primaryMultisample.fboHandle));
+              gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, framebufferArena.resolve(into.fboHandle as Handle));
+              gl.blitFramebuffer(0, 0, primaryMultisample.width, primaryMultisample.height, 0, 0, into.width, into.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+              gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            }
           }
           // The picture the frame names is shown by blitting its texture onto the
           // canvas, where the passes drew into textures rather than the canvas
@@ -1025,6 +1168,13 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           }
           // The depth and stencil renderbuffers go back to their own arena (item 48).
           for (const record of depthTargets.values()) renderbufferArena.free(record.handle);
+          // A multisample colour attachment is a renderbuffer and a framebuffer of
+          // its own (item 80); both go back to the arenas beside the depth and
+          // per-texture ones.
+          for (const record of multisampleColours.values()) {
+            renderbufferArena.free(record.handle);
+            framebufferArena.free(record.fboHandle);
+          }
           // A multiple-target pass allocated a framebuffer of its own (item 47); it
           // goes back to the arena beside the per-texture ones.
           for (const plan of plans) if (plan.mrtFbo !== null) framebufferArena.free(plan.mrtFbo);
