@@ -1143,21 +1143,22 @@ shifted) but not re-measured; the path gate strips the suffix before resolving, 
 not read them, and re-pinning every line number is not this move's job. See
 [JOURNAL.md](JOURNAL.md).
 
-### 38. The §14 renames
+### 38. The §14 renames that this phase can reach
 
 **Status.** open
 
-**Asks for.** `ShaderFrame` becomes `FrameGraph`, `setArtefact` becomes `setFrame`, `ShaderProgram` is gone, `report()` becomes `probe()` and the capability accessors, and the rest of the table.
+**Asks for.** Every row of [RoadToPureEngine.md](RoadToPureEngine.md) §14's table **except the two named below**, which cannot be reached from here.
 
-**Done when.** No name in the table survives, and the README and both design documents use the new ones.
+**Done when.** No name in §14's table survives except `readBuffer` and `ShaderSource`'s optional language fields, and the README and both design documents use the new names.
 
-**Needs.** item 37. **Deadline:** before 1.0, per decision 8, after which renames are forbidden.
+**Needs.** item 37.
 
-**Carries item 61's follow-on.** The WebGL 2 backend now reads each uniform's declared type off
-`ShaderFrame.uniforms` to feed an `int` through `gl.uniform1i` rather than `gl.uniform1f` (item
-61). §14 retires that field, so whoever retires it here must move the declared type to the
-binding or the pipeline in the same change, or the loose-`int` and block-`int` paths silently
-regress to `GL_INVALID_OPERATION` and a uniform stuck at 0.
+**Two rows are deliberately out of scope, and item 66 carries them.** This item originally said "no name in the table survives", and an unattended run stopped on it rather than fake the criterion — correctly, and the fault was in how this item was written rather than in the run.
+
+- **`readBuffer` answering vacuously → gone.** §14's own reason is *"with capabilities, a backend without buffers never receives a graph that reads one"*. That is item 51's capability wiring, in Phase 5. Removing the method before the wiring exists means a backend that simply cannot answer.
+- **`ShaderSource` with optional language fields → a union discriminated on `authored`.** That union is §9's arena shape, which arrives with GLSL-in and translation in Phase 5. There is nothing here yet to discriminate.
+
+Neither belongs to item 37's dependency, which is all this item's `Needs` names. Splitting them out is what makes the rest landable now, and **decision 8 still requires all of §14 before 1.0** — item 66 is how that stays true.
 
 ### 39. The layer rules become tests
 
@@ -1572,3 +1573,17 @@ gap). The machinery exists — item 17 lets a graph declare a transient depth ta
 producer to emit what a hand-written frame already can, not new backend work. It is the scene
 tier's `Done when`-visible correctness rather than a demo polish, which is why it is queued
 rather than left in the row.
+
+### 66. The last two §14 renames, once the capability wiring exists
+
+**Status.** open
+
+**Asks for.** The two rows item 38 could not reach: `readBuffer` removed, and `ShaderSource` becoming a union discriminated on `authored`.
+
+**Done when.** Neither name survives anywhere, and §14's table is fully spent.
+
+**Needs.** item 38, item 51.
+
+**Why it exists.** Item 38 asked for every row of §14 at once, in Phase 4. Two of those rows depend on Phase 5 work that item 38's `Needs` never named — `readBuffer`'s removal on item 51's capability wiring, and the `ShaderSource` union on the arena shape that arrives with translation. A run stopped on the contradiction instead of satisfying the criterion loosely, which is the behaviour the queue is meant to produce.
+
+**It is a 1.0 blocker.** Decision 8 says all of §14 lands before 1.0 and that renames are forbidden afterwards, so this item is what keeps that promise true once item 38 has taken everything reachable.
