@@ -1679,13 +1679,37 @@ Not phase-bound. Each can land whenever its dependency has.
 
 ### 54. GPU timestamps get a consumer
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The timestamp queries that already work and are read by nothing become per-pass times in the benchmark output.
 
 **Done when.** A run prints per-pass times where the device supports them. **Reported, never asserted.**
 
 **Needs.** item 21.
+
+**How it landed.** [gates/times.mjs](../gates/times.mjs) (`npm run bench:times`) is the
+consumer the timestamp queries never had — a sibling benchmark to item 22's
+[gates/traffic.mjs](../gates/traffic.mjs), not an extension of it, because a time is one
+row per **pass** where traffic is one row per **frame**. It draws one frame whose passes
+are each `timed:` into a 16-byte buffer of its own — a compute pass and a render pass —
+reads each buffer back with `readBuffer`, and prints the elapsed nanoseconds a pass took
+as the second of its two u64 timestamps minus the first (the pair a timed pass resolves
+into its buffer, gpu/webgpu.ts, RoadToPureEngine.md's readings-not-a-matrix). **Where the
+device supports them:** the harness guards on `device.features.has('timestamp-query')` and
+prints one honest "unavailable" line where the feature is absent, rather than a column of
+zeroes dressed as timings. **Reported, never asserted:** a wall-clock time is the device's
+and the moment's, so nothing pins one — [tests/bench-times.test.ts](../tests/bench-times.test.ts)
+(the same shape as `bench-traffic.test.ts`, and what keeps the script from being an orphan
+under item 74) asserts only that an elapsed row is printed per timed pass and the script
+exits zero, never the number.
+
+**What the gates could not see.** The read path runs end to end in the node suite (774
+green, was 773; `type-check` green, `times.mjs` under `checkJs`), but produces no *real*
+timing: the recording double's `resolveQuerySet` moves no bytes and its mapped range is
+empty, so both pairs read back zero, which the harness prints with a note saying so. A real
+card behind the same code path is the only place a non-zero elapsed count lands; `gate:card`
+and `gate:browser` were not run (SwiftShader on every headless launch, §17 note 3). See
+[JOURNAL.md](JOURNAL.md).
 
 ### 55. The wall-clock harness
 

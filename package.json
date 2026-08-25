@@ -42,6 +42,7 @@
     "translate": "node gates/translate.mjs",
     "device-report": "node gates/device-report.mjs",
     "bench:traffic": "node gates/traffic.mjs",
+    "bench:times": "node gates/times.mjs",
     "prepack": "npm run build",
     "gate:browser": "node gates/all.mjs",
     "gate:card": "node gates/card.mjs",
