@@ -301,6 +301,16 @@ baseline that legitimately moved.
 - A red gate names the batch rather than the commit inside it. If one goes red, re-run that one
   gate to see whether it repeats, then write what it read and which commits are in the batch into
   `.loop/stop`. Do not guess which commit made it red and do not revert on a guess.
+- REPORT A RED AS UNREAD UNLESS YOU REPRODUCED IT ON THE CONSUMER'S OWN PATH. Naming a cause is
+  a much stronger claim than reporting a reading, and it is the claim that goes wrong. A batch
+  went red overnight and the session concluded "a gate-harness esbuild fault, NOT the shipped
+  code". Every fact it gave was true — node green, type-check green, the bundle losing a binding
+  — and the inference was wrong: it had never tested `dist`. The defect was real, reached every
+  consumer who bundles, and shipped. If you want to say the harness is at fault, prove it by
+  installing the package outside this repository and reproducing there — `bash gates/pack.sh`
+  now asks exactly that question. If you cannot, write "the batch is unread" and say what you
+  ran. Unread is an honest verdict; a wrong cause is worse than no cause, because it closes the
+  question.
 - Add a docs/JOURNAL.md row for anything the batch could not settle, and commit that alone.
   Otherwise commit nothing.
 PROMPT_EOF
