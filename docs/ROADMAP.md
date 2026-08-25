@@ -1221,11 +1221,35 @@ Two halves, and 5a comes first because the backend is worth nothing without shad
 
 ### 40. Choose the translator
 
-**Status.** lifted to a machine (or attended run) with a Tint build
+**Status.** done
 
 **Asks for.** Naga against Tint, evaluated on this corpus rather than on reputation.
 
-**Done when.** Every corpus preset is run through both, the failures of each are listed, and the choice is recorded with the readings behind it.
+**Done when.** The choice is recorded with the readings behind it, and the reading that was not taken is named as not taken.
+
+**Amended and closed 2026-08-25, by a decision rather than by the comparison.** The original
+`Done when` was a conjunction — *every corpus preset run through both* — and it is closed here
+without the Tint half ever being run. **What the decision rests on:** item 75 ran naga against the
+whole corpus and item 41 baked the result, so naga is measured rather than assumed — of 34 entry
+points, **25 translate and are baked** and the other 9 are refused before translation for
+capabilities WebGL 2 genuinely lacks (4 compute stages, 3 vertex stages reading a storage buffer,
+2 fragment stages reading a storage texture), and a shader that will not translate for any other
+reason fails the build with naga's own message. Items 46–50 and 77–79 then drew that baked GLSL
+through `createWebGL2Backend` in a browser, so the translator's output is not merely accepted by a
+compiler but lights a buffer.
+
+**What this costs, stated rather than buried.** Decision 2 now rests on naga carrying this corpus
+and **not** on naga being better than Tint at carrying it, because nothing here has run Tint. The
+item's own note said this is where decision 2's risk is *discovered or dismissed*; it is dismissed
+on one translator's readings, which is weaker than the comparison asked for. Tint ships only inside
+Google's Dawn tree — not on npm, not a release binary — so obtaining it is a Dawn build, and that
+was judged not worth the hours against evidence naga already carries the whole corpus.
+
+**Reverse:** set `Status` back to `lifted to a machine (or attended run) with a Tint build`,
+restore the original `Done when` above, and delete this note and the one below it. **What would
+change the answer:** a corpus preset naga refuses for a reason that is not a capability WebGL 2
+lacks — that is the failure mode this comparison was meant to catch early, and it would make
+building Tint worth the hours after all.
 
 **Needs.** Nothing.
 
@@ -1800,6 +1824,14 @@ predecessors 48/49/50 do — recorded here rather than reached transitively, sin
 
 **Note.** This is the same trap that produced 479 lines in `engine/` that nothing imported and nothing could have imported. A better substrate fixes the hole those lines were built against; it does not supply the feedback they never had.
 
+**A standing row rather than a task, and excluded from item 58's `Needs` on 2026-08-25.** Its
+`Done when` is an event outside this repository — someone outside the org shipping something and
+saying what was missing — so no amount of work here can close it, and while item 58 named it, 1.0
+was unreachable by construction. It stays `open` because the wait is real and correctly sequenced,
+not because anybody is working it. **Reverse:** put `item 53` back into item 58's `Needs` and
+delete this paragraph; 1.0 then waits on an outside consumer, which is a defensible position and
+was the alternative considered.
+
 ---
 
 ## Runs alongside
@@ -1850,6 +1882,11 @@ and `gate:browser` were not run (SwiftShader on every headless launch, §17 note
 
 **Needs.** item 30.
 
+**A standing row rather than a task, and excluded from item 58's `Needs` on 2026-08-25.** It is a
+reading taken on hardware, explicitly never a CI gate, so it has no landing that a person who did
+not do the work could check once and for all. Same treatment as items 53 and 57. **Reverse:** put
+`item 55` back into item 58's `Needs` and delete this paragraph.
+
 ### 56. The deprecation mechanism
 
 **Status.** open
@@ -1869,6 +1906,10 @@ and `gate:browser` were not run (SwiftShader on every headless launch, §17 note
 **Done when.** Never; it is a log rather than a task. **It is not a support promise:** the package's promise is the capability model, which answers correctly on devices nobody has read.
 
 **Needs.** item 9.
+
+**A standing row rather than a task, and excluded from item 58's `Needs` on 2026-08-25.** Its own
+`Done when` says "Never", so item 58 naming it made 1.0 formally undeclarable. Same treatment as
+items 53 and 55. **Reverse:** put `item 57` back into item 58's `Needs` and delete this paragraph.
 
 **Note for whoever runs the harness.** On the Linux machine these were taken on: every headless launch reaches SwiftShader whatever the flags say, `--headless=new` included. A WebGPU adapter on the real card needs a visible window plus `--enable-features=Vulkan` **and** `--ozone-platform=x11` together — without the second the window renders as a flickering transparent tile on that driver. Do not reach for `--use-angle=vulkan`, `DefaultANGLEVulkan` or `VulkanFromANGLE`: they move the whole browser onto Vulkan and produce the same tile.
 
@@ -1890,7 +1931,24 @@ and `gate:browser` were not run (SwiftShader on every headless launch, §17 note
 | device readings published | items 9, 57 |
 | **one consumer outside this org shipping something** | item 53 |
 
-**Needs.** Every item above.
+**Needs.** Every item above **except items 53, 55 and 57**, which are registers and waits rather
+than tasks and can never be marked `done` — each says so in its own entry.
+
+**Reworded 2026-08-25, because as written this item could never be declared.** Item 57's `Done
+when` is the single word "Never", item 55's is a hardware reading that is explicitly never a CI
+gate, and item 53's is an event outside this repository. "Every item above" therefore named three
+items that cannot close, which made 1.0 formally unreachable however much work landed. The three
+are excluded by name rather than deleted, because each is a real standing obligation.
+
+**1.0 is deliberately not the next release.** 0.x continues, and **a 0.x release does not need this
+item** — README says 0.x is unstable and that names and shapes change between releases, and
+CHANGELOG.md's rule puts features in the middle number. So 0.3.0 ships on what has landed while
+this item stays open. What 1.0 adds beyond a 0.x release is the freeze: decision 8 says all of §14
+lands before 1.0 and that renames are forbidden afterwards, which is a promise about what will
+*not* change rather than a claim about what works.
+
+**Reverse:** restore `**Needs.** Every item above.` and delete these three paragraphs, and delete
+the standing-row paragraphs in items 53, 55 and 57.
 
 **The consequence, said out loud because otherwise it gets dropped.** That last gate cannot be graded from inside this repository, so **1.0 depends on something outside this repository's control.** The package can be finished by every other measure and still be 0.x. The useful effect is that the examples suite and the README's first screen stop being documentation chores and become the mechanism that produces the last checkbox.
 
