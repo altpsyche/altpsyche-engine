@@ -860,6 +860,95 @@ describe('a pass drawing the shader own geometry (item 77)', () => {
 });
 
 /**
+ * A frame that mixes the two arms of the WebGL 2 draw path in one pass list: a
+ * first pass drawing the shader's own vertex geometry (the geometry arm, item 77)
+ * into a frame-sized texture, and a second pass sampling that texture over the
+ * backend's fullscreen corners (the corners arm). The two arms enable different
+ * attribute locations, so before item 84 the second pass ran with the geometry
+ * pass's arrays still enabled and still pointing at the geometry's buffer.
+ */
+function mixedArmsFrame(): FrameGraph {
+  const grid = GEOMETRY_PRIMITIVE['quad-grid'];
+  const made = grid.bytes(16, 16);
+  return {
+    id: 'mixed-arms',
+    target: 'glsl',
+    resources: [
+      { kind: 'uniform', name: 'uniforms' },
+      {
+        kind: 'vertices',
+        name: 'grid',
+        stride: grid.stride,
+        attributes: grid.attributes,
+        topology: grid.topology,
+        count: made.vertexCount,
+        indices: 'grid-index',
+        data: made.vertices,
+      },
+      { kind: 'indices', name: 'grid-index', format: grid.indexFormat, count: made.indexCount, data: made.indices },
+      { kind: 'texture', name: 'scene', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment', 'sample'] },
+      { kind: 'sampler', name: 'smooth', filter: 'linear', wrap: 'clamp' },
+    ],
+    modules: [
+      { name: 'warp', code: GRID_VERTEX },
+      { name: 'shade', code: FRAGMENT },
+      { name: 'vertex', code: VERTEX },
+      { name: 'show', code: FRAGMENT_SAMPLE },
+    ],
+    pipelines: [
+      {
+        kind: 'render',
+        name: 'geo',
+        vertex: { module: 'warp', entry: 'main' },
+        fragment: { module: 'shade', entry: 'main' },
+        geometry: 'grid',
+        targets: [{ format: 'rgba8unorm' }],
+        bindings: [],
+      },
+      {
+        kind: 'render',
+        name: 'corners',
+        vertex: { module: 'vertex', entry: 'main' },
+        fragment: { module: 'show', entry: 'main' },
+        bindings: [{ group: 0, binding: 0, resource: 'scene', visibility: ['fragment'], reads: 'sample' }],
+      },
+    ],
+    passes: [
+      { pipeline: 'geo', draws: [{ instances: 3 }], colour: [{ resource: 'scene', clear: [0, 0, 0, 1] }] },
+      { pipeline: 'corners', draws: [{ vertices: 3 }] },
+    ],
+  };
+}
+
+describe('a pass does not leak its vertex attribute arrays to the next (item 84)', () => {
+  it('disables every attribute location it enabled, so no pass reads another pass layout', () => {
+    const { gl, backend } = backendOver();
+    backend.program(mixedArmsFrame()).draw();
+    // Every location a pass enabled is disabled again by the end of its draws, so
+    // the geometry pass's two locations and the corners pass's single one are all
+    // cleared. The set of arrays left enabled across the whole frame is therefore
+    // empty: no pass can observe an attribute array another pass turned on.
+    const enabled = gl.of('enableVertexAttribArray').map((entry) => entry.index);
+    const disabled = gl.of('disableVertexAttribArray').map((entry) => entry.index);
+    expect(enabled.length).toBeGreaterThan(0);
+    for (const index of enabled) expect(disabled).toContain(index);
+  });
+
+  it('clears the geometry arm arrays before the corners pass enables its own', () => {
+    const { gl, backend } = backendOver();
+    backend.program(mixedArmsFrame()).draw();
+    // In call order: the geometry pass enables locations 0 and 1, draws, then
+    // disables 0 and 1; only after that does the corners pass enable its single
+    // location. So at the moment the corners pass draws, the geometry arm's arrays
+    // are off rather than still pointing at the grid buffer.
+    const order = gl.calls
+      .filter((entry) => entry.call === 'enableVertexAttribArray' || entry.call === 'disableVertexAttribArray')
+      .map((entry) => `${entry.call === 'enableVertexAttribArray' ? '+' : '-'}${entry.index as number}`);
+    expect(order).toEqual(['+0', '+1', '-0', '-1', '+0', '-0']);
+  });
+});
+
+/**
  * A fullscreen pass sampling a resident image, authored the way the build
  * assembles `core-texture`: a 64×64 `grain` texture arriving with its own bytes,
  * a `grainSampler` reading it smoothly and tiling it, and one pass that samples it

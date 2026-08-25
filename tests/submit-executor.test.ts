@@ -81,9 +81,10 @@ describe('every WebGL 2 draw goes through submit/gl2', () => {
     drawGL2Frame({ gl: context, program, quad, attribute: 0, vertices: [3], width: 320, height: 180 });
 
     // Bind the program and the quad, point the attribute at it, set the viewport
-    // to the size handed in, and draw the corners: the whole of the executor, in
-    // order, with no backend around it. `getContext` is the one call before it,
-    // which is how the context was reached.
+    // to the size handed in, draw the corners, and disable the array it enabled so
+    // the pass leaves the attribute state as it found it (item 84): the whole of
+    // the executor, in order, with no backend around it. `getContext` is the one
+    // call before it, which is how the context was reached.
     expect(gl.calls.map((call) => call.call)).toEqual([
       'getContext',
       'useProgram',
@@ -92,6 +93,7 @@ describe('every WebGL 2 draw goes through submit/gl2', () => {
       'vertexAttribPointer',
       'viewport',
       'drawArrays',
+      'disableVertexAttribArray',
     ]);
     expect(gl.of('viewport').at(-1)).toMatchObject({ x: 0, y: 0, width: 320, height: 180 });
   });

@@ -2968,7 +2968,7 @@ move (`mode` is a field on an already-hidden type), so `gate:pack` was not requi
 
 ### 84. WebGL 2 stops leaking vertex attribute arrays between passes
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A pass on WebGL 2 leaves the vertex attribute arrays as it found them, or is
 otherwise built so one pass's layout cannot be read by the next. `disableVertexAttribArray` does
@@ -2998,6 +2998,30 @@ one left enabled; that is unsettled here and the fake context cannot settle it, 
 calls and not pixels. **What would settle it:** a browser gate drawing a mixed frame once
 `core-target` links on WebGL 2. **Reverse:** delete this item; the backend reverts to leaving
 attribute state between passes with nothing tracking it.
+
+**How it landed.** `drawGL2Frame` ([submit/gl2.ts](../submit/gl2.ts)) disables the attribute
+arrays it enabled once its draws are issued — the geometry arm's every declared location, the
+corners arm's single one — so a pass leaves the vertex attribute state as it found it and the
+next pass cannot read this one's layout. It is the cheapest of the item's allowed forms
+(disable-what-was-enabled rather than a VAO per pass): each arm already knows exactly the
+locations it turned on, so the cleanup names those and nothing else, and the "leaves as it found
+them" invariant holds by induction from the context's all-disabled initial state. The recorded
+call stream now ends each pass with a `disableVertexAttribArray` per location it opened.
+[tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts) drives the mixed frame the
+item names — a geometry pass into a frame-sized texture, then a corners pass sampling it — and
+pins both that every enabled location is disabled again (no array survives the frame enabled) and
+the exact enable/disable order (`+0 +1 -0 -1` for the geometry pass, then `+0 -0` for the
+corners pass), so the geometry arm's arrays are off before the corners pass draws rather than
+still pointing at the grid buffer. The fake context
+([tests/support/fake-gl.ts](../tests/support/fake-gl.ts)) gained the `disableVertexAttribArray`
+recorder it lacked, and the executor's pinned corners call stream
+([tests/submit-executor.test.ts](../tests/submit-executor.test.ts)) gained the trailing disable.
+The export surface did not move (an added executor call and a test-only recorder, no door name),
+so `gate:pack` was not required. **What the gates could not see:** whether a leak would have
+produced a wrong *picture* on a card — that depends on the later program's attribute locations
+and needs pixels, which the node suite does not read and `gate:browser` (not run this session)
+would, once `core-target` links on WebGL 2. The correctness here is that the leak is gone from
+the call stream, which the fake context does see. See [JOURNAL.md](JOURNAL.md).
 
 ### 85. WebGL 2: per-draw UBO ranges, with a preset that reads one
 

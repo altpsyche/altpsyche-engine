@@ -84,7 +84,10 @@ export interface GL2FrameExecution {
  * and a draw covering one is a plain `drawArrays`. Where the pass reads a
  * per-draw buffer, a `bindBufferRange` before each draw points its uniform block
  * at that draw's record, which is WebGL 2's dynamic offset (item 27); where it
- * does not, the draws read whatever the block was last bound to. */
+ * does not, the draws read whatever the block was last bound to. It disables the
+ * attribute arrays it enabled once its draws are issued, so a pass leaves the
+ * vertex attribute state as it found it and the next pass cannot read this one's
+ * layout (item 84). */
 export function drawGL2Frame(exec: GL2FrameExecution): void {
   const { gl, program, quad, attribute, vertices, instances, width, height, perDraw, geometry } = exec;
   gl.useProgram(program);
@@ -129,4 +132,18 @@ export function drawGL2Frame(exec: GL2FrameExecution): void {
     if (copies === undefined) gl.drawArrays(gl.TRIANGLES, 0, count);
     else gl.drawArraysInstanced(gl.TRIANGLES, 0, count, copies);
   });
+  // Leave the vertex attribute arrays as the pass found them, so the next pass
+  // over this context cannot read this pass's layout (item 84). Each arm above
+  // enabled exactly the locations it draws through — the geometry's every
+  // declared location, the corners' single one — so disabling those same
+  // locations here clears what this pass turned on and nothing it did not. A
+  // frame mixing a geometry pass with a corners pass therefore runs the second
+  // with the first's arrays disabled rather than still enabled and still
+  // pointing at the first's buffer; the invariant holds by induction from the
+  // context's own all-disabled initial state.
+  if (geometry) {
+    for (const attr of geometry.attributes) gl.disableVertexAttribArray(attr.location);
+  } else {
+    gl.disableVertexAttribArray(attribute);
+  }
 }

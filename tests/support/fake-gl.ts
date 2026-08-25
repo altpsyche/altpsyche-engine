@@ -278,6 +278,7 @@ export function createFakeGL({ context = true } = {}): FakeGL {
       record('uniform4fv', { name: location.name, value: [...value] }),
 
     enableVertexAttribArray: (index: number) => record('enableVertexAttribArray', { index }),
+    disableVertexAttribArray: (index: number) => record('disableVertexAttribArray', { index }),
     vertexAttribPointer: (index: number, size: number, type: number, normalized: boolean, stride: number, offset: number) =>
       record('vertexAttribPointer', { index, size, type, normalized, stride, offset }),
     viewport: (x: number, y: number, width: number, height: number) => record('viewport', { x, y, width, height }),
