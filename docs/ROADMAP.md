@@ -1324,12 +1324,14 @@ Each row is honest and neither is wrong. What nobody owned is the join: **on a m
 
 ### 64. The node corpus loader assembles a frame again
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `gates/lib.mjs`'s `loadCorpus()` loads every capability fixture into a frame again, rather than throwing on the first.
 
 **Done when.** `node -e "import('./gates/lib.mjs').then(m => m.loadCorpus())"` returns a frame per `CAPABILITY_FIXTURES` entry, and the two browser gates that consume it — `gates/corpus.mjs` and `gates/trace-contract.mjs` — reach a page rather than dying at load.
 
 **Needs.** Nothing.
+
+**Closed without its own commit, 2026-08-25.** It was the symptom rather than the defect: `loadCorpus` threw because the door's `export *` lines left a bundler an uninitialised namespace, which is the shipped bug fixed in `b644520`. Verified after that fix — `loadCorpus()` awaited returns 15 frames, and `corpus.mjs` and `trace-contract.mjs` both reach a page and report 15 of 15. Recorded here rather than worked, because an item whose cause was fixed elsewhere is closed by evidence and not by a second repair.
 
 **Why it exists.** Found working item 22, which wanted to print `arena.traffic()` beside `cost()` for every corpus preset and could not: `loadCorpus()` throws on the first capability fixture, `core-compute`, with *"the description for core-compute names a document undefined with no text"*. Reproduced on a clean tree (`git stash` then the one-liner above), so it predates item 22 and is not that work's doing. The cause is a `WGSL_DOCUMENT` that resolves to `undefined` inside the esbuild bundle `loadFromRoot` builds — a document named `undefined` reaches `frameOf`, whose missing-text check refuses it correctly. Because `loadCorpus` is what `gate:browser`'s corpus and trace-contract gates call at their first step, **both are currently dead at load**, which the repeated "gate:browser not run in the unattended session" JOURNAL rows have been hiding: a gate nobody runs is a gate whose own loader can rot unnoticed. Item 22's benchmark works around it by building two frames by hand; this item is the fix, and until it lands `gate:browser` cannot confirm anything, including the twelve trace presets several recent items defer to it.
