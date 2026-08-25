@@ -2777,3 +2777,69 @@ capability the consuming repository's decision log does not turn on.
 **Why the removal is not free, which item 66 assumed it was.** With item 51's capability wiring landed, a WebGL 2 program never receives a graph that declares a storage buffer — [gpu/webgl2.ts](../gpu/webgl2.ts) says so in place — so the vacuous arm is unreachable by construction and §14's stated reason for the row holds. What does not follow is that the *method* can go: it is the only path from a buffer's words to a caller, and item 54 pointed a benchmark and a browser gate at it. The row is right about the vacuous answer and silent about the readback, and this item is where both are settled together.
 
 **Filed 2026-08-25 by the lift of item 66.** **Reverse:** delete this item and set item 66 back to `open`.
+
+### 83. WebGL 2 draws the topology the geometry declares
+
+**Status.** open
+
+**Asks for.** The WebGL 2 geometry path reads `VertexResource.topology` instead of drawing every
+geometry as a triangle list. [submit/gl2.ts](../submit/gl2.ts) L114–L117 passes `gl.TRIANGLES` to
+all four of `drawElements`, `drawElementsInstanced`, `drawArrays` and `drawArraysInstanced`, and
+nothing on the WebGL 2 path reads `topology` at all. Either the declared topology maps to its GL
+mode, or a topology this backend will not draw is **refused by name** — what it may not do is draw
+a different picture from WebGPU without saying so.
+
+**Done when.** A graph declaring a non-`triangle-list` topology either draws under the matching GL
+mode or is refused naming the topology, and a test pins whichever it is. `gl.TRIANGLES` appears
+in `submit/gl2.ts` only where the topology asked for it.
+
+**Needs.** item 77.
+
+**Found by review 2026-08-25, reading item 77's commit before merging it.** `topology` is a
+required field of `VertexResource` ([graph/types.ts](../graph/types.ts) L143), and the field's own
+comment says which vertices make one triangle is a fact about the order the indices were written
+in. WebGPU honours it — `primitive: { topology: drawn.vertices.topology }`
+([gpu/webgpu.ts](../gpu/webgpu.ts) L1523) — and `tests/renderer-geometry.test.ts` L142 pins a
+WebGPU pipeline built at `'triangle-strip'`, so a graph declaring one is not hypothetical: it is
+reachable today by any consumer authoring a `vertices` resource by hand. **It is not reachable
+through the corpus**, where `GeometryPrimitive` is the one-member union `'quad-grid'`
+([shader-geometry.ts](../shader-geometry.ts) L21) and `quad-grid` is `'triangle-list'` (L60), which
+is why no gate has seen it and why item 79's green browser gate proves nothing about it. This is
+the same class of narrowing as the FLOAT-only attribute read item 77 recorded in
+[JOURNAL.md](JOURNAL.md), and it is the more serious half: a wrong mode is a silent wrong picture
+of exactly the kind §15 puts first and alone, and item 52 asks for the same scene graph on both
+backends. **Reverse:** delete this item; the WebGL 2 path reverts to drawing every topology as a
+triangle list with nothing tracking it.
+
+### 84. WebGL 2 stops leaking vertex attribute arrays between passes
+
+**Status.** open
+
+**Asks for.** A pass on WebGL 2 leaves the vertex attribute arrays as it found them, or is
+otherwise built so one pass's layout cannot be read by the next. `disableVertexAttribArray` does
+not appear anywhere in this repository, and [submit/gl2.ts](../submit/gl2.ts)'s two arms each
+enable what they need and clear nothing: the geometry arm enables every location the geometry
+declares, bound to the geometry's buffer at the geometry's stride, and the corners arm enables the
+single location the fullscreen quad arrives on. A frame whose passes take different arms therefore
+runs the second with the first's arrays still enabled and still pointing at the first's buffer.
+
+**Done when.** No pass can observe an attribute array another pass enabled — by disabling what was
+enabled, by a vertex array object per pass, or by whatever the implementer judges cheapest — and a
+test drives a frame that mixes a geometry pass with a corners pass and pins the resulting calls.
+
+**Needs.** item 77.
+
+**Found by review 2026-08-25, reading item 77's commit before merging it. It is latent, and why it
+is latent matters.** Two corpus fixtures mix the arms in one frame —
+[fixtures/capability-fixtures.ts](../fixtures/capability-fixtures.ts) `core-target` (pass 1
+`geometry: 'sheet'`, pass 2 `{ pipeline: 'grade' }` on the backend's corners) and `core-stencil`
+the same way — and **both skip on WebGL 2** in item 79's gate, on the unrelated ground that their
+WGSL bakes no vertex for WebGL 2 to link. The fixtures that did draw are single-arm: `core-geometry`
+is one geometry pass, and `core-depth` and `core-report` are two passes over the *same* geometry, so
+the same locations are re-enabled and nothing leaks. So the batch that went green in four gates
+could not have seen this, which is worth stating plainly beside the green. Whether a leak produces a
+wrong picture depends on whether the later program declares an attribute at a location the earlier
+one left enabled; that is unsettled here and the fake context cannot settle it, since it records
+calls and not pixels. **What would settle it:** a browser gate drawing a mixed frame once
+`core-target` links on WebGL 2. **Reverse:** delete this item; the backend reverts to leaving
+attribute state between passes with nothing tracking it.
