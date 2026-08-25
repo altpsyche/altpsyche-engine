@@ -16,8 +16,22 @@
 
 // The renderer: choosing a backend, drawing one frame, and the live surface a
 // page keeps running.
-export * from './renderer/index.js';
-export * from './renderer/surface.js';
+export {
+  PROGRAM_CACHE_LIMIT,
+  createFrameRenderer,
+} from './renderer/index.js';
+export type {
+  FrameRenderer,
+  RendererOptions,
+} from './renderer/index.js';
+export {
+  createSurface,
+  resolveDensity,
+} from './renderer/surface.js';
+export type {
+  Surface,
+  SurfaceOptions,
+} from './renderer/surface.js';
 export { requestWebGPUDevice } from './renderer/webgpu-device.js';
 
 // Which backend draws a frame, chosen inside the library from what the frame is
@@ -39,8 +53,61 @@ export type { BackendFacts, DeviceReading, ProbeFacts, ProbeHost, ProbeTier } fr
 // render or a compute one and a draw being counted, instanced or indirect, so the
 // guards that narrow them are exported beside them: without those a caller writes
 // the same rule again as a property test and drifts from what the backends do.
-export * from './renderer/frame.js';
-export * from './renderer/types.js';
+export {
+  ONE_PASS,
+  WGSL_DOCUMENT,
+  WGSL_FRAGMENT_ENTRY,
+  assembleFrame,
+  documentNames,
+  frameOf,
+  generatedResources,
+  glslDescription,
+  glslFrame,
+  wgslDescription,
+  wgslFrame,
+} from './renderer/frame.js';
+export {
+  componentsOf,
+  dispatchesIndirectly,
+  drawsCorners,
+  drawsIndirectly,
+  isRenderPass,
+  moduleOf,
+  perDrawBinding,
+  resourceOf,
+  uniformResourceOf,
+} from './renderer/types.js';
+export type {
+  Backend,
+  BackendName,
+  BindingSpec,
+  BufferResource,
+  ComputePassSpec,
+  ComputePipelineSpec,
+  DeviceReport,
+  Dispatch,
+  DocumentSpec,
+  DrawSpec,
+  Extent,
+  FrameDescription,
+  IndexResource,
+  ModuleSpec,
+  PassSpec,
+  PipelineSpec,
+  RenderPassSpec,
+  RenderPipelineSpec,
+  ResourceSpec,
+  SamplerResource,
+  ShaderFrame,
+  ShaderProgram,
+  ShaderTarget,
+  StencilMode,
+  TextureResource,
+  UniformResource,
+  UniformSlot,
+  UniformValue,
+  VertexResource,
+} from './renderer/types.js';
 
 // The uniform block a WGSL source lays out, computed off its struct because
 // nothing here compiles WGSL.
@@ -53,16 +120,58 @@ export { uniformBlockOf } from './wgsl-layout.js';
 // word-alignment a graph is held to are no longer among them: they moved into the
 // renderer's own `validate`, which every draw runs, and are not a producer's to
 // call (item 19).
-export * from './shader-geometry.js';
-export * from './wgsl-references.js';
-export * from './wgsl-binding.js';
+export {
+  GEOMETRY_PRIMITIVE,
+} from './shader-geometry.js';
+export type {
+  GeneratedGeometry,
+  GeometryLayout,
+  GeometryPrimitive,
+} from './shader-geometry.js';
+export {
+  namesReachedBy,
+} from './wgsl-references.js';
+export {
+  uniformBindingOf,
+} from './wgsl-binding.js';
 
 // The engine above the renderer: the maths, the scene, and a scene becoming a
 // list of draws with the values each object feeds its material.
-export * from './engine/maths.js';
-export * from './engine/scene.js';
-export * from './engine/material.js';
-export * from './engine/draw-list.js';
+export {
+  mat3,
+  mat4,
+  vec3,
+} from './engine/maths.js';
+export type {
+  Mat3,
+  Mat4,
+  Vec3,
+} from './engine/maths.js';
+export {
+  localMatrix,
+  viewProjection,
+  worldMatrix,
+} from './engine/scene.js';
+export type {
+  Camera,
+  Entity,
+  Scene,
+  Transform,
+} from './engine/scene.js';
+export {
+  batchOnePipeline,
+} from './engine/material.js';
+export type {
+  Batch,
+  Material,
+  MaterialDraw,
+} from './engine/material.js';
+export {
+  drawList,
+} from './engine/draw-list.js';
+export type {
+  Draw,
+} from './engine/draw-list.js';
 
 // What one frame costs by its structure alone — passes, draws, dispatches,
 // pipeline and bind switches, attachment loads and stores, transient bytes.
@@ -85,7 +194,15 @@ export type { Capability } from './graph/capability.js';
 // caller: a run refusing a capture and a gate passing a resized surface are the
 // same claim about the same kind of buffer, and two versions of the arithmetic
 // would drift with nobody reading the one that drifted.
-export * from './renderer/frame-coverage.js';
+export {
+  describeFrameCoverage,
+  isFullyPainted,
+  readFrameCoverage,
+} from './renderer/frame-coverage.js';
+export type {
+  FrameCoverage,
+  FrameCoverageInput,
+} from './renderer/frame-coverage.js';
 
 // The recording double: a caller wraps a device to collect what it was asked,
 // projects a trace down to the calls worth comparing, and compares two of them.

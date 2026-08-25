@@ -12,6 +12,14 @@
 # the tests, run through tsx. The second question exists because the first one cannot
 # fail the way that matters: tsx resolves a relative import with no extension, so a
 # `dist` only a bundler could load passed this check for every version published.
+#
+# The third question is what a consumer's BUNDLER makes of it, and it is here because
+# the first two both passed over a defect that shipped. `export *` on the door left
+# esbuild a lazy namespace it then never initialised, so an installed consumer that
+# bundled — which is most of them, Vite included — read `undefined` out of every
+# re-exported constant and got a description naming a document with no name. Plain
+# node was fine, tsx was fine, 661 tests were fine. Nothing that did not bundle could
+# see it.
 # Plain node is stricter, and asking it to import the package by name is what
 # catches a directory import node will not follow.
 #
@@ -76,3 +84,22 @@ node --input-type=module -e "
 "
 
 npx --yes tsx draw.ts
+
+# The third question: bundled, the way a consumer's toolchain actually ships it.
+# A binding that survives node's own resolution can still be dropped by a bundler,
+# and this is the only check here that would notice.
+cat > bundled.mjs <<'JS'
+import { wgslDescription, WGSL_DOCUMENT } from '@altpsyche/engine';
+const documents = wgslDescription('x').documents;
+if (WGSL_DOCUMENT !== 'wgsl' || documents[0]?.name !== 'wgsl') {
+  console.error(
+    'a bundler lost the door\'s re-exports: WGSL_DOCUMENT=' + JSON.stringify(WGSL_DOCUMENT) +
+    ' documents=' + JSON.stringify(documents)
+  );
+  process.exit(1);
+}
+console.log('bundled by esbuild, the door keeps its re-exports: ' + JSON.stringify(documents));
+JS
+
+npx --yes esbuild bundled.mjs --bundle --format=esm --outfile=bundled.out.mjs >/dev/null
+node bundled.out.mjs

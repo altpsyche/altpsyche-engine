@@ -138,6 +138,12 @@ if [ -n "$WORKTREE" ]; then
     echo "      dependency graph in ROADMAP.md is what makes a bad split obvious: an item whose"
     echo "      Needs are being landed in another worktree is not reachable here."
     echo
+    # cd BEFORE exec. `exec` replaces the process and keeps the working directory, so
+    # running the worktree's copy of this script from here left it with the main repo
+    # as its cwd — `git rev-parse --show-toplevel` answered "main", and a night's run
+    # locked, committed and gated in main while the isolation branch never moved. The
+    # worktree was real and unused. That is what this one line is for.
+    cd "$DIR" || exit 2
     exec bash "$DIR/scripts/run-loop.sh" "${ARGS[@]}"
 fi
 
