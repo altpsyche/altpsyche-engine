@@ -1759,7 +1759,21 @@ than wrongly drawn). See [JOURNAL.md](JOURNAL.md).
 
 **Done when.** `orbit-shadow` draws on WebGL 2 as well as WebGPU, and the difference between the two is reported by item 44's three numbers.
 
-**Needs.** item 35, item 48, item 49, item 50, item 77, item 78.
+**Needs.** item 35, item 48, item 50, item 77, item 78.
+
+**Shed `item 49` on 2026-08-25, which is what makes this item reachable again.** Item 49 was
+lifted `needs decomposition` the same day, and `lifted` never satisfies a `Needs`, so this item —
+where §17 decision 1 gets its answer — became unreachable as a side effect of that lift. It does
+not need what item 49 has left. **Read from the code, not inferred:** this item's vehicle is
+`orbit-shadow`, which drives `sceneView` ([examples/orbit-shadow/main.ts](../examples/orbit-shadow/main.ts)),
+and `sceneView` emits `draws: [{ instances: … }]` with no `perDraw` anywhere in it
+([scene/scene-view.ts](../scene/scene-view.ts) L291) — so the per-draw UBO half, which is all item
+49 has left, is not on this item's path. The instancing half item 49 was named for arrived with
+item 77, which this item already names; item 49's own lift note says so from the other side
+("the instancing half already landed under item 77"). The per-draw work is re-filed as item 85 so
+it is tracked rather than dropped. **Reverse:** put `item 49` back in the `Needs` above and delete
+this paragraph; this item is then unreachable until item 49 is decomposed, which is the state this
+shed corrects.
 
 **Gained `item 77` and `item 78` on 2026-08-25.** The scene draws vertex geometry (item 77)
 and uploads material textures (item 78) directly, so it names both prerequisites its
@@ -2843,3 +2857,42 @@ one left enabled; that is unsettled here and the fake context cannot settle it, 
 calls and not pixels. **What would settle it:** a browser gate drawing a mixed frame once
 `core-target` links on WebGL 2. **Reverse:** delete this item; the backend reverts to leaving
 attribute state between passes with nothing tracking it.
+
+### 85. WebGL 2: per-draw UBO ranges, with a preset that reads one
+
+**Status.** open
+
+**Asks for.** The per-draw uniform slice wired through the WebGL 2 backend — the half of item 49
+that is real work rather than an already-met criterion. The executor arm has existed since item 27:
+[submit/gl2.ts](../submit/gl2.ts) declares `GL2PerDraw` and issues a `bindBufferRange` before each
+draw where `perDraw` is present (L104–L105). **The backend never populates it** — `perDraw` does not
+appear in [gpu/webgl2.ts](../gpu/webgl2.ts) at all, so its `PassPlan` carries none and its
+`drawGL2Frame` call omits it. The work is reading `Draw.perDraw`/`BindingSpec.perDraw` off the pass,
+allocating and pointing a per-draw uniform buffer at the alignment the device reports, and handing
+`drawGL2Frame` the offsets.
+
+**Also asks for a corpus preset that can exercise it**, because none can today. `core-perdraw` is
+the preset item 49 pointed at and it reads a **read-only storage buffer** indexed by the instance
+(`buffers: [{ name: 'copies', bytes: 64, content: 'copy-tints' }]`,
+[fixtures/capability-fixtures.ts](../fixtures/capability-fixtures.ts)), and WebGL 2 has no storage
+buffers — the `storage-buffer` capability §10 withholds from it — so the backend refuses it on
+grounds this item cannot lift. A preset reading a per-draw **uniform** slice is a different preset.
+
+**Done when.** A corpus preset that reads a per-draw uniform slice draws through
+`createWebGL2Backend` in the corpus gate ([gates/corpus.mjs](../gates/corpus.mjs), item 79) and
+lights its buffer, with the slice each draw reads decided by the offset the backend bound rather
+than by the block's last write. One criterion, and item 79's gate is what checks it.
+
+**Needs.** item 27, item 77, item 79.
+
+**Filed 2026-08-25, re-filing the separable half of item 49.** Item 49 was lifted because it
+bundled two capabilities under a `Done when` that landed nothing — its exit criterion,
+`instanced-cubes`, is met by items 27+28 through the backend's fullscreen corners with no per-draw
+buffer at all — and because its suggested vehicle cannot run on WebGL 2. Its lift note names this
+half as "the genuine remaining work" and leaves the choice of `Done when` to a curator between a
+new corpus preset and a node-test-only scope; **this item takes the corpus preset**, because item
+79 landed the gate that can read one and a node suite over a fake that records calls rather than
+pixels would not show that a draw read its own slice. The alignment the ranges respect is the
+device's `minUniformBufferOffsetAlignment`, which is a reading rather than a constant. **Reverse:**
+delete this item; the per-draw path reverts to being tracked only by item 49's lift note, which is
+a record rather than a queue entry.

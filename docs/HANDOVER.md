@@ -8,18 +8,29 @@ You are continuing work on `@altpsyche/engine`, a browser graphics package being
 website-coupled renderer into a general one. **Read `CLAUDE.md` first**, then `docs/ROADMAP.md`'s
 queue, then §17 of `docs/RoadToPureEngine.md` (the eleven settled decisions).
 
-**Where it stands.** 79 items: about 60 done, 13 open, 6 lifted, 1 reverted. Phases 0–4 are
-complete and Phase 5 is most of the way. The library's folders are the §7 layout (`graph/`,
-`gpu/`, `resource/`, `pipeline/`, `submit/`, `toy/`, `scene/`, `host/`, `trace/`) — `renderer/`
-and `engine/` are gone. Naga carries the whole corpus to GLSL (item 75), so decision 2 holds.
-The open front is the WebGL 2 backend growing past fullscreen-only: items 77, 78, 79, then 48,
-49, 50, and **52, which is where decision 1 gets its answer**.
+**Where it stands.** 85 items: 64 done, 12 open, 8 lifted, 1 reverted. Phases 0–4 are complete
+and Phase 5's WebGL 2 work has landed — items 46, 47, 48, 50, 77, 78 and 79 are `done`, so the
+backend draws several passes, several colour attachments, depth and stencil, vertex geometry of
+the shader's own, resident texture content and a mip ladder, and the corpus gate draws through
+`createWebGL2Backend` by outcome rather than by construction. The library's folders are the §7
+layout (`graph/`, `gpu/`, `resource/`, `pipeline/`, `submit/`, `toy/`, `scene/`, `host/`,
+`trace/`) — `renderer/` and `engine/` are gone. Naga carries the whole corpus to GLSL (item 75),
+so decision 2 holds.
+
+**The next item is 52, and it is the one that matters: where decision 1 gets its answer.** Its
+`Needs` are all `done` as of 2026-08-25, when `item 49` was shed from them — item 49 was lifted
+and `lifted` never satisfies a `Needs`, so it had stranded 52 until the shed. Behind it: item 80
+(multisample), 81 (the `ShaderSource` union), 83 (WebGL 2 draws the declared topology, a silent
+wrong picture today), 84 (attribute arrays leak between passes), 85 (per-draw UBO ranges). Item
+82 (`readBuffer` removed) is **not reachable** — its `Needs` are items 67 and 68, both lifted —
+and §14's table cannot be fully spent until those are decomposed, which is a real constraint on
+1.0 recorded in item 66.
 
 **Start a loop like this.** There is no `/next` in this repository; the loop reads the roadmap.
 
     bash scripts/run-loop.sh 10 --worktree <name> --cap 45 --items <comma,list>
 
-**Five rules for running it.**
+**Six rules for running it.**
 
 1. **Always `--worktree`.** `main` stays parked and you review a branch, then rebase and
    fast-forward. Verify isolation once per run with
@@ -34,6 +45,11 @@ The open front is the WebGL 2 backend growing past fullscreen-only: items 77, 78
    its own single-item run.
 5. **Read the gate's raw output, not its summary.** Every run log has a
    `----- what the gates themselves printed -----` section. `4 of 4` in prose is not a reading.
+6. **Do not file a roadmap item while a loop is running.** Item numbers are addresses and are
+   never reused, and a loop files its own from the end of *its* copy of the queue, which does not
+   contain yours. Two different item 80s were filed 87 seconds apart on 2026-08-25 — the loop's
+   multisample item and a reviewer's — and the later claim is the one that had to move. Either
+   wait for the run, or file above anything it could reach and say in the item why.
 
 **Review every commit before merging.** The loop's work has been solid; the failures have been
 in the queue rather than the code, and most were mine. Six items of mine asked for more than one
