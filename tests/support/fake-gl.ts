@@ -309,8 +309,22 @@ export function createFakeGL({ context = true } = {}): FakeGL {
       height: number,
       border: number,
       format: number,
-      type: number
-    ) => record('texImage2D', { target, level, internal, width, height, format, type }),
+      type: number,
+      pixels?: ArrayBufferView | null
+    ) =>
+      record('texImage2D', {
+        target,
+        level,
+        internal,
+        width,
+        height,
+        format,
+        type,
+        // How many bytes of first contents reached the card, so a test can see a
+        // resident image uploaded (item 78); undefined for a scratch attachment
+        // built empty with null pixels.
+        byteLength: (pixels as ArrayBufferView | null | undefined)?.byteLength,
+      }),
     texParameteri: (target: number, pname: number, param: number) =>
       record('texParameteri', { target, pname, param }),
 

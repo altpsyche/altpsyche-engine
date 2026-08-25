@@ -808,6 +808,111 @@ describe('a pass drawing the shader own geometry (item 77)', () => {
 });
 
 /**
+ * A fullscreen pass sampling a resident image, authored the way the build
+ * assembles `core-texture`: a 64×64 `grain` texture arriving with its own bytes,
+ * a `grainSampler` reading it smoothly and tiling it, and one pass that samples it
+ * over the frame. Item 78 uploads that image where the backend filled a texture
+ * only by drawing it before. The bytes are a real 16 KB image the size the fixture
+ * uploads, so what these assert is the backend uploading a resident image rather
+ * than a shape written here.
+ */
+const GRAIN_FRAGMENT =
+  '#version 300 es\nprecision highp float;\nuniform sampler2D grain;\nout vec4 c;\nvoid main(){c=texture(grain,gl_FragCoord.xy/vec2(64.0));}';
+
+/** Sixty-four pixels square at four bytes a pixel, the size and layout the
+ * `core-texture` fixture's `value-noise` arrives in. */
+const GRAIN_BYTES = 64 * 64 * 4;
+
+function textureFrame(size: { width: number; height: number } | { scale: number } = { width: 64, height: 64 }): FrameGraph {
+  return {
+    id: 'core-texture',
+    target: 'glsl',
+    resources: [
+      { kind: 'uniform', name: 'uniforms' },
+      { kind: 'texture', name: 'grain', size, format: 'rgba8unorm', use: ['sample'], data: new Uint8Array(GRAIN_BYTES) },
+      { kind: 'sampler', name: 'grainSampler', filter: 'linear', wrap: 'repeat' },
+    ],
+    modules: [
+      { name: 'vertex', code: VERTEX },
+      { name: 'shade', code: GRAIN_FRAGMENT },
+    ],
+    pipelines: [
+      {
+        kind: 'render',
+        name: 'sample',
+        vertex: { module: 'vertex', entry: 'main' },
+        fragment: { module: 'shade', entry: 'main' },
+        bindings: [{ group: 0, binding: 0, resource: 'grain', visibility: ['fragment'], reads: 'sample' }],
+      },
+    ],
+    passes: [{ pipeline: 'sample', draws: [{ vertices: 3 }] }],
+  };
+}
+
+describe('a pass sampling a resident image (item 78)', () => {
+  const TEXTURE_MIN_FILTER = 0x2801;
+  const TEXTURE_WRAP_S = 0x2802;
+  const LINEAR = 0x2601;
+  const REPEAT = 0x2901;
+
+  it('no longer refuses a texture arriving with contents now that it uploads them', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(textureFrame()).draw()).not.toThrow();
+  });
+
+  it('uploads the image at level 0 as the frame-sized resident bytes it arrived with', () => {
+    const { gl, backend } = backendOver();
+    backend.program(textureFrame());
+    // The 16 KB image reaches the card through texImage2D at level 0 and the
+    // texture's own size, where a scratch attachment built empty carries no bytes.
+    const upload = gl.of('texImage2D').find((entry) => entry.byteLength === GRAIN_BYTES);
+    expect(upload).toMatchObject({ level: 0, width: 64, height: 64 });
+  });
+
+  it('counts the uploaded image as resident traffic, written not uploaded (item 22)', () => {
+    const { backend } = backendOver();
+    // Reset past the shared fullscreen quad the backend wrote at creation, so what
+    // is read is the image this frame uploaded and nothing before it.
+    backend.resetTraffic();
+    backend.program(textureFrame());
+    expect(backend.traffic()).toEqual({ written: GRAIN_BYTES, uploaded: 0 });
+  });
+
+  it('reads the image between its pixels the way its sampler says — smooth and tiling', () => {
+    const { gl, backend } = backendOver();
+    backend.program(textureFrame());
+    const params = gl.of('texParameteri');
+    // The sampler is linear and repeating, so the texture is built with a LINEAR
+    // min filter and a REPEAT wrap rather than the nearest/clamp default.
+    expect(params).toContainEqual(expect.objectContaining({ pname: TEXTURE_MIN_FILTER, param: LINEAR }));
+    expect(params).toContainEqual(expect.objectContaining({ pname: TEXTURE_WRAP_S, param: REPEAT }));
+  });
+
+  it('binds the sampled image to a unit and points the sampler at it', () => {
+    const { gl, backend } = backendOver();
+    backend.program(textureFrame()).draw();
+    // The pass binds the uploaded texture and points its sampler uniform at the
+    // unit, which is how a fragment reaches it (item 46's sampled-texture path).
+    expect(gl.of('bindTexture').length).toBeGreaterThan(0);
+    expect(gl.of('activeTexture').at(-1)).toMatchObject({ unit: 0x84c0 });
+  });
+
+  it('gives the image back when it is done', () => {
+    const { gl, backend } = backendOver();
+    backend.program(textureFrame()).dispose();
+    // The one texture the frame declared goes back to the arena on dispose.
+    expect(gl.of('deleteTexture')).toHaveLength(1);
+  });
+
+  it('refuses a content texture the frame own size, which a resize would throw away', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(textureFrame({ scale: 1 }))).toThrow(
+      'the frame for "core-texture" gives "grain" contents and the frame\'s own size, which is thrown away on a resize'
+    );
+  });
+});
+
+/**
  * A depth-tested frame the way the build assembles `core-depth`, reduced to the
  * one capability item 48 lands: two passes draw the real `quad-grid` sheet into
  * one colour target sharing a depth renderbuffer, the first clearing the depth to

@@ -211,13 +211,14 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // The resource kinds this backend keeps: the frame's one uniform block, the
       // samplers that say how a texture is read between its pixels, a colour texture
       // a pass draws and a later pass samples (the multi-pass shape of item 46), and
-      // a depth or stencil attachment a pass tests against (item 48). The narrower
-      // texture kinds are each a later item and refused here by name: a storage
-      // texture is a compute output and this backend has no compute stage, a ladder
-      // of levels is item 50, a texture arriving with contents of its own is item 78,
-      // and several samples a pixel is the `msaa` capability item 80 tracks. A depth
-      // or stencil attachment reaching one of those refusals — a multisampled depth,
-      // say — is refused the same, which is the safe direction until that item lands.
+      // a depth or stencil attachment a pass tests against (item 48), and a resident
+      // texture arriving with contents of its own, uploaded once (item 78). The
+      // narrower texture kinds are each a later item and refused here by name: a
+      // storage texture is a compute output and this backend has no compute stage, a
+      // ladder of levels is item 50, and several samples a pixel is the `msaa`
+      // capability item 80 tracks. A depth or stencil attachment reaching one of
+      // those refusals — a multisampled depth, say — is refused the same, which is
+      // the safe direction until that item lands.
       const samplerSpecs = frame.resources.filter((resource): resource is SamplerResource => resource.kind === 'sampler');
       for (const resource of frame.resources) {
         // The uniform block, the samplers, and the vertex/index buffers of the
@@ -239,9 +240,14 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         if (resource.samples) {
           throw new Error(`the frame for "${frame.id}" keeps several samples of "${resource.name}", and this backend keeps one`);
         }
-        if (resource.data || resource.source) {
+        // A texture arriving with contents is uploaded now (item 78) — but the
+        // contents are a fixed-size image, so a content texture the frame's own
+        // size would be thrown away and re-uploaded on every resize. That is
+        // refused by name rather than silently re-run, the same refusal the WebGPU
+        // backend makes for the same reason.
+        if ((resource.data || resource.source) && followsFrame(resource.size)) {
           throw new Error(
-            `the frame for "${frame.id}" gives "${resource.name}" contents, and this backend fills a texture only by drawing it`
+            `the frame for "${frame.id}" gives "${resource.name}" contents and the frame's own size, which is thrown away on a resize`
           );
         }
       }
@@ -352,7 +358,16 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         record.height = down;
         const texture = textureArena.resolve(record.handle);
         gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, across, down, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        // A texture arriving with contents is uploaded at level 0 as the frame's one
+        // resident image (item 78); a scratch attachment starts empty (null pixels)
+        // and is filled by the pass that draws it. The bytes are the first contents
+        // of a resident resource, so they are counted through `arena.wrote` the way
+        // the geometry (item 77) and the WebGPU backend count theirs (item 22). A
+        // content texture does not follow the frame — refused above where it would —
+        // so `buildTexture` runs once for it and the bytes are counted once.
+        const contents = record.spec.data ?? null;
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, across, down, 0, gl.RGBA, gl.UNSIGNED_BYTE, contents);
+        if (contents) arena.wrote(contents.byteLength);
         const filter = sampler?.filter === 'linear' ? gl.LINEAR : gl.NEAREST;
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);

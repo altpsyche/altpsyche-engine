@@ -2550,7 +2550,7 @@ lands the harness. So *that the geometry draws the right picture* is a card's or
 
 ### 78. WebGL 2 uploads resident texture content
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The WebGL 2 backend uploads a resident texture's initial content — a generated
 image handed in as bytes — where today it fills a texture only by drawing it and refuses any
@@ -2575,6 +2575,36 @@ that path. It is deliberately texture content only; a resident *buffer* upload (
 storage buffer the page fills) is a distinct capability the corpus's `core-perdraw`/`core-*`
 storage presets exercise, refused on other grounds too (storage) and not filed here.
 **Reverse:** delete this item; items 50 and 52 revert to naming a prerequisite nothing tracks.
+
+**How it landed.** The WebGL 2 backend ([gpu/webgl2.ts](../gpu/webgl2.ts)) uploads a resident
+texture's contents where it refused any texture arriving with them before. The refusal is
+narrowed rather than deleted: a texture carrying `data`/`source` **and the frame's own size** is
+still refused by name — its contents are a fixed-size image a resize would throw away and
+re-upload, the same refusal the WebGPU backend makes (`gives … contents and the frame's own
+size`) — while a fixed-size content texture is uploaded. `buildTexture` passes the bytes to
+`texImage2D` at level 0 (`gl.RGBA8`/`gl.RGBA`/`gl.UNSIGNED_BYTE`) where it passed `null` for a
+scratch attachment, and counts them through `arena.wrote` as the first contents of a resident
+resource — the way item 77 counts geometry and the WebGPU backend counts its own, so
+`traffic().written` carries the image (item 22). The texture is bound and its sampler's filter
+and wrap applied by the same path item 46 gave a sampled target, so a fragment reaches it. A
+content texture does not follow the frame (refused where it would), so `buildTexture` runs once
+for it and the bytes are counted once. The mip and multisample refusals are untouched, so
+`core-mips` (item 50) and `core-multisample` (item 80) stay refused ahead of the content check.
+
+**What the gates could see, and what they could not.** [tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts)
+drives a hand-authored GLSL frame built the way the build assembles `core-texture` — a 64×64
+`grain` texture arriving with its 16 KB of bytes, a `grainSampler` reading it linear and
+repeating, one fullscreen pass sampling it — reached through the node fast suite rather than the
+dead corpus loader (item 64), as items 46/47/48/77 landed. It asserts the image reaches the card
+through `texImage2D` at level 0 and the texture's own 64×64 size, `traffic()` reports it as
+`{ written: 16384, uploaded: 0 }` (resident, not per-frame), the texture is built with a LINEAR
+min filter and a REPEAT wrap and bound to a unit for sampling, the texture is freed on dispose,
+and a content texture the frame's own size is refused by name. What no gate here can see is that
+the sampled picture is byte-correct on a card: the fake ([tests/support/fake-gl.ts](../tests/support/fake-gl.ts),
+now recording the uploaded pixels' byte length) records calls, not pixels; `gate:browser` was
+not run and no browser gate constructs `createWebGL2Backend` until **item 79** lands the harness.
+So *that the sampled picture agrees per item 44* is a card's or a browser's, per §17 note 3,
+exactly as every prior WebGL 2 item. See [JOURNAL.md](JOURNAL.md).
 
 ---
 
