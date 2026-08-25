@@ -1991,7 +1991,7 @@ did not move, so `gate:pack` was not required.
 
 ### 74. Every script is run by something, or is named as needing hardware
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A test that reads `package.json`'s `scripts` and fails on one that nothing runs, unless it is on a short list of scripts that need hardware this machine has not got.
 
@@ -2000,6 +2000,27 @@ did not move, so `gate:pack` was not required.
 **Needs.** item 73.
 
 **Why it exists.** Item 73 fixes `bench:traffic` and gives it a runner, which closes that hole. It does not close the class: `gates/all.mjs` runs four of the nine files in `gates/`, and the reason `bench:traffic` went unread for 31 commits is that nothing pointed at it — not that it was broken. The next script added is in exactly the same position, and a list of what deliberately needs hardware is worth having written down rather than inferred from which files a gate happens to name.
+
+**How it landed.** [tests/scripts-reachable.test.ts](../tests/scripts-reachable.test.ts) reads
+`package.json`'s `scripts` and, for each, asks whether something here runs it: another script's
+command carries `npm run <name>` (`npm test` for `test`), or a test or gate loads the file the
+script executes — the file's basename appearing on a **non-comment** line of a `tests/**` or
+`gates/*` source, comments stripped first so a docstring mentioning `npm run device-report` is not
+mistaken for a caller. A script neither invoked nor on the accounted `ACCOUNTED` list fails
+`npm test` **by name** — proven on a synthetic manifest (a fabricated orphan script whose target
+file name is assembled at runtime so the test's own source is not a caller for it) so the
+"fails by name" behaviour is checked without breaking the real manifest. The list carries the
+scripts nothing invokes on purpose, each with its reason: `gate:card` and `device-report` (need a
+real card, the two the item names), `gate:browser` (Playwright's pinned browser), `example` (a
+display), and the top-level entries `test`/`type-check`/`gate:pack`/`prepack` (run by a person or
+CI, or an npm lifecycle triggered by `npm pack`). Two guards keep the list honest: an entry naming
+a script gone from `package.json` fails, and `gate:card`/`device-report` are asserted present with
+a reason. Of the eleven scripts today, three are invoked by something (`build` by `prepack`,
+`translate` by `translate-build.test.ts`, `bench:traffic` by `bench-traffic.test.ts`) and eight
+are on the list. `npm test` 729 green (+4), `type-check` clean; the export surface did not move, so
+`gate:pack` was not required. **What the cheap gates could not see: nothing** — this test reads
+`package.json` and file text, needs no browser and no card, and its verdict is complete on this
+machine. See [JOURNAL.md](JOURNAL.md).
 
 ### 75. Naga alone, against the corpus
 
