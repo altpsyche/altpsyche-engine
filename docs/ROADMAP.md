@@ -3488,3 +3488,30 @@ not a machine limit** — the work is a one-line label plus test cleanups. **Rev
 the tests keep their current usage/`.at(-1)` disambiguation. **What would change the answer:** item 16
 unifying authoring and runtime handles, or a broader pass over device labels, may relabel every
 resource and subsume this.
+
+### 96. The corpus gate fails for a WebGL 2 build error instead of skipping it
+
+**Status.** open
+
+**Asks for.** The WebGL 2 arm of [gates/corpus.mjs](../gates/corpus.mjs) to distinguish *this
+device cannot draw that* from *this build threw*. Today every error in that arm becomes a skip
+(L285–L292, `skipped.push(\`${gl2Label}  refused: ${gl2.error}\`)`), where the WebGPU arm turns the
+same shape into a `FAIL` (L213–L214). A capability refusal and a broken frame build are reported
+identically, so the gate whose job is the WebGL 2 draw path **cannot fail for it**.
+
+**Done when.** A frame that throws while building reports `FAIL` naming the throw, a frame refused
+for a capability the device has not got still reports `SKIP`, and a test or a deliberate broken
+fixture demonstrates the two are told apart.
+
+**Needs.** item 79.
+
+**Found 2026-08-26, by the red batch over item 87.** Item 87's half-migrated gates made `frameOf`
+throw *"the description for 'core-perdraw' names a generated resource 1 with no bytes"*.
+`surface.mjs` failed loudly and correctly. `corpus.mjs` printed **"17 of 17 draws lit their buffer,
+with 0 failed and 16 WebGL 2 skips"** and **exited 0** — six of those skips carrying that same
+throw, for `core-geometry`, `core-perdraw-uniform`, `core-depth`, `core-multisample`, `core-report`
+and `core-scene`, every one of which had been drawing the run before. A gate that goes green having
+run none of the path it exists to check is worse than no gate, because the greenness is read as
+evidence. It was `surface.mjs` that caught item 87, and had that one been skip-shaped too the
+defect would have merged. **Reverse:** delete this item; the WebGL 2 arm keeps reporting a throw as
+a refusal, with nothing tracking it.

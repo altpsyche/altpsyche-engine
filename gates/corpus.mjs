@@ -245,7 +245,9 @@ for (const { id, frame, values, entry, description, bytes, code } of corpus) {
   // rebuilds the WGSL frame from it and asks the library to turn it into the GLSL
   // frame WebGL 2 draws. Bytes do not survive `page.evaluate`, so they cross as
   // arrays and are rebuilt into a Uint8Array map inside the page.
-  const bytesArrays = Object.fromEntries([...bytes].map(([name, made]) => [name, [...made]]));
+  // Keyed by the resource's index, not its source name: `lib.mjs` keys the generated
+  // bytes by handle since item 87, and the page reads them back by the same index.
+  const bytesArrays = Object.fromEntries([...bytes].map(([index, made]) => [index, [...made]]));
   const gl2 = await page.evaluate(
     async ({ id, description, code, bytesArrays, values, W, H }) => {
       const canvas = document.createElement('canvas');
@@ -260,7 +262,7 @@ for (const { id, frame, values, entry, description, bytes, code } of corpus) {
       const generated = new Map();
       description.resources.forEach((resource, index) => {
         const source = 'source' in resource ? resource.source : undefined;
-        if (source && bytesArrays[source]) generated.set(index, new Uint8Array(bytesArrays[source]));
+        if (source && bytesArrays[index]) generated.set(index, new Uint8Array(bytesArrays[index]));
       });
       let program;
       try {
