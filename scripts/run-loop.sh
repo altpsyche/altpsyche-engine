@@ -278,6 +278,16 @@ item and do not ask questions: nobody is at the keyboard.$SCOPE
   blocked item left in the middle of a queue halts everything behind it, which cost this project
   seven steps of a run on 2026-08-22. What you must not do is write a desktop reading into an
   item only other hardware can settle, or pick an item out of order to look busy.
+- IF THE ITEM CANNOT BE SATISFIED AS WRITTEN — it asks for work its own \`Needs\` never named,
+  or bundles several items under one \`Done when\` — LIFT IT AND CARRY ON. Do not stop the run.
+  Set its \`Status\` to \`lifted needs decomposition\`, write into the item what you found and
+  which parts are separable, add a JOURNAL row, commit that, and take the next reachable item.
+  A malformed item is not a blocked machine: the queue behind it is still workable, and halting
+  on one costs every reachable item behind it. That has now happened twice on item 38 alone,
+  with three reachable items sitting behind it the second time, and this repository already
+  recorded the same failure on 2026-08-22 in the entry for item 1. What you must NOT do is
+  satisfy the criterion loosely to keep moving — a stop was the right instinct and lifting is
+  the same instinct without the cost.
 - IF THE ITEM SAYS IT IS NOT AN UNATTENDED RUN'S — item 53 says exactly that — do not lift it
   out and do not work it. Write which item and why into the stop file and stop, committing
   nothing. Work waiting on a person by design is correctly sequenced, not misplaced.

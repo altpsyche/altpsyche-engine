@@ -1143,22 +1143,25 @@ shifted) but not re-measured; the path gate strips the suffix before resolving, 
 not read them, and re-pinning every line number is not this move's job. See
 [JOURNAL.md](JOURNAL.md).
 
-### 38. The §14 renames that this phase can reach
+### 38. The mechanical §14 renames
 
 **Status.** open
 
-**Asks for.** Every row of [RoadToPureEngine.md](RoadToPureEngine.md) §14's table **except the two named below**, which cannot be reached from here.
+**Asks for.** The rows of [RoadToPureEngine.md](RoadToPureEngine.md) §14 that are renames and nothing else: `ShaderFrame` to `FrameGraph`, `setArtefact` to `setGraph`, `artefact` to `graph` or `variant`, `Extent` to `{ scale } | { width, height }`, `Dispatch` to `groups`, and `ModuleSpec.overrides` to `constants`. The README and both design documents follow.
 
-**Done when.** No name in §14's table survives except `readBuffer` and `ShaderSource`'s optional language fields, and the README and both design documents use the new names.
+**Done when.** None of those six names survives, and no behaviour changed with them — the browser batch still reports 15 of 15 traces agreeing, which is what a rename must not move.
 
 **Needs.** item 37.
 
-**Two rows are deliberately out of scope, and item 66 carries them.** This item originally said "no name in the table survives", and an unattended run stopped on it rather than fake the criterion — correctly, and the fault was in how this item was written rather than in the run.
+**Five rows of §14 are not renames, and each has its own item.** This entry has been cut back twice, and the second cut is the instructive one. It first asked for the whole table; a run stopped and named two rows blocked on Phase 5, which became item 66. It then asked for everything else; a second run stopped and showed that three of the remaining rows are architectural refactors wearing a rename's clothes — verified against the tree rather than taken from §14's "mechanical" label:
 
-- **`readBuffer` answering vacuously → gone.** §14's own reason is *"with capabilities, a backend without buffers never receives a graph that reads one"*. That is item 51's capability wiring, in Phase 5. Removing the method before the wiring exists means a backend that simply cannot answer.
-- **`ShaderSource` with optional language fields → a union discriminated on `authored`.** That union is §9's arena shape, which arrives with GLSL-in and translation in Phase 5. There is nothing here yet to discriminate.
+| row | why it is not a rename | item |
+| --- | --- | --- |
+| `FrameDescription` folded into `FrameGraph` | `graph/types.ts` still keys every resource by `name: string`; the fold needs the graph-to-handle migration item 17 deferred | 67 |
+| `ShaderProgram` deleted | there is no `submit(graph)` primitive to become; deleting the interface means building one and rerouting the surface and host through it | 68 |
+| `unreached()` and `ShaderFrame.uniforms` to `reflect()` | swaps a runtime query on a compiled program for static source reflection, and removes methods from the backend interface | 69 |
 
-Neither belongs to item 37's dependency, which is all this item's `Needs` names. Splitting them out is what makes the rest landable now, and **decision 8 still requires all of §14 before 1.0** — item 66 is how that stays true.
+**The lesson is about the queue rather than the renames.** §14 is a *design* table: it says where names are going, and it is right about that. It is not a work breakdown, and treating a table row as an item is what produced two stops. A row earns an item when someone has read the tree and knows what it costs.
 
 ### 39. The layer rules become tests
 
@@ -1587,3 +1590,39 @@ rather than left in the row.
 **Why it exists.** Item 38 asked for every row of §14 at once, in Phase 4. Two of those rows depend on Phase 5 work that item 38's `Needs` never named — `readBuffer`'s removal on item 51's capability wiring, and the `ShaderSource` union on the arena shape that arrives with translation. A run stopped on the contradiction instead of satisfying the criterion loosely, which is the behaviour the queue is meant to produce.
 
 **It is a 1.0 blocker.** Decision 8 says all of §14 lands before 1.0 and that renames are forbidden afterwards, so this item is what keeps that promise true once item 38 has taken everything reachable.
+
+### 67. `FrameDescription` folds into the graph, on handles
+
+**Status.** open
+
+**Asks for.** The two shapes become one: a graph carrying resident handles and transient descriptors, per §8, with `FrameDescription` gone.
+
+**Done when.** No resource is keyed by a string name in `graph/types.ts`, `FrameDescription` is absent, and the browser batch still agrees 15 of 15.
+
+**Needs.** item 17, item 38.
+
+**Why it is its own item.** §14 lists this as a rename and it is a migration. `graph/types.ts` keys every resource by `name: string` today, and item 17's own journal row defers the move to `Ref` and `Handle`. Likely also a change to the manifest contract the consuming repository writes, so it is a `carry`.
+
+### 68. `submit(graph)` exists, and `ShaderProgram` goes
+
+**Status.** open
+
+**Asks for.** The top-level primitive §17 decision 7 names — `submit(graph, { into })` — with the surface and the host reaching the card through it, and the `ShaderProgram` interface deleted behind it.
+
+**Done when.** `submit` is exported from the door, nothing constructs a `ShaderProgram`, and the browser batch agrees 15 of 15.
+
+**Needs.** item 38.
+
+**Why it is its own item.** §14 says `ShaderProgram` "becomes `Arena` + pipeline cache + `submit`". The first two exist; the third does not — there is no `submit(graph)` export anywhere. Deleting the interface without building the primitive leaves the library with no path to the card.
+
+### 69. `reflect()` replaces the compiled-program queries
+
+**Status.** open
+
+**Asks for.** `unreached()` and `ShaderFrame.uniforms` replaced by a source-level `reflect()` in `toy/`, and the methods removed from the backend interface.
+
+**Done when.** Neither name survives, no backend carries a reflection method, and a toy-tier caller gets the same answer from `reflect()` that `unreached()` gave.
+
+**Needs.** item 38.
+
+**Why it is its own item.** It swaps a runtime query on a compiled program for static analysis of a source, which is a different answer arrived at a different way — a compiler removing an unread uniform is exactly what `unreached()` was for, and `reflect()` cannot see it. Whether that difference matters is the work.
