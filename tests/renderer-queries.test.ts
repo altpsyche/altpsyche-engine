@@ -113,7 +113,7 @@ describe('a pass that is timed', () => {
     const { gpu, backend } = backendOver();
     backend.program(frameOf({ passes: [drawing({ timed: buffer(1) })] }));
 
-    expect(gpu.calls('createBuffer').find((call) => call.label === 'buffer1' && (Number(call.usage) & GPUBufferUsage.STORAGE) !== 0)?.usage).toBe(
+    expect(gpu.calls('createBuffer').find((call) => call.label === 'buffer1')?.usage).toBe(
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE
     );
   });

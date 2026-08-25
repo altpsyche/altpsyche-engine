@@ -3565,7 +3565,7 @@ with this.
 
 ### 96. The uniform-block buffer carries a label of its own
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A distinct trace label on the uniform block's backing buffer, so it no longer collides
 with a resource sitting at index 1. Item 87 made every resource buffer's device label `buffer${index}`

@@ -66,11 +66,10 @@ function backendOver() {
 }
 
 // `counts` sits at resource index 1, so the backend labels it `buffer1`. The
-// uniform block's own backing buffer takes the recorder's fallback `buffer1` as
-// the first unlabelled buffer of the program, so both carry that label; the
-// counts buffer is created after it, so the last `buffer1` is the one meant here.
+// uniform block's own backing buffer now carries the distinct label `uniforms`
+// (item 96), so `buffer1` names the counts buffer alone and no `.at(-1)` is needed.
 const made = (gpu: ReturnType<typeof createFakeGPU>) =>
-  gpu.calls('createBuffer').filter((call) => call.label === 'buffer1').at(-1);
+  gpu.calls('createBuffer').find((call) => call.label === 'buffer1');
 
 describe('the buffer a description names', () => {
   it('is made at the size the description gives, and asks to be a storage binding a caller can copy out of', () => {
@@ -100,7 +99,7 @@ describe('the buffer a description names', () => {
     backend.program(holding());
 
     expect(gpu.calls('createBindGroup')[0]?.bindings).toEqual([
-      { binding: 0, resource: 'buffer1' },
+      { binding: 0, resource: 'uniforms' },
       { binding: 1, resource: 'buffer1' },
     ]);
   });

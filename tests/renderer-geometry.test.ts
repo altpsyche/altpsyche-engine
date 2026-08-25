@@ -86,18 +86,11 @@ describe('the buffers a drawn frame owns', () => {
     program.draw();
     program.draw();
 
-    // The geometry buffers are labelled by their resource index now (item 87):
-    // the vertices at index 1 are `buffer1`, the indices at index 2 `buffer2`.
-    // The unlabelled uniform block also falls back to `buffer1` on the recorder's
-    // own counter, so the two byte-sets are picked out by their usage — vertex or
-    // index — rather than by a label that no longer tells them apart.
-    const made = gpu
-      .calls('createBuffer')
-      .filter(
-        (call) =>
-          call.usage === (GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST) ||
-          call.usage === (GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST)
-      );
+    // The geometry buffers are labelled by their resource index (item 87): the
+    // vertices at index 1 are `buffer1`, the indices at index 2 `buffer2`. The
+    // uniform block carries its own `uniforms` label now (item 96), so these two
+    // names pick out the geometry alone without a usage filter to exclude it.
+    const made = gpu.calls('createBuffer').filter((call) => call.label === 'buffer1' || call.label === 'buffer2');
     expect(made.map((call) => [call.label, call.size])).toEqual([
       ['buffer1', VERTICES.byteLength],
       ['buffer2', INDICES.byteLength],
@@ -111,14 +104,9 @@ describe('the buffers a drawn frame owns', () => {
     const { gpu, backend } = backendOver();
     backend.program(gridFrame());
 
-    // The last match, because the unlabelled uniform block shares the `buffer1`
-    // label (the recorder's counter) with the vertices at index 1, and the
-    // vertices are created after it.
-    const usage = (label: string) =>
-      gpu
-        .calls('createBuffer')
-        .filter((call) => call.label === label)
-        .at(-1)?.usage;
+    // `buffer1` names the vertices alone now that the uniform block carries its
+    // own `uniforms` label (item 96), so the first match is the one meant.
+    const usage = (label: string) => gpu.calls('createBuffer').find((call) => call.label === label)?.usage;
     expect(usage('buffer1')).toBe(GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST);
     expect(usage('buffer2')).toBe(GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST);
   });

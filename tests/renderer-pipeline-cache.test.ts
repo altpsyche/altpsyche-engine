@@ -90,12 +90,9 @@ describe('the pipeline cache shared across programs (item 63)', () => {
     // group, so nothing of the first's resident data draws under it.
     expect(gpu.calls('createRenderPipeline')).toHaveLength(afterFirst);
     // `mesh` sits at resource index 1, so its vertex buffer is labelled `buffer1`.
-    // The uniform block's own backing buffer takes the recorder's fallback label,
-    // which is `buffer1` for the first program too, so the vertex buffers are told
-    // apart from it by the VERTEX usage only they carry.
-    const meshBuffers = gpu
-      .calls('createBuffer')
-      .filter((call) => call.label === 'buffer1' && ((call.usage as number) & GPUBufferUsage.VERTEX) !== 0);
+    // The uniform block carries its own `uniforms` label now (item 96), so `buffer1`
+    // names the two programs' mesh vertex buffers alone.
+    const meshBuffers = gpu.calls('createBuffer').filter((call) => call.label === 'buffer1');
     expect(meshBuffers).toHaveLength(2);
     expect(gpu.calls('createBindGroup')).toHaveLength(2);
   });

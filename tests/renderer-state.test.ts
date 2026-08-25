@@ -169,8 +169,8 @@ describe('the two sets of bind groups', () => {
     const made = gpu
       .calls('createBindGroup')
       .map((call) => (call.bindings as { resource: string }[]).map((at) => at.resource));
-    expect(made[1]).toEqual(['buffer1', 'texture1.view', 'sampler3']);
-    expect(made[3]).toEqual(['buffer1', 'texture2.view', 'sampler3']);
+    expect(made[1]).toEqual(['uniforms', 'texture1.view', 'sampler3']);
+    expect(made[3]).toEqual(['uniforms', 'texture2.view', 'sampler3']);
   });
 
   it('alternate across frames rather than one of them being read every time', () => {

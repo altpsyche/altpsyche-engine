@@ -171,7 +171,7 @@ describe('a pass whose count comes out of a buffer', () => {
     const { gpu, backend } = backendOver();
     backend.program(planned());
 
-    expect(gpu.calls('createBuffer').find((call) => call.label === 'buffer1' && (Number(call.usage) & GPUBufferUsage.STORAGE) !== 0)?.usage).toBe(
+    expect(gpu.calls('createBuffer').find((call) => call.label === 'buffer1')?.usage).toBe(
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.INDIRECT
     );
   });
@@ -188,7 +188,7 @@ describe('a pass whose count comes out of a buffer', () => {
       })
     );
 
-    expect(gpu.calls('createBuffer').find((call) => call.label === 'buffer1' && (Number(call.usage) & GPUBufferUsage.STORAGE) !== 0)?.usage).toBe(
+    expect(gpu.calls('createBuffer').find((call) => call.label === 'buffer1')?.usage).toBe(
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
     );
   });

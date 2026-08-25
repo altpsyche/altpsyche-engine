@@ -75,7 +75,7 @@ describe('the sampling preset the build wrote', () => {
 
   it('binds the block, the view and the sampler at the numbers the source declares', () => {
     expect(drawn().calls('createBindGroup')[0]!.bindings).toEqual([
-      { binding: 0, resource: 'buffer1' },
+      { binding: 0, resource: 'uniforms' },
       { binding: 1, resource: 'texture1.view' },
       { binding: 2, resource: 'sampler2' },
     ]);

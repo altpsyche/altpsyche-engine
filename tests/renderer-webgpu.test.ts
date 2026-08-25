@@ -583,7 +583,7 @@ describe('the texture a compute pass writes', () => {
     backend.program(computeFrame());
 
     expect(gpu.calls('createBindGroup')[0]!.bindings).toEqual([
-      { binding: 0, resource: 'buffer1' },
+      { binding: 0, resource: 'uniforms' },
       { binding: 1, resource: 'texture1.view' },
     ]);
   });
@@ -915,7 +915,7 @@ describe('the sampler a shader reads a texture through', () => {
     backend.program(sampledFrame());
 
     expect(gpu.calls('createBindGroup')[0]!.bindings).toEqual([
-      { binding: 0, resource: 'buffer1' },
+      { binding: 0, resource: 'uniforms' },
       { binding: 1, resource: 'texture1.view' },
       { binding: 2, resource: 'sampler2' },
     ]);

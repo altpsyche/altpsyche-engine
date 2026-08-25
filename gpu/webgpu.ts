@@ -513,6 +513,11 @@ export function createWebGPUBackend(
         // happened to hand the values in. It is `own`ed like any resident buffer.
         const bufferHandle = arena.allocate(() =>
           device.createBuffer({
+            // A label no resource index can produce, so the uniform block's own
+            // buffer never collides with a `buffer${index}` resource sitting at
+            // index 1 (item 96). It was unlabelled before, which left the
+            // recorder's fallback counter to name it `buffer1`.
+            label: 'uniforms',
             size: Math.max(bytes, BLOCK_ALIGNMENT),
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
           })
