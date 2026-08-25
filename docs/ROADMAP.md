@@ -1858,3 +1858,15 @@ the old auto-tracking is gone by design (§7, §14). See [JOURNAL.md](JOURNAL.md
 **Needs.** nothing.
 
 **Why it exists.** Found on 2026-08-25 by the closing browser batch over `b3241fc..f734de7`, while checking what that batch's renames touched that a browser gate cannot see. `gates/traffic.mjs`'s `gridFrame` declares `passes: [{ pipeline: 'warp', draw: { instances: 3 } }]` — the singular field item 26 renamed to `draws` — so `isRenderPass`, which tests `'draws' in pass`, takes that render pass for a compute pass. At `b3241fc` that reached a clean refusal (`the pass on "warp" asks for the other kind of work than the pipeline does`); at `f734de7` it is a `TypeError` from `groupsIndirectly` reading `'indirect' in undefined`, because item 72's guard dropped the `typeof === 'object'` arm that had been absorbing the `undefined`. Either way the script dies on its first frame and has since item 26 (`db1f6b3`, 31 commits back): only items 22, 37 and 72 have ever touched the file, and none of them is item 26. **Two things are wrong and the second is the item.** The fixture is one word stale, which is a one-line fix. The reason nobody noticed for 31 commits is that `gates/traffic.mjs` is a `.mjs` outside `tsconfig`, so `type-check` cannot see it, and it is not in `gates/all.mjs`'s list — deliberately, since it asserts nothing and is not a gate — so no command in the repository runs it. That leaves the two readings it exists to keep apart, `cost().transientBytes` against `arena.traffic()` (§12 point 6, §17 decision 9), unprinted and unlooked-at for 31 commits. A node test that runs the script and asserts it exits zero with a row per frame is enough; it need not assert the numbers, which are what a person reads. See [JOURNAL.md](JOURNAL.md).
+
+### 74. Every script is run by something, or is named as needing hardware
+
+**Status.** open
+
+**Asks for.** A test that reads `package.json`'s `scripts` and fails on one that nothing runs, unless it is on a short list of scripts that need hardware this machine has not got.
+
+**Done when.** Adding a script that no test, no gate and no other script invokes fails `npm test` by name; and `gate:card` and `device-report` pass by being on the list, each with its reason beside it.
+
+**Needs.** item 73.
+
+**Why it exists.** Item 73 fixes `bench:traffic` and gives it a runner, which closes that hole. It does not close the class: `gates/all.mjs` runs four of the nine files in `gates/`, and the reason `bench:traffic` went unread for 31 commits is that nothing pointed at it — not that it was broken. The next script added is in exactly the same position, and a list of what deliberately needs hardware is worth having written down rather than inferred from which files a gate happens to name.
