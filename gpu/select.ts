@@ -47,13 +47,25 @@ export interface DeviceOffer {
  */
 export type BackendSelection = { backend: BackendName } | { refusal: string };
 
-/** Which backend speaks a given authoring language today. It is one-to-one
- * because a WGSL-to-GLSL translator is not on this path yet (it arrives in
- * Stage 5), so a WGSL frame has one backend that can build it and a GLSL frame
- * has the other. When translation lands, a WGSL frame gains WebGL 2 as a second
- * candidate and this stops being a lookup — which is exactly why the offering is
- * passed whole rather than the single backend this maps to. */
-const SPEAKS: Record<ShaderTarget, BackendName> = { glsl: 'webgl2', wgsl: 'webgpu' };
+/** The backends that can draw a frame of a given authoring language, richest first
+ * — the one whose own language it is, then any that reach it by translation.
+ * Selection walks this list and takes the first backend the device offers that can
+ * build the frame, so preference is the order here and the mechanism is a walk
+ * rather than a lookup (the shape the old one-to-one map foretold once translation
+ * landed). A GLSL frame has only WebGL 2, because GLSL-to-WGSL translation is
+ * deferred and not planned (§17 decision 6). A WGSL frame has WebGPU natively and
+ * WebGL 2 by translation where one exists (§17 decision 2) — so a WGSL scene reaches
+ * WebGL 2 by being translated, not by being refused. */
+const CANDIDATES: Record<ShaderTarget, readonly BackendName[]> = {
+  glsl: ['webgl2'],
+  wgsl: ['webgpu', 'webgl2'],
+};
+
+/** Which authoring language a backend takes without a translation. A backend
+ * drawing a frame of another language needs that frame to carry a translation into
+ * this one; a frame already in it needs none. This is the fact that turns a
+ * candidate into a usable one, read against the frame's `translated`. */
+const NATIVE: Record<BackendName, ShaderTarget> = { webgl2: 'glsl', webgpu: 'wgsl' };
 
 /** What a missing backend is called in a refusal, in the browser's own words so a
  * reader can search for it. A WebGPU refusal names the adapter rather than the API,
@@ -63,22 +75,60 @@ const MISSING: Record<BackendName, string> = {
   webgpu: 'WebGPU returned no adapter on this device',
 };
 
+/** What a missing translation is called, named by the language a candidate backend
+ * would have drawn the frame in. It is the actionable gap where a device offers a
+ * backend that could draw the frame if only a translation into its language existed
+ * — so the refusal names the translation rather than the backend, which is present.
+ * Only a WGSL frame reaches this today, WebGL 2 being the one backend a frame is
+ * carried to by translation; the GLSL arm is here for totality and stays unreached
+ * while GLSL-to-WGSL is deferred (§17 decision 6). */
+const MISSING_TRANSLATION: Record<ShaderTarget, string> = {
+  wgsl: 'no GLSL translation is available to draw this WGSL frame on WebGL 2',
+  glsl: 'no WGSL translation is available to draw this GLSL frame on WebGPU',
+};
+
 /**
  * Choose the backend for a frame across what this device offers, or refuse.
  *
- * The frame is read for the one thing that decides which backends could draw it —
- * the language it is authored in — and the offering is read for which of those the
- * device can actually build. A GLSL frame selects WebGL 2 wherever WebGL 2 is
- * offered, whatever else the device has; a WGSL frame selects WebGPU wherever an
- * adapter was returned. A refusal appears only when no backend is left that both
- * speaks the frame's language and is offered here, and it names the backend that
- * was missing.
+ * The frame is read for the two things that decide which backends could draw it —
+ * the language it is authored in, and whether it carries a translation into another
+ * — and the offering is read for which of those backends the device can actually
+ * build. A GLSL frame selects WebGL 2 wherever WebGL 2 is offered, whatever else
+ * the device has; a WGSL frame selects WebGPU wherever an adapter was returned, and
+ * falls to WebGL 2 where no adapter came back but a GLSL translation exists (§17
+ * decisions 2 and 6). The candidates are walked richest first, so a device with
+ * both offered draws a WGSL frame on WebGPU and reaches for WebGL 2 only when it
+ * must.
+ *
+ * A refusal appears only when no offered backend is left that can build the frame,
+ * and it names the actionable gap: the missing translation where a device offers a
+ * backend that would have drawn the frame had one existed, and the missing backend
+ * otherwise. Naming the translation ahead of the backend is deliberate — on a
+ * WebGPU-less device with WebGL 2, providing a translation is the path a caller can
+ * take, where "no WebGPU adapter" names a thing the caller cannot conjure.
  */
-export function selectBackend(frame: Pick<FrameGraph, 'target'>, offer: DeviceOffer): BackendSelection {
-  const backend = SPEAKS[frame.target];
-  const offered = backend === 'webgpu' ? offer.webgpu : offer.webgl2;
-  if (offered) return { backend };
-  return { refusal: `no backend can draw a ${frame.target} frame: ${MISSING[backend]}` };
+export function selectBackend(
+  frame: Pick<FrameGraph, 'target' | 'translated'>,
+  offer: DeviceOffer
+): BackendSelection {
+  // An offered backend blocked only for want of a translation, and a candidate the
+  // device does not offer at all: the two shapes a refusal chooses between below.
+  let untranslated: BackendName | null = null;
+  let absent: BackendName | null = null;
+  for (const backend of CANDIDATES[frame.target]) {
+    const offered = backend === 'webgpu' ? offer.webgpu : offer.webgl2;
+    if (!offered) {
+      absent ??= backend;
+      continue;
+    }
+    // Offered: it can build the frame if the frame is in its own language, or it
+    // carries a translation into that language.
+    if (NATIVE[backend] === frame.target || frame.translated) return { backend };
+    untranslated ??= backend;
+  }
+  if (untranslated) return { refusal: `no backend can draw a ${frame.target} frame: ${MISSING_TRANSLATION[frame.target]}` };
+  const missing = absent ?? CANDIDATES[frame.target][0];
+  return { refusal: `no backend can draw a ${frame.target} frame: ${MISSING[missing]}` };
 }
 
 /**
@@ -173,7 +223,7 @@ export function webgl2Capabilities(extensions: Iterable<string>): ReadonlySet<Ca
  * reading over two records, which is the whole of §17 decision 2.
  */
 export function resolve(
-  frame: Pick<FrameGraph, 'id' | 'target' | 'requires'>,
+  frame: Pick<FrameGraph, 'id' | 'target' | 'requires' | 'translated'>,
   device: DeviceProfile
 ): BackendSelection {
   const offer: DeviceOffer = { webgpu: device.webgpu !== null, webgl2: device.webgl2 !== null };

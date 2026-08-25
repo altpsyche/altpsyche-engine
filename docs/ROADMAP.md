@@ -3284,7 +3284,7 @@ changes the surface a consumer builds against.
 
 ### 91. Selection routes a WGSL frame to WebGL 2 by translation
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `selectBackend` offers a `wgsl` frame to WebGL 2 when a translated GLSL for it
 exists, rather than routing `wgsl` to WebGPU alone. Today `SPEAKS` is a one-to-one map

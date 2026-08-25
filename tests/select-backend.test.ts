@@ -29,19 +29,40 @@ describe('selectBackend', () => {
   });
 
   it('refuses only when no backend is left, naming what was missing', () => {
-    // A WGSL frame on a machine whose adapter came back empty: WebGPU is the only
-    // backend that speaks WGSL today, so nothing is left and the refusal names it.
-    const outcome = selectBackend({ target: 'wgsl' }, { webgpu: false, webgl2: true });
-    expect('backend' in outcome).toBe(false);
-    if ('refusal' in outcome) {
-      expect(outcome.refusal).toContain('WebGPU');
-      expect(outcome.refusal).toContain('adapter');
-    }
-
-    // And the mirror: a GLSL frame where WebGL 2 is absent, refused by name even
-    // though the machine has WebGPU, because GLSL does not select WebGPU.
+    // A GLSL frame where WebGL 2 is absent, refused by name even though the machine
+    // has WebGPU, because GLSL does not select WebGPU (§17 decision 6).
     const mirror = selectBackend({ target: 'glsl' }, { webgpu: true, webgl2: false });
     expect('backend' in mirror).toBe(false);
     if ('refusal' in mirror) expect(mirror.refusal).toContain('WebGL 2');
+  });
+
+  // Item 91's three cases: a WGSL frame reaches WebGL 2 by translation where no
+  // WebGPU adapter came back, is refused for the missing translation where none
+  // exists, and still prefers WebGPU where an adapter is there. Selection is pure
+  // over the graph and the device (§10), so all three are pinned on this machine.
+  const webgl2Only: DeviceOffer = { webgpu: false, webgl2: true };
+
+  it('routes a WGSL frame with a translation to WebGL 2 where no WebGPU adapter came back', () => {
+    // §17 decision 2: a WGSL scene reaches WebGL 2 by translation, not by refusal.
+    expect(chosen(selectBackend({ target: 'wgsl', translated: true }, webgl2Only))).toBe('webgl2');
+  });
+
+  it('refuses a WGSL frame with no translation on a WebGL 2 device, naming the translation not the backend', () => {
+    // The device offers a backend that could draw the frame if a translation
+    // existed, so the actionable gap is the translation — named ahead of the
+    // absent WebGPU adapter, which the caller cannot conjure.
+    const outcome = selectBackend({ target: 'wgsl' }, webgl2Only);
+    expect('backend' in outcome).toBe(false);
+    if ('refusal' in outcome) {
+      expect(outcome.refusal).toContain('translation');
+      expect(outcome.refusal).not.toContain('adapter');
+    }
+  });
+
+  it('still selects WebGPU for a WGSL frame where an adapter returned one, translation or not', () => {
+    // WebGPU is the WGSL frame's native home, walked ahead of the WebGL 2
+    // fallback, so a translation being available does not divert it.
+    expect(chosen(selectBackend({ target: 'wgsl', translated: true }, has))).toBe('webgpu');
+    expect(chosen(selectBackend({ target: 'wgsl' }, has))).toBe('webgpu');
   });
 });

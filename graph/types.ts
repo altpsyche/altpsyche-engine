@@ -458,6 +458,16 @@ export interface FrameGraph {
    * by. Every frame a backend draws has it, because `frameOf` sets it. */
   id?: string;
   target: ShaderTarget;
+  /** Whether a WGSL frame carries a GLSL translation, so a device without WebGPU
+   * can still draw it on WebGL 2 by that translation rather than being refused
+   * (§17 decision 2). It is the one fact selection reads beyond the target and the
+   * device: a WGSL frame with a translation gains WebGL 2 as a fallback candidate,
+   * one without it does not, and on a WebGPU-less device the refusal names which of
+   * the two was missing. Absent, and meaningless, on a GLSL frame — WebGL 2 speaks
+   * that language with no translation. The translation itself travels with the
+   * source at item 94; this is only the fact that it exists, which is the whole of
+   * what `selectBackend` needs to route by. */
+  translated?: boolean;
   /** The names and types a caller may feed are no longer written down here: they
    * are read from the source by `reflect(frame)` (item 69), because a source and
    * a list beside it can drift, and a page draws its controls from the reading
