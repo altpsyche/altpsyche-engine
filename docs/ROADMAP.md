@@ -3010,7 +3010,7 @@ delete items 94 and 95; restore item 56's `Needs` to `item 70, item 81`.
 
 ### 82. `readBuffer` removed
 
-**Status.** open
+**Status.** done
 
 **Asks for.** §14's row "`readBuffer` answering vacuously → gone": the method leaves `ShaderProgram`, and reading a buffer's words happens through a door that does not answer vacuously on a backend that has no buffers to declare.
 
@@ -3028,6 +3028,23 @@ paragraph.
 **Why the removal is not free, which item 66 assumed it was.** With item 51's capability wiring landed, a WebGL 2 program never receives a graph that declares a storage buffer — [gpu/webgl2.ts](../gpu/webgl2.ts) says so in place — so the vacuous arm is unreachable by construction and §14's stated reason for the row holds. What does not follow is that the *method* can go: it is the only path from a buffer's words to a caller, and item 54 pointed a benchmark and a browser gate at it. The row is right about the vacuous answer and silent about the readback, and this item is where both are settled together.
 
 **Filed 2026-08-25 by the lift of item 66.** **Reverse:** delete this item and set item 66 back to `open`.
+
+**How it landed.** `readBuffer` left the `ShaderProgram` interface ([graph/types.ts](../graph/types.ts))
+and both backend object literals ([gpu/webgpu.ts](../gpu/webgpu.ts), [gpu/webgl2.ts](../gpu/webgl2.ts));
+no method or call named `readBuffer` survives, only comments naming what was there. The two gate
+consumers were already reading through `arena.read` by handle when item 89 landed —
+[gates/times.mjs](../gates/times.mjs) L132 prints an elapsed row per timed pass off
+`arena.read(bufferHandle(...))`, [gates/surface.mjs](../gates/surface.mjs) L574 reads the per-draw
+buffer either side of a rewrite the same way — so removing the method dropped neither reading. The
+three node tests that drove `readBuffer` were repointed at the same door rather than deleted, so the
+WebGPU staging copy (`readResidentBuffer`) and the WebGL 2 empty answer (`readNoBuffer`) keep their
+coverage: `tests/renderer-buffer.test.ts` reads through `arena.read(bufferHandle(...))` and pins the
+`copyBufferToBuffer`/`mapAsync`/`unmap` pair, and `tests/renderer-webgl2.test.ts` drives the
+WebGL 2 arena reader and pins the empty reading. `npm test` 845 pass; `npm run type-check` clean;
+`npm run gate:pack` 11/11, 69 names on the door (a removed interface member is no named export).
+The times gate's reading is proven in node by `tests/bench-times.test.ts`, which runs `times.mjs`
+as a subprocess and asserts an elapsed row per timed pass; the surface gate's reading is a browser
+gate this run did not run.
 
 ### 83. WebGL 2 draws the topology the geometry declares
 

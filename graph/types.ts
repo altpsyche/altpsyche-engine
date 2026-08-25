@@ -655,24 +655,6 @@ export interface ShaderProgram {
    */
   writeBuffer(handle: BufferHandle, data: Uint8Array<ArrayBuffer>): void;
   /**
-   * The words of one buffer this frame declares, as they stand after the last
-   * frame that was drawn.
-   *
-   * Words rather than bytes because everything a card writes into a buffer of its
-   * own accord is a count: how many blocks to run, how many vertices to draw, how
-   * long a pass took. A caller that wants the bytes reads the words' own memory.
-   *
-   * It is a promise for the reason reading pixels is: the words have to be copied
-   * out to a buffer nothing else is using and that buffer has to be mapped before
-   * anything can look at it, so a caller waits either way. The copy is why the
-   * buffer a frame writes is never the buffer a caller maps: a buffer a shader
-   * writes into cannot also be one the CPU has mapped.
-   *
-   * A backend with no buffers to declare answers with no words, which is the true
-   * answer rather than a refusal.
-   */
-  readBuffer(handle: BufferHandle): Promise<Uint32Array>;
-  /**
    * Replaces which passes this program runs, between one frame and the next,
    * without remaking anything the program owns.
    *

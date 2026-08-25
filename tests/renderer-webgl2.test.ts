@@ -1644,12 +1644,18 @@ describe('what it gives back when it is done', () => {
 });
 
 describe('the words a caller asks it for', () => {
-  it('answers with none, since a frame this backend takes declares no buffer', async () => {
-    // Not a refusal. A caller asking both backends the same question gets an
-    // empty reading from the one that keeps no such numbers, so nothing has to
-    // know which backend it holds before asking.
+  it('answers with none, since this backend keeps no buffer a page reads back', async () => {
+    // Not a refusal. A caller reads a buffer back through the arena's own `read`
+    // door now (§9, item 89) — `ShaderProgram.readBuffer` is gone (item 82) — and
+    // this backend's arena reader (`readNoBuffer`) hands back no bytes whatever the
+    // handle names, so the same read over either backend gets an empty reading from
+    // the one that keeps no such numbers without knowing which backend it holds.
+    // The reader ignores the resource, so any allocated handle drives it.
     const { backend } = backendOver();
-    expect([...(await backend.program(graph()).readBuffer(buffer(0)))]).toEqual([]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const arena = (backend as any).arena;
+    const handle = arena.allocate(() => ({}));
+    expect([...new Uint32Array(await arena.read(handle))]).toEqual([]);
   });
 });
 

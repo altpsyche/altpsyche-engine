@@ -171,8 +171,8 @@ export function createWebGPUBackend(
   // mapping the frame's own would take it from the next frame — mapped, copied out
   // of the mapping (its memory is gone the moment it is unmapped), and the staging
   // slot returned at once. Allocated and freed through this same arena, so the
-  // staging buffer is a resident of the moment. This is what `readBuffer` copied
-  // inline before; that method now routes through here, and item 82 removes it.
+  // staging buffer is a resident of the moment. A `ShaderProgram.readBuffer`
+  // copied this inline before item 82 removed it; the readback is the arena's now.
   const readResidentBuffer = async (resource: GpuResource, range: Range | undefined): Promise<ArrayBuffer> => {
     const source = resource as GPUBuffer;
     const offset = range?.offset ?? 0;
@@ -180,9 +180,8 @@ export function createWebGPUBackend(
     const stagingHandle = arena.allocate(() =>
       device.createBuffer({
         // Labelled off the source so a trace still names the pair it copied — the
-        // source's own label with `-read`, which is what `readBuffer` produced when
-        // it held the name; the arena has the resolved buffer, not the name, and
-        // the buffer carries its label.
+        // source's own label with `-read`; the arena has the resolved buffer, not
+        // the name, and the buffer carries its label.
         label: `${source.label}-read`,
         size: length,
         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
@@ -531,9 +530,9 @@ export function createWebGPUBackend(
         // The arena handle each page-or-card buffer was allocated under, kept by the
         // resource's index so a readback can name one by handle through the arena's
         // own `read` (§9, item 89) rather than through a `ShaderProgram` method. Only
-        // the buffers a `readBuffer` could ever have named — the `buffer`-kind
-        // resources a compute pass or a query fills — are recorded here; geometry
-        // and the uniform block are not read this way.
+        // the buffers a readback could ever name — the `buffer`-kind resources a
+        // compute pass or a query fills — are recorded here; geometry and the
+        // uniform block are not read this way.
         const bufferHandles = new Map<number, Handle>();
         for (const [index, resource] of frame.resources.entries()) {
           if (resource.kind !== 'vertices' && resource.kind !== 'indices') continue;
@@ -1284,7 +1283,7 @@ export function createWebGPUBackend(
         // rather than through this program. It maps the graph's `BufferHandle` (the
         // resource's index, item 87) to the arena handle a producer will one day
         // hold directly (Stage 2, item 16). A handle that is no readable buffer of
-        // this frame is refused, the same as `readBuffer` did.
+        // this frame is refused by name.
         bufferHandle(handle: BufferHandle): Handle {
           const index = indexOf(handle);
           const arenaHandle = bufferHandles.get(index);
@@ -1292,20 +1291,6 @@ export function createWebGPUBackend(
             throw new Error(`the frame for "${frame.id}" declares no buffer ${index}`);
           }
           return arenaHandle;
-        },
-
-        async readBuffer(handle: BufferHandle) {
-          const index = indexOf(handle);
-          const arenaHandle = bufferHandles.get(index);
-          if (arenaHandle === undefined) throw new Error(`the frame for "${frame.id}" declares no buffer ${index}`);
-          // The words as they stand, read through the arena's own `read` (item 89)
-          // rather than mapped inline here — a buffer the shader writes cannot be
-          // mapped, so `read` copies it into a staging buffer of the moment and
-          // returns its bytes. Words rather than bytes because a card fills a buffer
-          // of its own accord with counts; a caller wanting bytes reads the words'
-          // memory. `readBuffer` stays only until item 82 removes it; its two gate
-          // consumers already read through `arena.read` directly (item 89).
-          return new Uint32Array(await arena.read(arenaHandle));
         },
 
         dispose() {

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
 import { buffer, moduleHandle, pipelineHandle, uniform } from '../graph/handles.js';
-import type { BufferResource, FrameGraph } from '@altpsyche/engine';
+import type { BufferHandle, BufferResource, FrameGraph } from '@altpsyche/engine';
 
 /**
  * A block of bytes a shader reads or writes.
@@ -218,13 +218,27 @@ describe('the contents a caller writes in', () => {
   });
 });
 
+// `readBuffer` is gone (item 82); a caller reads a buffer's words back through the
+// arena's own `read` door (§9, item 89), naming the buffer by the arena handle the
+// program hands out for its index. `arena` and `bufferHandle` are the readback
+// bridge, kept off the public `Backend`/`ShaderProgram` types (item 90 dismantles
+// that surface), so a caller reaches them through a cast the way the timestamp gate
+// does. This exercises the same WebGPU staging copy `readBuffer` routed through.
+const readWords = async (
+  backend: unknown,
+  program: unknown,
+  handle: BufferHandle
+): Promise<Uint32Array> =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  new Uint32Array(await (backend as any).arena.read((program as any).bufferHandle(handle)));
+
 describe('the words a caller reads back', () => {
   it('copies the buffer out to one of its own rather than mapping the one the frame writes', async () => {
     const { gpu, backend } = backendOver();
     const program = backend.program(holding());
     gpu.mapped = new Uint8Array(new Uint32Array([7, 0, 0, 0]).buffer);
 
-    await program.readBuffer(buffer(1));
+    await readWords(backend, program, buffer(1));
 
     // A buffer a shader writes cannot be mapped, and mapping the frame's own
     // would take it away from the next frame, so the copy is the whole mechanism.
@@ -240,7 +254,7 @@ describe('the words a caller reads back', () => {
     const program = backend.program(holding());
     gpu.mapped = new Uint8Array(new Uint32Array([1, 256, 65_536, 4_294_967_295]).buffer);
 
-    expect([...(await program.readBuffer(buffer(1)))]).toEqual([1, 256, 65_536, 4_294_967_295]);
+    expect([...(await readWords(backend, program, buffer(1)))]).toEqual([1, 256, 65_536, 4_294_967_295]);
   });
 
   it('keeps the words after the mapping is given up, since the memory behind one is gone', async () => {
@@ -248,7 +262,7 @@ describe('the words a caller reads back', () => {
     const program = backend.program(holding());
     gpu.mapped = new Uint8Array(new Uint32Array([42, 0, 0, 0]).buffer);
 
-    const words = await program.readBuffer(buffer(1));
+    const words = await readWords(backend, program, buffer(1));
     expect(gpu.calls('unmap')[0]?.label).toBe('buffer1-read');
     expect(words[0]).toBe(42);
   });
@@ -258,8 +272,8 @@ describe('the words a caller reads back', () => {
     const program = backend.program(holding());
     gpu.mapped = new Uint8Array(16);
 
-    await program.readBuffer(buffer(1));
-    await program.readBuffer(buffer(1));
+    await readWords(backend, program, buffer(1));
+    await readWords(backend, program, buffer(1));
 
     // One buffer of its own per read, each destroyed, so a caller reading every
     // frame does not leave a buffer behind on every one of them.
@@ -267,10 +281,14 @@ describe('the words a caller reads back', () => {
     expect(gpu.calls('buffer.destroy').filter((call) => call.label === 'buffer1-read')).toHaveLength(2);
   });
 
-  it('refuses a handle the frame declares no buffer for, by its index', async () => {
+  it('refuses a handle the frame declares no buffer for, by its index', () => {
     const { backend } = backendOver();
     const program = backend.program(holding());
 
-    await expect(program.readBuffer(buffer(5))).rejects.toThrow(/declares no buffer 5/);
+    // The refusal is `bufferHandle`'s now: it maps a resource index to its arena
+    // handle and throws before `arena.read` is ever reached, so a handle no buffer
+    // of this frame answers to is named rather than read as an empty buffer.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(() => (program as any).bufferHandle(buffer(5))).toThrow(/declares no buffer 5/);
   });
 });

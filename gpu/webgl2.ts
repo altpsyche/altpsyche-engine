@@ -242,9 +242,8 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
   // read-write storage buffer is refused by name, and this backend has no compute
   // stage or query to write one, so nothing here ever fills a buffer the page then
   // reads back. A readback through the arena's §9 door (item 89) therefore has
-  // nothing to hand back and answers with no bytes, the true answer the way
-  // `readBuffer` answers with no words rather than refusing the question. When a
-  // WebGL 2 path does want a real buffer read back, this is where a
+  // nothing to hand back and answers with no bytes, the true answer rather than a
+  // refusal. When a WebGL 2 path does want a real buffer read back, this is where a
   // `gl.getBufferSubData` copy would go.
   const readNoBuffer = async (_buffer: WebGLBuffer, _range: Range | undefined): Promise<ArrayBuffer> => new ArrayBuffer(0);
   const arena = new Arena<WebGLBuffer>((buffer) => gl.deleteBuffer(buffer), readNoBuffer);
@@ -1435,14 +1434,12 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // slice, a read-only storage buffer): a frame declares none the page fills
         // and reads back at runtime, since a read-write storage buffer is refused
         // above and there is no compute stage or query to fill one. A caller asking
-        // to write or read a buffer does nothing and reads nothing rather than being
-        // refused, so the same call over either backend does nothing wrong on the
-        // one with no such buffers.
+        // to write a buffer does nothing rather than being refused, so the same call
+        // over either backend does nothing wrong on the one with no such buffers. A
+        // readback is the arena's own door now (§9, item 89): its `readNoBuffer`
+        // hands back no bytes, the true answer for a backend that keeps no numbers a
+        // page reads back.
         writeBuffer() {},
-
-        async readBuffer() {
-          return new Uint32Array(0);
-        },
 
         // Changing the pass list without rebuilding the resources under it is
         // WebGPU's `setPasses`; this backend's toy frames do not re-plan their
