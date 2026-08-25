@@ -1734,7 +1734,7 @@ so `gate:pack` was not required.
 
 ### 68. `submit(graph)` exists, and `ShaderProgram` goes
 
-**Status.** open
+**Status.** lifted needs decomposition
 
 **Asks for.** The top-level primitive §17 decision 7 names — `submit(graph, { into })` — with the surface and the host reaching the card through it, and the `ShaderProgram` interface deleted behind it.
 
@@ -1743,6 +1743,12 @@ so `gate:pack` was not required.
 **Needs.** item 70.
 
 **Why it is its own item.** §14 says `ShaderProgram` "becomes `Arena` + pipeline cache + `submit`". The first two exist; the third does not — there is no `submit(graph)` export anywhere. Deleting the interface without building the primitive leaves the library with no path to the card.
+
+**Lifted 2026-08-25: `Done when` collides with item 66, whose dependency this item's `Needs` never names — an objective queue inconsistency.** "Nothing constructs a `ShaderProgram`" deletes the whole interface, and `ShaderProgram` carries `readBuffer(name): Promise<Uint32Array>` ([graph/types.ts](../graph/types.ts) ~L620). But **`readBuffer`'s removal is item 66's deliverable** ("`readBuffer` removed"), and item 66 `Needs` item 51 (open) — its text states plainly that "`readBuffer`'s removal [depends] on item 51's capability wiring." So item 68 (with `Needs` = item 70 only) would remove `readBuffer` as a side effect of deleting `ShaderProgram`, doing item 66's `readBuffer`-removal work ahead of the item 51 dependency the queue puts on it. Two items cannot both own `readBuffer`'s removal under different dependency sets; that is the malformation, the same class item 38 carried and was decomposed for.
+
+**A second, softer entanglement, recorded so a decomposer sees it.** The stateful methods `ShaderProgram` carries with no production consumer — `writeBuffer`, `readBuffer`, `setPasses` (grep: exercised only by tests; the sole production consumer is [gpu/renderer.ts](../gpu/renderer.ts), which uses `setUniforms`/`draw`/`unreached`/`dispose`) — dissolve into "re-submit a mutated graph" only if a graph is a cheap, self-contained, re-submittable value on stable resource identity. That is item 67's fold-and-handles work, now itself lifted; a one-shot `submit(graph)` that rebuilds resources by string name every call is what exists today (`gpu/renderer.ts`'s `programFor`/`programs` cache), and turning it into the door primitive without item 67 keeps the string-keyed rebuild rather than the `Arena` + pipeline-cache model §14 promises.
+
+**How this was established, and what would settle it.** Confirmed `readBuffer`/`writeBuffer`/`setPasses` have no non-test caller; confirmed the surface already sits at `renderer.draw(graph, uniforms)` (close to `submit`), so the primitive itself is a modest addition — it is the *deletion* half that collides. Nothing here needs hardware. **What would change the answer:** the queue deciding which item owns `readBuffer`'s removal — either item 66 keeps it and item 68 gains `Needs: item 66` (hence item 51), or item 68 takes it and item 66 sheds that row — plus a decision on whether `submit(graph)` as the door primitive precedes or follows item 67. Filed for "Found by review". `carry`: `submit(graph, { into })` and the loss of `ShaderProgram` change the surface a consumer builds against. See [JOURNAL.md](JOURNAL.md).
 
 ### 69. `reflect()` replaces the compiled-program queries
 
