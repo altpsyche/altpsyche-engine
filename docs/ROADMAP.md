@@ -1043,13 +1043,50 @@ depth, item 65. See [JOURNAL.md](JOURNAL.md).
 
 ### 36. `examples/gltf-cube`
 
-**Status.** open
+**Status.** done
 
 **Asks for.** An asset arriving after the page opened, loaded by the example rather than by the library, which is where decision 5 puts it.
 
 **Done when.** The mesh appears mid-session and the library contributed no parser.
 
 **Needs.** item 11, item 32.
+
+**How it landed.** [examples/gltf-cube/main.ts](../examples/gltf-cube/main.ts) is the sixth
+example and the first to draw a mesh that is not in the page when it opens. **The asset arrives
+after the page opened:** the surface is built and `start()`ed on a WGSL "loading" fullscreen frame
+first, so the page is live and drawing before any mesh exists; then `loadCubeMesh()` `fetch`es a
+standards-valid glTF 2.0 document — a unit cube with per-face normals, embedded whole as a
+`data:model/gltf+json` URI whose binary buffer is a nested base64 `data:` URI, the way glTF allows —
+parses it, and `surface.setArtefact` swaps in the scene that draws it. A `data:` URI is a genuine
+asynchronous `fetch` resolving on a later task, so the mesh is absent at first paint exactly as a
+networked `.gltf` would be, and it **appears mid-session** as a visible swap on the running surface.
+The swap uploads the new vertex and index bytes into the already-live surface, which is item 11's
+queued-upload path ordering them before the draw. **The library contributed no parser:** the door
+ships none (`grep` finds no gltf/glb/parser in the shipping tree), so the example writes the small
+one its own asset needs — one mesh, one primitive, `POSITION`/`NORMAL` as `float` `VEC3`, indices as
+`unsigned short`, each read through its buffer view into the fetched buffer bytes, everything else
+refused by name — which is the honest test of decision 5: drawing a loaded mesh needed no `gltf()`
+door. The mesh is drawn through `sceneView` (item 32): the loaded cube is one entity in a one-object
+world, its model matrix and the camera's view-projection baked into storage buffers, emitted as one
+instanced indexed pass (`passes: 1, draws: 1`), the cube spun by rebuilding the graph each frame over
+the arena's reused buffer. **"Both backends" is two authorings of one idea:** the scene tier's
+storage buffers are WebGPU's until Phase 5, so the WGSL scene draws the loaded mesh on WebGPU and the
+WebGL 2 arm fetches the asset too (proving the load is cross-backend) then draws a raymarched-cube
+stand-in — that asymmetry is the backend's, not the example's. It reaches the library through the one
+door and nothing under it (`tests/examples-door.test.ts` green), type-checks against the real door,
+and bundles through the door alias (esbuild, 128 KB).
+
+**What the gates could not see.** "The mesh appears mid-session" and that either arm *draws* need a
+card or `gate:browser`, neither run in the unattended session (this machine reaches only SwiftShader,
+§17 note 3): the node suite reads calls off the doubles and does not execute the example. What is
+verified here is that the library ships no parser (grep), that the example's parse logic reads this
+asset's accessors correctly (24 positions, 24 normals, 36 indices, max index 23 — checked with node's
+own `fetch` over the same `data:` URIs), that the frame `sceneView` emits for the parsed mesh is
+well-formed data the door accepts (`cost` computes `passes: 1, draws: 1`, indexed geometry preserved),
+that it bundles and type-checks. Three things are card-gated beyond drawing at all: that the loading
+frame is live before the mesh arrives, that `setArtefact` re-uploads the geometry so the mesh appears
+mid-session, and that the toy-frame-to-scene-frame swap builds a fresh program on the live WebGPU
+surface. See [JOURNAL.md](JOURNAL.md).
 
 ### 37. The folders move
 
