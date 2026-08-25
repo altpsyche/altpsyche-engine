@@ -1946,7 +1946,7 @@ did not move, so `gate:pack` was not required.
 
 ### 75. Naga alone, against the corpus
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The fifteen corpus WGSL presets translated to GLSL by Naga, with every failure named. Not a comparison — one question: **can WGSL→GLSL carry this corpus at all?**
 
@@ -1957,3 +1957,35 @@ did not move, so `gate:pack` was not required.
 **Why it is split from item 40.** Item 40 asked whether Naga or Tint is better, and that needs a Tint build — which means Dawn, `depot_tools`, and hours of C++, none of it reproducible in a headless session. But **Phase 5 does not need the better translator, it needs a working one.** Decision 2 puts the whole WebGL 2 story on translation; what falsifies it is *no translator carrying the corpus*, and Naga alone answers that. If Naga carries it, Phase 5 proceeds and the comparison becomes an optimisation nobody is blocked on. If Naga does not, that is decision 1 degrading to toy-tier-only by construction — the wall §15 wanted hit early, and Tint would be a long shot against a corpus Naga could not manage.
 
 **What its result must not be read as saying.** The corpus is fifteen fullscreen and compute presets. **"Naga carries the corpus" is not "Naga carries the scene tier."** Scene materials have vertex stages, per-draw buffer slices and depth state that the corpus barely exercises, and the presets that do exercise them are hand-written rather than producer-emitted. A green result here licenses items 41 and 42; it does not close item 44's cross-backend question or item 52's, and it says nothing about `orbit-shadow` translating. Record that limit beside the readings, or the next reader will take a viability check for a guarantee.
+
+**How it landed. Answer: yes — Naga carries the corpus whole.** `naga` (naga-cli
+**30.0.1**) installed with `cargo install naga-cli --version 30.0.1` into
+`~/.cargo/bin` — a **dev-time tool**, not a `dependencies` entry (`dependencies`
+stays `{}`, per §17 decision 5) and not a `devDependency` (a Rust binary, not an
+npm one). [gates/naga-corpus.mjs](../gates/naga-corpus.mjs) reads the fifteen
+`fixtures/source/*.wgsl` presets, finds every `@vertex`/`@fragment`/`@compute`
+entry point (the match reaches across a compute entry's `@workgroup_size` to the
+`fn` name), and runs each through naga to the matching GLSL stage. **All fifteen
+presets, all thirty-four entry points, translate at GLSL ES 3.10 — none refused.**
+The per-preset readings, dated, are [docs/NAGA-CORPUS.md](NAGA-CORPUS.md); the
+script reproduces them and exits 0 while every preset still translates, 1 if one
+stops (naming the construct), 2 with no naga on PATH. It is not wired into
+`package.json` or `gates/all.mjs`, since it needs a dev tool a clean CI machine has
+not got — the same reason `gate:card` is not run unattended, and a script item 74's
+hardware/tooling list should carry.
+
+**The one caveat worth the row, recorded per this item's own instruction.** es310
+is the profile that can express every stage. **WebGL 2 authors GLSL ES 3.00**, and
+at that profile five entry points across four presets are refused — three vertex
+stages for a storage buffer (`core-draw-list`, `core-material`, `core-perdraw`),
+two fragment stages for a storage texture (`core-indirect`, `core-state`) — plus
+compute, which WebGL 2 has no stage for. **These are not naga failing to translate:**
+they are the WebGL 2 target lacking `storage-buffer`/`storage-texture`/`compute`,
+the exact capabilities `refusal()` already names, so such a frame is refused before
+translation is reached. The presets a WebGL 2 consumer can actually author
+translate to es300 whole. **What the gates could not see:** this is translation, not
+execution — no card compiled or drew any of the GLSL. That the translated GLSL
+draws the same picture is item 44's question, a browser's or a card's to answer, and
+was not run here. The scene-tier limit (per-draw slices, depth state, vertex stages
+the corpus barely exercises, `orbit-shadow`) stands unmeasured by this item. See
+[JOURNAL.md](JOURNAL.md).
