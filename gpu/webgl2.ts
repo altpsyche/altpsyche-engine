@@ -18,15 +18,18 @@ import type {
   DeviceReport,
   FrameTraffic,
   FrameGraph,
+  IndexResource,
   RenderPipelineSpec,
   SamplerResource,
   ShaderProgram,
   TextureResource,
   UniformValue,
+  VertexResource,
 } from '../graph/types.js';
-import { componentsOf, drawsCorners, isRenderPass, moduleOf } from '../graph/types.js';
+import { componentsOf, drawsCorners, drawsIndirectly, isRenderPass, moduleOf } from '../graph/types.js';
 import { Arena } from '../resource/arena.js';
 import type { Handle } from '../resource/arena.js';
+import type { GL2Geometry } from '../submit/gl2.js';
 import { drawGL2Frame } from '../submit/gl2.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
 import { sizeAt, followsFrame } from '../graph/refs.js';
@@ -173,7 +176,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // rather than a scratch target a pass draws between two others.
       const samplerSpecs = frame.resources.filter((resource): resource is SamplerResource => resource.kind === 'sampler');
       for (const resource of frame.resources) {
+        // The uniform block, the samplers, and the vertex/index buffers of the
+        // shader's own geometry (item 77) are the resource kinds this backend keeps;
+        // a storage buffer is a compute output and stays refused below.
         if (resource.kind === 'uniform' || resource.kind === 'sampler') continue;
+        if (resource.kind === 'vertices' || resource.kind === 'indices') continue;
         if (resource.kind !== 'texture') {
           throw new Error(`the frame for "${frame.id}" declares a ${resource.kind} resource, and this backend has none`);
         }
@@ -327,6 +334,71 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // wrong size.
       const built = { width, height };
 
+      // The vertex and index buffers of the shader's own geometry (item 77), each
+      // allocated through the backend's buffer arena so a freed handle is caught
+      // rather than naming whatever the context hands back next (item 10), and
+      // freed on dispose. Its bytes are the first contents of a resident resource,
+      // so they are counted through `arena.wrote` the way WebGPU counts geometry
+      // (item 22). Cached by the geometry's name, so two passes drawing one
+      // primitive upload it once. A geometry the frame does not declare, or one
+      // whose index buffer it names but does not carry, is refused by name.
+      const geometryHandles: Handle[] = [];
+      const geometryPlans = new Map<string, GL2Geometry>();
+      // How many float components one vertex attribute carries, read off the
+      // format the generator wrote the bytes under. WebGL 2 reads them as floats,
+      // which is every attribute the `quad-grid` primitive carries; a byte or
+      // integer attribute is a later primitive's and wants a row here first.
+      const componentsOfFormat = (format: string) => Number(/x(\d)/.exec(format)?.[1] ?? '1');
+      const buildGeometry = (name: string): GL2Geometry => {
+        const cached = geometryPlans.get(name);
+        if (cached) return cached;
+        const vertices = frame.resources.find(
+          (resource): resource is VertexResource => resource.kind === 'vertices' && resource.name === name
+        );
+        if (!vertices) throw new Error(`the frame for "${frame.id}" draws "${name}", which is no geometry it declares`);
+        if (!vertices.data) throw new Error(`the geometry "${name}" on "${frame.id}" arrived with no vertices to draw`);
+        const vertexHandle = arena.allocate(() => gl.createBuffer() as WebGLBuffer);
+        geometryHandles.push(vertexHandle);
+        const vertexBuffer = arena.resolve(vertexHandle);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices.data, gl.STATIC_DRAW);
+        arena.wrote(vertices.data.byteLength);
+        let index: GL2Geometry['index'];
+        if (vertices.indices !== undefined) {
+          const indices = frame.resources.find(
+            (resource): resource is IndexResource => resource.kind === 'indices' && resource.name === vertices.indices
+          );
+          if (!indices) {
+            throw new Error(`the geometry "${name}" on "${frame.id}" orders itself by "${vertices.indices}", which it does not declare`);
+          }
+          if (!indices.data) throw new Error(`the geometry "${name}" on "${frame.id}" arrived with no indices to order it`);
+          const indexHandle = arena.allocate(() => gl.createBuffer() as WebGLBuffer);
+          geometryHandles.push(indexHandle);
+          const indexBuffer = arena.resolve(indexHandle);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+          gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices.data, gl.STATIC_DRAW);
+          arena.wrote(indices.data.byteLength);
+          index = {
+            buffer: indexBuffer,
+            type: indices.format === 'uint32' ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT,
+            count: indices.count,
+          };
+        }
+        const plan: GL2Geometry = {
+          buffer: vertexBuffer,
+          stride: vertices.stride,
+          attributes: vertices.attributes.map((attribute) => ({
+            location: attribute.location,
+            components: componentsOfFormat(attribute.format),
+            offset: attribute.offset,
+          })),
+          vertexCount: vertices.count,
+          index,
+        };
+        geometryPlans.set(name, plan);
+        return plan;
+      };
+
       // Each pass resolved to what it draws with: its linked program, the corners
       // and instances of its draws, the texture it draws into (or the canvas), the
       // colour it clears to, and the textures it samples bound to units. The frame
@@ -354,6 +426,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // single-attachment pass, which keeps the framebuffer item 46 gave it.
         mrtFbo: Handle | null;
         sampled: Sampled[];
+        // The vertex buffer of the shader's own geometry this pass draws, resolved
+        // off the pipeline's `geometry` (item 77); null for a pass covering the
+        // frame with the backend's own corners, which reads the shared quad.
+        geometry: GL2Geometry | null;
       }
       const plans: PassPlan[] = [];
       let blockLayoutMap: Map<string, number> | null = null;
@@ -396,11 +472,29 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         if (spec.kind === 'compute' || !isRenderPass(pass)) {
           throw new Error(`the frame for "${frame.id}" runs compute work, and WebGL 2 has no compute stage`);
         }
-        // The corners are the positions this backend draws, so geometry out of a
-        // buffer is refused by name. Every draw is asked, since one that walks a
-        // buffer is refused however many corners-draws sit beside it (item 26).
-        if (!pass.draws.every(drawsCorners)) {
-          throw new Error(`the frame for "${frame.id}" draws geometry of its own, and this backend has no buffer for it`);
+        // Which positions this pass draws: the shader's own geometry where its
+        // pipeline names a `geometry` (item 77), or the backend's fullscreen corners
+        // where it names none. A pipeline reading geometry draws its vertex buffer,
+        // one `drawArrays`/`drawElements` per draw counting instances alone; one
+        // reading none covers the frame with the shared quad, and a draw walking a
+        // buffer beside it is refused for want of geometry to walk.
+        const geometryName = spec.kind === 'render' ? spec.geometry : undefined;
+        if (geometryName === undefined) {
+          // Every draw is asked, since one that walks a buffer is refused however
+          // many corners-draws sit beside it (item 26).
+          if (!pass.draws.every(drawsCorners)) {
+            throw new Error(`the frame for "${frame.id}" draws geometry of its own, and this backend has no buffer for it`);
+          }
+        } else {
+          // A geometry pass reads its counts off the vertex buffer, so a draw
+          // carrying its own corner count, or one reading its counts out of a
+          // buffer (item 28's indirect), has no place in it.
+          if (pass.draws.some(drawsCorners)) {
+            throw new Error(`the frame for "${frame.id}" mixes its own corners into the geometry "${geometryName}", which it draws from one buffer`);
+          }
+          if (pass.draws.some(drawsIndirectly)) {
+            throw new Error(`the frame for "${frame.id}" reads "${geometryName}"'s draw counts out of a buffer, which this backend does not`);
+          }
         }
         // Depth and stencil are item 48; a pipeline testing depth is refused by
         // name until then, asked of the pipeline because the state and the
@@ -457,11 +551,14 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // 26), and the instance count aligned to it (item 28): a draw covering
           // many instances is one `drawArraysInstanced`, one covering a single
           // instance a plain `drawArrays`.
-          vertices: pass.draws.map((draw) => (draw as { vertices: number }).vertices),
+          vertices: pass.draws.map((draw) => (draw as { vertices?: number }).vertices ?? 0),
           instances: pass.draws.map((draw) => (draw as { instances?: number }).instances),
           targets,
           mrtFbo,
           sampled,
+          // The vertex buffer of the shader's own geometry, built once and shared by
+          // two passes drawing one primitive; null for a fullscreen corners pass.
+          geometry: geometryName === undefined ? null : buildGeometry(geometryName),
         });
       }
 
@@ -609,6 +706,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
               instances: plan.instances,
               width: passWidth,
               height: passHeight,
+              ...(plan.geometry ? { geometry: plan.geometry } : {}),
             });
           }
           // The picture the frame names is shown by blitting its texture onto the
@@ -647,6 +745,9 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // program are this program's own. The buffers and textures go back to
           // their arenas; a program two passes shared is deleted once.
           if (uboHandle !== null) arena.free(uboHandle);
+          // The vertex and index buffers of the shader's own geometry go back to the
+          // buffer arena beside the uniform block (item 77).
+          for (const handle of geometryHandles) arena.free(handle);
           for (const record of textures.values()) {
             textureArena.free(record.handle);
             if (record.fboHandle !== null) framebufferArena.free(record.fboHandle);

@@ -27,6 +27,21 @@ export interface GL2PerDraw {
   offsets: readonly number[];
 }
 
+/** The shader's own geometry a pass draws, resolved to the buffers and layout the
+ * draw walks (item 77): the vertex buffer the backend uploaded, how the card steps
+ * through it (`stride`, and each attribute's location, float component count and
+ * byte offset), how many vertices it holds, and the index buffer that orders them
+ * where the primitive carries one. A pass carrying this reads it rather than the
+ * fullscreen quad, and draws `drawElements` where an index buffer is present and
+ * `drawArrays` where it is not. */
+export interface GL2Geometry {
+  buffer: WebGLBuffer;
+  stride: number;
+  attributes: readonly { location: number; components: number; offset: number }[];
+  vertexCount: number;
+  index?: { buffer: WebGLBuffer; type: number; count: number };
+}
+
 /** Everything the one pass needs to become draw commands: the linked program the
  * pipeline produced, the quad buffer the arena allocated, the attribute the
  * positions arrive on, the corner count of each draw the pass carries, and the
@@ -39,7 +54,12 @@ export interface GL2PerDraw {
  * covers one it is `undefined` and drawn as a plain `drawArrays` — the call every
  * fullscreen shader on the site makes. It is the same one draw either way: a card
  * makes one draw call however many instances it reads, which is why `cost()`
- * counts it as one. */
+ * counts it as one.
+ *
+ * `geometry` is present where the pass draws the shader's own vertex geometry
+ * (item 77) rather than the fullscreen quad: the buffers and layout are the
+ * geometry's and `vertices` is spent on the count of draws alone, each drawn from
+ * the geometry's own vertex or index count. */
 export interface GL2FrameExecution {
   gl: WebGL2RenderingContext;
   program: WebGLProgram;
@@ -50,6 +70,7 @@ export interface GL2FrameExecution {
   width: number;
   height: number;
   perDraw?: GL2PerDraw;
+  geometry?: GL2Geometry;
 }
 
 /** Draws the frame's one pass, exactly as the backend's `draw` did before this
@@ -61,17 +82,41 @@ export interface GL2FrameExecution {
  * at that draw's record, which is WebGL 2's dynamic offset (item 27); where it
  * does not, the draws read whatever the block was last bound to. */
 export function drawGL2Frame(exec: GL2FrameExecution): void {
-  const { gl, program, quad, attribute, vertices, instances, width, height, perDraw } = exec;
+  const { gl, program, quad, attribute, vertices, instances, width, height, perDraw, geometry } = exec;
   gl.useProgram(program);
-  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
-  gl.enableVertexAttribArray(attribute);
-  gl.vertexAttribPointer(attribute, 3, gl.FLOAT, false, 0, 0);
+  if (geometry) {
+    // The geometry's own vertex buffer, stepped through by the layout the
+    // generator wrote it under: each attribute enabled at the location the source
+    // reads it, and the index buffer bound where the primitive carries one.
+    gl.bindBuffer(gl.ARRAY_BUFFER, geometry.buffer);
+    for (const attr of geometry.attributes) {
+      gl.enableVertexAttribArray(attr.location);
+      gl.vertexAttribPointer(attr.location, attr.components, gl.FLOAT, false, geometry.stride, attr.offset);
+    }
+    if (geometry.index) gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, geometry.index.buffer);
+  } else {
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.enableVertexAttribArray(attribute);
+    gl.vertexAttribPointer(attribute, 3, gl.FLOAT, false, 0, 0);
+  }
   gl.viewport(0, 0, width, height);
   vertices.forEach((count, at) => {
     if (perDraw) {
       gl.bindBufferRange(gl.UNIFORM_BUFFER, perDraw.binding, perDraw.buffer, perDraw.offsets[at] ?? 0, perDraw.size);
     }
     const copies = instances?.[at];
+    if (geometry) {
+      // The count is the geometry's — its index count where it is ordered, its
+      // vertex count where it is drawn straight through — and one draw call reads
+      // its instance count, so a draw covering many copies is one
+      // `drawElementsInstanced`/`drawArraysInstanced` (item 28).
+      if (geometry.index) {
+        if (copies === undefined) gl.drawElements(gl.TRIANGLES, geometry.index.count, geometry.index.type, 0);
+        else gl.drawElementsInstanced(gl.TRIANGLES, geometry.index.count, geometry.index.type, 0, copies);
+      } else if (copies === undefined) gl.drawArrays(gl.TRIANGLES, 0, geometry.vertexCount);
+      else gl.drawArraysInstanced(gl.TRIANGLES, 0, geometry.vertexCount, copies);
+      return;
+    }
     if (copies === undefined) gl.drawArrays(gl.TRIANGLES, 0, count);
     else gl.drawArraysInstanced(gl.TRIANGLES, 0, count, copies);
   });

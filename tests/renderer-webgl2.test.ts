@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGL2Backend } from '../gpu/webgl2';
-import { glslFrame, missing, cost } from '@altpsyche/engine';
+import { glslFrame, missing, cost, GEOMETRY_PRIMITIVE } from '@altpsyche/engine';
 import type { RenderPipelineSpec, FrameGraph } from '@altpsyche/engine';
 import { bottomUpFrame, createFakeGL } from './support/fake-gl';
 
@@ -676,6 +676,145 @@ describe('a pass writing several colours at once (item 47)', () => {
     // Three per-texture framebuffers and the one the pass drew through: four freed.
     expect(gl.of('deleteFramebuffer')).toHaveLength(4);
     expect(gl.of('deleteTexture')).toHaveLength(3);
+  });
+});
+
+/**
+ * A pass drawing the shader's own vertex geometry, authored the way the build
+ * assembles `core-geometry`: the real `quad-grid` primitive's bytes, layout and
+ * counts, a vertex stage reading its two attributes, and a pipeline naming the
+ * geometry with a pass that counts instances alone. Item 77 draws this where the
+ * backend drew only its own fullscreen corners before.
+ *
+ * The bytes and their layout come out of `GEOMETRY_PRIMITIVE` rather than being
+ * written here, so what these assert is the backend reading a real primitive: a
+ * 16×16 grid is 289 vertices and 1,536 indices at a 16-byte stride, two
+ * `float32x2` attributes at offsets 0 and 8.
+ */
+const GRID_VERTEX =
+  '#version 300 es\nlayout(location=0) in vec2 position;\nlayout(location=1) in vec2 grid;\nvoid main(){gl_Position=vec4(position,0.0,1.0);}';
+
+function geometryFrame(instances = 3): FrameGraph {
+  const grid = GEOMETRY_PRIMITIVE['quad-grid'];
+  const made = grid.bytes(16, 16);
+  return {
+    id: 'core-geometry',
+    target: 'glsl',
+    resources: [
+      { kind: 'uniform', name: 'uniforms' },
+      {
+        kind: 'vertices',
+        name: 'grid',
+        stride: grid.stride,
+        attributes: grid.attributes,
+        topology: grid.topology,
+        count: made.vertexCount,
+        indices: 'grid-index',
+        data: made.vertices,
+      },
+      { kind: 'indices', name: 'grid-index', format: grid.indexFormat, count: made.indexCount, data: made.indices },
+    ],
+    modules: [
+      { name: 'warp', code: GRID_VERTEX },
+      { name: 'shade', code: FRAGMENT },
+    ],
+    pipelines: [
+      {
+        kind: 'render',
+        name: 'shade',
+        vertex: { module: 'warp', entry: 'main' },
+        fragment: { module: 'shade', entry: 'main' },
+        geometry: 'grid',
+        bindings: [],
+      },
+    ],
+    passes: [{ pipeline: 'shade', draws: [{ instances }] }],
+  };
+}
+
+describe('a pass drawing the shader own geometry (item 77)', () => {
+  const ARRAY_BUFFER = 0x8892;
+  const ELEMENT_ARRAY_BUFFER = 0x8893;
+  const UNSIGNED_SHORT = 0x1403;
+  const grid = GEOMETRY_PRIMITIVE['quad-grid'];
+  const made = grid.bytes(16, 16);
+
+  it('no longer refuses geometry now that it has a buffer for it', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(geometryFrame()).draw()).not.toThrow();
+  });
+
+  it('uploads the vertex and index buffers of the geometry it draws', () => {
+    const { gl, backend } = backendOver();
+    backend.program(geometryFrame());
+    // The vertex bytes reach the card through ARRAY_BUFFER and the indices through
+    // ELEMENT_ARRAY_BUFFER, each the length the generator wrote. The backend's
+    // shared fullscreen quad is an ARRAY_BUFFER upload too, so the vertex bytes are
+    // the one of that length rather than merely the first.
+    const arrayLengths = gl.of('bufferData').filter((entry) => entry.target === ARRAY_BUFFER).map((entry) => entry.byteLength);
+    const indexUpload = gl.of('bufferData').find((entry) => entry.target === ELEMENT_ARRAY_BUFFER);
+    expect(arrayLengths).toContain(made.vertices.byteLength);
+    expect(indexUpload?.byteLength).toBe(made.indices.byteLength);
+  });
+
+  it('binds the attribute layout off the pipeline geometry, not the fullscreen quad', () => {
+    const { gl, backend } = backendOver();
+    backend.program(geometryFrame()).draw();
+    // Two attributes, at the locations the source reads them, each two floats wide
+    // and read at its own byte offset out of the 16-byte stride — the layout the
+    // primitive carries rather than the three-float corner pointer.
+    const pointers = gl.of('vertexAttribPointer');
+    expect(pointers).toContainEqual(
+      expect.objectContaining({ index: 0, size: 2, stride: grid.stride, offset: 0 })
+    );
+    expect(pointers).toContainEqual(
+      expect.objectContaining({ index: 1, size: 2, stride: grid.stride, offset: 8 })
+    );
+  });
+
+  it('draws the geometry with one drawElementsInstanced, the count and instances it was given', () => {
+    const { gl, backend } = backendOver();
+    backend.program(geometryFrame(3)).draw();
+    // One draw call reading the index count and the instance count — the same one
+    // draw the card makes however many instances it reads (item 28) — and it is a
+    // drawElements, not the drawArrays a fullscreen corner pass makes.
+    expect(gl.of('drawArrays')).toHaveLength(0);
+    expect(gl.of('drawElementsInstanced')).toHaveLength(1);
+    expect(gl.of('drawElementsInstanced').at(-1)).toMatchObject({
+      mode: 0x0004,
+      count: made.indexCount,
+      type: UNSIGNED_SHORT,
+      offset: 0,
+      instances: 3,
+    });
+  });
+
+  it('issues the draw count cost() reads off the same structure', () => {
+    const { gl, backend } = backendOver();
+    backend.program(geometryFrame()).draw();
+    // The one draw call it makes is the one draw cost() counts for the pass, so a
+    // change that adds or drops a draw moves both together (item 28 counts an
+    // instanced draw as one).
+    const draws = gl.of('drawElements').length + gl.of('drawElementsInstanced').length;
+    expect(draws).toBe(cost(geometryFrame(), { width: 800, height: 600 }).draws);
+    expect(draws).toBe(1);
+  });
+
+  it('gives the vertex and index buffers back when it is done', () => {
+    const { gl, backend } = backendOver();
+    backend.program(geometryFrame()).dispose();
+    // The two geometry buffers go back to the arena on dispose. No uniform block is
+    // reported for this frame, so the only buffers freed here are the geometry's.
+    expect(gl.of('deleteBuffer')).toHaveLength(2);
+  });
+
+  it('refuses a pass mixing its own corners into the geometry it draws', () => {
+    const { backend } = backendOver();
+    const frame = geometryFrame();
+    const mixed: FrameGraph = { ...frame, passes: [{ pipeline: 'shade', draws: [{ vertices: 3 }, { instances: 3 }] }] };
+    expect(() => backend.program(mixed)).toThrow(
+      'the frame for "core-geometry" mixes its own corners into the geometry "grid", which it draws from one buffer'
+    );
   });
 });
 

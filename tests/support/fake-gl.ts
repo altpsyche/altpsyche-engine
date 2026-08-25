@@ -26,11 +26,16 @@ const CONSTANTS = {
   UNIFORM_OFFSET: 0x8a3b,
   UNIFORM_BLOCK_DATA_SIZE: 0x8a40,
   ARRAY_BUFFER: 0x8892,
+  ELEMENT_ARRAY_BUFFER: 0x8893,
   UNIFORM_BUFFER: 0x8a11,
   STATIC_DRAW: 0x88e4,
   DYNAMIC_DRAW: 0x88e8,
   TRIANGLES: 0x0004,
   FLOAT: 0x1406,
+  // The index widths a drawn primitive is ordered by (item 77): `quad-grid` writes
+  // uint16, so `drawElements` reads its indices as `UNSIGNED_SHORT`.
+  UNSIGNED_SHORT: 0x1403,
+  UNSIGNED_INT: 0x1405,
   RGBA: 0x1908,
   RGBA8: 0x8058,
   UNSIGNED_BYTE: 0x1401,
@@ -181,6 +186,10 @@ export function createFakeGL({ context = true } = {}): FakeGL {
         // block member land as its integer value rather than the float bit
         // pattern the `floats` view reads it back as (item 61).
         words: data instanceof Float32Array ? [...new Int32Array(data.buffer)] : undefined,
+        // How many bytes a geometry buffer carries, so a test can see the vertex or
+        // index bytes reach the card (item 77); the block path hands a Float32Array
+        // and reads it through `floats` instead.
+        byteLength: (data as ArrayBufferView | undefined)?.byteLength,
       }),
     bindBufferBase: (target: number, index: number) => record('bindBufferBase', { target, index }),
     bindBufferRange: (target: number, index: number, _buffer: unknown, offset: number, size: number) =>
@@ -226,12 +235,20 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     uniform4fv: (location: { name: string }, value: number[]) =>
       record('uniform4fv', { name: location.name, value: [...value] }),
 
-    enableVertexAttribArray: () => record('enableVertexAttribArray'),
-    vertexAttribPointer: (index: number, size: number) => record('vertexAttribPointer', { index, size }),
+    enableVertexAttribArray: (index: number) => record('enableVertexAttribArray', { index }),
+    vertexAttribPointer: (index: number, size: number, type: number, normalized: boolean, stride: number, offset: number) =>
+      record('vertexAttribPointer', { index, size, type, normalized, stride, offset }),
     viewport: (x: number, y: number, width: number, height: number) => record('viewport', { x, y, width, height }),
     drawArrays: (mode: number, first: number, count: number) => record('drawArrays', { mode, first, count }),
     drawArraysInstanced: (mode: number, first: number, count: number, instances: number) =>
       record('drawArraysInstanced', { mode, first, count, instances }),
+    // The shader's own geometry, drawn by the indices that order it (item 77): one
+    // `drawElements` per draw, or one `drawElementsInstanced` reading its instance
+    // count. `offset` is the byte into the index buffer the draw starts at.
+    drawElements: (mode: number, count: number, type: number, offset: number) =>
+      record('drawElements', { mode, count, type, offset }),
+    drawElementsInstanced: (mode: number, count: number, type: number, offset: number, instances: number) =>
+      record('drawElementsInstanced', { mode, count, type, offset, instances }),
 
     readPixels: (
       _x: number,
