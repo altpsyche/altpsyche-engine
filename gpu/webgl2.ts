@@ -22,6 +22,7 @@ import type {
   RenderPipelineSpec,
   SamplerResource,
   ShaderProgram,
+  StencilMode,
   TextureResource,
   UniformValue,
   VertexResource,
@@ -124,6 +125,48 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
   gl.bufferData(gl.ARRAY_BUFFER, FULLSCREEN_TRIANGLE, gl.STATIC_DRAW);
   arena.wrote(FULLSCREEN_TRIANGLE.byteLength);
 
+  // A depth or a stencil is kept in a renderbuffer rather than a sampled texture,
+  // since nothing here reads one between its pixels (item 48). Each depth/stencil
+  // format the corpus keeps names the renderbuffer's own storage, the framebuffer
+  // point it attaches at, and which halves it holds: a colour format answers null
+  // and is a sampled texture as before. `depth24plus-stencil8` is the one format
+  // holding both, kept for the shape rather than for a preset that names it.
+  const depthStencilOf = (format: string) => {
+    if (format === 'depth24plus') return { internal: gl.DEPTH_COMPONENT24, point: gl.DEPTH_ATTACHMENT, depth: true, stencil: false };
+    if (format === 'stencil8') return { internal: gl.STENCIL_INDEX8, point: gl.STENCIL_ATTACHMENT, depth: false, stencil: true };
+    if (format === 'depth24plus-stencil8')
+      return { internal: gl.DEPTH24_STENCIL8, point: gl.DEPTH_STENCIL_ATTACHMENT, depth: true, stencil: true };
+    return null;
+  };
+
+  // The comparison a depth test runs, by the name §8's `compare` gives it: a
+  // fragment nearer than what is already there passes `less`, and so on. WebGPU
+  // reads these names straight through; WebGL 2 wants the card's own enum.
+  const COMPARE: Record<string, number> = {
+    never: gl.NEVER,
+    less: gl.LESS,
+    equal: gl.EQUAL,
+    'less-equal': gl.LEQUAL,
+    greater: gl.GREATER,
+    'not-equal': gl.NOTEQUAL,
+    'greater-equal': gl.GEQUAL,
+    always: gl.ALWAYS,
+  };
+
+  // Every bit of the mask, the reference both modes read and marking writes — the
+  // same `STENCIL_BITS` the WebGPU backend uses, so the two agree on what a mark
+  // leaves behind. What each mode does to the mask, in the card's own fields: `mark`
+  // replaces the reference everywhere it draws (compare always, write every bit),
+  // and `inside` draws only where the reference already is and keeps the mask as it
+  // found it (compare equal, write nothing). Both faces get the same operations,
+  // since a mask has no front and back a picture could tell apart, so one `stencilOp`
+  // and one `stencilFunc` — which set both faces — is the whole of it.
+  const STENCIL_REF = 0xff;
+  const STENCIL_GL = {
+    mark: { func: gl.ALWAYS, fail: gl.KEEP, zfail: gl.KEEP, zpass: gl.REPLACE, writeMask: 0xff },
+    inside: { func: gl.EQUAL, fail: gl.KEEP, zfail: gl.KEEP, zpass: gl.KEEP, writeMask: 0 },
+  } as const;
+
   let width = canvas.width;
   let height = canvas.height;
 
@@ -165,15 +208,16 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // and refuses any graph carrying the faults it names.
       validate(frame);
 
-      // The two resource kinds this backend keeps: the frame's one uniform block,
-      // and the samplers that say how a texture is read between its pixels. A
-      // texture is kept where a pass draws it and a later pass samples it — the
-      // multi-pass shape this backend now draws (item 46) — but the narrower
+      // The resource kinds this backend keeps: the frame's one uniform block, the
+      // samplers that say how a texture is read between its pixels, a colour texture
+      // a pass draws and a later pass samples (the multi-pass shape of item 46), and
+      // a depth or stencil attachment a pass tests against (item 48). The narrower
       // texture kinds are each a later item and refused here by name: a storage
       // texture is a compute output and this backend has no compute stage, a ladder
-      // of levels is item 50, several samples a pixel is item 48, and a texture
-      // arriving with contents of its own is a resident image a scene tier uploads
-      // rather than a scratch target a pass draws between two others.
+      // of levels is item 50, a texture arriving with contents of its own is item 78,
+      // and several samples a pixel is the `msaa` capability item 80 tracks. A depth
+      // or stencil attachment reaching one of those refusals — a multisampled depth,
+      // say — is refused the same, which is the safe direction until that item lands.
       const samplerSpecs = frame.resources.filter((resource): resource is SamplerResource => resource.kind === 'sampler');
       for (const resource of frame.resources) {
         // The uniform block, the samplers, and the vertex/index buffers of the
@@ -206,6 +250,12 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       if (shown !== undefined && !textureSpecs.some((resource) => resource.name === shown)) {
         throw new Error(`the frame for "${frame.id}" shows a resource "${shown}" it does not declare`);
       }
+      // A texture declared in a depth or stencil format is a renderbuffer this
+      // backend tests against rather than a colour texture it draws into or samples
+      // (item 48), so the two are built through different arenas. A frame the reader
+      // sees is never a depth format, so the present above is a colour texture.
+      const colourSpecs = textureSpecs.filter((resource) => depthStencilOf(resource.format) === null);
+      const depthSpecs = textureSpecs.filter((resource) => depthStencilOf(resource.format) !== null);
 
       // The static lifetime of §5: the linked program a shader compiles to, keyed
       // on the structure of its documents, so two passes drawing one pipeline link
@@ -315,7 +365,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         }
       };
-      for (const spec of textureSpecs) {
+      for (const spec of colourSpecs) {
         const record: TextureRecord = {
           spec,
           handle: textureArena.allocate(() => gl.createTexture() as WebGLTexture),
@@ -329,6 +379,57 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         textures.set(spec.name, record);
         buildTexture(record);
       }
+
+      // The depth and stencil attachments the frame declares (item 48), each a
+      // renderbuffer through an arena of its own — a fourth resource kind beside the
+      // buffers, textures and framebuffers, freed through its own context call — so
+      // item 10's stale-handle safety covers it too. A depth or stencil follows the
+      // frame like the colour targets beside it, so it is remade at the new size on a
+      // resize; a distance kept at one size and tested at another would decide which
+      // surface is in front out of the wrong pixels. One renderbuffer stands for the
+      // resource however many passes attach it, so the second pass tests against the
+      // depth the first pass left behind.
+      const renderbufferArena = new Arena<WebGLRenderbuffer>((buffer) => gl.deleteRenderbuffer(buffer));
+      interface DepthRecord {
+        spec: TextureResource;
+        handle: Handle;
+        internal: number;
+        point: number;
+        depth: boolean;
+        stencil: boolean;
+        follows: boolean;
+        width: number;
+        height: number;
+      }
+      const depthTargets = new Map<string, DepthRecord>();
+      const buildDepth = (record: DepthRecord) => {
+        const { width: across, height: down } = sizeAt(record.spec.size, { width, height });
+        record.width = across;
+        record.height = down;
+        gl.bindRenderbuffer(gl.RENDERBUFFER, renderbufferArena.resolve(record.handle));
+        gl.renderbufferStorage(gl.RENDERBUFFER, record.internal, across, down);
+      };
+      for (const spec of depthSpecs) {
+        const kind = depthStencilOf(spec.format) as NonNullable<ReturnType<typeof depthStencilOf>>;
+        const record: DepthRecord = {
+          spec,
+          handle: renderbufferArena.allocate(() => gl.createRenderbuffer() as WebGLRenderbuffer),
+          internal: kind.internal,
+          point: kind.point,
+          depth: kind.depth,
+          stencil: kind.stencil,
+          follows: followsFrame(spec.size),
+          width: 0,
+          height: 0,
+        };
+        depthTargets.set(spec.name, record);
+        buildDepth(record);
+      }
+      // Whether any pass tests depth or masks with a stencil, so a frame with none —
+      // every fullscreen toy the backend drew before item 48 — sets no depth/stencil
+      // state at all and its call stream is exactly what it was.
+      const hasDepthStencil = depthTargets.size > 0;
+
       // The size the textures were last built at, so a resize between build and
       // draw remakes the frame-following ones before a pass reads a target of the
       // wrong size.
@@ -430,6 +531,23 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // off the pipeline's `geometry` (item 77); null for a pass covering the
         // frame with the backend's own corners, which reads the shared quad.
         geometry: GL2Geometry | null;
+        // The depth/stencil state this pass draws under (item 48); null for a pass
+        // that tests neither. `compare` and `write` are the depth half — the card's
+        // own compare enum and the write flag — absent for a stencil-only mask.
+        // `stencil` is the mode a mask is marked or read under. `clearDepth`/
+        // `clearStencil` are what the attachment is emptied to first, absent where
+        // the pass keeps what an earlier pass left. `fbo` is the framebuffer the
+        // renderbuffer is attached to, re-attached beside the colour targets on a
+        // resize.
+        depth: {
+          compare?: number;
+          write: boolean;
+          stencil?: StencilMode;
+          clearDepth?: number;
+          clearStencil?: number;
+          record: DepthRecord;
+          fbo: Handle;
+        } | null;
       }
       const plans: PassPlan[] = [];
       let blockLayoutMap: Map<string, number> | null = null;
@@ -460,6 +578,16 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             0
           );
         });
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      };
+      // A depth or stencil renderbuffer attached to the framebuffer a pass draws
+      // through, at the point its format keeps (item 48). Called again on a resize
+      // beside the colour re-attach, since the renderbuffer is respecified at the
+      // new size there. One renderbuffer serves every pass that names the resource,
+      // so a second pass tests against the depth the first pass left.
+      const attachDepth = (fbo: Handle, record: DepthRecord) => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebufferArena.resolve(fbo));
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, record.point, gl.RENDERBUFFER, renderbufferArena.resolve(record.handle));
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       };
       for (const pass of frame.passes) {
@@ -495,13 +623,6 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           if (pass.draws.some(drawsIndirectly)) {
             throw new Error(`the frame for "${frame.id}" reads "${geometryName}"'s draw counts out of a buffer, which this backend does not`);
           }
-        }
-        // Depth and stencil are item 48; a pipeline testing depth is refused by
-        // name until then, asked of the pipeline because the state and the
-        // attachment are declared apart and the pipeline is the half that says
-        // the picture depends on it.
-        if (spec.depth) {
-          throw new Error(`the frame for "${frame.id}" tests the depth of what it draws, and this backend keeps none`);
         }
         const compiled = compileSpec(spec);
         if (compiled.layout && !blockLayoutMap) {
@@ -544,6 +665,36 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           mrtFbo = framebufferArena.allocate(() => gl.createFramebuffer() as WebGLFramebuffer);
           attachTargets(mrtFbo, targets);
         }
+        // The depth or stencil this pass tests against (item 48). The pass names the
+        // attachment and what to clear it to; the pipeline says how to test — the
+        // compare and write of the depth half, the mode of the mask — because the
+        // card compiles the test into the pipeline (§8, the reason `spec.depth`
+        // holds it). The renderbuffer attaches to the framebuffer the pass draws
+        // through: a single target's own, or the multiple-target framebuffer above.
+        // A depth pass drawing the frame directly is refused by name, since a depth
+        // buffer cannot attach to the canvas.
+        let depthPlan: PassPlan['depth'] = null;
+        if (isRenderPass(pass) && pass.depth) {
+          const record = depthTargets.get(pass.depth.resource);
+          if (!record) {
+            throw new Error(`the frame for "${frame.id}" tests against "${pass.depth.resource}", which is no depth or stencil it declares`);
+          }
+          if (targets.length === 0) {
+            throw new Error(`the frame for "${frame.id}" tests depth while drawing the frame directly, and a depth buffer cannot attach to the canvas`);
+          }
+          const fbo = targets.length === 1 ? ((textures.get(targets[0].resource) as TextureRecord).fboHandle as Handle) : (mrtFbo as Handle);
+          attachDepth(fbo, record);
+          const tested = spec.kind === 'render' ? spec.depth : undefined;
+          depthPlan = {
+            ...(tested?.compare !== undefined ? { compare: COMPARE[tested.compare] } : {}),
+            write: tested?.write ?? false,
+            ...(tested?.stencil !== undefined ? { stencil: tested.stencil } : {}),
+            ...(record.depth && pass.depth.clear !== undefined ? { clearDepth: pass.depth.clear } : {}),
+            ...(record.stencil && pass.depth.stencilClear !== undefined ? { clearStencil: pass.depth.stencilClear } : {}),
+            record,
+            fbo,
+          };
+        }
         plans.push({
           program: compiled.program,
           attribute: compiled.attribute,
@@ -559,6 +710,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // The vertex buffer of the shader's own geometry, built once and shared by
           // two passes drawing one primitive; null for a fullscreen corners pass.
           geometry: geometryName === undefined ? null : buildGeometry(geometryName),
+          depth: depthPlan,
         });
       }
 
@@ -657,6 +809,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             // holds the same textures at several points, so it is re-attached here
             // beside them (item 47).
             for (const plan of plans) if (plan.mrtFbo !== null) attachTargets(plan.mrtFbo, plan.targets);
+            // A depth or stencil follows the frame the same way, so it is respecified
+            // at the new size and re-attached to the framebuffer it tests against
+            // beside the colour targets (item 48).
+            for (const record of depthTargets.values()) if (record.follows) buildDepth(record);
+            for (const plan of plans) if (plan.depth) attachDepth(plan.depth.fbo, plan.depth.record);
             built.width = width;
             built.height = height;
           }
@@ -688,6 +845,50 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
               const clear = plan.targets[0].clear;
               gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
               gl.clear(gl.COLOR_BUFFER_BIT);
+            }
+            // The depth or stencil this pass empties first, through the buffer kind
+            // its format keeps (item 48). A clear writes past whatever mask a later
+            // pipeline sets, so the write masks are opened here and the per-pass state
+            // below sets them to what the pipeline tests under.
+            if (plan.depth) {
+              const d = plan.depth;
+              if (d.clearDepth !== undefined && d.clearStencil !== undefined) {
+                gl.depthMask(true);
+                gl.stencilMask(0xff);
+                gl.clearBufferfi(gl.DEPTH_STENCIL, 0, d.clearDepth, d.clearStencil);
+              } else if (d.clearDepth !== undefined) {
+                gl.depthMask(true);
+                gl.clearBufferfv(gl.DEPTH, 0, [d.clearDepth]);
+              } else if (d.clearStencil !== undefined) {
+                gl.stencilMask(0xff);
+                gl.clearBufferiv(gl.STENCIL, 0, [d.clearStencil]);
+              }
+            }
+            // The depth and stencil test state this pass draws under (item 48), set
+            // every pass of a depth frame because a real context leaks it between
+            // them: the depth test on with its compare and write where the pipeline
+            // tests distances, the stencil test on with the mode's func, ops and
+            // write mask where it masks, and each turned off where the pass tests
+            // neither. A frame that tests nothing at all sets none of this, so its
+            // call stream is what it was before item 48.
+            if (hasDepthStencil) {
+              if (plan.depth?.compare !== undefined) {
+                gl.enable(gl.DEPTH_TEST);
+                gl.depthFunc(plan.depth.compare);
+                gl.depthMask(plan.depth.write);
+              } else {
+                gl.disable(gl.DEPTH_TEST);
+                gl.depthMask(false);
+              }
+              if (plan.depth?.stencil !== undefined) {
+                const mode = STENCIL_GL[plan.depth.stencil];
+                gl.enable(gl.STENCIL_TEST);
+                gl.stencilFunc(mode.func, STENCIL_REF, 0xff);
+                gl.stencilOp(mode.fail, mode.zfail, mode.zpass);
+                gl.stencilMask(mode.writeMask);
+              } else {
+                gl.disable(gl.STENCIL_TEST);
+              }
             }
             gl.useProgram(plan.program);
             for (const read of plan.sampled) {
@@ -752,6 +953,8 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             textureArena.free(record.handle);
             if (record.fboHandle !== null) framebufferArena.free(record.fboHandle);
           }
+          // The depth and stencil renderbuffers go back to their own arena (item 48).
+          for (const record of depthTargets.values()) renderbufferArena.free(record.handle);
           // A multiple-target pass allocated a framebuffer of its own (item 47); it
           // goes back to the arena beside the per-texture ones.
           for (const plan of plans) if (plan.mrtFbo !== null) framebufferArena.free(plan.mrtFbo);

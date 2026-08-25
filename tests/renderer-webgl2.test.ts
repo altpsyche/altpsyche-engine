@@ -189,17 +189,6 @@ describe('a description above the subset', () => {
     ).toThrow('the frame for "fixture" runs compute work, and WebGL 2 has no compute stage');
   });
 
-  it('refuses a pipeline that tests depth, since one surface covering the frame has nothing behind it', () => {
-    const { backend } = backendOver();
-    const tested = {
-      ...(graph().pipelines[0] as RenderPipelineSpec),
-      depth: { format: 'depth24plus' as const, compare: 'less' as const, write: true },
-    };
-    expect(() => backend.program(glsl({ pipelines: [tested] }))).toThrow(
-      'the frame for "fixture" tests the depth of what it draws, and this backend keeps none'
-    );
-  });
-
   it('refuses a storage texture, since it has no compute to fill one (item 51 names it)', () => {
     const { backend } = backendOver();
     const resources = [
@@ -235,7 +224,7 @@ describe('a description above the subset', () => {
     );
   });
 
-  it('refuses a texture keeping several samples a pixel, which is item 48', () => {
+  it('refuses a texture keeping several samples a pixel, the msaa capability item 80 tracks', () => {
     const { backend } = backendOver();
     const resources = [
       ...graph().resources,
@@ -814,6 +803,230 @@ describe('a pass drawing the shader own geometry (item 77)', () => {
     const mixed: FrameGraph = { ...frame, passes: [{ pipeline: 'shade', draws: [{ vertices: 3 }, { instances: 3 }] }] };
     expect(() => backend.program(mixed)).toThrow(
       'the frame for "core-geometry" mixes its own corners into the geometry "grid", which it draws from one buffer'
+    );
+  });
+});
+
+/**
+ * A depth-tested frame the way the build assembles `core-depth`, reduced to the
+ * one capability item 48 lands: two passes draw the real `quad-grid` sheet into
+ * one colour target sharing a depth renderbuffer, the first clearing the depth to
+ * the far plane and writing distances under `less`, the second testing against
+ * what the first left with its own write off, so a nearer surface shows and a
+ * farther one does not. `present` blits the picture. The projection the fixture
+ * aims the sheet with is a picture's concern, not a call's, so it is left out.
+ *
+ * A stencil frame the same way, from `core-stencil`: the first pass marks the mask
+ * wherever its sheet draws, the second fills the frame's own corners only where the
+ * mark is and leaves the mask as it found it.
+ */
+const SHEET_VERTEX =
+  '#version 300 es\nlayout(location=0) in vec2 position;\nlayout(location=1) in vec2 grid;\nvoid main(){gl_Position=vec4(position,0.0,1.0);}';
+
+function sheetResources(): FrameGraph['resources'] {
+  const grid = GEOMETRY_PRIMITIVE['quad-grid'];
+  const made = grid.bytes(16, 16);
+  return [
+    { kind: 'vertices', name: 'sheet', stride: grid.stride, attributes: grid.attributes, topology: grid.topology, count: made.vertexCount, indices: 'sheet-index', data: made.vertices },
+    { kind: 'indices', name: 'sheet-index', format: grid.indexFormat, count: made.indexCount, data: made.indices },
+  ];
+}
+
+function depthFrame(): FrameGraph {
+  const pipelines: RenderPipelineSpec[] = [
+    {
+      kind: 'render', name: 'farther',
+      vertex: { module: 'project', entry: 'main' }, fragment: { module: 'paint', entry: 'main' },
+      geometry: 'sheet', bindings: [], targets: [{ format: 'rgba8unorm' }],
+      depth: { format: 'depth24plus', compare: 'less', write: true },
+    },
+    {
+      kind: 'render', name: 'nearer',
+      vertex: { module: 'project', entry: 'main' }, fragment: { module: 'paint', entry: 'main' },
+      geometry: 'sheet', bindings: [], targets: [{ format: 'rgba8unorm' }],
+      depth: { format: 'depth24plus', compare: 'less', write: false },
+    },
+  ];
+  return {
+    id: 'core-depth', target: 'glsl',
+    resources: [
+      { kind: 'uniform', name: 'uniforms' },
+      { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
+      { kind: 'texture', name: 'depth', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
+      ...sheetResources(),
+    ],
+    modules: [
+      { name: 'project', code: SHEET_VERTEX },
+      { name: 'paint', code: FRAGMENT },
+    ],
+    pipelines,
+    passes: [
+      { pipeline: 'farther', draws: [{ instances: 1 }], colour: [{ resource: 'picture', clear: [0, 0, 0, 1] }], depth: { resource: 'depth', clear: 1 } },
+      { pipeline: 'nearer', draws: [{ instances: 1 }], colour: [{ resource: 'picture' }], depth: { resource: 'depth' } },
+    ],
+    present: 'picture',
+  };
+}
+
+function stencilFrame(): FrameGraph {
+  const pipelines: RenderPipelineSpec[] = [
+    {
+      kind: 'render', name: 'marking',
+      vertex: { module: 'project', entry: 'main' }, fragment: { module: 'paint', entry: 'main' },
+      geometry: 'sheet', bindings: [], targets: [{ format: 'rgba8unorm' }],
+      depth: { format: 'stencil8', stencil: 'mark' },
+    },
+    {
+      kind: 'render', name: 'filling',
+      vertex: { module: 'cover', entry: 'main' }, fragment: { module: 'paint', entry: 'main' },
+      bindings: [], targets: [{ format: 'rgba8unorm' }],
+      depth: { format: 'stencil8', stencil: 'inside' },
+    },
+  ];
+  return {
+    id: 'core-stencil', target: 'glsl',
+    resources: [
+      { kind: 'uniform', name: 'uniforms' },
+      { kind: 'texture', name: 'picture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] },
+      { kind: 'texture', name: 'mask', size: { scale: 1 }, format: 'stencil8', use: ['attachment'] },
+      ...sheetResources(),
+    ],
+    modules: [
+      { name: 'project', code: SHEET_VERTEX },
+      { name: 'cover', code: VERTEX },
+      { name: 'paint', code: FRAGMENT },
+    ],
+    pipelines,
+    passes: [
+      { pipeline: 'marking', draws: [{ instances: 1 }], colour: [{ resource: 'picture', clear: [0, 0, 0, 1] }], depth: { resource: 'mask', stencilClear: 0 } },
+      { pipeline: 'filling', draws: [{ vertices: 3 }], colour: [{ resource: 'picture' }], depth: { resource: 'mask' } },
+    ],
+    present: 'picture',
+  };
+}
+
+describe('a pass that tests depth (item 48)', () => {
+  const DEPTH_COMPONENT24 = 0x81a6;
+  const DEPTH_ATTACHMENT = 0x8d00;
+  const RENDERBUFFER = 0x8d41;
+  const DEPTH = 0x1801;
+  const DEPTH_TEST = 0x0b71;
+  const LESS = 0x0201;
+
+  it('no longer refuses depth now that it keeps a renderbuffer for it', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(depthFrame()).draw()).not.toThrow();
+  });
+
+  it('keeps the depth in a renderbuffer of its format, attached at the depth point', () => {
+    const { gl, backend } = backendOver();
+    backend.program(depthFrame());
+    // The depth is a renderbuffer storing DEPTH_COMPONENT24 at the frame size, not
+    // an RGBA8 texture, and it is attached to the colour target's framebuffer at the
+    // depth point rather than a colour one.
+    expect(gl.of('renderbufferStorage')).toContainEqual(
+      expect.objectContaining({ target: RENDERBUFFER, internal: DEPTH_COMPONENT24, width: 800, height: 600 })
+    );
+    expect(gl.of('framebufferRenderbuffer')).toContainEqual(
+      expect.objectContaining({ attachment: DEPTH_ATTACHMENT })
+    );
+  });
+
+  it('enables the depth test and sets the compare and write the pipeline carries', () => {
+    const { gl, backend } = backendOver();
+    backend.program(depthFrame()).draw();
+    expect(gl.of('enable')).toContainEqual(expect.objectContaining({ cap: DEPTH_TEST }));
+    expect(gl.of('depthFunc')).toContainEqual(expect.objectContaining({ func: LESS }));
+    // The first pass writes the distances it draws and the second, tested against
+    // them, leaves them behind — so both a masked-on and a masked-off write reach
+    // the card, which is what lets a nearer surface show over a farther one.
+    const masks = gl.of('depthMask').map((entry) => entry.flag);
+    expect(masks).toContain(true);
+    expect(masks).toContain(false);
+  });
+
+  it('empties the depth to the far plane where the pass clears it', () => {
+    const { gl, backend } = backendOver();
+    backend.program(depthFrame()).draw();
+    // The first pass clears the depth to 1, the far end of the range, so a first
+    // surface at any distance is nearer than the empty attachment; the second keeps
+    // what the first left and clears nothing.
+    expect(gl.of('clearBufferfv')).toContainEqual(
+      expect.objectContaining({ buffer: DEPTH, values: [1] })
+    );
+  });
+
+  it('remakes the depth renderbuffer at the new size before the next draw', () => {
+    const { gl, backend } = backendOver();
+    const program = backend.program(depthFrame());
+    program.draw();
+    backend.resize(320, 180);
+    program.draw();
+    // The depth follows the frame, so a resize respecifies its storage at the new
+    // size — a depth kept at one size and tested at another would decide which
+    // surface is in front out of the wrong pixels.
+    expect(gl.of('renderbufferStorage')).toContainEqual(
+      expect.objectContaining({ internal: DEPTH_COMPONENT24, width: 320, height: 180 })
+    );
+  });
+
+  it('gives the depth renderbuffer back when it is done', () => {
+    const { gl, backend } = backendOver();
+    backend.program(depthFrame()).dispose();
+    // One depth renderbuffer, freed once through its own context call.
+    expect(gl.of('deleteRenderbuffer')).toHaveLength(1);
+  });
+});
+
+describe('a pass that masks with a stencil (item 48)', () => {
+  const STENCIL_INDEX8 = 0x8d48;
+  const STENCIL_ATTACHMENT = 0x8d20;
+  const STENCIL = 0x1802;
+  const STENCIL_TEST = 0x0b90;
+  const ALWAYS = 0x0207;
+  const EQUAL = 0x0202;
+  const KEEP = 0x1e00;
+  const REPLACE = 0x1e01;
+
+  it('no longer refuses a stencil now that it keeps one', () => {
+    const { backend } = backendOver();
+    expect(() => backend.program(stencilFrame()).draw()).not.toThrow();
+  });
+
+  it('keeps the mask in a stencil renderbuffer attached at the stencil point', () => {
+    const { gl, backend } = backendOver();
+    backend.program(stencilFrame());
+    expect(gl.of('renderbufferStorage')).toContainEqual(
+      expect.objectContaining({ internal: STENCIL_INDEX8, width: 800, height: 600 })
+    );
+    expect(gl.of('framebufferRenderbuffer')).toContainEqual(
+      expect.objectContaining({ attachment: STENCIL_ATTACHMENT })
+    );
+  });
+
+  it('marks the mask everywhere the first pass draws and reads it where the second fills', () => {
+    const { gl, backend } = backendOver();
+    backend.program(stencilFrame()).draw();
+    expect(gl.of('enable')).toContainEqual(expect.objectContaining({ cap: STENCIL_TEST }));
+    // The mark pass replaces the reference everywhere it draws (compare always, the
+    // whole mask writable); the fill pass draws only where the reference already is
+    // and keeps the mask as it found it (compare equal, nothing writable). These are
+    // the two modes' `stencilFunc`/`stencilOp`/`stencilMask` in the card's own fields.
+    const funcs = gl.of('stencilFunc');
+    expect(funcs).toContainEqual(expect.objectContaining({ func: ALWAYS, ref: 0xff, mask: 0xff }));
+    expect(funcs).toContainEqual(expect.objectContaining({ func: EQUAL, ref: 0xff, mask: 0xff }));
+    expect(gl.of('stencilOp')).toContainEqual(expect.objectContaining({ fail: KEEP, zfail: KEEP, zpass: REPLACE }));
+    expect(gl.of('stencilOp')).toContainEqual(expect.objectContaining({ fail: KEEP, zfail: KEEP, zpass: KEEP }));
+    const writeMasks = gl.of('stencilMask').map((entry) => entry.mask);
+    expect(writeMasks).toContain(0xff);
+    expect(writeMasks).toContain(0);
+  });
+
+  it('empties the mask where the marking pass clears it', () => {
+    const { gl, backend } = backendOver();
+    backend.program(stencilFrame()).draw();
+    expect(gl.of('clearBufferiv')).toContainEqual(
+      expect.objectContaining({ buffer: STENCIL, values: [0] })
     );
   });
 });

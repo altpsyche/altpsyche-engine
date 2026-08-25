@@ -63,6 +63,37 @@ const CONSTANTS = {
   // The buffer kind `clearBufferfv` empties, for a multiple-target pass clearing
   // each attachment through its own colour point (item 47).
   COLOR: 0x1800,
+  // Depth and stencil (item 48). A renderbuffer holds the depth or the mask, since
+  // nothing here samples one; it is attached to the pass's framebuffer at the point
+  // its format keeps, and the state a pipeline tests under is set per pass. The
+  // buffer kinds are what `clearBufferfv`/`clearBufferiv`/`clearBufferfi` empty a
+  // depth or a stencil through, apart from the colour point above.
+  RENDERBUFFER: 0x8d41,
+  DEPTH_COMPONENT24: 0x81a6,
+  STENCIL_INDEX8: 0x8d48,
+  DEPTH24_STENCIL8: 0x88f0,
+  DEPTH_ATTACHMENT: 0x8d00,
+  STENCIL_ATTACHMENT: 0x8d20,
+  DEPTH_STENCIL_ATTACHMENT: 0x821a,
+  DEPTH_TEST: 0x0b71,
+  STENCIL_TEST: 0x0b90,
+  DEPTH: 0x1801,
+  STENCIL: 0x1802,
+  DEPTH_STENCIL: 0x84f9,
+  // The comparisons a depth test runs, the specification's own numbers so a test
+  // asserting `depthFunc` reads what a driver would see.
+  NEVER: 0x0200,
+  LESS: 0x0201,
+  EQUAL: 0x0202,
+  LEQUAL: 0x0203,
+  GREATER: 0x0204,
+  NOTEQUAL: 0x0205,
+  GEQUAL: 0x0206,
+  ALWAYS: 0x0207,
+  // The stencil operations `mark` and `inside` are built from: keep what is there,
+  // or replace it with the reference.
+  KEEP: 0x1e00,
+  REPLACE: 0x1e01,
 };
 
 /** The ceilings the report asks this context for, by the names the specification
@@ -313,6 +344,38 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     drawBuffers: (buffers: number[]) => record('drawBuffers', { buffers: [...buffers] }),
     clearBufferfv: (buffer: number, drawbuffer: number, values: number[]) =>
       record('clearBufferfv', { buffer, drawbuffer, values: [...values] }),
+    // A depth is emptied through `clearBufferfv`'s DEPTH point, a stencil through
+    // `clearBufferiv`'s STENCIL, and a combined depth-stencil through the one
+    // `clearBufferfi` that takes both at once (item 48).
+    clearBufferiv: (buffer: number, drawbuffer: number, values: number[]) =>
+      record('clearBufferiv', { buffer, drawbuffer, values: [...values] }),
+    clearBufferfi: (buffer: number, drawbuffer: number, depth: number, stencil: number) =>
+      record('clearBufferfi', { buffer, drawbuffer, depth, stencil }),
+
+    // The renderbuffer a depth or a stencil is kept in (item 48), attached to a
+    // pass's framebuffer at the point its format keeps. The fake keeps no pixels —
+    // a real driver's are `backends.mjs`'s to hold — so these record what the
+    // backend asked for and hand back an object it can bind and attach again.
+    createRenderbuffer: () => ({ renderbuffer: true }),
+    deleteRenderbuffer: () => record('deleteRenderbuffer'),
+    bindRenderbuffer: (target: number) => record('bindRenderbuffer', { target }),
+    renderbufferStorage: (target: number, internal: number, width: number, height: number) =>
+      record('renderbufferStorage', { target, internal, width, height }),
+    framebufferRenderbuffer: (target: number, attachment: number) =>
+      record('framebufferRenderbuffer', { target, attachment }),
+
+    // The depth and stencil test state a pass draws under (item 48). `enable`/
+    // `disable` turn each test on or off, and the funcs, masks and ops are what a
+    // pipeline's `compare`/`write`/`stencil` compile to. State leaks between passes
+    // on a real context, so the backend sets all of it every pass a depth frame
+    // draws, which is what these record.
+    enable: (cap: number) => record('enable', { cap }),
+    disable: (cap: number) => record('disable', { cap }),
+    depthFunc: (func: number) => record('depthFunc', { func }),
+    depthMask: (flag: boolean) => record('depthMask', { flag }),
+    stencilFunc: (func: number, ref: number, mask: number) => record('stencilFunc', { func, ref, mask }),
+    stencilOp: (fail: number, zfail: number, zpass: number) => record('stencilOp', { fail, zfail, zpass }),
+    stencilMask: (mask: number) => record('stencilMask', { mask }),
 
     getExtension: (name: string) =>
       name === 'WEBGL_lose_context'

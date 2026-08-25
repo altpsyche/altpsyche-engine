@@ -1523,7 +1523,7 @@ later, as every prior WebGL 2 item here has been. See [JOURNAL.md](JOURNAL.md).
 
 ### 48. WebGL 2: depth and stencil
 
-**Status.** open
+**Status.** done
 
 **Done when.** The depth and stencil presets that WebGPU passes today pass here, and the pixels agree per item 44.
 
@@ -1556,6 +1556,50 @@ note 3; items 46/47 landed their call-level behaviour and deferred pixels the sa
 
 **Reverse.** Set `Status` back to `open`, drop `item 77` from `Needs`, and delete this note.
 The item is workable once item 77 has drawn a geometry preset on WebGL 2.
+
+**How it landed.** The WebGL 2 backend ([gpu/webgl2.ts](../gpu/webgl2.ts)) tests depth and masks
+with a stencil where it refused both before. A texture declared in a depth or stencil format
+(`depth24plus`, `stencil8`, the combined `depth24plus-stencil8` kept for shape) is built as a
+**renderbuffer** through a fourth arena of its own — beside the buffer, texture and framebuffer
+arenas, since WebGL 2 frees a renderbuffer through its own context call — rather than the RGBA8
+sampled texture a colour attachment becomes; nothing here samples a depth, so a renderbuffer is
+its home. It follows the frame like the colour targets, so it is respecified at the new size on a
+resize and re-attached beside them, and one renderbuffer stands for the resource however many
+passes attach it, so the second pass tests against the depth the first left. Each depth-carrying
+pass attaches the renderbuffer to the framebuffer it draws through — a single target's own or the
+multiple-target one (item 47) — at the point its format keeps (`DEPTH_ATTACHMENT`,
+`STENCIL_ATTACHMENT`, `DEPTH_STENCIL_ATTACHMENT`); a depth pass drawing the frame directly is
+refused by name, since a depth buffer cannot attach to the canvas. The state a pipeline tests
+under is set every pass of a depth frame, because a real context leaks it between passes: the
+depth test on with the pipeline's `compare` mapped to the card's enum and `write` to `depthMask`,
+the stencil test on with the mode's `stencilFunc`/`stencilOp`/`stencilMask` — `mark` replacing the
+reference everywhere it draws, `inside` drawing only where the reference is and keeping the mask,
+the same `STENCIL_MODES` the WebGPU backend uses so the two agree on what a mark leaves — and each
+turned off where a pass tests neither. The pass empties its depth or stencil first through the
+buffer kind its format keeps (`clearBufferfv`/`clearBufferiv`/`clearBufferfi`) where it clears,
+and keeps what an earlier pass left where it does not. **A frame that tests nothing sets none of
+this**, so every fullscreen toy the backend drew before is byte-identical in its call stream.
+
+**What the gates could see, and what they could not.** The node fake
+([tests/support/fake-gl.ts](../tests/support/fake-gl.ts), now carrying the renderbuffer,
+depth/stencil-state and typed-clear calls) drives two hand-authored frames built the way the build
+assembles `core-depth` and `core-stencil` — the real `quad-grid` sheet, two passes sharing one
+depth/stencil renderbuffer ([tests/renderer-webgl2.test.ts](../tests/renderer-webgl2.test.ts),
+reached through the node fast suite rather than the dead corpus loader, item 64, as items 46/47/77
+were). It asserts the renderbuffer stores the format at the frame size and attaches at the depth or
+stencil point, the depth test enables with `less` and both a write-on and a write-off `depthMask`,
+the far-plane clear, the resize respecify, the renderbuffer freed once; and for the mask the two
+modes' func/op/mask in the card's own fields, the stencil enable, and the zero clear. **What no
+gate here can see is that the resulting depth-tested and masked picture is byte-correct on a
+card** — the fake records calls, not pixels; no browser gate reaches this backend until item 79
+lands the harness, and `gate:browser`/`gate:card` were not run in the unattended session. So *that
+the pixels agree per item 44* is a card's or a browser's, per §17 note 3, exactly as every prior
+WebGL 2 item here; the presets draw at call level and their depth/stencil behaviour is pinned, and
+pixel-agreement waits on the same gate the whole WebGL 2 column waits on (item 79, then a card for
+item 44 proper). Blend on a colour target (`core-depth`'s second pass mixes with `over`) and MSAA
+(`samples`) are separate capabilities this backend still refuses — MSAA is now item 80, filed
+below, since resolving item 48 as depth/stencil left the `samples` refusal without a tracking item.
+See [JOURNAL.md](JOURNAL.md).
 
 ### 49. WebGL 2: instancing and per-draw UBO ranges
 
@@ -2534,4 +2578,35 @@ gate that cannot run them.
 - `a resized surface paints every row and column of its buffer` — 180 of 180 rows and 320 of 320 columns, pixels read back off the GLSL path.
 
 So what is missing is narrower and more useful to name exactly: **no gate draws the capability corpus through that backend.** Live compile, draw, resize, refuse and read-back are covered; per-capability presets are not, and those are what items 46, 47, 48, 77 and 78 each defer to. An item built against the overstatement would rebuild coverage that exists.
+
+### 80. WebGL 2: multisample attachments
+
+**Status.** open
+
+**Asks for.** The WebGL 2 backend keeps several samples of an attachment and averages them into a
+single-sample target, where today it refuses any texture carrying `samples` by name
+(`gpu/webgl2.ts`: *"keeps several samples of … and this backend keeps one"*). A multisampled
+colour target is a multisample renderbuffer (`renderbufferStorageMultisample`), its resolve a
+`blitFramebuffer` from the multisample framebuffer to the `resolve` target's, the same average
+the WebGPU backend takes with a `resolveTarget` on its colour attachment. This is the `msaa`
+capability §10 lists and `webgl2Capabilities` already reports for WebGL 2 (item 51).
+
+**Done when.** The `core-multisample` preset — one four-sample `edges` attachment resolved into a
+`flat` single-sample target — draws on WebGL 2: its samples kept in a multisample renderbuffer and
+averaged into the resolve target through a blit, and the store counts `cost()` reports issued.
+That the resolved picture agrees is a card's or a browser's per item 44, as every WebGL 2 item's
+pixel-agreement is (§17 note 3).
+
+**Needs.** item 46.
+
+**Found by review 2026-08-25, filed by the run that landed item 48.** The `samples` refusal in
+`gpu/webgl2.ts` was labelled "item 48" by item 46's landing — a guess that item 48 ("depth and
+stencil") would lift it. It will not: item 48's re-opened scope is depth and stencil alone (a
+depth or stencil renderbuffer and the test state), and MSAA is an orthogonal capability the corpus
+exercises through `core-multisample`, which item 48 does not touch. So resolving item 48 left the
+`samples` refusal — and `core-multisample`'s WebGL 2 arm — tracked by nothing. This item is that
+path, named once. It is deliberately colour-attachment MSAA only; a multisampled *depth* target is
+a refinement on top of both this and item 48 and is not filed here. **Reverse:** delete this item;
+the `samples` refusal reverts to naming a gap nothing tracks. `carry`: no — this is a backend
+capability the consuming repository's decision log does not turn on.
 
