@@ -2003,7 +2003,7 @@ items 53 and 55. **Reverse:** put `item 57` back into item 58's `Needs` and dele
 | --- | --- | --- |
 | standing rows | 53, 55, 57 | registers and waits rather than tasks; each says so in its own entry |
 | reverted | 6 | a record of a mistake, kept rather than deleted per the status table |
-| work that moved | 38, 49, 52, 66, 67, 68 | `lifted decomposed into …`; the work lives in the successor items, which are what this gate reads |
+| work that moved | 38, 49, 52, 66, 67, 68, 81 | `lifted decomposed into …`; the work lives in the successor items, which are what this gate reads |
 | lifted to hardware | 31, 62 | **these must be read, not superseded.** A machine with a real graphics card closes them, and until one does, 1.0 is not declarable |
 
 Everything else above must be `done`.
@@ -2923,7 +2923,15 @@ capability the consuming repository's decision log does not turn on.
 
 ### 81. `ShaderSource` becomes a union discriminated on `authored`
 
-**Status.** lifted needs decomposition
+**Status.** lifted decomposed into items 94, 95
+
+**Status corrected 2026-08-25, immediately after the lift.** The step that lifted this item filed
+items 94 and 95 and repointed item 56 onto item 94, then **ran past its 45-minute cap and was
+killed**, so it never came back to say where the work went — the label read `needs decomposition`
+over an item that had already been decomposed. That is the same stale-label defect item 38 carried,
+caught one commit later this time rather than months later. **Reverse:** set `Status` back to
+`lifted needs decomposition`, delete this paragraph, and remove `81` from item 58's work-that-moved
+row.
 
 **Lifted 2026-08-25: the asked shape cannot hold the data the same `Done when` names.** The row asks
 for §9's `ShaderSource` in that shape exactly — the `wgsl` arm is
