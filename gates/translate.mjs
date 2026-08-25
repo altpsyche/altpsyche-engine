@@ -93,7 +93,59 @@ export function classify(stage, es300) {
   const msg = /** @type {string} */ (result.message);
   if (msg.includes('BUFFER_STORAGE')) return { action: 'skip', capability: 'storage-buffer' };
   if (msg.includes('IMAGE_LOAD_STORE')) return { action: 'skip', capability: 'storage-texture' };
-  return { action: 'fail', construct: msg };
+  // Item 43: not a §10 capability the two lines above map to a skip, so it is a
+  // genuine untranslatable construct — refused, and named, per §9.1's second
+  // consequence ("refused by name at build time with the construct named ...
+  // the same vocabulary as §10").
+  return { action: 'fail', construct: namedConstruct(msg) };
+}
+
+/**
+ * Item 43. naga refusal signatures mapped to the construct they are about, in the
+ * §10-adjacent vocabulary §9.1 asks the refusal to speak. Each is recorded from a
+ * real naga-cli 30.0.1 es300 refusal — see `tests/untranslatable.test.ts`, which
+ * re-checks every row against live naga when it is on PATH, so a row that stops
+ * matching naga's wording is caught rather than left to rot.
+ * @type {ReadonlyArray<readonly [string, string]>}
+ */
+const NAMED_CONSTRUCTS = [
+  ['Features(CUBE_TEXTURES_ARRAY)', 'cube-array texture'],
+  ['GLSL has no 16-bit float type', '16-bit float (f16)'],
+];
+
+/**
+ * Item 43. Names the construct a refusal is about rather than handing back naga's
+ * raw diagnostic, so a build failure reads in the same vocabulary as §10's
+ * capability refusals. A message no row recognises still **names** the construct:
+ * a `Features(X)` message surfaces its flag `X`, and anything else falls back to
+ * naga's own wording — which names what it refused. So a new untranslatable
+ * construct is never silently swallowed, only less tidily named until it earns a
+ * row above.
+ * @param {string} message — a naga refusal, already collapsed to one line
+ * @returns {string}
+ */
+export function namedConstruct(message) {
+  for (const [signature, construct] of NAMED_CONSTRUCTS) {
+    if (message.includes(signature)) return construct;
+  }
+  const feature = message.match(/Features\(([A-Z0-9_ |]+)\)/);
+  if (feature) return /** @type {string} */ (feature[1]).trim();
+  return message;
+}
+
+/**
+ * Item 43. Runs one entry point through the same es300 translation the corpus
+ * build uses and returns the build's decision for it, so the untranslatable
+ * fixtures' gate can prove — against live naga — that a source using a construct
+ * WebGL 2 cannot carry is refused with the construct named. Needs `naga` on PATH.
+ * @param {string} file — absolute path to a `.wgsl` source
+ * @param {string} entry — entry-point name
+ * @param {'vertex' | 'fragment' | 'compute'} stage
+ */
+export function decideEntry(file, entry, stage) {
+  const out = join(mkdtempSync(join(tmpdir(), 'translate-')), `${entry}.${EXT[stage]}`);
+  const es300 = stage === 'compute' ? null : naga(WEBGL2_PROFILE, entry, file, out);
+  return classify(stage, es300);
 }
 
 /** @param {string} profile @param {string} name @param {string} input @param {string} output */

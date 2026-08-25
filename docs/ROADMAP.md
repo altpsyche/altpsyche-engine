@@ -1319,11 +1319,45 @@ exactly as item 41's build-time bake waits on the same. See [JOURNAL.md](JOURNAL
 
 ### 43. Refusal by named construct
 
-**Status.** open
+**Status.** done
 
 **Done when.** A WGSL source using something the translator cannot carry is refused with the construct named, at build time where a build can see it.
 
 **Needs.** item 41.
+
+**How it landed.** §9.1's second consequence: some WGSL will not translate and must be
+*refused by name at build time with the construct named, in the same vocabulary as §10*.
+Item 41 landed the build ([gates/translate.mjs](../gates/translate.mjs)) that **fails** on an
+untranslatable shader, but proved it only against an ad-hoc naga refusal in its landing session —
+no untranslatable source was committed, so the fail-by-named-construct path had no standing gate.
+This is that gate, in three parts. **The naming:** `namedConstruct(message)` turns a naga refusal
+into the construct it is about — `Features(CUBE_TEXTURES_ARRAY)` → `cube-array texture`, `GLSL has
+no 16-bit float type` → `16-bit float (f16)` — and the build's `classify` fail path now carries
+that name rather than naga's raw diagnostic. A message no row recognises still **names** the
+construct: a `Features(X)` message surfaces its flag `X`, anything else falls back to naga's own
+wording (which names what it refused), so a new untranslatable construct is a build failure that
+names something rather than a silent pass. **The fixtures:** two committed WGSL sources under
+`fixtures/source/untranslatable/` — [cube-array.wgsl](../fixtures/source/untranslatable/cube-array.wgsl),
+a cube-array texture, and [f16.wgsl](../fixtures/source/untranslatable/f16.wgsl), an f16 value — each
+parsing as valid WGSL and refused by naga's GLSL ES 3.00 writer for a reason that
+is **not** one of the three §10 capabilities (`compute` / `storage-buffer` / `storage-texture`)
+item 41 maps to a *skip*; they live outside the 15-preset corpus so `npm run translate` never picks
+them up. **The gate:** [tests/untranslatable.test.ts](../tests/untranslatable.test.ts) drives the
+build's own `classify` over the messages naga really produced and asserts each is refused (`action:
+'fail'`) with the construct named — no naga needed, so it runs on a clean CI machine — plus a
+naga-guarded reading that re-runs the fixtures through **live naga** (`decideEntry`) and asserts the
+same, so the recorded messages cannot silently drift from what naga refuses today.
+
+**What the gates could not see.** Nothing this run reached is card- or browser-only: `namedConstruct`
+and `classify` are pure, and the live-naga arm actually ran here (naga-cli 30.0.1 on PATH), refusing
+both fixtures with the recorded messages. What a clean CI machine cannot see is that live-naga arm
+— it skips where naga is absent, falling back to the recorded messages, which is why the record is
+re-checked against live naga wherever a dev machine runs the suite. A future naga whose es300 writer
+carries `f16` or cube-array textures would make a fixture translate instead of refuse and redden the
+live arm — the right signal, since the fixture would no longer be untranslatable. 734 node tests
+green (was 730), `type-check` green (the `.mjs` gate harness is type-checked, item 76, so the new
+JSDoc in `translate.mjs` is covered); the export surface did not move (a gate, fixtures and a test;
+no door name added), so `gate:pack` was not required. See [JOURNAL.md](JOURNAL.md).
 
 ### 44. The three-number cross-backend comparison
 
