@@ -1523,11 +1523,13 @@ later, as every prior WebGL 2 item here has been. See [JOURNAL.md](JOURNAL.md).
 
 ### 48. WebGL 2: depth and stencil
 
-**Status.** lifted needs decomposition
+**Status.** open
 
 **Done when.** The depth and stencil presets that WebGPU passes today pass here, and the pixels agree per item 44.
 
 **Needs.** item 46, item 77.
+
+**Re-opened 2026-08-25, unchanged in substance.** The lift was right and it already named its own remedy: item 77, which is now in its `Needs`. It is `open` rather than `lifted` because **`lifted` never satisfies a `Needs`**, so leaving it lifted would have made item 52 permanently unreachable — the whole scene-tier-on-both-backends question hanging on a status word. Nothing about the work changed; only that the queue can now reach it once item 77 lands.
 
 **Lifted 2026-08-25: this asks for work its `Needs` never named — the WebGL 2 backend
 cannot draw the vertex geometry these presets are built on.** The two presets WebGPU
@@ -2466,8 +2468,7 @@ storage presets exercise, refused on other grounds too (storage) and not filed h
 
 **Status.** open
 
-**Asks for.** One gate under `npm run gate:browser` that constructs `createWebGL2Backend`
-against a real `webgl2` context and draws a frame through it. No gate does today. The corpus
+**Asks for.** A gate under `npm run gate:browser` that draws **the capability corpus** through the WebGL 2 backend on a real `webgl2` context, one preset at a time, the way `gates/corpus.mjs` already does for WebGPU. The corpus
 gate bundles `createWebGL2Backend` into its page ([gates/corpus.mjs](../gates/corpus.mjs) line
 30) and never calls it: the loop throws on any fixture whose `language` is not `wgsl` and then
 records `"<id> WebGL 2  written in WGSL, which has no GLSL to draw"` unconditionally, so the
@@ -2495,3 +2496,11 @@ backend still refuses — but the gap this item closes is the harness's, not the
 it outlives item 77: without it, item 77's own `Done when` ("draws on WebGL 2") has no gate to
 be checked by either. **Reverse:** delete this item; the WebGL 2 items revert to naming a
 gate that cannot run them.
+
+**Corrected on 2026-08-25, before any work started.** The finding that filed this item said the WebGL 2 backend's draw path "has never executed outside `tests/support/fake-gl.ts`". That is true of the two gates it read — `corpus.mjs` and `card.mjs` — and **false of the suite**. `gates/surface.mjs` bundles `host/surface: ['createSurface']` and drives `glslFrame` graphs, and `createSurface` reaches `createWebGL2Backend` through the dynamic import inside `createFrameRenderer`. Its own readings prove a real driver rather than a double:
+
+- `a source that will not compile is refused and the last one keeps drawing` — `said: ERROR: 0:1: 'notAFunction' : no matching overloaded function`, a GLSL ES compiler diagnostic no fake context produces.
+- `a resized surface paints every row and column of its buffer` — 180 of 180 rows and 320 of 320 columns, pixels read back off the GLSL path.
+
+So what is missing is narrower and more useful to name exactly: **no gate draws the capability corpus through that backend.** Live compile, draw, resize, refuse and read-back are covered; per-capability presets are not, and those are what items 46, 47, 48, 77 and 78 each defer to. An item built against the overstatement would rebuild coverage that exists.
+
