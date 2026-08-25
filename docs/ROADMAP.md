@@ -2139,7 +2139,7 @@ so `gate:pack` was not required.
 
 ### 66. The last two §14 renames, once the capability wiring exists
 
-**Status.** open
+**Status.** lifted needs decomposition
 
 **Asks for.** The two rows item 38 could not reach: `readBuffer` removed, and `ShaderSource` becoming a union discriminated on `authored`.
 
@@ -2147,9 +2147,15 @@ so `gate:pack` was not required.
 
 **Needs.** item 70, item 51.
 
+**Lifted 2026-08-25: the two rows have different dependencies, and one of them acquired a cost after this item was filed.** Split into item 81 (the `ShaderSource` union) and item 82 (`readBuffer` removed). The union half is reachable today; the removal half is not, and this item's single `Done when` — "Neither name survives anywhere" — cannot be half-satisfied, so landing the reachable half under it would satisfy the criterion loosely, which is the failure item 38 was decomposed for.
+
+**What blocks the removal half.** `readBuffer` is the only readback of a buffer's *words* in the tree — `readPixels` reads a picture, and nothing else maps a buffer outside [gates/card.mjs](../gates/card.mjs)'s own raw code — and it sits on the shared `ShaderProgram` interface ([graph/types.ts](../graph/types.ts) ~L613), so it cannot leave one backend alone. **Item 54 gave it two consumers the day before this item was read:** [gates/times.mjs](../gates/times.mjs) reads every timed pass's timestamp pair, which is item 54's whole deliverable and is pinned by [tests/bench-times.test.ts](../tests/bench-times.test.ts), and [gates/surface.mjs](../gates/surface.mjs) reads a buffer either side of a rewrite inside a browser gate. Removing `readBuffer` today therefore deletes a landed item's deliverable rather than a vacuous answer. §9's replacement home, `Arena.read(handle, range)`, is not in [resource/arena.ts](../resource/arena.ts) and belongs to items 67 and 68, both themselves `lifted`. Item 68's own lift note left the ownership of `readBuffer`'s removal open; what it did not have is this fact, that removal now has a cost as well as an owner.
+
+**Reverse:** set this item's `Status` back to `open`, delete this note and the amendment below, and delete items 81 and 82. **What would change the answer:** items 67 and 68 being decomposed so a readback door exists that is not `ShaderProgram.readBuffer` — or a decomposer finding that giving the arena a `read` alone is enough, in which case item 82's `Needs` narrows to whichever item lands that rather than naming both.
+
 **Why it exists.** Item 38 asked for every row of §14 at once, in Phase 4. Two of those rows depend on Phase 5 work that item 38's `Needs` never named — `readBuffer`'s removal on item 51's capability wiring, and the `ShaderSource` union on the arena shape that arrives with translation. A run stopped on the contradiction instead of satisfying the criterion loosely, which is the behaviour the queue is meant to produce.
 
-**It is a 1.0 blocker.** Decision 8 says all of §14 lands before 1.0 and that renames are forbidden afterwards, so this item is what keeps that promise true once item 38 has taken everything reachable.
+**It is a 1.0 blocker.** Decision 8 says all of §14 lands before 1.0 and that renames are forbidden afterwards, so this item is what keeps that promise true once item 38 has taken everything reachable. **After the lift that promise rides on items 81 and 82**, and item 82 is not reachable, so §14's table cannot be fully spent until items 67 and 68 are decomposed. That is a real constraint on 1.0 and it is recorded here rather than discovered at item 58.
 
 ### 67. `FrameDescription` folds into the graph, on handles
 
@@ -2744,3 +2750,30 @@ a refinement on top of both this and item 48 and is not filed here. **Reverse:**
 the `samples` refusal reverts to naming a gap nothing tracks. `carry`: no — this is a backend
 capability the consuming repository's decision log does not turn on.
 
+### 81. `ShaderSource` becomes a union discriminated on `authored`
+
+**Status.** open
+
+**Asks for.** §14's row "`ShaderSource` with optional language fields → a union discriminated on `authored`", in the shape §9 spells out: `{ authored: 'wgsl'; wgsl; glsl?: GlslPair; constants? }` or `{ authored: 'glsl'; glsl: GlslPair; constants? }`. The `glsl` field means a cached translation on one arm and the authored truth on the other, which is why it may not be one optional field on one record.
+
+**Done when.** A shader's authoring language is read off one discriminated value rather than inferred from which fields are present or from a separate frame-level field, and the GLSL item 41 bakes travels in the `wgsl` arm's `glsl`. No module carries a bare `code` string whose language is decided somewhere else.
+
+**Needs.** item 41, item 70.
+
+**A note on §14's "today" column, because it does not match the tree.** §14 names today's shape as "`ShaderSource` with optional language fields", and **no such type is in the code**: a frame carries `target: ShaderTarget` and a module carries `code: string` ([graph/types.ts](../graph/types.ts) L34), while §9's `ShaderSource` and `GlslPair` are documentation only — item 41 recorded that plainly ("§9's `ShaderSource`/`GlslPair` type is not in the code"). So this row is a restructure rather than a rename and should be sized that way. Whoever takes it decides where the discriminant lives: §9 puts it on the source, which is one level below the frame's `target`, and `selectBackend` reads `target` today ([gpu/select.ts](../gpu/select.ts)). Both backends, the corpus fixtures and the gates read whichever it becomes.
+
+**Filed 2026-08-25 by the lift of item 66**, which asked for this row and `readBuffer`'s removal under one `Done when` while the two have different dependencies. **Reverse:** delete this item and set item 66 back to `open`.
+
+### 82. `readBuffer` removed
+
+**Status.** open
+
+**Asks for.** §14's row "`readBuffer` answering vacuously → gone": the method leaves `ShaderProgram`, and reading a buffer's words happens through a door that does not answer vacuously on a backend that has no buffers to declare.
+
+**Done when.** `readBuffer` survives nowhere, and **both of the consumers it has today still read their words through the replacement** — [gates/times.mjs](../gates/times.mjs) still prints an elapsed row per timed pass, and [gates/surface.mjs](../gates/surface.mjs) still reads a buffer either side of a rewrite. A removal that drops either reading has deleted item 54's deliverable rather than §14's vacuous answer.
+
+**Needs.** item 67, item 68. **Both are `lifted`, so this item is not reachable**, and that is the true state rather than a gap in the queue: §9's readback home is `Arena.read(handle, range)`, [resource/arena.ts](../resource/arena.ts) has no `read`, and giving it one is the handles-and-fold work those two items own. Naming a reachable dependency this item does not have is exactly how a run would build on something that was never landed.
+
+**Why the removal is not free, which item 66 assumed it was.** With item 51's capability wiring landed, a WebGL 2 program never receives a graph that declares a storage buffer — [gpu/webgl2.ts](../gpu/webgl2.ts) says so in place — so the vacuous arm is unreachable by construction and §14's stated reason for the row holds. What does not follow is that the *method* can go: it is the only path from a buffer's words to a caller, and item 54 pointed a benchmark and a browser gate at it. The row is right about the vacuous answer and silent about the readback, and this item is where both are settled together.
+
+**Filed 2026-08-25 by the lift of item 66.** **Reverse:** delete this item and set item 66 back to `open`.
