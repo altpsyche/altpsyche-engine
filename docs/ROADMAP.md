@@ -3115,7 +3115,7 @@ the call stream, which the fake context does see. See [JOURNAL.md](JOURNAL.md).
 
 ### 85. WebGL 2: per-draw UBO ranges, with a preset that reads one
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The per-draw uniform slice wired through the WebGL 2 backend — the half of item 49
 that is real work rather than an already-met criterion. The executor arm has existed since item 27:

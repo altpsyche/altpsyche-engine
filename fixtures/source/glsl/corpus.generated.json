@@ -71,6 +71,18 @@
         }
       }
     },
+    "core-perdraw-uniform": {
+      "entries": {
+        "warp": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Slice {\n    vec3 tint;\n    float shift;\n};\nstruct Shaded {\n    vec4 at;\n    vec2 place;\n    vec3 tint;\n};\nconst float SPAN = 0.28;\nconst float RIDGE = 0.16;\nconst float TURN = 6.2831855;\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\n\nlayout(std140) uniform Slice_block_1Vertex { Slice _group_1_binding_0_vs; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\nsmooth out vec3 _vs2fs_location1;\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    float _e7 = _group_0_binding_0_vs.u_time;\n    float phase = ((place.x * TURN) + _e7);\n    float lift = ((sin(phase) * RIDGE) * place.y);\n    float _e19 = _group_1_binding_0_vs.shift;\n    vec2 at = vec2(((corner.x * SPAN) + _e19), ((corner.y * SPAN) + lift));\n    vec3 _e31 = _group_1_binding_0_vs.tint;\n    Shaded _tmp_return = Shaded(vec4(at, 0.0, 1.0), place, _e31);\n    gl_Position = _tmp_return.at;\n    _vs2fs_location0 = _tmp_return.place;\n    _vs2fs_location1 = _tmp_return.tint;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n"
+        },
+        "shade": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Slice {\n    vec3 tint;\n    float shift;\n};\nstruct Shaded {\n    vec4 at;\n    vec2 place;\n    vec3 tint;\n};\nconst float SPAN = 0.28;\nconst float RIDGE = 0.16;\nconst float TURN = 6.2831855;\n\nsmooth in vec2 _vs2fs_location0;\nsmooth in vec3 _vs2fs_location1;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nvoid main() {\n    Shaded shaded = Shaded(gl_FragCoord, _vs2fs_location0, _vs2fs_location1);\n    vec2 cells = (shaded.place * 16.0);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    float line = (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n    _fs2p_location0 = vec4(mix(shaded.tint, vec3(1.0), (line * 0.5)), 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
     "core-perdraw": {
       "entries": {
         "shade": {

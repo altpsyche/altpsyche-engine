@@ -171,8 +171,8 @@ export function translateCorpus() {
     .filter((f) => f.endsWith('.wgsl'))
     .sort();
 
-  if (files.length !== 15) {
-    console.error(`expected 15 corpus WGSL presets, found ${files.length}`);
+  if (files.length !== 16) {
+    console.error(`expected 16 corpus WGSL presets, found ${files.length}`);
     process.exit(1);
   }
 

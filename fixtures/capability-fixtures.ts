@@ -336,6 +336,37 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
     },
   },
   {
+    id: 'core-perdraw-uniform',
+    language: 'wgsl',
+    source: 'core-perdraw-uniform.wgsl',
+    uniforms: [
+      { name: 'u_time', type: 'float', value: 0 },
+      { name: 'u_resolution', type: 'vec2', value: [800, 600] },
+    ],
+    frame: {
+      // Sixteen quads across and down, the same grid the geometry preset draws:
+      // enough corners for a ridge to read as a curve and few enough that the whole
+      // primitive is 400 vertices.
+      geometry: [{ name: 'grid', primitive: 'quad-grid', size: [16, 16] }],
+      // Three records at 256-byte slots, filled by the build: a colour and a
+      // sideways shift a draw reads of its own. The buffer is a uniform bound one
+      // slice at a time (§8), which is the raster path a per-draw slice takes where
+      // `core-perdraw`'s storage buffer has none on WebGL 2.
+      buffers: [{ name: 'slice', bytes: 3 * 256, content: 'perdraw-slices' }],
+      // One grid drawn three times over, each draw pointed at its own record by the
+      // byte offset it names rather than by which copy it is, so the same pipeline
+      // paints three quads that differ in the slice they were handed.
+      passes: [
+        {
+          pipeline: 'shade',
+          vertex: 'warp',
+          geometry: 'grid',
+          perDraw: { buffer: 'slice', slice: 16, offsets: [0, 256, 512] },
+        },
+      ],
+    },
+  },
+  {
     id: 'core-depth',
     language: 'wgsl',
     source: 'core-depth.wgsl',

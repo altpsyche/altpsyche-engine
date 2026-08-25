@@ -24,6 +24,7 @@ import {
   samplersOf,
   storageBuffersOf,
   storageTexturesOf,
+  uniformBlocksOf,
   vertexInputsOf,
 } from './wgsl-pipelines';
 import { BUFFER_CONTENT, TEXTURE_CONTENT } from './shader-content';
@@ -312,6 +313,29 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   const declaredSamplers = new Map(samplersOf(code).map((found) => [found.name, found]));
   const stored = new Map(storageBuffersOf(code).map((found) => [found.name, found]));
 
+  // The per-draw uniform buffers a pass slices, one record a draw (§8). Where each
+  // sits is read off the source's own `var<uniform>` declaration rather than the
+  // entry, for the reason every binding is: a group or binding written twice can
+  // disagree while the shader still compiles. The record width is the entry's,
+  // since a source's `array` type does not carry the slice one draw reads. A pass
+  // slicing a buffer the source binds as no uniform block is refused by name, since
+  // its records would have no stage reading them.
+  const uniformBlocks = new Map(uniformBlocksOf(code).map((block) => [block.name, block]));
+  const perDrawBuffers = new Map<string, { slice: number; group: number; binding: number }>();
+  for (const pass of declared.passes) {
+    if (!pass.perDraw) continue;
+    if (pass.instances !== undefined) {
+      throw new Error(`the pass on "${pass.pipeline}" of "${id}" slices "${pass.perDraw.buffer}" per draw and names an instance count`);
+    }
+    const block = uniformBlocks.get(pass.perDraw.buffer);
+    if (!block) {
+      throw new Error(
+        `the pass on "${pass.pipeline}" of "${id}" slices "${pass.perDraw.buffer}" per draw, which its source binds as no uniform block`
+      );
+    }
+    perDrawBuffers.set(pass.perDraw.buffer, { slice: pass.perDraw.slice, group: block.group, binding: block.binding });
+  }
+
   // A texture with contents is one the source samples and a texture without them
   // is one the source stores into, so the entry saying which it is has to agree
   // with the file. Either way round the picture is silently wrong: a sampled name
@@ -360,7 +384,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   // A buffer a query resolves into is the one kind nothing in the source touches,
   // since the card writes it and a caller reads it back.
   for (const buffer of declared.buffers ?? []) {
-    if (!stored.has(buffer.name) && !answers.has(buffer.name)) {
+    if (!stored.has(buffer.name) && !answers.has(buffer.name) && !perDrawBuffers.has(buffer.name)) {
       throw new Error(`the frame for "${id}" sizes a buffer "${buffer.name}" its source never declares`);
     }
   }
@@ -423,6 +447,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     written.get(name) ??
     sampled.get(name) ??
     stored.get(name) ??
+    perDrawBuffers.get(name) ??
     (declaredSamplers.get(name) as { group: number; binding: number });
 
   /** What the entry says the frame is made of, which is every texture, every half
@@ -456,8 +481,9 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     ...read,
     // A buffer only the card writes is left out, because no stage reads it and the
     // check below is about a resource the frame described for a stage that never
-    // asks for it.
-    ...(declared.buffers ?? []).filter((buffer) => stored.has(buffer.name)),
+    // asks for it. A per-draw uniform buffer is read — one slice a draw — so it is
+    // among what a layout may name and carries its per-draw binding below.
+    ...(declared.buffers ?? []).filter((buffer) => stored.has(buffer.name) || perDrawBuffers.has(buffer.name)),
     ...(declared.samplers ?? []),
   ];
 
@@ -508,6 +534,12 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
             // only answer for a name the frame uses both ways.
             ...(written.has(resource.name) ? { reads: 'storage' as const } : {}),
             ...(sampled.has(resource.name) ? { reads: 'sample' as const } : {}),
+            // A per-draw uniform buffer carries the width of the one slice a draw
+            // reads of it, so the backend binds one record's worth at the draw's
+            // offset rather than the whole buffer.
+            ...(perDrawBuffers.has(resource.name)
+              ? { perDraw: { size: (perDrawBuffers.get(resource.name) as { slice: number }).slice } }
+              : {}),
           };
         }),
     ];
@@ -666,6 +698,18 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     // would be a second answer to the same question.
     if (pass.indirect !== undefined) {
       return { pipeline: pass.pipeline, draws: [{ indirect: pass.indirect }], ...attaches, ...said };
+    }
+    // A pass slicing a per-draw buffer draws its geometry once per record, each
+    // draw naming the byte offset of its slice (§8). One draw per offset, each a
+    // single instance, so the record — not the copy number — is what one draw
+    // reads of its own.
+    if (pass.perDraw !== undefined) {
+      return {
+        pipeline: pass.pipeline,
+        draws: pass.perDraw.offsets.map((offset) => ({ instances: 1, perDraw: offset })),
+        ...attaches,
+        ...said,
+      };
     }
     // How many vertices a drawn pass covers is the buffer's, so the pass carries
     // the instance count alone and the count of vertices stays where the bytes are.

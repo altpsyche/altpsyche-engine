@@ -24,6 +24,7 @@ const CONSTANTS = {
   ACTIVE_UNIFORMS: 0x8b86,
   ACTIVE_UNIFORM_BLOCKS: 0x8a36,
   UNIFORM_OFFSET: 0x8a3b,
+  UNIFORM_BLOCK_INDEX: 0x8a3a,
   UNIFORM_BLOCK_DATA_SIZE: 0x8a40,
   ARRAY_BUFFER: 0x8892,
   ELEMENT_ARRAY_BUFFER: 0x8893,
@@ -157,6 +158,13 @@ export interface FakeGL {
    * are loose. Offsets are in bytes, the way a driver gives them. */
   block: { name: string; offset: number }[] | null;
   blockBytes: number;
+  /** Several blocks the linked program reports, for a per-draw frame whose program
+   * links a shared uniform block and a per-draw one (item 27). Each carries its
+   * members — the name a driver gives back, `_group_G_binding_B`-qualified so the
+   * backend can tell one block from another — and its data size. Set this instead
+   * of `block`/`blockBytes` to model more than one block; left null, the single
+   * `block` above is what the program reports. */
+  blocks: { bytes: number; members: { name: string; offset: number }[] }[] | null;
   /** Names the linked program has no location for, which is what a compiler
    * dropping an unread uniform looks like from outside. */
   missing: string[];
@@ -187,6 +195,7 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     linkLog: null,
     block: null,
     blockBytes: 0,
+    blocks: null,
     missing: [],
     frame: null,
     lostContext: 0,
@@ -204,6 +213,17 @@ export function createFakeGL({ context = true } = {}): FakeGL {
   const pnames = Object.fromEntries(CEILINGS.map(([name], at) => [name, 0x9000 + at]));
 
   const record = (call: string, fields: Record<string, unknown> = {}) => calls.push({ call, ...fields });
+
+  /** Every uniform a program reports, flattened across its blocks in block order,
+   * each carrying which block it sits in. A program with `blocks` set reports those
+   * members; one with the legacy single `block` reports it as block 0, so a test
+   * that only ever set `block` sees no change. */
+  const flatMembers = (): { name: string; offset: number; block: number }[] => {
+    if (state.blocks) {
+      return state.blocks.flatMap((one, block) => one.members.map((member) => ({ ...member, block })));
+    }
+    return (state.block ?? []).map((member) => ({ ...member, block: 0 }));
+  };
 
   const gl = {
     ...CONSTANTS,
@@ -254,17 +274,27 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     getProgramInfoLog: () => state.linkLog,
     getProgramParameter: (_program: unknown, name: number) => {
       if (name === CONSTANTS.LINK_STATUS) return state.linkLog === null;
-      if (name === CONSTANTS.ACTIVE_UNIFORM_BLOCKS) return state.block ? 1 : 0;
+      if (name === CONSTANTS.ACTIVE_UNIFORM_BLOCKS) return state.blocks ? state.blocks.length : state.block ? 1 : 0;
+      // Every member across every block a program reports, in block order, which is
+      // one uniform apiece the way a driver counts them.
+      if (state.blocks) return state.blocks.reduce((total, block) => total + block.members.length, 0);
       return state.block?.length ?? 0;
     },
 
     getActiveUniform: (_program: unknown, at: number) => {
-      const slot = state.block?.[at];
+      const slot = flatMembers()[at];
       return slot ? { name: slot.name } : null;
     },
     getUniformIndices: (_program: unknown, names: string[]) => names.map((_name, at) => at),
-    getActiveUniforms: (_program: unknown, indices: number[]) => indices.map((at) => state.block?.[at]?.offset ?? -1),
-    getActiveUniformBlockParameter: () => state.blockBytes,
+    getActiveUniforms: (_program: unknown, indices: number[], pname?: number) => {
+      const members = flatMembers();
+      // The block each member sits in, for a backend telling a per-draw block from
+      // the shared one (item 27); otherwise the byte offset each member sits at.
+      if (pname === CONSTANTS.UNIFORM_BLOCK_INDEX) return indices.map((at) => members[at]?.block ?? -1);
+      return indices.map((at) => members[at]?.offset ?? -1);
+    },
+    getActiveUniformBlockParameter: (_program: unknown, block: number) =>
+      state.blocks ? (state.blocks[block]?.bytes ?? 0) : state.blockBytes,
 
     getAttribLocation: () => 0,
     getUniformLocation: (_program: unknown, name: string) => (state.missing.includes(name) ? null : { name }),

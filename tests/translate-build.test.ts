@@ -60,7 +60,7 @@ describe('the build-time translation path bakes GLSL and ships no translator', (
     const files = readdirSync(SOURCE)
       .filter((f) => f.endsWith('.wgsl'))
       .sort();
-    expect(files.length).toBe(15);
+    expect(files.length).toBe(16);
 
     let entryTotal = 0;
     for (const file of files) {
@@ -79,8 +79,9 @@ describe('the build-time translation path bakes GLSL and ships no translator', (
         if (refused) expect(refused.stage).toBe(ep.stage);
       }
     }
-    // The corpus item 75 measured: 34 entry points across 15 presets.
-    expect(entryTotal).toBe(34);
+    // The corpus item 75 measured 34 entry points across 15 presets; item 85 added
+    // `core-perdraw-uniform`'s two (a per-draw uniform slice), so it is 36 now.
+    expect(entryTotal).toBe(36);
   });
 
   it('names a WebGL 2 capability for every refusal, never a bare symptom', () => {

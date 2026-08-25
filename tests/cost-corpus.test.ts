@@ -104,6 +104,20 @@ const EXPECTED: Record<string, FrameCost> = {
     // The copies buffer is uploaded content, so it is resident.
     transientBytes: 0,
   },
+  'core-perdraw-uniform': {
+    passes: 1,
+    // One grid drawn three times over, each draw pointed at its own record by the
+    // byte offset it names (item 85) — three draws, one pipeline they all share.
+    draws: 3,
+    dispatches: 0,
+    pipelineSwitches: 1,
+    bindSwitches: 1,
+    attachmentLoads: 0,
+    attachmentStores: 1,
+    // The slice buffer is uploaded content, so it is resident, and the grid draws
+    // the frame the reader sees rather than a transient of its own.
+    transientBytes: 0,
+  },
   'core-depth': {
     passes: 2,
     draws: 2,

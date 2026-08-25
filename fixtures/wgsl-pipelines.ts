@@ -172,6 +172,29 @@ export function storageBuffersOf(source: string): StorageBuffer[] {
   return found;
 }
 
+/** Every uniform block the source declares, with where each is bound, read off the
+ * same attributes the storage-buffer reader reads. A one-pass shader declares one,
+ * bound at group 0, which is the frame's uniform block; a per-draw shader declares
+ * a second, the slice one draw reads through a dynamic offset. The build reads both
+ * from the source because a group or binding written into the entry as well could
+ * disagree with the source while the shader still compiles. */
+export function uniformBlocksOf(source: string): BoundResource[] {
+  const found: BoundResource[] = [];
+  const declaration = /((?:@\s*(?:group|binding)\s*\(\s*\d+\s*\)\s*)+)var\s*<\s*uniform\s*>\s*([A-Za-z_]\w*)/g;
+
+  for (const match of source.matchAll(declaration)) {
+    const attributes = match[1] as string;
+    const group = numberOf(attributes, 'group');
+    const binding = numberOf(attributes, 'binding');
+    if (group === undefined || binding === undefined) {
+      throw new Error(`the uniform block "${match[2]}" declares one of @group and @binding without the other`);
+    }
+    found.push({ name: match[2] as string, group, binding });
+  }
+
+  return found;
+}
+
 /** Every declaration of one shape the source makes, with where each is bound. It
  * is one function over both shapes because a sampled texture and a sampler are
  * declared the same way and differ only in the type after the colon. */

@@ -80,7 +80,12 @@ function webgl2Frame({ id, description, bytes }) {
       ...pipeline,
       vertex: vertexEntry === null ? 'fullscreen' : { module: vertexEntry, entry: 'main' },
       fragment: { module: pipeline.fragment.entry, entry: 'main' },
-      bindings: [],
+      // A GLSL program answers where each uniform block sits, so the block bindings
+      // drop away — except a per-draw slice's, which the backend reads to bind one
+      // record's range a draw (item 27): its group and binding tell the per-draw
+      // block apart from the shared one, and its `perDraw` size is one record's
+      // width. Nothing else about it is a GLSL binding number.
+      bindings: (pipeline.bindings ?? []).filter((/** @type {any} */ binding) => binding.perDraw !== undefined),
     };
   });
   if (missing) {

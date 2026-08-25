@@ -86,7 +86,7 @@ export const TEXTURE_CONTENT: Record<
  * whose drawn copies each carry their own numbers names one of these, and the
  * build turns it into bytes, so nothing in the repo carries a binary asset and
  * two machines building the same tree write the same file. */
-export type BufferContent = 'copy-tints' | 'draw-list-models' | 'material-objects';
+export type BufferContent = 'copy-tints' | 'draw-list-models' | 'material-objects' | 'perdraw-slices';
 
 /** A colour and a height for each drawn copy, one Copy struct after another, laid
  * out the way WGSL reads `array<Copy>` where `Copy` is a `vec3<f32>` followed by
@@ -201,8 +201,56 @@ function materialObjects(byteCount: number): Uint8Array<ArrayBuffer> {
   return new Uint8Array(values.buffer);
 }
 
+/** The 256-byte slot one per-draw record sits at the start of. A per-draw slice is
+ * bound with a dynamic offset, and the offset is a whole number of 256-byte
+ * alignments — the alignment core WebGPU takes a dynamic offset at, and no more
+ * than any WebGL 2 device's `UNIFORM_BUFFER_OFFSET_ALIGNMENT` — so one record per
+ * slot is what lets each draw's offset reach its own record. The record itself is
+ * a clean sixteen (a `vec3<f32>` colour and an `f32` shift) and the rest of the
+ * slot is padding no draw reads. */
+const SLICE_SLOT = 256;
+
+/** The colours a per-draw record carries, a fixed table for the reason `copy-tints`
+ * keeps one: a hue worked round the wheel with a cosine folds a hair differently on
+ * two machines and the file would stop being byte-identical, where `Float32Array`
+ * rounds each of these to the nearest f32 the same way everywhere. */
+const SLICE_PALETTE: [number, number, number][] = [
+  [0.85, 0.35, 0.3],
+  [0.35, 0.75, 0.4],
+  [0.35, 0.55, 0.9],
+];
+
+/** One per-draw record per slot, laid out so a draw binding the k-th 256-byte slice
+ * reads the k-th record: a colour and how far right the draw sits. The colour
+ * cycles the palette and the shift walks the frame from left to right so a reader
+ * can tell each draw's slice apart from the ones beside it. The slots between the
+ * sixteen bytes a record holds are padding, left zero, which is what a uniform range
+ * bound at the slot never reads past its own record. */
+function perdrawSlices(byteCount: number): Uint8Array<ArrayBuffer> {
+  // Whole slots only: a size that leaves a partial slot cannot hold a record at
+  // every 256-byte offset the draws name, so it is refused rather than shipped.
+  if (byteCount <= 0 || byteCount % SLICE_SLOT !== 0) {
+    throw new Error(`perdraw-slices was asked for ${byteCount} bytes, which is no whole number of ${SLICE_SLOT}-byte slots`);
+  }
+  const slots = byteCount / SLICE_SLOT;
+  const FLOATS_PER_SLOT = SLICE_SLOT / 4;
+  const values = new Float32Array(byteCount / 4);
+  for (let slot = 0; slot < slots; slot++) {
+    const at = slot * FLOATS_PER_SLOT;
+    const tint = SLICE_PALETTE[slot % SLICE_PALETTE.length] as [number, number, number];
+    values[at] = tint[0];
+    values[at + 1] = tint[1];
+    values[at + 2] = tint[2];
+    // Spread the draws across the frame: one in the middle where there is a single
+    // slot, and from the left edge to the right in even steps where there are more.
+    values[at + 3] = slots === 1 ? 0 : -0.6 + (1.2 * slot) / (slots - 1);
+  }
+  return new Uint8Array(values.buffer);
+}
+
 export const BUFFER_CONTENT: Record<BufferContent, { bytes: (byteCount: number) => Uint8Array<ArrayBuffer> }> = {
   'copy-tints': { bytes: copyTints },
   'draw-list-models': { bytes: drawListModels },
   'material-objects': { bytes: materialObjects },
+  'perdraw-slices': { bytes: perdrawSlices },
 };

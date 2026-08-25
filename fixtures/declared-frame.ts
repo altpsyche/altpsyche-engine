@@ -117,6 +117,15 @@ export interface DeclaredFrame {
     geometry?: string;
     /** How many copies of that geometry to draw. One where it is left out. */
     instances?: number;
+    /** That this pass draws its geometry once per record of a per-draw uniform
+     * buffer, each draw pointed at one slice by the byte offset it names. `buffer`
+     * is the uniform the source binds the record through, `slice` is the width of
+     * one record, and `offsets` is one byte offset per draw — a whole number of
+     * 256-byte alignments, the alignment a dynamic offset is taken at. A pass with
+     * this draws `offsets.length` times over rather than the once an instance count
+     * draws, and it names no instance count, since the two are different ways of
+     * repeating a draw and a pass does one or the other. */
+    perDraw?: { buffer: string; slice: number; offsets: number[] };
     /** The buffer this pass reads its own counts out of, which is what an earlier
      * pass of the same frame wrote there. A pass naming one says nothing about how
      * much work it does, so it names no instance count either. */

@@ -56,7 +56,11 @@ function glslFrameOf(id: string, description: FrameDescription, bytes: Map<strin
     }
     names.add(pipeline.fragment.entry);
     if (!baked[pipeline.fragment.entry]) unbaked = pipeline.fragment.entry;
-    return { ...pipeline, vertex, fragment: { module: pipeline.fragment.entry, entry: 'main' as const }, bindings: [] };
+    // The block bindings drop away because a GLSL program answers where its block
+    // sits — except a per-draw slice's, which the backend reads to know which
+    // buffer to bind one record's range of a draw (item 27/85).
+    const bindings = (pipeline.bindings ?? []).filter((binding) => binding.perDraw !== undefined);
+    return { ...pipeline, vertex, fragment: { module: pipeline.fragment.entry, entry: 'main' as const }, bindings };
   });
   if (unbaked) return null;
   const documents = [...names].map((name) => ({ name }));
@@ -117,6 +121,33 @@ describe('the WebGL 2 corpus column draws baked GLSL, not the WGSL source (item 
     const backend = createWebGL2Backend(gl.canvas);
     backend!.resize(800, 600);
     expect(() => backend!.program(frame!).draw()).not.toThrow();
+  });
+
+  it('re-points core-perdraw-uniform, and the backend binds one range a draw (item 85)', () => {
+    // The per-draw preset: one grid drawn three times, each draw pointed at its own
+    // record by the offset it names. This is the half a node machine can settle —
+    // the assembled baked-GLSL frame is one the backend accepts and draws, so a red
+    // browser gate would mean the driver refused the GLSL, not that the harness
+    // built the frame wrong. That the three quads light is the corpus gate's.
+    const { description, generated } = loadFixture('core-perdraw-uniform');
+    const frame = glslFrameOf('core-perdraw-uniform', description, bytesOf(description, generated));
+    expect(frame, 'core-perdraw-uniform bakes a vertex and a fragment').not.toBeNull();
+    // The per-draw binding survives the re-point where the shared block's binding
+    // drops, so the backend can read which buffer to slice and how wide a record is.
+    expect(frame!.pipelines[0].bindings).toEqual([
+      { group: 1, binding: 0, resource: 'slice', visibility: ['vertex'], perDraw: { size: 16 } },
+    ]);
+    const gl = createFakeGL();
+    const backend = createWebGL2Backend(gl.canvas)!;
+    backend.resize(800, 600);
+    const program = backend.program(frame!);
+    program.setUniforms({ u_time: 0, u_resolution: [800, 600] });
+    expect(() => program.draw()).not.toThrow();
+    // Three draws, three ranges, each at its own 256-byte offset: the slice each
+    // draw reads is decided by the offset the backend bound, not the block's last
+    // write. The geometry is one instanced draw apiece (item 77).
+    expect(gl.of('bindBufferRange').map((call) => call.offset)).toEqual([0, 256, 512]);
+    expect(gl.of('drawElementsInstanced')).toHaveLength(3);
   });
 
   it('reports no baked GLSL for a fullscreen WGSL preset rather than inventing a vertex', () => {

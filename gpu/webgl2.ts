@@ -15,6 +15,7 @@
 import type {
   Backend,
   BindingSpec,
+  BufferResource,
   DeviceReport,
   FrameTraffic,
   FrameGraph,
@@ -27,10 +28,10 @@ import type {
   UniformValue,
   VertexResource,
 } from '../graph/types.js';
-import { componentsOf, drawsCorners, drawsIndirectly, isRenderPass, moduleOf } from '../graph/types.js';
+import { componentsOf, drawsCorners, drawsIndirectly, isRenderPass, moduleOf, perDrawBinding } from '../graph/types.js';
 import { Arena } from '../resource/arena.js';
 import type { Handle } from '../resource/arena.js';
-import type { GL2Geometry } from '../submit/gl2.js';
+import type { GL2Geometry, GL2PerDraw } from '../submit/gl2.js';
 import { drawGL2Frame } from '../submit/gl2.js';
 import { PipelineCache, pipelineStructureOf } from '../pipeline/cache.js';
 import { sizeAt, followsFrame } from '../graph/refs.js';
@@ -82,29 +83,78 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string): WebG
   return shader;
 }
 
+/** The block binding point the frame's one shared uniform block is bound to, where
+ * `setUniforms` writes its buffer, and the point a per-draw slice's block is bound
+ * to, where each draw binds one record's range (item 27). GLSL ES 3.00 declares no
+ * binding number for a block — the linked program answers with a block index — so
+ * the two are assigned here rather than read off the source. */
+const SHARED_POINT = 0;
+const PER_DRAW_POINT = 1;
+
 /**
- * Where each value sits inside the uniform block, read back off the linked
- * program rather than worked out from the source. The driver decides the
- * positions, and guessing them from the declaration order produces a frame that
- * renders and is wrong.
+ * The frame's shared uniform block resolved off the linked program, and the
+ * per-draw block bound beside it where the pipeline slices one.
+ *
+ * The driver decides where each block's members sit and which block index each is,
+ * so guessing from the declaration order produces a frame that renders and is
+ * wrong. A pipeline with a per-draw slice links two blocks — the frame's shared
+ * uniforms and the per-draw record — and they are told apart by the member name
+ * the build's GLSL carries: a block whose member is qualified with the per-draw
+ * binding's `_group_G_binding_B` is the per-draw one. Each block is bound to its
+ * own point,
+ * and the shared block's members alone become the layout `setUniforms` writes, so a
+ * per-draw member cannot land in the buffer the frame's values fill.
  */
-function blockLayout(gl: WebGL2RenderingContext, program: WebGLProgram) {
+function resolveBlocks(
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+  perDrawTag: string | null
+): { layout: Map<string, number> | null; size: number; perDraw: boolean } {
+  const blocks = gl.getProgramParameter(program, gl.ACTIVE_UNIFORM_BLOCKS) as number;
+  if (blocks === 0) return { layout: null, size: 0, perDraw: false };
   const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS) as number;
-  const names: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const info = gl.getActiveUniform(program, i);
-    if (info) names.push(info.name);
-  }
-  const indices = gl.getUniformIndices(program, names) ?? [];
+  const indices = Array.from({ length: count }, (_, i) => i);
+  const names = indices.map((i) => gl.getActiveUniform(program, i)?.name ?? '');
   const offsets = (gl.getActiveUniforms(program, indices, gl.UNIFORM_OFFSET) as number[]) ?? [];
-  const layout = new Map<string, number>();
-  names.forEach((name, i) => {
-    // A name the driver did not place in the block comes back as -1, and asking
-    // for more names than the block has comes back as nothing at all.
-    const offset = offsets[i];
-    if (offset !== undefined && offset >= 0) layout.set(name.replace(/^.*\./, '').replace(/_\d+$/, ''), offset / 4);
-  });
-  return layout;
+  const blockOf = (gl.getActiveUniforms(program, indices, gl.UNIFORM_BLOCK_INDEX) as number[]) ?? [];
+  // The per-draw block index is the one holding a member whose name carries the
+  // per-draw binding's group and binding; the shared block is any other one. A
+  // frame with no per-draw slice has only the shared block.
+  let perDrawBlock = -1;
+  if (perDrawTag) {
+    for (let i = 0; i < count; i++) {
+      if ((blockOf[i] ?? -1) >= 0 && names[i]?.includes(perDrawTag)) {
+        perDrawBlock = blockOf[i] as number;
+        break;
+      }
+    }
+  }
+  let sharedBlock = -1;
+  for (let i = 0; i < count; i++) {
+    if ((blockOf[i] ?? -1) >= 0 && blockOf[i] !== perDrawBlock) {
+      sharedBlock = blockOf[i] as number;
+      break;
+    }
+  }
+  // GLSL ES 3.00 has no binding qualifier, so each block is told its point here.
+  if (sharedBlock >= 0) gl.uniformBlockBinding(program, sharedBlock, SHARED_POINT);
+  if (perDrawBlock >= 0) gl.uniformBlockBinding(program, perDrawBlock, PER_DRAW_POINT);
+  let layout: Map<string, number> | null = null;
+  let size = 0;
+  if (sharedBlock >= 0) {
+    layout = new Map<string, number>();
+    for (let i = 0; i < count; i++) {
+      // A member not in the shared block, or one the driver did not place (-1), is
+      // not a value `setUniforms` writes into the shared buffer.
+      if (blockOf[i] !== sharedBlock) continue;
+      const offset = offsets[i];
+      if (offset !== undefined && offset >= 0) {
+        layout.set((names[i] as string).replace(/^.*\./, '').replace(/_\d+$/, ''), offset / 4);
+      }
+    }
+    size = gl.getActiveUniformBlockParameter(program, sharedBlock, gl.UNIFORM_BLOCK_DATA_SIZE) as number;
+  }
+  return { layout, size, perDraw: perDrawBlock >= 0 };
 }
 
 /** The ceilings this report reads, by the names the specification gives them.
@@ -236,6 +286,26 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // and refuses any graph carrying the faults it names.
       validate(frame);
 
+      // The per-draw uniform buffers this frame's pipelines slice, one record a
+      // draw reached by the byte offset it names (item 27). A per-draw slice is a
+      // uniform bound with a dynamic offset, which GLSL ES 3.00 has where it has no
+      // storage buffer, so it is the one buffer kind this backend keeps: every
+      // other buffer is a storage buffer refused below. The size is one record's,
+      // fixed for the binding; the group and binding are what tell the linked
+      // program's per-draw block apart from the shared one.
+      const perDrawResources = new Map<string, { size: number; group: number; binding: number }>();
+      for (const spec of frame.pipelines) {
+        const slice = perDrawBinding(spec);
+        if (slice?.perDraw) {
+          perDrawResources.set(slice.resource, { size: slice.perDraw.size, group: slice.group, binding: slice.binding });
+        }
+      }
+      // The alignment this device takes a dynamic offset at, read rather than
+      // assumed: `bindBufferRange` fails on an offset that is not a whole number of
+      // it, so an offset the graph carries that this device cannot honour is refused
+      // by name below rather than dropped silently.
+      const perDrawAlignment = gl.getParameter(gl.UNIFORM_BUFFER_OFFSET_ALIGNMENT) as number;
+
       // The resource kinds this backend keeps: the frame's one uniform block, the
       // samplers that say how a texture is read between its pixels, a colour texture
       // a pass draws and a later pass samples (the multi-pass shape of item 46), and
@@ -254,6 +324,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // a storage buffer is a compute output and stays refused below.
         if (resource.kind === 'uniform' || resource.kind === 'sampler') continue;
         if (resource.kind === 'vertices' || resource.kind === 'indices') continue;
+        // A per-draw uniform buffer is the one buffer this backend keeps (item 27):
+        // it is bound one slice at a time by a dynamic offset, which this backend
+        // has where it has no storage buffer. Every other buffer is a storage
+        // buffer a compute stage fills, refused by name.
+        if (resource.kind === 'buffer' && perDrawResources.has(resource.name)) continue;
         if (resource.kind !== 'texture') {
           throw new Error(`the frame for "${frame.id}" declares a ${resource.kind} resource, and this backend has none`);
         }
@@ -378,13 +453,17 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             }
             // Which door the values go through is decided by what the program has,
             // not by what the frame claims, so a compiler that changes its mind
-            // about emitting a block cannot leave a shader silently unfed.
-            const blocks = gl.getProgramParameter(linked, gl.ACTIVE_UNIFORM_BLOCKS) as number;
-            if (blocks > 0) gl.uniformBlockBinding(linked, 0, 0);
+            // about emitting a block cannot leave a shader silently unfed. A
+            // pipeline slicing a per-draw buffer links a second block beside the
+            // shared one, told apart by the `_group_G_binding_B` its member name
+            // carries for the per-draw binding's group and binding.
+            const slice = perDrawBinding(spec);
+            const perDrawTag = slice ? `_group_${slice.group}_binding_${slice.binding}` : null;
+            const resolved = resolveBlocks(gl, linked, perDrawTag);
             return {
               program: linked,
-              layout: blocks > 0 ? blockLayout(gl, linked) : null,
-              size: blocks > 0 ? (gl.getActiveUniformBlockParameter(linked, 0, gl.UNIFORM_BLOCK_DATA_SIZE) as number) : 0,
+              layout: resolved.layout,
+              size: resolved.size,
               attribute: gl.getAttribLocation(linked, 'position'),
             };
           })
@@ -699,7 +778,36 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           record: DepthRecord;
           fbo: Handle;
         } | null;
+        // The per-draw uniform buffer this pass slices, one record a draw bound by
+        // `bindBufferRange` at the offset the draw names (item 27); null for a pass
+        // whose draws read the same records. It carries the resolved GL buffer, the
+        // point its block is bound to, one record's width, and the offset each draw
+        // reads its slice from.
+        perDraw: GL2PerDraw | null;
       }
+
+      // The per-draw uniform buffers, each allocated through the backend's buffer
+      // arena so a freed handle is caught rather than naming whatever the context
+      // hands back next (item 10), uploaded once with the records the build wrote,
+      // and freed on dispose. Its bytes are the first contents of a resident
+      // resource, so they are counted through `arena.wrote` the way the geometry
+      // (item 77) and the WebGPU backend count theirs (item 22).
+      const perDrawHandles: Handle[] = [];
+      const perDrawGLBuffers = new Map<string, WebGLBuffer>();
+      for (const name of perDrawResources.keys()) {
+        const spec = frame.resources.find((resource): resource is BufferResource => resource.kind === 'buffer' && resource.name === name);
+        if (!spec) continue;
+        const handle = arena.allocate(() => gl.createBuffer() as WebGLBuffer);
+        perDrawHandles.push(handle);
+        const buffer = arena.resolve(handle);
+        gl.bindBuffer(gl.UNIFORM_BUFFER, buffer);
+        if (spec.data) {
+          gl.bufferData(gl.UNIFORM_BUFFER, spec.data, gl.STATIC_DRAW);
+          arena.wrote(spec.data.byteLength);
+        }
+        perDrawGLBuffers.set(name, buffer);
+      }
+
       const plans: PassPlan[] = [];
       let blockLayoutMap: Map<string, number> | null = null;
       let blockSize = 0;
@@ -881,6 +989,28 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             fbo,
           };
         }
+        // The per-draw slice this pass binds a range of before each draw (item 27):
+        // the resolved GL buffer, the point its block was bound to, one record's
+        // width, and the byte offset each draw reads its record from. Each offset is
+        // a whole number of the device's alignment or `bindBufferRange` would refuse
+        // it, so an offset this device cannot honour is refused by name here rather
+        // than dropped silently. `validate` has already checked the offsets against
+        // core WebGPU's 256, which every device's alignment divides, so this fires
+        // only where a device reports a coarser one.
+        const slice = perDrawBinding(spec);
+        let perDrawPlan: GL2PerDraw | null = null;
+        if (slice?.perDraw) {
+          const buffer = perDrawGLBuffers.get(slice.resource) as WebGLBuffer;
+          const offsets = pass.draws.map((draw) => (draw as { perDraw?: number }).perDraw ?? 0);
+          for (const offset of offsets) {
+            if (offset % perDrawAlignment !== 0) {
+              throw new Error(
+                `the frame for "${frame.id}" reads a per-draw slice at offset ${offset}, which this device's ${perDrawAlignment}-byte alignment does not allow`
+              );
+            }
+          }
+          perDrawPlan = { buffer, binding: PER_DRAW_POINT, size: slice.perDraw.size, offsets };
+        }
         plans.push({
           program: compiled.program,
           attribute: compiled.attribute,
@@ -897,6 +1027,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // two passes drawing one primitive; null for a fullscreen corners pass.
           geometry: geometryName === undefined ? null : buildGeometry(geometryName),
           depth: depthPlan,
+          perDraw: perDrawPlan,
         });
       }
 
@@ -1106,6 +1237,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
               width: passWidth,
               height: passHeight,
               ...(plan.geometry ? { geometry: plan.geometry } : {}),
+              ...(plan.perDraw ? { perDraw: plan.perDraw } : {}),
             });
             // A pass drawing a multisample attachment averages its samples into the
             // single-sample resolve target by blitting the multisample framebuffer
@@ -1162,6 +1294,9 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // The vertex and index buffers of the shader's own geometry go back to the
           // buffer arena beside the uniform block (item 77).
           for (const handle of geometryHandles) arena.free(handle);
+          // The per-draw uniform buffers go back to the buffer arena beside them
+          // (item 27).
+          for (const handle of perDrawHandles) arena.free(handle);
           for (const record of textures.values()) {
             textureArena.free(record.handle);
             if (record.fboHandle !== null) framebufferArena.free(record.fboHandle);
