@@ -3833,7 +3833,7 @@ baked-GLSL path still draws, so it runs before this is claimed).
 
 ### 104. The corpus gate's WebGL 2 pre-flight reads a field item 99 moved
 
-**Status.** open
+**Status.** done
 
 **Asks for.** `webgl2SkipReason` in [gates/corpus.mjs](../gates/corpus.mjs) to read a render
 pipeline's stages where item 99 put them. L67 is
@@ -3868,3 +3868,16 @@ browser — `wgslDescription('core-geometry').pipelines[0]` has keys `kind,sourc
 `'fragment' in pipeline` is `false` — and the corpus gate re-run alone repeats the reading. **Reverse:**
 delete this item; the WebGL 2 corpus arm keeps skipping every preset as a compute stage, with nothing
 tracking it.
+
+**How it landed 2026-08-26.** The predicate now reads `pipeline.kind !== 'render'` instead of
+`!('fragment' in pipeline)`, and the stage entries come off `pipeline.source`. `kind` is the
+discriminant the description actually carries, so a later move of the stage fields cannot
+misclassify every render pipeline again the way item 99's move did. **Measured:** `node
+gates/corpus.mjs` back to **22 of 22 draws lit, 0 failed, 11 WebGL 2 skips**, the baseline
+JOURNAL records twice, with all five WebGL 2 corpus draws returned — `core-geometry`,
+`core-perdraw-uniform`, `core-depth`, `core-multisample`, `core-scene`. Full batch 4 of 4,
+`surface.mjs` 21 of 21, 848 node tests. **The red this item warned might be correct did not
+appear:** none of the five repaired presets throws under item 101's stricter arm, so item 99's
+one-source-per-pipeline change did not break the GLSL it emits. That is a stronger result than
+this item asked for and worth stating as a reading rather than an assumption.
+

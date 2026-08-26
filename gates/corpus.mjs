@@ -64,10 +64,17 @@ function webgl2SkipReason(id, description) {
   const baked = artifact.presets[id]?.entries ?? {};
   const refused = artifact.refused?.[id] ?? [];
   for (const pipeline of description.pipelines) {
-    if (!('fragment' in pipeline)) return 'a compute stage, which has no place on WebGL 2';
-    if (pipeline.vertex === 'fullscreen')
+    // Read off `kind`, not off which stage fields are present (item 104). Item 99
+    // moved a render pipeline's stages under `source`, so the old `'fragment' in
+    // pipeline` test was false for every render pipeline and classified all of them
+    // as compute — sixteen skips reading "a compute stage" over presets that are
+    // not one, with the gate still exiting 0. `kind` is the discriminant the
+    // description actually carries, so it cannot drift out from under this again.
+    if (pipeline.kind !== 'render') return 'a compute stage, which has no place on WebGL 2';
+    const { vertex, fragment } = pipeline.source;
+    if (vertex === 'fullscreen')
       return 'a fullscreen WGSL frame, which bakes no vertex for WebGL 2 to link';
-    for (const entry of [pipeline.vertex.entry, pipeline.fragment.entry]) {
+    for (const entry of [vertex.entry, fragment.entry]) {
       if (baked[entry]) continue;
       const why = refused.find((/** @type {any} */ r) => r.entry === entry);
       return why ? `${entry} needs ${why.capability}, which WebGL 2 has not got` : `${entry} baked no GLSL`;
