@@ -69,20 +69,16 @@ transparent tile. Do not reach for `--use-angle=vulkan`: it moves the whole brow
 and produces that same tile.
 
 **A test suite rewritten alongside the code it checks cannot catch a mistake in that code.**
-When a change rewrites resolution logic and the tests move with it, the only independent
-reading left is the browser batch's trace agreement. This has happened here: a migration that
-passed 837 node tests and rewrote its own golden snapshots was caught by one browser gate and
-nothing else.
+When a change rewrites resolution logic and its tests move with it, the only independent
+reading left is the browser batch's trace agreement. A node suite in the hundreds can go green
+over its own rewritten snapshots while a defect walks straight through.
 
 **No gate builds a surface on a real graphics card.** `gates/surface.mjs` drives
 `createSurface` on both backends and runs headless, so its WebGPU arm is the software
 renderer's. `gates/card.mjs` is the only gate that touches real hardware, and it builds the two
-backends directly instead of going through `createFrameRenderer`. Nothing asserts the path a
-consumer actually takes, which is `createSurface` with a WebGPU device from a real adapter. That
-hole has already cost something: four of the six pages in `examples/` reported "WebGPU could not
-give this page a device" on this machine's RTX 5080 while every gate was green. They had asked
-the drawing canvas for a WebGL 2 context before handing it to WebGPU, and a canvas keeps the
-first context type it is given.
+backends directly instead of going through `createFrameRenderer`. So nothing asserts the path a
+consumer actually takes, which is `createSurface` with a WebGPU device from a real adapter. A
+page can fail to get a device on real hardware while every gate here is green.
 
 **A gate that reports a failure as a skip is worse than no gate.** One did that once. The
 corpus gate treated a broken frame build as a capability refusal, went green, and let a defect
@@ -98,16 +94,12 @@ proves less than it looks like. One honest line, in the commit message.
 
 ## How work is tracked
 
-**In the issue tracker and in commit messages, as of 0.3.0.** This repository used to carry its
-own queue, register and direction documents in `docs/`. They were deleted when the queue they
-tracked was emptied: 107 items, every one either landed, superseded by an item that landed, or a
-standing obligation that cannot close.
+**In the issue tracker and in commit messages.** There is no queue in this repository. Every
+landed change carries the measurement it earned in its commit message, so `git log` is the
+record of what was done and what it cost.
 
-What survived them is in the code and in the history. Every landed change carries the
-measurement it earned in its commit message, and `git log` is the record: `git log --grep
-'^item 27'` still finds what item 27 landed. If you want the reasoning behind a design, read
-the doc comments. This codebase writes *why* at the point of the decision, not in a document
-beside it.
+If you want the reasoning behind a design, read the doc comments. This codebase writes *why*
+at the point of the decision, not in a document beside it.
 
 ## Design rules that are not negotiable
 

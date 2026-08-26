@@ -1,11 +1,9 @@
-# Architecture, as built
+# Architecture
 
 **Why read this.** You can feel every design in here from outside the package. It is why the
 factories are asynchronous, why a resource is an integer and not a name, and why a frame that
 cannot be drawn says so before anything starts. If you only want to use the package,
 [README.md](../README.md) and [API.md](API.md) are enough. This is the layer under them.
-
-It describes the library as it stands, checked against the tree. It is not a plan.
 
 ---
 
@@ -41,9 +39,10 @@ graph serialisable, comparable, and safe to post to a worker, and it is what let
 
 ## Three lifetimes, kept apart
 
-The mistake this design avoids is fusing them, which is what the old `ShaderProgram` did. It
-held three lifetimes in one object, so recompiling a shader meant reallocating its buffers.
-0.3.0 took it apart into the three below.
+Three kinds of thing live for three different lengths of time. Fusing any two of them is
+what makes a renderer painful to change: a shader you cannot recompile without reallocating
+its buffers, or a buffer you cannot resize without rebuilding a pipeline. So each kind has
+one owner.
 
 - **Resident.** Buffers, textures, samplers and query sets. `Arena` allocates and frees them,
   addressed by a branded integer handle with a generation packed above the index. A handle
