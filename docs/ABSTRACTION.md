@@ -1,5 +1,17 @@
 # The abstraction, as it stands and as it would grow
 
+> **Historical, as of 2026-08-26.** This document describes the stack as it was built for
+> the website, before the split. It is **stale about today's code** — among other things it
+> names `ShaderProgram`, `FrameDescription`, `readBuffer`, `createProgram` and `unreached`,
+> all of which have since been deleted — and it is superseded on direction by
+> [RoadToPureEngine.md](RoadToPureEngine.md). For what the library is now, read
+> [ARCHITECTURE.md](ARCHITECTURE.md).
+>
+> **It is kept rather than deleted on purpose.** [RoadToPureEngine.md](RoadToPureEngine.md)
+> §1 quotes this file to build its central argument, and a document whose source has been
+> deleted argues from nothing. Read it as a record of the design it was, not as a claim
+> about the design it is.
+
 **The `Dnnn` numbers in this file are entries in the decision archive of the `altpsyche-dev` repository, which is private.** They are kept as the address of an entry, and each one says here what it settled, so nothing in this document depends on following a link out of it.
 
 **What this document is.** A map of the layers the shader stack is made of, what each one owns, and where new capability attaches without disturbing the layers around it. It exists so a direction can be read and argued with in one place instead of being inferred from nine files.

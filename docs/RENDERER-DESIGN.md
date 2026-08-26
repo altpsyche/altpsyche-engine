@@ -1,5 +1,17 @@
 # The renderer's design
 
+> **Historical, as of 2026-08-26.** This document describes the stack as it was built for
+> the website, before the split. It is **stale about today's code** — among other things it
+> names `ShaderProgram`, `FrameDescription`, `readBuffer`, `createProgram` and `unreached`,
+> all of which have since been deleted — and it is superseded on direction by
+> [RoadToPureEngine.md](RoadToPureEngine.md). For what the library is now, read
+> [ARCHITECTURE.md](ARCHITECTURE.md).
+>
+> **It is kept rather than deleted on purpose.** [RoadToPureEngine.md](RoadToPureEngine.md)
+> §1 quotes this file to build its central argument, and a document whose source has been
+> deleted argues from nothing. Read it as a record of the design it was, not as a claim
+> about the design it is.
+
 **The `Dnnn` numbers in this file are entries in the decision archive of the `altpsyche-dev` repository, which is private.** They are kept as the address of an entry for anyone who has that tree. Every one of them says here what the entry settled, so nothing in this document depends on following a link out of it.
 
 **What this document is.** It describes the renderer this repo is building: the words it uses, the types it exposes, who owns what, and which gate proves each part. It is written once and then kept current as the work lands, so the last step of the renderer item is verifying every row of the capability table below against the tree rather than writing this file again.

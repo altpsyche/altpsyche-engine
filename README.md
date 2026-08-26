@@ -66,10 +66,15 @@ const surface = await createSurface(canvas, frame, {
 `glslFrame` is the same shortcut for a GLSL pair, which is a vertex document and a
 fragment document together, because WebGL 2 needs both.
 
-For anything larger there are `wgslDescription` and `glslDescription`, which take the
-resources, pipelines and passes you name and give back a description the renderer
-draws. A pass either draws or dispatches: a dispatch is a compute pass, which is a
-shader that writes into a buffer or a texture rather than painting pixels.
+`wgslDescription` and `glslDescription` build that same one-pass shape from source alone,
+when you want the description rather than a finished frame.
+
+For anything with real geometry, more than one pass, or a depth buffer, you author the
+graph directly — resources, pipelines and passes, with every resource addressed by a
+kind-branded handle rather than by a string. A pass either draws or dispatches: a dispatch
+is a compute pass, which is a shader that writes into a buffer or a texture rather than
+painting pixels. [docs/GUIDE-frame-graph.md](docs/GUIDE-frame-graph.md) walks through a
+real one.
 
 ## The maths
 
@@ -142,12 +147,71 @@ records every call made on it, `projectTrace` reduces a recording to the calls w
 comparing, and `compareTraces` reports where two recordings differ. That is how you
 check a change to a shader did not quietly change what the device was asked to do.
 
+## Asking before you draw
+
+Three pure functions answer questions about a graph without touching a device, so you
+can ask them in a test, in a worker, or on a machine with no card at all:
+
+```js
+import { cost, refusal, selectBackend, probe } from '@altpsyche/engine';
+
+const reading = await probe();                    // what this browser actually offers
+const which = selectBackend(frame, reading.offer); // which backend will draw it, or why not
+const no = refusal(frame, reading.capabilities);   // what the frame needs and the device lacks
+const size = cost(frame, { width: 800, height: 600 }); // bytes, draws, passes before a pixel
+```
+
+`selectBackend` reads two facts and nothing else: the language the frame is authored in
+and what the device offers. A GLSL-authored frame selects WebGL 2 **even where WebGPU
+exists**, because the language it is written in is the capability it forfeits, and every
+capability it gives up is one GLSL ES 3.0 has no syntax for.
+
+`refusal` answers from data rather than from a call that throws. A graph names the
+capabilities it needs, a device reports the ones it has, and where a needed one is
+missing the graph is refused *by that name* before anything reaches a driver.
+
+## Drawing a frame yourself
+
+`createSurface` runs a loop. When you want one frame, on your own schedule, use
+`submit`:
+
+```js
+import { createFrameRenderer, submit } from '@altpsyche/engine';
+
+const renderer = await createFrameRenderer(canvas);
+await submit(renderer, frame, { uniforms: { u_time: 0 }, into: myTexture });
+```
+
+`into` is where the frame lands, and it is the caller's to choose rather than the
+library's.
+
 ## What it needs
 
 A browser with WebGL 2, which is everything current, and WebGPU where you want the
-WebGPU path. On WebGL 2 the backend covers one fullscreen pass today, not the scene
-tier, so a scene with objects, cameras and passes needs the WebGPU path for now. It
-has no runtime dependencies at all.
+WebGPU path. It has no runtime dependencies at all — `dependencies` is `{}` and stays
+that way.
+
+**The two backends are not equal, and the difference is in the data rather than in the
+prose.** WebGL 2 draws several passes, several colour attachments, depth and stencil,
+vertex geometry, resident textures, a mip ladder, multisampling, per-draw uniform
+slices, and a scene's read-only per-instance records as a uniform block. It has no
+compute stage, no read-write storage buffer, no storage texture, no indirect draw and
+no timestamp or occlusion query, because GLSL ES 3.0 has none of them. Ask
+`webgl2Capabilities` or `probe` rather than trusting this paragraph — the capability
+set is the authority and this sentence is a summary of it.
+
+[docs/GUIDE-backends.md](docs/GUIDE-backends.md) has the measured picture, preset by
+preset, including what the corpus draws on each backend today and what it skips.
+
+## Where to read next
+
+| document | what it answers |
+| --- | --- |
+| [docs/API.md](docs/API.md) | every name the package exports, grouped by what you are doing |
+| [docs/GUIDE-frame-graph.md](docs/GUIDE-frame-graph.md) | authoring a frame graph by hand |
+| [docs/GUIDE-backends.md](docs/GUIDE-backends.md) | capabilities, selection, refusal, and what each backend measured |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the library is put together, as built |
+| [docs/RoadToPureEngine.md](docs/RoadToPureEngine.md) | where the shape is going, and the decisions behind it |
 
 ## Licence
 

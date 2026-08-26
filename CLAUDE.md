@@ -14,9 +14,15 @@ look for a reason that stands on the package's own merits.
 | [docs/ROADMAP.md](docs/ROADMAP.md) | the queue. Fifty-eight items, their dependencies, their status, their done-when. **Nothing else queues work.** |
 | [docs/JOURNAL.md](docs/JOURNAL.md) | the register. What a person has to look at afterwards, and every call taken with nobody watching. |
 
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the stack **as built** — the door, the
+layers, the three lifetimes, handles, the capability model, and what each gate can and cannot
+see. [docs/API.md](docs/API.md) is the export surface; `docs/GUIDE-*.md` are the consumer guides.
+
 [docs/ABSTRACTION.md](docs/ABSTRACTION.md) and [docs/RENDERER-DESIGN.md](docs/RENDERER-DESIGN.md)
-describe the stack as it stands and predate the split from the website. They are accurate about
-today's code and stale about direction. RoadToPureEngine.md supersedes both on direction.
+are **historical as of 2026-08-26**: they predate the split from the website and are now stale
+about today's code as well as about direction. Both carry a banner saying so. They are kept
+rather than deleted because RoadToPureEngine.md §1 quotes ABSTRACTION.md to build its central
+argument, and a document whose source has been deleted argues from nothing.
 
 ## What a number may claim
 

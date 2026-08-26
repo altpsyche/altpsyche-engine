@@ -2,9 +2,14 @@
 
 **One question, not a comparison:** can WGSL→GLSL carry this corpus at all? This is
 item 75's finding, and it is what licenses items 41 and 42 (the build-time and
-on-demand translation paths). It is **not** item 40 — which of Naga or Tint is
-better is a separate, heavier question that needs a Tint build this machine cannot
-produce, and item 40 keeps it.
+on-demand translation paths). It is **not** the comparison — which of Naga or Tint is
+better is a separate, heavier question needing a Tint build this machine cannot produce.
+
+**Item 40 held that comparison and was closed on 2026-08-26 without it**, on this
+document's evidence plus the browser draws of items 46–50 and 77–79. So decision 2 now
+rests on Naga carrying *this* corpus and **not** on Naga being better than Tint at
+carrying it, because nothing has run Tint. What would change the answer: a preset Naga
+refuses for a reason that is not a capability WebGL 2 genuinely lacks.
 
 **Answer: yes.** Every one of the fifteen corpus WGSL presets translates to GLSL.
 All thirty-four entry points across them are carried, with no construct refused, at
