@@ -3746,7 +3746,7 @@ shader-source shape a consumer authors against changes with the pair.
 
 ### 101. The corpus gate fails for a WebGL 2 build error instead of skipping it
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The WebGL 2 arm of [gates/corpus.mjs](../gates/corpus.mjs) to distinguish *this
 device cannot draw that* from *this build threw*. Today every error in that arm becomes a skip

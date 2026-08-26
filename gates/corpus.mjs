@@ -23,6 +23,7 @@ import http from 'node:http';
 import { rmSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { CHROME, bundleForPage, loadCorpus, loadFromRoot } from './lib.mjs';
+import { classifyWebgl2 } from './corpus-outcome.mjs';
 
 const W = Number(process.env.W ?? 800);
 const H = Number(process.env.H ?? 600);
@@ -234,7 +235,10 @@ for (const { id, frame, values, entry, description, bytes, code } of corpus) {
 
   // The WebGL 2 column, by outcome (item 79). A preset the bake did not carry to
   // WebGL 2 is a SKIP with the reason; one it did is drawn through the backend's
-  // own path on a real context and lights the buffer or fails by name.
+  // own path on a real context and lights the buffer, is SKIPped where the device
+  // refuses it, or FAILs where the library building the frame throws — the last
+  // told apart from a device refusal so the gate can fail for its own broken build
+  // rather than skip past it (item 101).
   const gl2Label = `${id} WebGL 2`;
   const skip = webgl2SkipReason(id, description);
   if (skip) {
@@ -254,7 +258,7 @@ for (const { id, frame, values, entry, description, bytes, code } of corpus) {
       canvas.width = W;
       canvas.height = H;
       const backend = window.createWebGL2Backend(canvas);
-      if (!backend) return { error: 'no webgl2 context' };
+      if (!backend) return { noContext: true };
       backend.resize(W, H);
       // The bytes arrive keyed by the address a description sends a reader to; a
       // frame wants them keyed by the resource's index (its handle) now (item 87),
@@ -264,17 +268,33 @@ for (const { id, frame, values, entry, description, bytes, code } of corpus) {
         const source = 'source' in resource ? resource.source : undefined;
         if (source && bytesArrays[index]) generated.set(index, new Uint8Array(bytesArrays[index]));
       });
-      let program;
+      // The library building the frame is the gate's *own* path (item 87 made it
+      // throw), told apart from the device's path below: a throw here is a broken
+      // build the gate must fail for, not a capability refusal it skips (item 101).
+      let frame;
       try {
         const wgslFrame = window.frameOf(id, description, { wgsl: code }, undefined, undefined, generated);
-        const frame = window.glslFrameOf(/** @type {any} */ (wgslFrame));
-        if (!frame) return { error: 'the source carried no baked GLSL to draw' };
-        program = backend.program(frame);
+        frame = window.glslFrameOf(/** @type {any} */ (wgslFrame));
       } catch (e) {
-        return { error: String(/** @type {any} */ (e).message || e).slice(0, 300) };
+        return { threw: String(/** @type {any} */ (e).message || e).slice(0, 300) };
       }
-      program.setUniforms(values);
-      program.draw();
+      // `glslFrameOf` returning null is the bake carrying no GLSL for this frame — a
+      // fullscreen frame that baked no vertex, or a stage refused for a capability
+      // WebGL 2 withholds — a skip by outcome, not a throw.
+      if (!frame) return { skip: 'the source carried no baked GLSL to draw' };
+      // The backend linking and drawing the GLSL is the *device's* path: a throw here
+      // is a capability it withholds (MSAA is item 80, depth/stencil landed at item
+      // 48) or a construct it will not link. That is a skip by outcome, with the
+      // backend's own words: item 79 asks the draw path to *run*, and here it ran and
+      // refused by name. A wrong picture is a card's to judge (item 44), out of reach.
+      let program;
+      try {
+        program = backend.program(frame);
+        program.setUniforms(values);
+        program.draw();
+      } catch (e) {
+        return { refused: String(/** @type {any} */ (e).message || e).slice(0, 300) };
+      }
       const px = await backend.readPixels();
       let lit = 0;
       for (let i = 0; i < px.length; i += 4) if (px[i] > 4 || px[i + 1] > 4 || px[i + 2] > 4) lit++;
@@ -284,24 +304,16 @@ for (const { id, frame, values, entry, description, bytes, code } of corpus) {
     },
     { id, description, code, bytesArrays, values, W, H }
   );
-  if (gl2.error) {
-    // A preset whose GLSL the backend refuses to build or draw is one this backend
-    // does not yet carry to WebGL 2 — a capability it withholds (MSAA is item 80,
-    // depth/stencil landed at item 48) or a construct it will not link. That is a
-    // skip by outcome, with the backend's own words, not a gate failure: item 79
-    // asks the draw path to *run*, and here it ran and refused by name. A wrong
-    // picture is a card's to judge (item 44), out of this gate's reach.
-    skipped.push(`${gl2Label}  refused: ${gl2.error}`);
-  } else if (gl2.lit === 0) {
-    console.log(`FAIL ${gl2Label}  drew nothing, 0 of ${gl2.total} pixels lit`);
+  // A build throw fails the gate, a capability refusal skips it, told apart by the tag
+  // the page returned rather than merged into one error shape (item 101).
+  const { outcome, message } = classifyWebgl2(gl2);
+  if (outcome === 'FAIL') {
+    console.log(`FAIL ${gl2Label}  ${message}`);
     failures++;
+  } else if (outcome === 'SKIP') {
+    skipped.push(`${gl2Label}  ${message}`);
   } else {
-    // The error and zero-lit arms are ruled out, so both are present; the casts
-    // state what the branches already guarantee, as the WebGPU column above does.
-    const lit = /** @type {number} */ (gl2.lit);
-    const total = /** @type {number} */ (gl2.total);
-    const share = ((lit / total) * 100).toFixed(1);
-    console.log(`PASS ${gl2Label}  ${lit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pixels lit, ${share}%`);
+    console.log(`PASS ${gl2Label}  ${message}`);
   }
 }
 
