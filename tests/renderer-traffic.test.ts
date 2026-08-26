@@ -60,12 +60,14 @@ const gridFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
     geometry(),
     { kind: 'indices', format: 'uint16', count: 24, data: INDICES },
   ],
-  modules: [{ name: 'wgsl', wgsl: GRID }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'warp' },
-      fragment: { module: moduleHandle(0), entry: 'shade' },
+      source: {
+        vertex: { document: 'wgsl', text: GRID, entry: 'warp' },
+        fragment: { document: 'wgsl', text: GRID, entry: 'shade' },
+      },
       geometry: vertices(1),
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },

@@ -70,12 +70,14 @@ const gridFrame = {
     },
     { kind: 'indices', format: 'uint16', count: 24, data: new Uint8Array(24 * 2) },
   ],
-  modules: [{ name: 'wgsl', wgsl: GRID_SOURCE }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'warp' },
-      fragment: { module: moduleHandle(0), entry: 'shade' },
+      source: {
+        vertex: { document: 'wgsl', text: GRID_SOURCE, entry: 'warp' },
+        fragment: { document: 'wgsl', text: GRID_SOURCE, entry: 'shade' },
+      },
       geometry: vertices(1),
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },

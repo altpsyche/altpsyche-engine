@@ -143,11 +143,17 @@ export async function loadCorpus() {
     const glslBake = Object.fromEntries(
       Object.entries(baked).map(([point, { glsl }]) => [point, glsl])
     );
+    // The bake rides each render pipeline's own source now (item 99): the pipeline
+    // that owns the source owns its translation, keyed by entry point exactly as the
+    // build stored it, and `glslFrameOf` reads it off there. The whole preset's bake
+    // is attached to every render pipeline's source — each reads the entries it needs.
     const described =
       Object.keys(glslBake).length > 0
         ? {
             ...description,
-            modules: description.modules.map((/** @type {any} */ module) => ({ ...module, glsl: glslBake })),
+            pipelines: description.pipelines.map((/** @type {any} */ spec) =>
+              spec.kind === 'render' ? { ...spec, source: { ...spec.source, glsl: glslBake } } : spec
+            ),
             translated: true,
           }
         : description;

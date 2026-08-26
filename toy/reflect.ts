@@ -27,6 +27,7 @@
  * and binding readers use, carrying no new dependency.
  */
 import type { FrameGraph } from '../graph/types.js';
+import { moduleOf } from '../graph/types.js';
 import { wgslUniformFields } from '../wgsl-layout.js';
 
 /** One uniform a frame declares: the name a page feeds it by, and the type it was
@@ -101,22 +102,48 @@ function glslUniforms(source: string): Uniform[] {
 export function reflect(frame: FrameGraph): Uniform[] {
   const seen = new Set<string>();
   const uniforms: Uniform[] = [];
-  // `authored` is the one value the language is read off (item 94): a WGSL frame's
-  // documents carry `wgsl` text read by the WGSL field parser, a GLSL frame's carry
-  // `glsl` text read by the GLSL one, and the discriminant narrows `frame.modules`
-  // to the arm each reads without inspecting a document's shape.
+  // A render pipeline carries its two stages' text on its own source (item 99) and a
+  // compute pipeline names its module; the source texts are gathered in producer
+  // order, each distinct text once, so a document two pipelines share is read a
+  // single time. `authored` is the one value the language is read off (item 94): a
+  // WGSL frame's texts read by the WGSL field parser, a GLSL frame's by the GLSL one.
+  const texts = sourceTexts(frame);
   const declared: Uniform[] =
     frame.authored === 'wgsl'
-      ? frame.modules.flatMap((module) =>
-          wgslUniformFields(module.wgsl).map((field) => ({ name: field.name, type: commonType(field.type) }))
+      ? texts.flatMap((text) =>
+          wgslUniformFields(text).map((field) => ({ name: field.name, type: commonType(field.type) }))
         )
-      : frame.modules.flatMap((module) => glslUniforms(module.glsl));
+      : texts.flatMap((text) => glslUniforms(text));
   for (const uniform of declared) {
     if (seen.has(uniform.name)) continue;
     seen.add(uniform.name);
     uniforms.push(uniform);
   }
   return uniforms;
+}
+
+/** Every distinct source text a frame carries, in the order a producer wrote its
+ * pipelines — each render pipeline's two stages (a fullscreen vertex naming none)
+ * and each compute pipeline's module. A text two pipelines share appears once, so a
+ * shared document is parsed a single time and the uniform order stays the producer's. */
+function sourceTexts(frame: FrameGraph): string[] {
+  const texts: string[] = [];
+  const seen = new Set<string>();
+  const add = (text: string): void => {
+    if (seen.has(text)) return;
+    seen.add(text);
+    texts.push(text);
+  };
+  for (const spec of frame.pipelines) {
+    if (spec.kind === 'render') {
+      if (spec.source.vertex !== 'fullscreen') add(spec.source.vertex.text);
+      add(spec.source.fragment.text);
+    } else {
+      const module = moduleOf(frame, spec.compute.module);
+      if (module) add((module as { wgsl: string }).wgsl);
+    }
+  }
+  return texts;
 }
 
 /** Which of `names` the frame's source declares no uniform for, which is the

@@ -218,8 +218,10 @@ const MODULE: ModuleSpec = { name: 'scene', wgsl: SCENE_WGSL };
 // group's object buffer (resource 3). Each binding names its resource by handle.
 const litPipeline: RenderPipelineSpec = {
   kind: 'render',
-  vertex: { module: moduleHandle(0), entry: 'project' },
-  fragment: { module: moduleHandle(0), entry: 'shade' },
+  source: {
+    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
+    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shade' },
+  },
   geometry: vertices(0),
   bindings: [
     { group: 0, binding: 0, resource: buffer(3), visibility: ['vertex'] },
@@ -234,7 +236,6 @@ function optionsFor(mesh: Mesh): SceneViewOptions<Panel> {
   return {
     id: 'gltf-cube',
     authored: 'wgsl',
-    modules: [MODULE],
     pipelines: [{ name: 'lit', pipeline: litPipeline, objects: { buffer: 'objects', pack: packLit } }],
     materials: MATERIALS,
     requires: ['storage-buffer'],

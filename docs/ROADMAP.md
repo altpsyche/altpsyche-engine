@@ -3653,7 +3653,7 @@ fact a consumer builds against.
 
 ### 99. A shader source belongs to one render pipeline
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The per-pipeline source identity a `GlslPair` presupposes, established before the pair
 shape (item 100) sits over it. Today a frame carries a flat `modules` list and a

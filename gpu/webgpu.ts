@@ -22,6 +22,7 @@ import type {
   IndexResource,
   RenderPassSpec,
   RenderPipelineSpec,
+  RenderStageSource,
   SamplerResource,
   FrameGraph,
   StencilMode,
@@ -1333,22 +1334,39 @@ function compileModules(
   device: GPUDevice,
   frame: FrameGraph,
   onRefused?: (message: string) => void
-): GPUShaderModule[] {
-  // An array indexed by the module's position in `frame.modules`, so a pipeline
-  // resolves a stage's `ModuleHandle` by that index (item 87). The device module
-  // still carries the document's own name as its label, which is kept for the
-  // trace and for the refusal message a reader typing WGSL needs.
-  const compiled: GPUShaderModule[] = [];
-  // WebGPU compiles WGSL, so every document it is handed carries `wgsl` text; the
+): Map<string, GPUShaderModule> {
+  // A map keyed by the document's text, so a pipeline resolves a stage to the
+  // module compiled for that text (item 99): a render pipeline carries its two
+  // stages' text on its own source and a compute pipeline names a `ModuleHandle`,
+  // and both resolve here by the text they carry. A document two pipelines share is
+  // compiled once — the same file feeding a WGSL frame's vertex and fragment is one
+  // text and one module. The device module carries the document's own name as its
+  // label, kept for the trace and the refusal message a reader typing WGSL needs.
+  const compiled = new Map<string, GPUShaderModule>();
+  // WebGPU compiles WGSL, so every document it is handed carries WGSL text; the
   // backend guards a non-WGSL frame before here (item 94), and this narrows on the
   // same discriminant so the field it reads is the one the language names.
   if (frame.authored !== 'wgsl') return compiled;
-  for (const [index, document] of frame.modules.entries()) {
-    const built = device.createShaderModule({ label: document.name, code: document.wgsl });
-    compiled[index] = built;
+  const documents: { name: string; text: string }[] = [];
+  const seen = new Set<string>();
+  const take = (name: string, text: string): void => {
+    if (seen.has(text)) return;
+    seen.add(text);
+    documents.push({ name, text });
+  };
+  for (const module of frame.modules) take(module.name, module.wgsl);
+  for (const spec of frame.pipelines) {
+    if (spec.kind !== 'render') continue;
+    if (spec.source.vertex !== 'fullscreen') take(spec.source.vertex.document, spec.source.vertex.text);
+    take(spec.source.fragment.document, spec.source.fragment.text);
+  }
+  const many = documents.length > 1;
+  for (const document of documents) {
+    const built = device.createShaderModule({ label: document.name, code: document.text });
+    compiled.set(document.text, built);
     void built.getCompilationInfo().then((info) => {
       const said = refusal(info);
-      if (said) onRefused?.(frame.modules.length > 1 ? `${document.name}: ${said}` : said);
+      if (said) onRefused?.(many ? `${document.name}: ${said}` : said);
     });
   }
   return compiled;
@@ -1362,7 +1380,7 @@ function compileModules(
 function buildPipelines(
   device: GPUDevice,
   frame: FrameGraph,
-  compiled: GPUShaderModule[],
+  compiled: Map<string, GPUShaderModule>,
   geometryOf: (handle: VertexHandle) => DrawnGeometry,
   fullscreen: GPUShaderModule,
   cache: PipelineCache<CachedPipeline>
@@ -1370,10 +1388,19 @@ function buildPipelines(
   pipelines: Map<number, GPURenderPipeline | GPUComputePipeline>;
   wired: { index: number; layouts: GPUBindGroupLayout[]; bands: BindingSpec[][] }[];
 } {
-  const stage = (named: { module: ModuleHandle; entry: string }) => {
-    const built = compiled[indexOf(named.module)];
-    if (!built) throw new Error(`the frame names a document ${indexOf(named.module)} it does not carry`);
-    return { module: built, entryPoint: named.entry };
+  // A render stage resolves to the module compiled for its own text (item 99); a
+  // compute stage resolves its `ModuleHandle` to a module's text and then to the
+  // same map. Both throw by the document's identity rather than silently drawing a
+  // stage the frame never carried.
+  const renderStage = (named: RenderStageSource) => moduleFor(named.text, named.document, named.entry);
+  const computeStage = (named: { module: ModuleHandle; entry: string }) => {
+    const module = moduleOf(frame, named.module);
+    return moduleFor(module ? (module as { wgsl: string }).wgsl : '', `module ${indexOf(named.module)}`, named.entry);
+  };
+  const moduleFor = (text: string, named: string, entry: string) => {
+    const built = compiled.get(text);
+    if (!built) throw new Error(`the frame for "${frame.id}" names a document ${named} it does not carry`);
+    return { module: built, entryPoint: entry };
   };
 
   const STAGES = {
@@ -1500,14 +1527,15 @@ function buildPipelines(
         return {
           pipeline: device.createComputePipeline({
             layout: pipelineLayout,
-            compute: { ...stage(spec.compute), ...(constants ? { constants } : {}) },
+            compute: { ...computeStage(spec.compute), ...(constants ? { constants } : {}) },
           }),
           layouts,
           bands,
         };
       }
 
-      const constants = moduleOf(frame, spec.fragment.module)?.constants;
+      // A render pipeline's rung numbers ride its own source now (item 99).
+      const constants = spec.source.constants;
       // How one vertex is read out of the buffer, which is spent when the
       // pipeline is made and cannot be given at the draw. A pipeline naming no
       // geometry reads no buffer at all, which is the frame's own corners.
@@ -1528,11 +1556,11 @@ function buildPipelines(
         pipeline: device.createRenderPipeline({
           layout: pipelineLayout,
           vertex:
-            spec.vertex === 'fullscreen'
+            spec.source.vertex === 'fullscreen'
               ? { module: fullscreen, entryPoint: 'main' }
-              : { ...stage(spec.vertex), ...(drawn ? { buffers: reads } : {}) },
+              : { ...renderStage(spec.source.vertex), ...(drawn ? { buffers: reads } : {}) },
           fragment: {
-            ...stage(spec.fragment),
+            ...renderStage(spec.source.fragment),
             // A pipeline naming its own targets writes textures rather than the
             // frame, so the frame's format is the backend's answer alone and a
             // description never carries a copy of it that could disagree.

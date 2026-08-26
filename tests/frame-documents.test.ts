@@ -1,20 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { assembleFrame, documentNames } from '@altpsyche/engine';
-import { moduleHandle, pipelineHandle, uniform } from '../graph/handles.js';
-import type { FrameGraph } from '@altpsyche/engine';
+import { pipelineHandle, uniform } from '../graph/handles.js';
+import type { FrameGraph, RenderPipelineSpec } from '@altpsyche/engine';
 import { createFakeGPU } from './support/fake-gpu';
 
 /**
- * Two distinct WGSL documents in one description, which the three-value address
- * union could not describe: both would have carried the address `wgsl`, a set of
- * addresses would have collapsed them to one request, and a re-keying from address
- * to name would have handed both the same text. Keyed by name, each is fetched,
- * carried and referenced under the one name it has, and the two texts stay apart.
+ * A render pipeline whose two stages are distinct WGSL documents — its vertex a
+ * document of its own rather than the backend's corners, its fragment another. The
+ * source lives on the pipeline now (item 99), so the two documents are named on the
+ * pipeline's own `source` and a loader fetches each under its own name; a set of
+ * document names collapses no request and no re-keying hands both the same text.
  *
- * The vertex half is its own WGSL document rather than the backend's corners, so a
- * pipeline naming a document at each stage is what forces two documents into one
- * WGSL frame — the case item 3's `Done when` asks for.
+ * The vertex half being its own WGSL document is what forces two documents into one
+ * WGSL render pipeline — the case item 3's `Done when` asks for, now carried by the
+ * per-pipeline source rather than a shared module pool.
  */
 const VERTEX = '@vertex fn main(@builtin(vertex_index) i : u32) -> @builtin(position) vec4f { return vec4f(0); }';
 const FRAGMENT = '@fragment fn fragMain() -> @location(0) vec4f { return vec4f(1); }';
@@ -22,12 +22,14 @@ const FRAGMENT = '@fragment fn fragMain() -> @location(0) vec4f { return vec4f(1
 const description: FrameGraph = {
   authored: 'wgsl',
   resources: [{ kind: 'uniform' }],
-  modules: [{ name: 'corners', wgsl: '' }, { name: 'shade', wgsl: '' }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'main' },
-      fragment: { module: moduleHandle(1), entry: 'fragMain' },
+      source: {
+        vertex: { document: 'corners', text: '', entry: 'main' },
+        fragment: { document: 'shade', text: '', entry: 'fragMain' },
+      },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
@@ -47,17 +49,19 @@ function assembled(): FrameGraph {
   );
 }
 
-describe('a description naming two distinct WGSL documents', () => {
+describe('a render pipeline whose two stages are distinct WGSL documents', () => {
   it('carries the names apart, one request each rather than one collapsed pair', () => {
     expect(documentNames(description)).toEqual(['corners', 'shade']);
   });
 
-  it('assembles with both documents’ text intact, neither overwriting the other', () => {
+  it('assembles with both documents’ text intact on the pipeline’s own source', () => {
     const frame = assembled();
-    expect(frame.modules).toEqual([
-      { name: 'corners', wgsl: VERTEX },
-      { name: 'shade', wgsl: FRAGMENT },
-    ]);
+    // A render frame names no shared module (item 99); the text rides each stage of
+    // the pipeline's source, filled by the loader from the fetched documents.
+    expect(frame.modules).toEqual([]);
+    const source = (frame.pipelines[0] as RenderPipelineSpec).source;
+    expect(source.vertex).toEqual({ document: 'corners', text: VERTEX, entry: 'main' });
+    expect(source.fragment).toEqual({ document: 'shade', text: FRAGMENT, entry: 'fragMain' });
   });
 
   it('draws, compiling a module from each document’s own text', () => {
@@ -72,48 +76,49 @@ describe('a description naming two distinct WGSL documents', () => {
 });
 
 /**
- * Two documents sharing one name are two descriptions of one text, not two texts:
- * the loader fetches one, `Object.fromEntries` maps both to one key, and the second
- * silently wins. Keying by name is what lets two documents coexist (above); this is
- * the hole it leaves open — nothing checked the names differ — closed by a refusal
- * at the same site that already refuses a document with no text.
+ * A pipeline naming a document the fetch never filled is a description of a file
+ * nobody read: left through, the card would be handed whatever the memory held. The
+ * loader refuses it at the same site it refuses a document with no text, naming both
+ * the id and the document.
  */
-const collision: FrameGraph = {
+const missing: FrameGraph = {
   authored: 'wgsl',
   resources: [{ kind: 'uniform' }],
-  modules: [{ name: 'shade', wgsl: '' }, { name: 'shade', wgsl: '' }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'main' },
-      fragment: { module: moduleHandle(1), entry: 'fragMain' },
+      source: {
+        vertex: { document: 'corners', text: '', entry: 'main' },
+        fragment: { document: 'shade', text: '', entry: 'fragMain' },
+      },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
   passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
 };
 
-describe('a description whose documents do not carry distinct names', () => {
-  it('is refused, naming both the id and the repeated name', () => {
+describe('a description naming a document the fetch did not fill', () => {
+  it('is refused, naming both the id and the unfilled document', () => {
     expect(() =>
       assembleFrame(
-        'name-collision',
-        collision,
-        new Map([['shade', FRAGMENT]]),
+        'unfilled-document',
+        missing,
+        new Map([['corners', VERTEX]]),
         new Map(),
         [{ name: 'u_time', offset: 0, size: 4 }]
       )
-    ).toThrowError(/name-collision.*shade|shade.*name-collision/);
+    ).toThrowError(/unfilled-document.*shade|shade.*unfilled-document/);
   });
 
-  it('names both the id and the repeated name literally', () => {
+  it('names both the id and the unfilled document literally', () => {
     let message = '';
     try {
-      assembleFrame('name-collision', collision, new Map([['shade', FRAGMENT]]), new Map(), []);
+      assembleFrame('unfilled-document', missing, new Map([['corners', VERTEX]]), new Map(), []);
     } catch (error) {
       message = (error as Error).message;
     }
-    expect(message).toContain('name-collision');
+    expect(message).toContain('unfilled-document');
     expect(message).toContain('shade');
   });
 });

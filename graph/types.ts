@@ -39,38 +39,23 @@ export type UniformValue = number | number[];
  * role fixed to a three-value union — fragment, vertex, wgsl — could not, since two
  * WGSL documents share one role between them and carry two distinct texts.
  *
- * Which arm a module is comes off its frame's `authored` discriminant, not off
- * which fields the record happens to carry: a WGSL frame's modules are all
- * `WgslModule`, a GLSL frame's all `GlslModule`, so nothing reads a language off
- * the shape of a document (§17 decision 6). A WGSL shader written in one file is
- * one document and a GLSL shader is the pair a WebGL 2 program links from, which is
- * the whole of what the two languages differ by here: both are a list of documents
- * with a pipeline naming which one runs at which stage.
+ * `modules` and this type are now a **compute stage's** carrier alone: item 99
+ * moved a render pipeline's two stages onto the pipeline itself (`RenderSource`), so
+ * a render frame names no module and a compute frame names one per compute stage. A
+ * compute frame's modules are all `WgslModule` and a render frame carries an empty
+ * `modules` list; nothing reads a language off the shape of a document (§17 decision
+ * 6), it reads `frame.authored`.
  */
 export interface WgslModule {
   /** The document's name — the key a loader fetches its text under and a file
    * resolves to, since a document is read from a file and a file needs a name.
-   * It is not a resource identity: a pipeline names its documents by
-   * `ModuleHandle` (the index in `modules`), and a backend resolves them by that
-   * handle, never by this name (item 87). So this stays where a resource's name
-   * went, because a module is a document rather than a resource and its name is
-   * the address a loader keeps, not a key a backend maps. */
+   * It is not a resource identity: a compute pipeline names its module by
+   * `ModuleHandle` (the index in `modules`), and a backend resolves it by that
+   * handle, never by this name (item 87). */
   name: string;
   /** The WGSL text on a frame a backend draws, and an empty string on the
    * build-time shape a producer names but a loader has not filled yet. */
   wgsl: string;
-  /** The baked GLSL translation of this document (§17 decision 2), keyed by the
-   * entry point each stage baked exactly as
-   * `fixtures/source/glsl/corpus.generated.json` stores it, so a device without
-   * WebGPU can draw a WGSL frame on WebGL 2 through the source that carries it (item
-   * 94). Absent where the build baked no translation. It is keyed by entry point
-   * rather than folded into a §9 `GlslPair`, because one WGSL document may hold
-   * several pipelines' entry points and a single vertex/fragment pair could not hold
-   * a multi-pipeline preset's bake — the `GlslPair` shape waits for item 95, which
-   * establishes a source per render pipeline first. Read only by the WGSL-to-GLSL
-   * frame conversion (`glslFrameOf`); neither backend nor the pipeline cache reads
-   * it, because each draws a frame already in its own language. */
-  glsl?: Record<string, string>;
   /** What this rung asks of the source, by the names it declares as overridable.
    * The text is the same at every rung, so these numbers are the only thing
    * separating a phone's picture from a desktop's, and they are spent when the
@@ -79,13 +64,12 @@ export interface WgslModule {
 }
 
 /** One document of a GLSL-authored shader — the authored truth on this arm, one
- * stage's text, where the WGSL arm's `glsl` is a cached translation. That a single
- * optional field cannot mean both a translation and an authored source is why the
- * discriminant exists (§17 decision 6). */
+ * stage's text. GLSL ES 3.00 has no compute stage, so a GLSL frame names no module
+ * (its render pipelines carry their own source, item 99) and this type never sits
+ * in a frame's `modules`; it survives as the GLSL arm of `ModuleSpec` the union
+ * keeps symmetric. */
 export interface GlslModule {
-  /** The document's name — the loader's fetch key, the same as a WGSL document's
-   * and for the same reason: a document is read from a file, and a pipeline names
-   * it by `ModuleHandle` rather than by this (item 87). */
+  /** The document's name — the loader's fetch key, the same as a WGSL document's. */
   name: string;
   /** The authored GLSL text of one stage's document, empty at build time for the
    * reason a WGSL document's `wgsl` is. */
@@ -96,6 +80,55 @@ export interface GlslModule {
 /** One shader document, discriminated by its frame's `authored` language, never by
  * which fields it carries. */
 export type ModuleSpec = WgslModule | GlslModule;
+
+/** One stage of a render pipeline's own source: the text the card compiles, the
+ * entry point it runs, and the fetch key a loader read that text under. Two render
+ * pipelines drawing one file name it by the same `document` key and a loader fetches
+ * it once, but each pipeline carries its own copy of the `text`, so no source is
+ * shared across two render pipelines (item 99). */
+export interface RenderStageSource {
+  /** The document name a loader fetches this stage's text under — one WGSL file
+   * (both stages share it), or one half of a GLSL pair. The loader dedups the fetch
+   * by it. */
+  document: string;
+  /** The stage's text the card compiles: the whole WGSL file on a WGSL frame (both
+   * stages carry the same file), one half's GLSL on a GLSL frame. Empty on the
+   * build-time shape a loader has not filled yet. */
+  text: string;
+  /** The entry point this stage runs inside its document. */
+  entry: string;
+}
+
+/**
+ * A render pipeline's own source — its two stages and, on a WGSL frame, their baked
+ * GLSL — reachable as one thing per render pipeline rather than gathered from a
+ * shared `modules` pool at draw time (item 99). It is what lets `RenderPipelineSpec`
+ * name no `ModuleHandle`: the source lives on the pipeline, so no WGSL document is
+ * shared across two render pipelines.
+ *
+ * Its shape is transitional. The bake stays a `Record` keyed by entry point and the
+ * two stages carry the WGSL file's text twice, until item 100 collapses the bake to
+ * a `{ vertex; fragment }` `GlslPair` and the source to §9's exact `ShaderSource`
+ * arms.
+ */
+export interface RenderSource {
+  /** The vertex stage, or `'fullscreen'` where the backend supplies the three
+   * corners and the source has no vertex document to link. */
+  vertex: RenderStageSource | 'fullscreen';
+  fragment: RenderStageSource;
+  /** The baked GLSL of this pipeline's stages (§17 decision 2), keyed by the entry
+   * point each stage baked exactly as `fixtures/source/glsl/corpus.generated.json`
+   * stores it, so a device without WebGPU draws this WGSL pipeline on WebGL 2
+   * through the bake that carries it (item 94). Absent on a GLSL frame — that
+   * backend speaks the authored language — and where the build baked no translation.
+   * Read only by `glslFrameOf`; neither backend nor the pipeline cache reads it,
+   * because each draws a frame already in its own language. */
+  glsl?: Record<string, string>;
+  /** What this pipeline's source asks of its rung, by the names it declares as
+   * overridable — spent when the pipeline is made rather than written into the
+   * text. */
+  constants?: Record<string, number>;
+}
 
 /** Where one uniform sits in the block Slang gathers them all into. Read off the
  * reflection the compiler emits, because the layout is the compiler's to decide
@@ -282,14 +315,19 @@ export interface BindingSpec {
   perDraw?: { size: number };
 }
 
-/** Which document runs at which stage, the entry point inside it, and where its
- * resources are. `fullscreen` is the backend's own three corners covering the
- * frame, which is what a WGSL source has no second document for. Naming a module
- * instead is the vertex program being the shader's own. */
+/** The source this pipeline draws with — its two stages and their bake, one per
+ * render pipeline (item 99) — and where its resources are. The vertex stage is
+ * `'fullscreen'` where the backend covers the frame with its own three corners,
+ * which is what a WGSL source has no vertex document for; naming a document instead
+ * is the vertex program being the shader's own. */
 export interface RenderPipelineSpec {
   kind: 'render';
-  vertex: { module: ModuleHandle; entry: string } | 'fullscreen';
-  fragment: { module: ModuleHandle; entry: string };
+  /** This pipeline's own source: its vertex and fragment stages and, on a WGSL
+   * frame, their baked GLSL. It replaces the `ModuleHandle` pair that indexed a
+   * shared `modules` pool, so each render pipeline resolves to exactly one source
+   * carrying its own two stages and no WGSL document is shared across two of them
+   * (item 99). */
+  source: RenderSource;
   /** The geometry this pipeline reads one vertex at a time, absent where the
    * vertex stage reads no buffer at all. The pipeline names it rather than the
    * pass, because what a pipeline needs from it is the layout it was written
@@ -485,20 +523,20 @@ export type PassSpec = RenderPassSpec | ComputePassSpec;
  * description with one resource, one pipeline and one pass in it, which is why
  * the reshape adds nothing to what either backend does.
  *
- * One type covers a frame in either state of a fetch. The build writes it with
- * its modules named rather than filled — an empty-string placeholder the loader
- * overwrites — and with no `id`, because the identity is the manifest key a
- * loader stamps on when it hands the frame across (`frameOf`). A frame a backend
- * draws is the same shape with every module's text in it and its `id` set: there
- * is no second graph type it has to be translated into, only fields that were
- * empty becoming full. A uniform resource carries no positions until then either,
- * for the same reason — the block is the shader's, the same on every target that
- * has one, and asked of the linked program on the one target that has none.
+ * One type covers a frame in either state of a fetch. The build writes it with its
+ * source named rather than filled — an empty-string placeholder the loader
+ * overwrites, on each render pipeline's `source` stages and on any compute module —
+ * and with no `id`, because the identity is the manifest key a loader stamps on when
+ * it hands the frame across (`frameOf`). A frame a backend draws is the same shape
+ * with every stage's text in it and its `id` set: there is no second graph type it
+ * has to be translated into, only fields that were empty becoming full. A uniform
+ * resource carries no positions until then either, for the same reason — the block
+ * is the shader's, the same on every target that has one, and asked of the linked
+ * program on the one target that has none.
  *
  * The frame is discriminated on `authored`, the one value everything reads a
- * shader's authoring language off (item 94, §17 decision 6): a WGSL frame's
- * modules are all `WgslModule`, a GLSL frame's all `GlslModule`, so `select`, both
- * backends and `reflect` narrow on `frame.authored` and never on which fields a
+ * shader's authoring language off (item 94, §17 decision 6): `select`, both backends
+ * and `reflect` narrow on `frame.authored` and never on which fields a source or
  * module carries. It replaces the old `frame.target` field, which said the same
  * thing beside a `module.code` string whose language nothing on the module named.
  */
@@ -547,16 +585,19 @@ interface FrameGraphCommon {
   swap?: [TextureHandle, TextureHandle][];
 }
 
-/** A WGSL-authored frame: its documents are WGSL, each carrying an optional baked
- * GLSL translation so a WebGPU-less device can draw it on WebGL 2 (§17 decision 2). */
+/** A WGSL-authored frame. Its render pipelines carry their own WGSL source, each
+ * with an optional baked GLSL translation so a WebGPU-less device can draw it on
+ * WebGL 2 (§17 decision 2, item 99); `modules` holds only the compute stages a frame
+ * names by `ModuleHandle`, and is empty for a frame that runs none. */
 export interface WgslFrameGraph extends FrameGraphCommon {
   authored: 'wgsl';
   modules: WgslModule[];
 }
 
-/** A GLSL-authored frame: its documents are the GLSL a WebGL 2 program links from,
- * the authored truth with no translation, because GLSL selects WebGL 2 wherever it
- * runs and GLSL-to-WGSL is deferred (§17 decision 6). */
+/** A GLSL-authored frame: its render pipelines carry the GLSL a WebGL 2 program links
+ * from, the authored truth with no translation, because GLSL selects WebGL 2 wherever
+ * it runs and GLSL-to-WGSL is deferred (§17 decision 6). GLSL ES 3.00 has no compute
+ * stage, so `modules` is always empty (item 99). */
 export interface GlslFrameGraph extends FrameGraphCommon {
   authored: 'glsl';
   modules: GlslModule[];

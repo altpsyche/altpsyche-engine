@@ -675,10 +675,16 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
         }
       : {
           kind: 'render',
-          vertex: drawn.has(name)
-            ? { module: moduleHandle(0), entry: (drawn.get(name) as { vertex: string }).vertex }
-            : 'fullscreen',
-          fragment: { module: moduleHandle(0), entry: name },
+          // Each render pipeline carries its own source (item 99): both stages read
+          // the one WGSL document a preset compiles from, named for the loader to
+          // fill, their entry points the vertex the pass draws and this pipeline's
+          // fragment. Text is empty until `frameOf` fills it.
+          source: {
+            vertex: drawn.has(name)
+              ? { document: WGSL_DOCUMENT, text: '', entry: (drawn.get(name) as { vertex: string }).vertex }
+              : 'fullscreen',
+            fragment: { document: WGSL_DOCUMENT, text: '', entry: name },
+          },
           ...(drawn.has(name)
             ? { geometry: vertices(nameIndex.get((drawn.get(name) as { geometry: string }).geometry)!) }
             : {}),
@@ -688,6 +694,12 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
           ...(draws?.depth ? { depth: draws.depth } : {}),
         };
   });
+
+  // The one WGSL document survives in `modules` only where a compute stage names it
+  // by `ModuleHandle` (item 99); a render-only preset carries none, its source
+  // living on each pipeline. Both a compute module and a render source name the same
+  // file, so a loader fetches it once whichever holds it.
+  const hasCompute = pipelines.some((spec) => spec.kind === 'compute');
 
   const passes: PassSpec[] = declared.passes.map((pass) => {
     // What the card is asked to say about this pass, carried through as the names
@@ -757,7 +769,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   return {
     authored: 'wgsl',
     resources,
-    modules: [{ name: WGSL_DOCUMENT, wgsl: '' }],
+    modules: hasCompute ? [{ name: WGSL_DOCUMENT, wgsl: '' }] : [],
     pipelines,
     passes,
     ...(declared.present !== undefined ? { present: texture(nameIndex.get(declared.present)!) } : {}),

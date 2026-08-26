@@ -7,7 +7,7 @@ import { loadFixture } from './support/fixture';
 import { buffer } from '../graph/handles.js';
 import { createFakeGL } from './support/fake-gl';
 import type { FixtureName } from './support/fixture';
-import type { FrameGraph, WgslFrameGraph } from '@altpsyche/engine';
+import type { FrameGraph, RenderPipelineSpec, RenderStageSource, WgslFrameGraph } from '@altpsyche/engine';
 
 /**
  * The baked GLSL reaching the WebGL 2 backend through the source that carries it,
@@ -56,11 +56,14 @@ function bakedWgslFrame(id: FixtureName): WgslFrameGraph {
   const { description, code, generated } = loadFixture(id);
   const baked = artifact().presets[id]?.entries ?? {};
   const glsl = Object.fromEntries(Object.entries(baked).map(([entry, { glsl }]) => [entry, glsl]));
-  // The bake rides the source: each WGSL document gains the GLSL its entry points
-  // baked to, which is what `glslFrameOf` reads rather than the artifact directly.
+  // The bake rides each render pipeline's own source now (item 99): the pipeline
+  // that owns the source owns its translation, keyed by entry point, which is what
+  // `glslFrameOf` reads rather than the artifact directly.
   const withBake: WgslFrameGraph = {
     ...(description as WgslFrameGraph),
-    modules: (description as WgslFrameGraph).modules.map((module) => ({ ...module, glsl })),
+    pipelines: (description as WgslFrameGraph).pipelines.map((spec) =>
+      spec.kind === 'render' ? { ...spec, source: { ...spec.source, glsl } } : spec
+    ),
     translated: true,
   };
   return frameOf(id, withBake, { wgsl: code }, undefined, undefined, bytesOf(description, generated)) as WgslFrameGraph;
@@ -71,10 +74,16 @@ describe('the WebGL 2 corpus column draws baked GLSL off the source that carries
     const frame = glslFrameOf(bakedWgslFrame('core-geometry'));
     expect(frame, 'core-geometry bakes both a vertex and a fragment').not.toBeNull();
     expect(frame!.authored).toBe('glsl');
-    // The pipeline names the baked entry points as its two documents, entered at
-    // main, rather than the one WGSL document the source carried.
-    expect(frame!.modules.map((module) => module.name).sort()).toEqual(['shade', 'warp']);
-    expect(frame!.modules.every((module) => module.glsl.startsWith('#version 300 es'))).toBe(true);
+    // The pipeline carries its own baked GLSL source now (item 99): its two stages
+    // are the baked vertex and fragment, entered at main, rather than the one WGSL
+    // document the source carried. A render frame names no shared module.
+    expect(frame!.modules).toEqual([]);
+    const source = (frame!.pipelines[0] as RenderPipelineSpec).source;
+    expect(source.vertex).not.toBe('fullscreen');
+    expect((source.vertex as RenderStageSource).entry).toBe('main');
+    expect(source.fragment.entry).toBe('main');
+    expect((source.vertex as RenderStageSource).text.startsWith('#version 300 es')).toBe(true);
+    expect(source.fragment.text.startsWith('#version 300 es')).toBe(true);
 
     const gl = createFakeGL();
     const backend = createWebGL2Backend(gl.canvas);

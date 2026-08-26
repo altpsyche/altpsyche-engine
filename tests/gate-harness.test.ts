@@ -31,12 +31,21 @@ describe('the gate harness still assembles what the browser gates draw', () => {
     for (const entry of corpus) {
       expect(entry.id, 'a corpus entry with no id').toBeTruthy();
       expect(entry.frame, `${entry.id} assembled no frame`).toBeTruthy();
-      expect(entry.frame.modules.length, `${entry.id} carries no module`).toBeGreaterThan(0);
+      // Source rides each render pipeline's own `source` now (item 99), or a compute
+      // preset's `modules`; either way a rename that empties it fails here rather than
+      // three gates deep in a browser.
+      const texts: string[] = [];
       for (const module of entry.frame.modules) {
         expect(module.name, `${entry.id} has a module with no name`).toBeTruthy();
-        const text = 'wgsl' in module ? module.wgsl : module.glsl;
-        expect(text, `${entry.id}'s module "${module.name}" has no text`).toBeTruthy();
+        texts.push('wgsl' in module ? module.wgsl : module.glsl);
       }
+      for (const spec of entry.frame.pipelines) {
+        if (spec.kind !== 'render') continue;
+        if (spec.source.vertex !== 'fullscreen') texts.push(spec.source.vertex.text);
+        texts.push(spec.source.fragment.text);
+      }
+      expect(texts.length, `${entry.id} carries no source`).toBeGreaterThan(0);
+      for (const text of texts) expect(text, `${entry.id} carries an empty source`).toBeTruthy();
     }
   });
 });

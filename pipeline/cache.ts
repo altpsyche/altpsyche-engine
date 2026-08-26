@@ -26,7 +26,7 @@
  * Nothing is exported from the package door here: like the arena, the cache is a
  * mechanism the backend and the executor reach, not a type a consumer names.
  */
-import type { PipelineSpec, FrameGraph, VertexResource } from '../graph/types.js';
+import type { PipelineSpec, FrameGraph, VertexResource, RenderStageSource } from '../graph/types.js';
 import type { ModuleHandle } from '../graph/handles.js';
 import { moduleOf, resourceOf } from '../graph/types.js';
 
@@ -87,22 +87,20 @@ export interface PipelineStructure {
  * a distinct structure, and the throw belongs where the pipeline is actually built
  * against the card, not where its key is taken. */
 function stagesOf(frame: FrameGraph, spec: PipelineSpec): { code: string; entry: string }[] {
-  // A stage's source is the text on the field the frame's language names (item 94):
-  // a WGSL frame's documents carry `wgsl`, a GLSL frame's carry `glsl`. Each backend
-  // draws a frame already in its own language — a WGSL-authored frame reaches WebGL 2
-  // only after `glslFrameOf` turns it into a GLSL one — so no bake map is read here.
-  const source = (handle: ModuleHandle): string => {
-    const module = moduleOf(frame, handle);
-    if (!module) return '';
-    return frame.authored === 'wgsl' ? (module as { wgsl: string }).wgsl : (module as { glsl: string }).glsl;
-  };
-  const resolve = (named: { module: ModuleHandle; entry: string }) => ({
-    code: source(named.module),
-    entry: named.entry,
-  });
-  if (spec.kind === 'compute') return [resolve(spec.compute)];
-  const stages = [resolve(spec.fragment)];
-  if (spec.vertex !== 'fullscreen') stages.unshift(resolve(spec.vertex));
+  // A render pipeline carries its two stages' text on its own source (item 99), so
+  // the text keying the pipeline is read straight off `spec.source` rather than
+  // resolved through a shared `modules` pool. A compute pipeline still names its
+  // module by `ModuleHandle`; its text is the WGSL field, GLSL ES 3.00 having no
+  // compute stage. Each backend draws a frame already in its own language — a
+  // WGSL-authored frame reaches WebGL 2 only after `glslFrameOf` turns it into a
+  // GLSL one — so no bake map is read here.
+  if (spec.kind === 'compute') {
+    const module = moduleOf(frame, spec.compute.module);
+    return [{ code: module ? (module as { wgsl: string }).wgsl : '', entry: spec.compute.entry }];
+  }
+  const stage = (named: RenderStageSource) => ({ code: named.text, entry: named.entry });
+  const stages = [stage(spec.source.fragment)];
+  if (spec.source.vertex !== 'fullscreen') stages.unshift(stage(spec.source.vertex));
   return stages;
 }
 

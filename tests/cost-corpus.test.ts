@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assembleFrame, cost } from '@altpsyche/engine';
+import { assembleFrame, cost, documentNames } from '@altpsyche/engine';
 import type { FrameCost } from '@altpsyche/engine';
 import { CAPABILITY_FIXTURES } from '../fixtures/capability-fixtures';
 import { loadFixture } from './support/fixture';
@@ -37,7 +37,9 @@ function corpusFrame(id: string) {
     if (!('source' in resource) || !resource.source) continue;
     bytes.set(index, generated.get(resource.source)!);
   }
-  const texts = new Map(description.modules.map((module) => [module.name, code]));
+  // Every document the description names — a render pipeline's stages (item 99) and
+  // any compute module — reads the one preset file, so each fetch key maps to `code`.
+  const texts = new Map(documentNames(description).map((name) => [name, code]));
   return assembleFrame(id, description, texts, bytes);
 }
 

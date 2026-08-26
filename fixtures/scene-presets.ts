@@ -19,11 +19,11 @@
  * spanning two pipelines (one instanced pass each, in the producer's order, item 33).
  */
 import { Arena } from '../resource/arena.js';
-import { buffer, moduleHandle } from '../graph/handles.js';
+import { buffer } from '../graph/handles.js';
 import { mat4, vec3 } from '@altpsyche/engine';
 import type { Camera, Scene } from '@altpsyche/engine';
 import type { Material, MaterialDraw } from '@altpsyche/engine';
-import type { ModuleSpec, RenderPipelineSpec, FrameGraph } from '@altpsyche/engine';
+import type { RenderPipelineSpec, FrameGraph } from '@altpsyche/engine';
 import { sceneView } from '@altpsyche/engine';
 import type { SceneViewOptions } from '@altpsyche/engine';
 
@@ -43,17 +43,24 @@ const packPanel = (draw: MaterialDraw<Panel>): Uint8Array => {
   return out;
 };
 
-const MODULE: ModuleSpec = { name: 'scene', wgsl: '// authored once, fed by the producer' };
+// The one WGSL file the scene's pipelines compile from, authored once and fed by
+// the producer. Each pipeline carries its own copy on its `source` (item 99), so no
+// document is shared across the two.
+const SCENE_WGSL = '// authored once, fed by the producer';
 
-// The one shader document is module 0. The scene's resources lay out as `sceneView`
-// builds them (item 87): the shared views buffer first (buffer(0)), then one object
-// buffer per pipeline group in list order — objects at buffer(1) and, where a second
-// group draws, glowObjects at buffer(2). `surface` is always the first group, so it
-// names the same handles in both presets below.
+// The scene's resources lay out as `sceneView` builds them (item 87): the shared
+// views buffer first (buffer(0)), then one object buffer per pipeline group in list
+// order — objects at buffer(1) and, where a second group draws, glowObjects at
+// buffer(2). `surface` is always the first group, so it names the same handles in
+// both presets below. Each pipeline's `source` names the same file and its own two
+// entry points; `surface` and `glow` share the `project` vertex entry but each
+// carries its own source, so neither shares a document with the other.
 const SURFACE: RenderPipelineSpec = {
   kind: 'render',
-  vertex: { module: moduleHandle(0), entry: 'project' },
-  fragment: { module: moduleHandle(0), entry: 'shade' },
+  source: {
+    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
+    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shade' },
+  },
   bindings: [
     { group: 0, binding: 0, resource: buffer(1), visibility: ['vertex'] },
     { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
@@ -62,8 +69,10 @@ const SURFACE: RenderPipelineSpec = {
 
 const GLOW: RenderPipelineSpec = {
   kind: 'render',
-  vertex: { module: moduleHandle(0), entry: 'project' },
-  fragment: { module: moduleHandle(0), entry: 'bloom' },
+  source: {
+    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
+    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'bloom' },
+  },
   bindings: [
     { group: 0, binding: 0, resource: buffer(2), visibility: ['vertex'] },
     { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
@@ -109,7 +118,6 @@ const SPANNING: Scene = {
 const SURFACE_ONLY: SceneViewOptions<Panel> = {
   id: 'panels',
   authored: 'wgsl',
-  modules: [MODULE],
   pipelines: [{ name: 'surface', pipeline: SURFACE, objects: { buffer: 'objects', pack: packPanel } }],
   materials: MATERIALS,
   views: { buffer: 'views' },
@@ -118,7 +126,6 @@ const SURFACE_ONLY: SceneViewOptions<Panel> = {
 const SURFACE_AND_GLOW: SceneViewOptions<Panel> = {
   id: 'spanning',
   authored: 'wgsl',
-  modules: [MODULE],
   pipelines: [
     { name: 'surface', pipeline: SURFACE, objects: { buffer: 'objects', pack: packPanel } },
     { name: 'glow', pipeline: GLOW, objects: { buffer: 'glowObjects', pack: packPanel } },

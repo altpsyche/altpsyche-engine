@@ -37,16 +37,18 @@ type Panel = { tint: [number, number, number] };
 const MODEL_BYTES = 64; // one mat4x4<f32>
 const OBJECT_BYTES = 80; // model matrix, then a vec3 colour with a padding word
 
-const MODULE: ModuleSpec = { name: 'scene', wgsl: '// authored once, fed by the producer' };
+const SCENE_WGSL = '// authored once, fed by the producer';
 
 // A pipeline carries no name now (item 87); the string a material selects it by
-// lives on its `ScenePipeline.name` below. It binds resources by handle: the shared
-// views buffer sits at index 0 (no caller `resources`), this pipeline's own objects
-// buffer at index 1.
+// lives on its `ScenePipeline.name` below. It carries its own source (item 99) and
+// binds resources by handle: the shared views buffer sits at index 0 (no caller
+// `resources`), this pipeline's own objects buffer at index 1.
 const PIPELINE: RenderPipelineSpec = {
   kind: 'render',
-  vertex: { module: moduleHandle(0), entry: 'project' },
-  fragment: { module: moduleHandle(0), entry: 'shade' },
+  source: {
+    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
+    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shade' },
+  },
   bindings: [
     { group: 0, binding: 0, resource: buffer(1), visibility: ['vertex'] },
     { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
@@ -69,7 +71,6 @@ const packPanel = (draw: MaterialDraw<Panel>): Uint8Array => {
 const OPTIONS: SceneViewOptions<Panel> = {
   id: 'panels',
   authored: 'wgsl',
-  modules: [MODULE],
   pipelines: [{ name: 'surface', pipeline: PIPELINE, objects: { buffer: 'objects', pack: packPanel } }],
   materials: MATERIALS,
   views: { buffer: 'views' },
@@ -82,8 +83,10 @@ const OPTIONS: SceneViewOptions<Panel> = {
 // resource 2; views stays at 0.
 const GLOW: RenderPipelineSpec = {
   kind: 'render',
-  vertex: { module: moduleHandle(0), entry: 'project' },
-  fragment: { module: moduleHandle(0), entry: 'bloom' },
+  source: {
+    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
+    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'bloom' },
+  },
   bindings: [
     { group: 0, binding: 0, resource: buffer(2), visibility: ['vertex'] },
     { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
@@ -117,7 +120,7 @@ describe('sceneView turns a world and its cameras into a frame with no GPU', () 
 
     expect(frame.id).toBe('panels');
     expect(frame.authored).toBe('wgsl');
-    expect(frame.modules).toEqual([MODULE]);
+    expect(frame.modules).toEqual([]);
     expect(frame.pipelines).toEqual([PIPELINE]);
     expect(frame.passes).toHaveLength(1);
 
@@ -223,7 +226,6 @@ describe('sceneView spans two pipelines in one graph, the producer deciding orde
   const optionsFor = (order: RenderPipelineSpec[]): SceneViewOptions<Panel> => ({
     id: 'spanning',
     authored: 'wgsl',
-    modules: [MODULE],
     pipelines: order.map((pipeline) => ({
       name: nameOf(pipeline),
       pipeline,
@@ -303,7 +305,6 @@ describe('sceneView spans two pipelines in one graph, the producer deciding orde
       sceneView(new Arena<Uint8Array>(() => undefined as never), {
         id: 'clash',
         authored: 'wgsl',
-        modules: [MODULE],
         pipelines: [
           { name: 'surface', pipeline: PIPELINE, objects: { buffer: 'shared', pack: packPanel } },
           { name: 'glow', pipeline: GLOW, objects: { buffer: 'shared', pack: packPanel } },
@@ -357,8 +358,10 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
   // views 0, nearObjects 1, farObjects 2 when both draw (near listed first).
   const NEAR: RenderPipelineSpec = {
     kind: 'render',
-    vertex: { module: moduleHandle(0), entry: 'project' },
-    fragment: { module: moduleHandle(0), entry: 'shade' },
+    source: {
+      vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
+      fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shade' },
+    },
     bindings: [
       { group: 0, binding: 0, resource: buffer(1), visibility: ['vertex'] },
       { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
@@ -397,7 +400,6 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
   const optionsFor = (order: RenderPipelineSpec[], withDepth: boolean): SceneViewOptions<Panel> => ({
     id: 'solids',
     authored: 'wgsl',
-    modules: [MODULE],
     pipelines: order.map((pipeline) => ({
       name: nameOf(pipeline),
       pipeline: withDepth ? pipeline : flatten(pipeline),

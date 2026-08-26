@@ -90,15 +90,19 @@ npx --yes tsx draw.ts
 # and this is the only check here that would notice.
 cat > bundled.mjs <<'JS'
 import { wgslDescription, WGSL_DOCUMENT } from '@altpsyche/engine';
-const modules = wgslDescription('x').modules;
-if (WGSL_DOCUMENT !== 'wgsl' || modules[0]?.name !== 'wgsl') {
+// A render pipeline carries its own source now (item 99): the WGSL document
+// `WGSL_DOCUMENT` names rides the pipeline's `source.fragment.document`, not a
+// shared `modules` entry. A bundler that drops the re-exported constant reads
+// `undefined` here and names a document with no name — which is what this catches.
+const document = wgslDescription('x').pipelines[0]?.source.fragment.document;
+if (WGSL_DOCUMENT !== 'wgsl' || document !== 'wgsl') {
   console.error(
     'a bundler lost the door\'s re-exports: WGSL_DOCUMENT=' + JSON.stringify(WGSL_DOCUMENT) +
-    ' modules=' + JSON.stringify(modules)
+    ' document=' + JSON.stringify(document)
   );
   process.exit(1);
 }
-console.log('bundled by esbuild, the door keeps its re-exports: ' + JSON.stringify(modules));
+console.log('bundled by esbuild, the door keeps its re-exports: ' + JSON.stringify(document));
 JS
 
 npx --yes esbuild bundled.mjs --bundle --format=esm --outfile=bundled.out.mjs >/dev/null

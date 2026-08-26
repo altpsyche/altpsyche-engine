@@ -24,7 +24,7 @@ import type {
   TextureResource,
   UniformValue,
 } from '../graph/types.js';
-import { componentsOf, drawsCorners, drawsIndirectly, isRenderPass, moduleOf, perDrawBinding, resourceOf } from '../graph/types.js';
+import { componentsOf, drawsCorners, drawsIndirectly, isRenderPass, perDrawBinding, resourceOf } from '../graph/types.js';
 import type { ResourceHandle, TextureHandle, VertexHandle } from '../graph/handles.js';
 import { indexOf } from '../graph/handles.js';
 import { Arena } from '../resource/arena.js';
@@ -526,17 +526,13 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // shares the one buffer `setUniforms` writes — the WGSL model of one uniform
       // buffer read by each pipeline.
       const compileSpec = (spec: RenderPipelineSpec) => {
-        if (spec.vertex === 'fullscreen') throw new Error(`the frame for "${frame.id}" carries no vertex document`);
-        const vertexSource = moduleOf(frame, spec.vertex.module);
-        const fragmentSource = moduleOf(frame, spec.fragment.module);
-        if (!vertexSource || !fragmentSource) {
-          throw new Error(`the frame for "${frame.id}" names a document it does not carry`);
-        }
-        // A GLSL frame's documents carry their source on `glsl` (item 94); the
-        // backend guarded a non-GLSL frame above, so the field the language names is
-        // the one read here.
-        const vertexGlsl = (vertexSource as { glsl: string }).glsl;
-        const fragmentGlsl = (fragmentSource as { glsl: string }).glsl;
+        if (spec.source.vertex === 'fullscreen') throw new Error(`the frame for "${frame.id}" carries no vertex document`);
+        // A render pipeline carries its two stages' text on its own source (item 99),
+        // so the GLSL the program links from is read straight off the pipeline rather
+        // than resolved through a shared module pool. The backend guarded a non-GLSL
+        // frame above, so these texts are the authored GLSL of each stage.
+        const vertexGlsl = spec.source.vertex.text;
+        const fragmentGlsl = spec.source.fragment.text;
         return programCache.resolve(
           programCache.request(pipelineStructureOf(frame, spec), () => {
             const linked = gl.createProgram();

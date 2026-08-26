@@ -250,8 +250,10 @@ const VERTEX_STRIDE = 24;
 // those resources by the handle its index becomes.
 const litPipeline: RenderPipelineSpec = {
   kind: 'render',
-  vertex: { module: moduleHandle(0), entry: 'project' },
-  fragment: { module: moduleHandle(0), entry: 'shade' },
+  source: {
+    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
+    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shade' },
+  },
   geometry: vertices(0),
   bindings: [
     { group: 0, binding: 0, resource: buffer(3), visibility: ['vertex'] },
@@ -261,8 +263,10 @@ const litPipeline: RenderPipelineSpec = {
 
 const shadowPipeline: RenderPipelineSpec = {
   kind: 'render',
-  vertex: { module: moduleHandle(0), entry: 'project' },
-  fragment: { module: moduleHandle(0), entry: 'shadow' },
+  source: {
+    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
+    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shadow' },
+  },
   geometry: vertices(0),
   bindings: [
     { group: 0, binding: 0, resource: buffer(2), visibility: ['vertex'] },
@@ -273,7 +277,6 @@ const shadowPipeline: RenderPipelineSpec = {
 const options: SceneViewOptions<Panel> = {
   id: 'orbit-shadow',
   authored: 'wgsl',
-  modules: [MODULE],
   // Shadows first, lit objects on top: the producer's ordering decision (item 33),
   // spelled as the order the pipelines are listed.
   pipelines: [

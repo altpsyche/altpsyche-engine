@@ -57,8 +57,10 @@ const frameOf = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
     },
     {
       kind: 'render',
-      vertex: 'fullscreen',
-      fragment: { module: moduleHandle(0), entry: 'paint' },
+      source: {
+        vertex: 'fullscreen',
+        fragment: { document: 'wgsl', text: SOURCE, entry: 'paint' },
+      },
       bindings: [
         { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] },
         { group: 0, binding: 1, resource: buffer(1), visibility: ['fragment'] },

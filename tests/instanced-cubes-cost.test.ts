@@ -42,12 +42,14 @@ const wgslCubes: FrameGraph = {
     },
     { kind: 'texture', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
   ],
-  modules: [{ name: 'wgsl', wgsl: '' }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'cube' },
-      fragment: { module: moduleHandle(0), entry: 'shade' },
+      source: {
+        vertex: { document: 'wgsl', text: '', entry: 'cube' },
+        fragment: { document: 'wgsl', text: '', entry: 'shade' },
+      },
       geometry: vertices(1),
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['vertex'] }],
       depth: { format: 'depth24plus', compare: 'less', write: true },
@@ -62,15 +64,14 @@ const glslCubes: FrameGraph = {
   id: 'instanced-cubes',
   authored: 'glsl',
   resources: [{ kind: 'uniform' }],
-  modules: [
-    { name: 'vertex', glsl: '' },
-    { name: 'fragment', glsl: '' },
-  ],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'main' },
-      fragment: { module: moduleHandle(1), entry: 'main' },
+      source: {
+        vertex: { document: 'vertex', text: '', entry: 'main' },
+        fragment: { document: 'fragment', text: '', entry: 'main' },
+      },
       bindings: [],
     },
   ],

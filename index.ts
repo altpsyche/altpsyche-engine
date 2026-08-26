@@ -108,6 +108,8 @@ export type {
   PipelineSpec,
   RenderPassSpec,
   RenderPipelineSpec,
+  RenderSource,
+  RenderStageSource,
   ResourceSpec,
   SamplerResource,
   FrameGraph,

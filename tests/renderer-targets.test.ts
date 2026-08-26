@@ -62,12 +62,14 @@ const pairFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
     holds(),
     holds(),
   ],
-  modules: [{ name: 'wgsl', wgsl: TWO }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'corners' },
-      fragment: { module: moduleHandle(0), entry: 'both' },
+      source: {
+        vertex: { document: 'wgsl', text: TWO, entry: 'corners' },
+        fragment: { document: 'wgsl', text: TWO, entry: 'both' },
+      },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       targets: [{ format: 'rgba8unorm' }, { format: 'rgba8unorm' }],
     },

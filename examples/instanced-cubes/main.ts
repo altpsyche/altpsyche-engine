@@ -175,12 +175,14 @@ const WGSL_DESCRIPTION: FrameGraph = {
     // store rather than writing it back.
     { kind: 'texture', size: { scale: 1 }, format: 'depth24plus', use: ['attachment'] },
   ],
-  modules: [{ name: WGSL_DOCUMENT, wgsl: '' }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'cube' },
-      fragment: { module: moduleHandle(0), entry: 'shade' },
+      source: {
+        vertex: { document: WGSL_DOCUMENT, text: '', entry: 'cube' },
+        fragment: { document: WGSL_DOCUMENT, text: '', entry: 'shade' },
+      },
       geometry: vertices(1),
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['vertex'] }],
       depth: { format: 'depth24plus', compare: 'less', write: true },
@@ -239,12 +241,14 @@ void main() {
 const GLSL_DESCRIPTION: FrameGraph = {
   authored: 'glsl',
   resources: [{ kind: 'uniform' }],
-  modules: [{ name: 'vertex', glsl: '' }, { name: 'fragment', glsl: '' }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'main' },
-      fragment: { module: moduleHandle(1), entry: 'main' },
+      source: {
+        vertex: { document: 'vertex', text: '', entry: 'main' },
+        fragment: { document: 'fragment', text: '', entry: 'main' },
+      },
       bindings: [],
     },
   ],

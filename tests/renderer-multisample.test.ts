@@ -43,8 +43,10 @@ const picture = (_name: string, over: Partial<TextureResource> = {}): TextureRes
 
 const shade = (over: Partial<RenderPipelineSpec> = {}): RenderPipelineSpec => ({
   kind: 'render',
-  vertex: 'fullscreen',
-  fragment: { module: moduleHandle(0), entry: 'fragMain' },
+  source: {
+    vertex: 'fullscreen',
+    fragment: { document: 'wgsl', text: DRAWS, entry: 'fragMain' },
+  },
   bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
   targets: [{ format: 'rgba8unorm' }],
   samples: 4,
@@ -66,7 +68,7 @@ const averaged = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
     picture('edges', { samples: 4 }),
     picture('flat'),
   ],
-  modules: [{ name: 'wgsl', wgsl: DRAWS }],
+  modules: [],
   pipelines: [shade()],
   passes: [into()],
   present: texture(2),

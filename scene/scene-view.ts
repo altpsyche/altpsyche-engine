@@ -44,15 +44,12 @@ import type { Camera, Scene } from './scene.js';
 import { mat4 } from './maths.js';
 import type {
   BufferResource,
-  GlslModule,
-  ModuleSpec,
   RenderPassSpec,
   RenderPipelineSpec,
   ResourceSpec,
   FrameGraph,
   ShaderTarget,
   TextureResource,
-  WgslModule,
 } from '../graph/types.js';
 
 /**
@@ -101,13 +98,10 @@ export interface ScenePipeline<V> {
 export interface SceneViewOptions<V> {
   id: string;
   /** The language the scene's documents are authored in, the one value the frame's
-   * authoring language is read off (item 94). `modules` carry their source on the
-   * field this names — `wgsl` for a WGSL scene, `glsl` for one authored in GLSL. */
+   * authoring language is read off (item 94) — `wgsl` for a WGSL scene, `glsl` for
+   * one authored in GLSL. Each pipeline's `source` carries its stages' text on the
+   * field this names, code already in hand since a producer reaches no fetch. */
   authored: ShaderTarget;
-  /** The documents the pipelines link or compile from, code already in hand — a
-   * producer reaches no fetch. Each carries its source on the field `authored`
-   * names. */
-  modules: ModuleSpec[];
   /** The pipelines the world draws through, one instanced render pass each, in the
    * order their passes run — the producer's scheduling decision (item 33). A
    * single-pipeline scene is a length-one list. A pipeline no object draws through
@@ -325,13 +319,13 @@ export function sceneView<V>(arena: Arena<Uint8Array>, options: SceneViewOptions
         ...(depthTarget ? [depthTarget] : []),
       ];
       const pipelines = groups.map((group) => group.pipeline);
-      // The frame is built on the arm its `authored` names (item 94); the caller
-      // declared the discriminant and passed documents of the matching kind, so the
-      // modules narrow to that arm's type here.
+      // The frame is built on the arm its `authored` names (item 94). A scene runs
+      // no compute stage, so it names no shared module (item 99): each render
+      // pipeline carries its own source, and `modules` is empty on either arm.
       const frame: FrameGraph =
         options.authored === 'wgsl'
-          ? { id: options.id, authored: 'wgsl', resources, modules: options.modules as WgslModule[], pipelines, passes }
-          : { id: options.id, authored: 'glsl', resources, modules: options.modules as GlslModule[], pipelines, passes };
+          ? { id: options.id, authored: 'wgsl', resources, modules: [], pipelines, passes }
+          : { id: options.id, authored: 'glsl', resources, modules: [], pipelines, passes };
       if (options.requires !== undefined) frame.requires = options.requires;
       if (options.present !== undefined) frame.present = options.present;
       return frame;

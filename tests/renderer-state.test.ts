@@ -63,8 +63,10 @@ const stateFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
     },
     {
       kind: 'render',
-      vertex: 'fullscreen',
-      fragment: { module: moduleHandle(0), entry: 'shade' },
+      source: {
+        vertex: 'fullscreen',
+        fragment: { document: 'wgsl', text: STATE, entry: 'shade' },
+      },
       bindings: [
         { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] },
         { group: 0, binding: 1, resource: texture(1), visibility: ['fragment'] },

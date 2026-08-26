@@ -90,8 +90,9 @@ export function validate(graph: FrameGraph): void {
       wantsResource(binding.resource, undefined, 'binds');
     }
     if (spec.kind === 'render') {
-      if (spec.vertex !== 'fullscreen') wantsModule(spec.vertex.module, 'runs a vertex stage from');
-      wantsModule(spec.fragment.module, 'runs a fragment stage from');
+      // A render pipeline carries its own source (item 99) rather than a
+      // `ModuleHandle` into a shared pool, so there is no dangling module index to
+      // check — the source is the pipeline's own by construction.
       if (spec.geometry !== undefined) wantsResource(spec.geometry, 'vertices', 'draws geometry from');
     } else {
       wantsModule(spec.compute.module, 'runs a compute stage from');

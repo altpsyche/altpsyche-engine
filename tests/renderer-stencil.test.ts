@@ -58,19 +58,23 @@ const masked = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-stencil',
   authored: 'wgsl',
   resources: [{ kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] }, mask()],
-  modules: [{ name: 'wgsl', wgsl: SHEETS }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'corner' },
-      fragment: { module: moduleHandle(0), entry: 'marking' },
+      source: {
+        vertex: { document: 'wgsl', text: SHEETS, entry: 'corner' },
+        fragment: { document: 'wgsl', text: SHEETS, entry: 'marking' },
+      },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       depth: { format: 'stencil8', stencil: 'mark' },
     },
     {
       kind: 'render',
-      vertex: { module: moduleHandle(0), entry: 'corner' },
-      fragment: { module: moduleHandle(0), entry: 'filling' },
+      source: {
+        vertex: { document: 'wgsl', text: SHEETS, entry: 'corner' },
+        fragment: { document: 'wgsl', text: SHEETS, entry: 'filling' },
+      },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       depth: { format: 'stencil8', stencil: 'inside' },
     },

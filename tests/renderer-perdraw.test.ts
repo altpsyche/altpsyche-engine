@@ -43,12 +43,14 @@ const perDrawFrame = (draws: DrawSpec[], count: number, over: Partial<WgslFrameG
     // fills once.
     { kind: 'buffer', bytes: count * SLOT, access: 'read', data: new Uint8Array(count * SLOT) },
   ],
-  modules: [{ name: 'wgsl', wgsl: WGSL }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: 'fullscreen',
-      fragment: { module: moduleHandle(0), entry: 'shade' },
+      source: {
+        vertex: 'fullscreen',
+        fragment: { document: 'wgsl', text: WGSL, entry: 'shade' },
+      },
       bindings: [{ group: 0, binding: 0, resource: buffer(0), visibility: ['fragment'], perDraw: { size: RECORD } }],
     },
   ],
@@ -126,8 +128,10 @@ describe('a per-draw slice on WebGPU', () => {
       pipelines: [
         {
           kind: 'render',
-          vertex: 'fullscreen',
-          fragment: { module: moduleHandle(0), entry: 'shade' },
+          source: {
+            vertex: 'fullscreen',
+            fragment: { document: 'wgsl', text: WGSL, entry: 'shade' },
+          },
           bindings: [{ group: 0, binding: 0, resource: buffer(0), visibility: ['fragment'] }],
         },
       ],

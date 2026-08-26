@@ -45,18 +45,22 @@ const holding = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   id: 'fixture-passes',
   authored: 'wgsl',
   resources: [{ kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] }],
-  modules: [{ name: 'wgsl', wgsl: SHADER }],
+  modules: [],
   pipelines: [
     {
       kind: 'render',
-      vertex: 'fullscreen',
-      fragment: { module: moduleHandle(0), entry: 'under' },
+      source: {
+        vertex: 'fullscreen',
+        fragment: { document: 'wgsl', text: SHADER, entry: 'under' },
+      },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
     {
       kind: 'render',
-      vertex: 'fullscreen',
-      fragment: { module: moduleHandle(0), entry: 'over' },
+      source: {
+        vertex: 'fullscreen',
+        fragment: { document: 'wgsl', text: SHADER, entry: 'over' },
+      },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],

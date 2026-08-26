@@ -61,10 +61,13 @@ describe('the pipeline kind a description takes off the source', () => {
     const pipeline = frame.pipelines[0] as RenderPipelineSpec;
 
     expect(pipeline.kind).toBe('render');
-    expect(pipeline.vertex).toBe('fullscreen');
-    expect(pipeline.fragment).toEqual({ module: moduleHandle(0), entry: 'fragMain' });
+    // The source lives on the pipeline now (item 99): a fullscreen vertex and a
+    // fragment reading the one WGSL document, its text empty until a loader fills it.
+    expect(pipeline.source.vertex).toBe('fullscreen');
+    expect(pipeline.source.fragment).toEqual({ document: 'wgsl', text: '', entry: 'fragMain' });
     expect(frame.passes).toEqual([{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }]);
-    expect(frame.modules).toEqual([{ name: 'wgsl', wgsl: '' }]);
+    // A render-only frame names no shared module — its source is the pipeline's own.
+    expect(frame.modules).toEqual([]);
   });
 
   it('describes a compute pipeline for a compute entry, and calls its document by its language', () => {
@@ -364,8 +367,8 @@ describe('the geometry a description says the build writes', () => {
   it('runs the shader’s own vertex stage and names the geometry on the pipeline', () => {
     const pipeline = declaredFrame('core-geometry', DRAWS, DRAWN_FRAME).pipelines[0] as RenderPipelineSpec;
 
-    expect(pipeline.vertex).toEqual({ module: moduleHandle(0), entry: 'warp' });
-    expect(pipeline.fragment).toEqual({ module: moduleHandle(0), entry: 'shade' });
+    expect(pipeline.source.vertex).toEqual({ document: 'wgsl', text: '', entry: 'warp' });
+    expect(pipeline.source.fragment).toEqual({ document: 'wgsl', text: '', entry: 'shade' });
     expect(pipeline.geometry).toBe(vertices(1));
   });
 

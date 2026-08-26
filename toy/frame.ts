@@ -15,16 +15,14 @@
  * translation between two types.
  */
 import { uniformBindingOf } from '../wgsl-binding.js';
-import { moduleOf } from '../graph/types.js';
-import { moduleHandle, pipelineHandle, uniform } from '../graph/handles.js';
-import type { ModuleHandle } from '../graph/handles.js';
+import { pipelineHandle, uniform } from '../graph/handles.js';
 import type {
   FrameGraph,
   GlslFrameGraph,
   RenderPipelineSpec,
+  RenderStageSource,
   UniformResource,
   UniformSlot,
-  WgslModule,
   WgslFrameGraph,
 } from '../graph/types.js';
 
@@ -61,17 +59,20 @@ export function wgslDescription(code: string): FrameGraph {
   // read the resource is accepted by the driver while claiming a stage reads
   // something it does not.
   const at = uniformBindingOf(code);
-  // The uniform block is resource 0, the WGSL document module 0, the one pipeline
-  // pipeline 0 — each named below by its handle, the index it sits at here.
+  // The uniform block is resource 0, the one pipeline pipeline 0. The pipeline
+  // carries its own source (item 99): a fullscreen vertex and a fragment stage
+  // reading the one WGSL document, whose text a loader fills.
   return {
     authored: 'wgsl',
     resources: [{ kind: 'uniform' }],
-    modules: [{ name: WGSL_DOCUMENT, wgsl: '' }],
+    modules: [],
     pipelines: [
       {
         kind: 'render',
-        vertex: 'fullscreen',
-        fragment: { module: moduleHandle(0), entry: WGSL_FRAGMENT_ENTRY },
+        source: {
+          vertex: 'fullscreen',
+          fragment: { document: WGSL_DOCUMENT, text: '', entry: WGSL_FRAGMENT_ENTRY },
+        },
         bindings: at ? [{ group: at.group, binding: at.binding, resource: uniform(0), visibility: ['fragment'] }] : [],
       },
     ],
@@ -88,17 +89,20 @@ export function wgslDescription(code: string): FrameGraph {
  * with a block index instead.
  */
 export function glslDescription(): FrameGraph {
-  // The uniform block is resource 0; the vertex document is module 0 and the
-  // fragment module 1; the one pipeline is pipeline 0 — each named by its handle.
+  // The uniform block is resource 0; the one pipeline is pipeline 0, carrying its
+  // own source (item 99): a vertex half and a fragment half, each a GLSL document
+  // whose text a loader fills.
   return {
     authored: 'glsl',
     resources: [{ kind: 'uniform' }],
-    modules: [{ name: 'vertex', glsl: '' }, { name: 'fragment', glsl: '' }],
+    modules: [],
     pipelines: [
       {
         kind: 'render',
-        vertex: { module: moduleHandle(0), entry: 'main' },
-        fragment: { module: moduleHandle(1), entry: 'main' },
+        source: {
+          vertex: { document: 'vertex', text: '', entry: 'main' },
+          fragment: { document: 'fragment', text: '', entry: 'main' },
+        },
         bindings: [],
       },
     ],
@@ -148,8 +152,11 @@ export function frameOf(
   if (repeated)
     throw new Error(`the description for "${id}" names two documents "${repeated.name}"`);
 
-  const missing = description.modules.find((module) => texts[module.name] === undefined);
-  if (missing) throw new Error(`the description for "${id}" names a document "${missing.name}" with no text`);
+  // Every document a compute module or a render pipeline's source names must have
+  // text; a name with none is a description of a file nobody fetched, which left
+  // through would hand the card whatever the memory held.
+  const missing = documentNames(description).find((name) => texts[name] === undefined);
+  if (missing) throw new Error(`the description for "${id}" names a document "${missing}" with no text`);
 
   // A generated resource carries an address rather than a name, so its bytes are
   // keyed by the index it sits at in `resources` (item 87): the description names
@@ -167,20 +174,41 @@ export function frameOf(
     const bytes = 'source' in resource ? generated?.get(index) : undefined;
     return bytes ? { ...resource, data: bytes } : resource;
   });
+  // Each render pipeline's source takes its two stages' text from the fetched
+  // texts, keyed by the document each stage names (item 99). A WGSL rung's numbers
+  // land on the source too — the one language whose value reaches the pipeline
+  // rather than the text — so a phone's source carries constants a desktop's does
+  // not. A compute pipeline keeps its `ModuleHandle` and is filled below.
+  const wgslConstants = description.authored === 'wgsl' ? constants : undefined;
+  const fillStage = (stage: RenderStageSource | 'fullscreen'): RenderStageSource | 'fullscreen' =>
+    stage === 'fullscreen' ? 'fullscreen' : { ...stage, text: texts[stage.document] as string };
+  const pipelines = description.pipelines.map((spec) =>
+    spec.kind !== 'render'
+      ? spec
+      : {
+          ...spec,
+          source: {
+            ...spec.source,
+            vertex: fillStage(spec.source.vertex),
+            fragment: fillStage(spec.source.fragment) as RenderStageSource,
+            ...(wgslConstants ? { constants: wgslConstants } : {}),
+          },
+        }
+  );
+
   const common = {
     id,
     resources,
-    pipelines: description.pipelines,
+    pipelines,
     passes: description.passes,
     ...(description.translated !== undefined ? { translated: description.translated } : {}),
     ...(description.present !== undefined ? { present: description.present } : {}),
     ...(description.swap ? { swap: description.swap } : {}),
   };
 
-  // The modules take their text on the field the frame's language names, and a
-  // rung's numbers land on the WGSL documents alone — the one language whose value
-  // reaches the pipeline rather than the text. The frame's `authored` answers which
-  // documents take them without a per-document role to read.
+  // A frame's remaining documents are its compute modules, filled the same way: the
+  // WGSL text a loader fetched, and a rung's constants where the language takes them.
+  // A render frame carries none, so the list is empty and this maps nothing.
   if (description.authored === 'wgsl') {
     return {
       ...common,
@@ -188,7 +216,6 @@ export function frameOf(
       modules: description.modules.map((module) => ({
         name: module.name,
         wgsl: texts[module.name] as string,
-        ...(module.glsl ? { glsl: module.glsl } : {}),
         ...(constants ? { constants } : {}),
       })),
     };
@@ -203,13 +230,25 @@ export function frameOf(
   };
 }
 
+/** The documents one render pipeline's source names — the fetch key of each stage
+ * that has one, a fullscreen vertex naming none. Two pipelines drawing one file name
+ * it by the same key, which a set upstream collapses to one request. */
+const renderStageDocuments = (spec: RenderPipelineSpec): string[] => [
+  ...(spec.source.vertex === 'fullscreen' ? [] : [spec.source.vertex.document]),
+  spec.source.fragment.document,
+];
+
 /** The names a description's documents carry, which is what a loader fetches text
- * for and keys it under. A name appears once whatever the pipelines do with it, so
- * a set collapses a document two pipelines reference to one request. A loader
- * resolves each name to a file and fetches it; this only reads the description, so
- * it fetches nothing and knows no path. */
+ * for and keys it under — a render pipeline's two stage documents and any compute
+ * module's name. A name appears once whatever the pipelines do with it, so a set
+ * collapses a document two pipelines reference to one request. A loader resolves
+ * each name to a file and fetches it; this only reads the description, so it fetches
+ * nothing and knows no path. */
 export const documentNames = (description: FrameGraph): string[] => [
-  ...new Set(description.modules.map((module) => module.name)),
+  ...new Set([
+    ...description.modules.map((module) => module.name),
+    ...description.pipelines.flatMap((spec) => (spec.kind === 'render' ? renderStageDocuments(spec) : [])),
+  ]),
 ];
 
 /** The resources the build generated bytes for, each as its index in the frame's
@@ -244,7 +283,7 @@ export function assembleFrame(
   return frameOf(
     id,
     description,
-    Object.fromEntries(description.modules.map((module) => [module.name, texts.get(module.name) as string])),
+    Object.fromEntries(documentNames(description).map((name) => [name, texts.get(name) as string])),
     block,
     constants,
     generated
@@ -291,56 +330,34 @@ export function glslFrame(id: string, vertex: string, fragment: string): FrameGr
  * that a needed document is absent.
  */
 export function glslFrameOf(frame: WgslFrameGraph): GlslFrameGraph | null {
-  // The baked GLSL of each entry a pipeline names, gathered off the source that
-  // carries it, keyed by the entry-point name the GLSL document takes. Each entry
-  // name becomes one GLSL document, and a pipeline names its documents by the index
-  // that document lands at in the rebuilt `modules` list — so the entry names are
-  // collected in order here and mapped to handles below (item 87).
-  const texts: Record<string, string> = {};
-  let missing = false;
-  const bakedFor = (module: ModuleHandle, entry: string): string | undefined =>
-    // `frame` is a WGSL frame, so its documents are `WgslModule` and their `glsl` is
-    // the entry-keyed bake; `moduleOf` widens to the module union, hence the narrow.
-    (moduleOf(frame, module) as WgslModule | undefined)?.glsl?.[entry];
-  const take = (module: ModuleHandle, entry: string): void => {
-    const source = bakedFor(module, entry);
-    if (source === undefined) missing = true;
-    else texts[entry] = source;
-  };
-
-  // Which entry points each render pipeline draws with, in frame order, so the
-  // pipelines are rebuilt after the module list is final and can name each document
-  // by its index in that list.
-  const entries: { vertex: string; fragment: string; from: RenderPipelineSpec }[] = [];
-  for (const pipeline of frame.pipelines) {
-    // A compute pipeline has no vertex or fragment and no place on WebGL 2; a
-    // fullscreen WGSL frame supplies its corners from the backend, so the build bakes no
-    // vertex for WebGL 2 to link. Either leaves a hole a caller skips by outcome.
-    if (pipeline.kind !== 'render' || pipeline.vertex === 'fullscreen') {
-      missing = true;
-      continue;
-    }
-    take(pipeline.vertex.module, pipeline.vertex.entry);
-    take(pipeline.fragment.module, pipeline.fragment.entry);
-    entries.push({ vertex: pipeline.vertex.entry, fragment: pipeline.fragment.entry, from: pipeline });
+  // Each render pipeline's own baked GLSL, read off its source's entry-keyed bake
+  // (item 99): the pipeline that owns the source owns its translation, so no GLSL
+  // document is shared even where two pipelines drew one WGSL entry point. A stage's
+  // baked text becomes that pipeline's GLSL stage, entered at `main`.
+  const pipelines: RenderPipelineSpec[] = [];
+  for (const spec of frame.pipelines) {
+    // A compute pipeline has no place on WebGL 2; a fullscreen WGSL frame supplies
+    // its corners from the backend, so the build bakes no vertex for WebGL 2 to
+    // link. Either leaves a hole a caller skips by outcome.
+    if (spec.kind !== 'render' || spec.source.vertex === 'fullscreen') return null;
+    const vertexGlsl = spec.source.glsl?.[spec.source.vertex.entry];
+    const fragmentGlsl = spec.source.glsl?.[spec.source.fragment.entry];
+    // A stage the build refused to translate — a capability WebGL 2 withholds —
+    // leaves its entry out of the bake, so a needed document is absent and the whole
+    // frame is skipped rather than drawn with a hole in it.
+    if (vertexGlsl === undefined || fragmentGlsl === undefined) return null;
+    pipelines.push({
+      ...spec,
+      source: {
+        vertex: { document: 'vertex', text: vertexGlsl, entry: 'main' },
+        fragment: { document: 'fragment', text: fragmentGlsl, entry: 'main' },
+      },
+      // A GLSL program answers where each uniform block sits, so the block bindings
+      // drop — except a per-draw slice's, whose group and binding tell the per-draw
+      // block apart from the shared one and whose `perDraw` size is one record's.
+      bindings: spec.bindings.filter((binding) => binding.perDraw !== undefined),
+    });
   }
-  if (missing) return null;
-
-  // The rebuilt document list, one GLSL document per entry point, and the handle
-  // each entry name resolves to — the index it sits at in that list.
-  const documentNames = Object.keys(texts);
-  const handleOfEntry = new Map<string, ModuleHandle>(documentNames.map((name, index) => [name, moduleHandle(index)]));
-  const modules = documentNames.map((name) => ({ name, glsl: texts[name] as string }));
-
-  const pipelines: RenderPipelineSpec[] = entries.map(({ vertex, fragment, from }) => ({
-    ...from,
-    vertex: { module: handleOfEntry.get(vertex) as ModuleHandle, entry: 'main' },
-    fragment: { module: handleOfEntry.get(fragment) as ModuleHandle, entry: 'main' },
-    // A GLSL program answers where each uniform block sits, so the block bindings
-    // drop — except a per-draw slice's, whose group and binding tell the per-draw
-    // block apart from the shared one and whose `perDraw` size is one record's.
-    bindings: from.bindings.filter((binding) => binding.perDraw !== undefined),
-  }));
 
   return {
     ...(frame.id !== undefined ? { id: frame.id } : {}),
@@ -352,7 +369,9 @@ export function glslFrameOf(frame: WgslFrameGraph): GlslFrameGraph | null {
     resources: frame.resources.map((resource) =>
       resource.kind === 'uniform' && resource.block ? { kind: 'uniform' } : resource
     ),
-    modules,
+    // A GLSL frame names no module: each render pipeline carries its own GLSL source
+    // (item 99), so the shared document pool is empty.
+    modules: [],
     pipelines,
     passes: frame.passes,
     ...(frame.requires !== undefined ? { requires: frame.requires } : {}),
