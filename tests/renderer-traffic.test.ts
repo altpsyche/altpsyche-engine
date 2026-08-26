@@ -64,10 +64,9 @@ const gridFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'wgsl', text: GRID, entry: 'warp' },
-        fragment: { document: 'wgsl', text: GRID, entry: 'shade' },
-      },
+      source: { wgsl: { vertex: GRID, fragment: GRID } },
+      vertex: { document: 'wgsl', entry: 'warp' },
+      fragment: { document: 'wgsl', entry: 'shade' },
       geometry: vertices(1),
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },

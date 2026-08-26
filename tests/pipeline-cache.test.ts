@@ -25,10 +25,8 @@ const structure = (over: Partial<PipelineStructure> = {}): PipelineStructure => 
   stages: [{ code: 'fn main() {}', entry: 'main' }],
   spec: {
     kind: 'render',
-    source: {
-      vertex: 'fullscreen',
-      fragment: { document: 'wgsl', text: 'fn main() {}', entry: 'fragMain' },
-    },
+    source: { wgsl: { vertex: 'fn main() {}', fragment: 'fn main() {}' } },
+    fragment: { document: 'wgsl', entry: 'fragMain' },
     bindings: [],
   } as PipelineSpec,
   ...over,
@@ -165,10 +163,8 @@ describe('the structure key', () => {
     // binding's kind and access into the structure is what keys them apart.
     const spec: PipelineSpec = {
       kind: 'render',
-      source: {
-        vertex: 'fullscreen',
-        fragment: { document: 'wgsl', text: 'fn main() {}', entry: 'fragMain' },
-      },
+      source: { wgsl: { vertex: 'fn main() {}', fragment: 'fn main() {}' } },
+      fragment: { document: 'wgsl', entry: 'fragMain' },
       bindings: [{ group: 0, binding: 0, resource: buffer(0), visibility: ['fragment'] }],
     };
     const frame = (access: 'read' | 'read-write'): Parameters<typeof pipelineStructureOf>[0] => ({

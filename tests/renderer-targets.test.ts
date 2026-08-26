@@ -66,10 +66,9 @@ const pairFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'wgsl', text: TWO, entry: 'corners' },
-        fragment: { document: 'wgsl', text: TWO, entry: 'both' },
-      },
+      source: { wgsl: { vertex: TWO, fragment: TWO } },
+      vertex: { document: 'wgsl', entry: 'corners' },
+      fragment: { document: 'wgsl', entry: 'both' },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       targets: [{ format: 'rgba8unorm' }, { format: 'rgba8unorm' }],
     },

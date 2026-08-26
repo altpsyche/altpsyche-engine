@@ -20,10 +20,8 @@ import { texture, buffer, moduleHandle, pipelineHandle } from '../graph/handles.
 
 const RENDER = (over: Partial<Extract<PipelineSpec, { kind: 'render' }>> = {}): PipelineSpec => ({
   kind: 'render',
-  source: {
-    vertex: 'fullscreen',
-    fragment: { document: 'wgsl', text: '', entry: 'f' },
-  },
+  source: { wgsl: { vertex: '', fragment: '' } },
+  fragment: { document: 'wgsl', entry: 'f' },
   bindings: [],
   ...over,
 });

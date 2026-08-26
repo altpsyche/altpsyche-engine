@@ -69,19 +69,17 @@ function twoPass(at: 'canvas' | 'present' = 'canvas'): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'vertex', text: VERTEX, entry: 'main' },
-          fragment: { document: 'paint', text: FRAGMENT, entry: 'main' },
-        },
+        source: { glsl: { vertex: VERTEX, fragment: FRAGMENT } },
+        vertex: { document: 'vertex', entry: 'main' },
+        fragment: { document: 'paint', entry: 'main' },
         targets: [{ format: 'rgba8unorm' }],
         bindings: [],
       },
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'vertex', text: VERTEX, entry: 'main' },
-          fragment: { document: 'show', text: FRAGMENT_SAMPLE, entry: 'main' },
-        },
+        source: { glsl: { vertex: VERTEX, fragment: FRAGMENT_SAMPLE } },
+        vertex: { document: 'vertex', entry: 'main' },
+        fragment: { document: 'show', entry: 'main' },
         ...(at === 'present' ? { targets: [{ format: 'rgba8unorm' as const }] } : {}),
         bindings: [{ group: 0, binding: 0, resource: texture(1), visibility: ['fragment'], reads: 'sample' }],
       },
@@ -163,12 +161,13 @@ describe('a description above the subset', () => {
 
   it('refuses a pipeline asking for a vertex program the shader does not supply', () => {
     const { backend } = backendOver();
-    // A GLSL pair is two documents and the vertex half is the shader's own, so
-    // `fullscreen` is a WGSL description that reached the wrong backend.
-    const pipelines = graph().pipelines.map((pipeline) => ({
-      ...pipeline,
-      source: { ...(pipeline as RenderPipelineSpec).source, vertex: 'fullscreen' as const },
-    }));
+    // A GLSL pair is two documents and the vertex half is the shader's own, so a
+    // pipeline naming no vertex stage (the fullscreen marker, item 103) is a WGSL
+    // description that reached the wrong backend.
+    const pipelines = graph().pipelines.map((pipeline) => {
+      const { vertex: _vertex, ...rest } = pipeline as RenderPipelineSpec;
+      return rest;
+    });
     expect(() => backend.program(glsl({ pipelines }))).toThrow(
       'the frame for "fixture" carries no vertex document'
     );
@@ -278,10 +277,9 @@ describe('a description above the subset', () => {
     pipelines: [
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'vertex', text: VERTEX, entry: 'main' },
-          fragment: { document: 'fragment', text: FRAGMENT, entry: 'main' },
-        },
+        source: { glsl: { vertex: VERTEX, fragment: FRAGMENT } },
+        vertex: { document: 'vertex', entry: 'main' },
+        fragment: { document: 'fragment', entry: 'main' },
         targets: [{ format: 'rgba8unorm' }],
         samples: 4,
         bindings: [],
@@ -683,14 +681,9 @@ function manyTargets(n: number): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'vertex', text: VERTEX, entry: 'main' },
-          fragment: {
-            document: 'paint',
-            text: `#version 300 es\nprecision highp float;\n${outputs}\nvoid main(){${writes}}`,
-            entry: 'main',
-          },
-        },
+        source: { glsl: { vertex: VERTEX, fragment: `#version 300 es\nprecision highp float;\n${outputs}\nvoid main(){${writes}}` } },
+        vertex: { document: 'vertex', entry: 'main' },
+        fragment: { document: 'paint', entry: 'main' },
         targets: names.map(() => ({ format: 'rgba8unorm' as const })),
         bindings: [],
       },
@@ -816,10 +809,9 @@ function geometryFrame(instances = 3): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'warp', text: GRID_VERTEX, entry: 'main' },
-          fragment: { document: 'shade', text: FRAGMENT, entry: 'main' },
-        },
+        source: { glsl: { vertex: GRID_VERTEX, fragment: FRAGMENT } },
+        vertex: { document: 'warp', entry: 'main' },
+        fragment: { document: 'shade', entry: 'main' },
         geometry: vertices(1),
         bindings: [],
       },
@@ -1016,10 +1008,9 @@ function sceneFrame(instances = SCENE_INSTANCES): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'project', text: SCENE_VERTEX, entry: 'main' },
-          fragment: { document: 'shade', text: FRAGMENT, entry: 'main' },
-        },
+        source: { glsl: { vertex: SCENE_VERTEX, fragment: FRAGMENT } },
+        vertex: { document: 'project', entry: 'main' },
+        fragment: { document: 'shade', entry: 'main' },
         geometry: vertices(2),
         bindings: [
           { group: 0, binding: 0, resource: buffer(0), visibility: ['vertex'] },
@@ -1157,20 +1148,18 @@ function mixedArmsFrame(): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'warp', text: GRID_VERTEX, entry: 'main' },
-          fragment: { document: 'shade', text: FRAGMENT, entry: 'main' },
-        },
+        source: { glsl: { vertex: GRID_VERTEX, fragment: FRAGMENT } },
+        vertex: { document: 'warp', entry: 'main' },
+        fragment: { document: 'shade', entry: 'main' },
         geometry: vertices(1),
         targets: [{ format: 'rgba8unorm' }],
         bindings: [],
       },
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'vertex', text: VERTEX, entry: 'main' },
-          fragment: { document: 'show', text: FRAGMENT_SAMPLE, entry: 'main' },
-        },
+        source: { glsl: { vertex: VERTEX, fragment: FRAGMENT_SAMPLE } },
+        vertex: { document: 'vertex', entry: 'main' },
+        fragment: { document: 'show', entry: 'main' },
         bindings: [{ group: 0, binding: 0, resource: texture(3), visibility: ['fragment'], reads: 'sample' }],
       },
     ],
@@ -1239,10 +1228,9 @@ function textureFrame(size: { width: number; height: number } | { scale: number 
     pipelines: [
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'vertex', text: VERTEX, entry: 'main' },
-          fragment: { document: 'shade', text: GRAIN_FRAGMENT, entry: 'main' },
-        },
+        source: { glsl: { vertex: VERTEX, fragment: GRAIN_FRAGMENT } },
+        vertex: { document: 'vertex', entry: 'main' },
+        fragment: { document: 'shade', entry: 'main' },
         bindings: [{ group: 0, binding: 0, resource: texture(1), visibility: ['fragment'], reads: 'sample' }],
       },
     ],
@@ -1348,10 +1336,9 @@ function mipsFrame(over: Partial<TextureResource> = {}): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'vertex', text: VERTEX, entry: 'main' },
-          fragment: { document: 'shade', text: GRAIN_FRAGMENT, entry: 'main' },
-        },
+        source: { glsl: { vertex: VERTEX, fragment: GRAIN_FRAGMENT } },
+        vertex: { document: 'vertex', entry: 'main' },
+        fragment: { document: 'shade', entry: 'main' },
         bindings: [{ group: 0, binding: 0, resource: texture(1), visibility: ['fragment'], reads: 'sample' }],
       },
     ],
@@ -1435,19 +1422,17 @@ function depthFrame(): FrameGraph {
   const pipelines: RenderPipelineSpec[] = [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'project', text: SHEET_VERTEX, entry: 'main' },
-        fragment: { document: 'paint', text: FRAGMENT, entry: 'main' },
-      },
+      source: { glsl: { vertex: SHEET_VERTEX, fragment: FRAGMENT } },
+      vertex: { document: 'project', entry: 'main' },
+      fragment: { document: 'paint', entry: 'main' },
       geometry: vertices(3), bindings: [], targets: [{ format: 'rgba8unorm' }],
       depth: { format: 'depth24plus', compare: 'less', write: true },
     },
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'project', text: SHEET_VERTEX, entry: 'main' },
-        fragment: { document: 'paint', text: FRAGMENT, entry: 'main' },
-      },
+      source: { glsl: { vertex: SHEET_VERTEX, fragment: FRAGMENT } },
+      vertex: { document: 'project', entry: 'main' },
+      fragment: { document: 'paint', entry: 'main' },
       geometry: vertices(3), bindings: [], targets: [{ format: 'rgba8unorm' }],
       depth: { format: 'depth24plus', compare: 'less', write: false },
     },
@@ -1475,19 +1460,17 @@ function stencilFrame(): FrameGraph {
   const pipelines: RenderPipelineSpec[] = [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'project', text: SHEET_VERTEX, entry: 'main' },
-        fragment: { document: 'paint', text: FRAGMENT, entry: 'main' },
-      },
+      source: { glsl: { vertex: SHEET_VERTEX, fragment: FRAGMENT } },
+      vertex: { document: 'project', entry: 'main' },
+      fragment: { document: 'paint', entry: 'main' },
       geometry: vertices(3), bindings: [], targets: [{ format: 'rgba8unorm' }],
       depth: { format: 'stencil8', stencil: 'mark' },
     },
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'cover', text: VERTEX, entry: 'main' },
-        fragment: { document: 'paint', text: FRAGMENT, entry: 'main' },
-      },
+      source: { glsl: { vertex: VERTEX, fragment: FRAGMENT } },
+      vertex: { document: 'cover', entry: 'main' },
+      fragment: { document: 'paint', entry: 'main' },
       bindings: [], targets: [{ format: 'rgba8unorm' }],
       depth: { format: 'stencil8', stencil: 'inside' },
     },

@@ -61,10 +61,9 @@ const tiltedFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'wgsl', text: SURFACES, entry: 'tilt' },
-        fragment: { document: 'wgsl', text: SURFACES, entry: 'far' },
-      },
+      source: { wgsl: { vertex: SURFACES, fragment: SURFACES } },
+      vertex: { document: 'wgsl', entry: 'tilt' },
+      fragment: { document: 'wgsl', entry: 'far' },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       depth: { format: 'depth24plus', compare: 'less', write: true },
     },
@@ -85,7 +84,7 @@ const crossingFrame = (): FrameGraph => {
       behind,
       {
         ...behind,
-        source: { ...behind.source, fragment: { document: 'wgsl', text: SURFACES, entry: 'near' } },
+        fragment: { document: 'wgsl', entry: 'near' },
         depth: { format: 'depth24plus', compare: 'less', write: false },
       },
     ],

@@ -70,10 +70,8 @@ const frame = {
     },
     {
       kind: 'render',
-      source: {
-        vertex: 'fullscreen',
-        fragment: { document: 'wgsl', text: SOURCE, entry: 'paint' },
-      },
+      source: { wgsl: { vertex: SOURCE, fragment: SOURCE } },
+      fragment: { document: 'wgsl', entry: 'paint' },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],

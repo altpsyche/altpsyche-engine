@@ -218,10 +218,11 @@ const MODULE: ModuleSpec = { name: 'scene', wgsl: SCENE_WGSL };
 // group's object buffer (resource 3). Each binding names its resource by handle.
 const litPipeline: RenderPipelineSpec = {
   kind: 'render',
-  source: {
-    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
-    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shade' },
-  },
+  // Both stages compile the one scene WGSL file (item 103's pair, the same text
+  // twice); the entry points and fetch key ride the pipeline.
+  source: { wgsl: { vertex: SCENE_WGSL, fragment: SCENE_WGSL } },
+  vertex: { document: 'scene', entry: 'project' },
+  fragment: { document: 'scene', entry: 'shade' },
   geometry: vertices(0),
   bindings: [
     { group: 0, binding: 0, resource: buffer(3), visibility: ['vertex'] },

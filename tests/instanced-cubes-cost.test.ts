@@ -46,10 +46,9 @@ const wgslCubes: FrameGraph = {
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'wgsl', text: '', entry: 'cube' },
-        fragment: { document: 'wgsl', text: '', entry: 'shade' },
-      },
+      source: { wgsl: { vertex: '', fragment: '' } },
+      vertex: { document: 'wgsl', entry: 'cube' },
+      fragment: { document: 'wgsl', entry: 'shade' },
       geometry: vertices(1),
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['vertex'] }],
       depth: { format: 'depth24plus', compare: 'less', write: true },
@@ -68,10 +67,9 @@ const glslCubes: FrameGraph = {
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'vertex', text: '', entry: 'main' },
-        fragment: { document: 'fragment', text: '', entry: 'main' },
-      },
+      source: { glsl: { vertex: '', fragment: '' } },
+      vertex: { document: 'vertex', entry: 'main' },
+      fragment: { document: 'fragment', entry: 'main' },
       bindings: [],
     },
   ],

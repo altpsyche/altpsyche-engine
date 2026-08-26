@@ -81,54 +81,86 @@ export interface GlslModule {
  * which fields it carries. */
 export type ModuleSpec = WgslModule | GlslModule;
 
-/** One stage of a render pipeline's own source: the text the card compiles, the
- * entry point it runs, and the fetch key a loader read that text under. Two render
- * pipelines drawing one file name it by the same `document` key and a loader fetches
- * it once, but each pipeline carries its own copy of the `text`, so no source is
- * shared across two render pipelines (item 99). */
-export interface RenderStageSource {
+/** One render pipeline's two stage texts under one language — a vertex and a
+ * fragment — the shape §9 gives a WGSL or GLSL render source (item 102/103). A
+ * render pipeline compiles from two stages, and authoring them apart — a shared
+ * vertex library with a per-material fragment beside it — is ordinary practice, so
+ * the pair is two texts and not one. The two may hold the same text, which is the
+ * common case a fullscreen toy and every corpus preset make (one WGSL file both
+ * stages compile from); item 3's two-distinct-document capability is what forbids
+ * collapsing them to a single string. Empty on the build-time shape a loader has
+ * not filled yet. */
+export interface WgslPair {
+  vertex: string;
+  fragment: string;
+}
+/** The GLSL half of the same pair: the vertex and fragment a WebGL 2 program links
+ * from — a WGSL frame's baked translation (§17 decision 2, item 41) or a GLSL
+ * frame's authored truth (§17 decision 6). Named apart from `WgslPair` because §9
+ * names both and the two are not the same fact. */
+export interface GlslPair {
+  vertex: string;
+  fragment: string;
+}
+
+/** One render stage's entry point and the document key a loader fetched its text
+ * under — the two facts §9's source arms leave no slot for, so item 103 relocates
+ * them off the source onto the pipeline. Two render pipelines drawing one file name
+ * it by the same `document` key and a loader fetches it once; each pipeline still
+ * carries its own copy of the stage text on its `source` pair (item 99). */
+export interface RenderStage {
   /** The document name a loader fetches this stage's text under — one WGSL file
-   * (both stages share it), or one half of a GLSL pair. The loader dedups the fetch
-   * by it. */
+   * (both stages share it), or one half of a GLSL pair. The loader dedups by it. */
   document: string;
-  /** The stage's text the card compiles: the whole WGSL file on a WGSL frame (both
-   * stages carry the same file), one half's GLSL on a GLSL frame. Empty on the
-   * build-time shape a loader has not filled yet. */
-  text: string;
   /** The entry point this stage runs inside its document. */
   entry: string;
 }
 
 /**
- * A render pipeline's own source — its two stages and, on a WGSL frame, their baked
- * GLSL — reachable as one thing per render pipeline rather than gathered from a
- * shared `modules` pool at draw time (item 99). It is what lets `RenderPipelineSpec`
- * name no `ModuleHandle`: the source lives on the pipeline, so no WGSL document is
- * shared across two render pipelines.
- *
- * Its shape is transitional. The bake stays a `Record` keyed by entry point and the
- * two stages carry the WGSL file's text twice, until item 100 collapses the bake to
- * a `{ vertex; fragment }` `GlslPair` and the source to §9's exact `ShaderSource`
- * arms.
+ * A WGSL-authored render pipeline's source (§9): the WGSL both stages compile from,
+ * and — where a build baked it — the GLSL a WebGPU-less device draws it on WebGL 2
+ * through (§17 decision 2, item 41). The arm a WGSL frame's render pipelines carry.
  */
-export interface RenderSource {
-  /** The vertex stage, or `'fullscreen'` where the backend supplies the three
-   * corners and the source has no vertex document to link. */
-  vertex: RenderStageSource | 'fullscreen';
-  fragment: RenderStageSource;
-  /** The baked GLSL of this pipeline's stages (§17 decision 2), keyed by the entry
-   * point each stage baked exactly as `fixtures/source/glsl/corpus.generated.json`
-   * stores it, so a device without WebGPU draws this WGSL pipeline on WebGL 2
-   * through the bake that carries it (item 94). Absent on a GLSL frame — that
-   * backend speaks the authored language — and where the build baked no translation.
-   * Read only by `glslFrameOf`; neither backend nor the pipeline cache reads it,
-   * because each draws a frame already in its own language. */
-  glsl?: Record<string, string>;
+export interface WgslRenderSource {
+  /** The WGSL each stage compiles, a pair for the reason item 3/102 gives. */
+  wgsl: WgslPair;
+  /** The baked GLSL of this pipeline's two stages, a single `{ vertex; fragment }`
+   * built per pipeline from the entry points it runs (item 103, collapsing item
+   * 94's entry-point-keyed `Record`). Present so a device without WebGPU draws this
+   * WGSL pipeline on WebGL 2 through the bake that carries it; absent where the
+   * build baked no translation. Read only by `glslFrameOf`; neither backend nor the
+   * pipeline cache reads it, because each draws a frame already in its own language. */
+  glsl?: GlslPair;
   /** What this pipeline's source asks of its rung, by the names it declares as
    * overridable — spent when the pipeline is made rather than written into the
    * text. */
   constants?: Record<string, number>;
 }
+
+/**
+ * A GLSL-authored render pipeline's source (§9): the GLSL a WebGL 2 program links
+ * from, the authored truth with no translation, because GLSL selects WebGL 2
+ * wherever it runs and GLSL-to-WGSL is deferred (§17 decision 6). The arm a GLSL
+ * frame's render pipelines carry.
+ */
+export interface GlslRenderSource {
+  glsl: GlslPair;
+  constants?: Record<string, number>;
+}
+
+/**
+ * A render pipeline's own source (item 99), in §9's two arms.
+ *
+ * It carries **no `authored` discriminant of its own**: which language a source is
+ * read under is the frame's `authored`, its single home since item 94 (invariant
+ * 5), and a second copy on the source would be two homes for one fact. §9's arms
+ * list `authored` per source; item 103 reconciles that against item 94 by dropping
+ * the per-source copy and letting the frame's discriminant win — a WGSL frame's
+ * render pipelines carry the `WgslRenderSource` arm, a GLSL frame's the
+ * `GlslRenderSource` arm. The arm is therefore selected by the frame that owns the
+ * pipeline, never by which fields the source happens to carry.
+ */
+export type RenderSource = WgslRenderSource | GlslRenderSource;
 
 /** Where one uniform sits in the block Slang gathers them all into. Read off the
  * reflection the compiler emits, because the layout is the compiler's to decide
@@ -322,12 +354,23 @@ export interface BindingSpec {
  * is the vertex program being the shader's own. */
 export interface RenderPipelineSpec {
   kind: 'render';
-  /** This pipeline's own source: its vertex and fragment stages and, on a WGSL
-   * frame, their baked GLSL. It replaces the `ModuleHandle` pair that indexed a
-   * shared `modules` pool, so each render pipeline resolves to exactly one source
-   * carrying its own two stages and no WGSL document is shared across two of them
-   * (item 99). */
+  /** This pipeline's own source: the pair of stage texts it compiles and, on a
+   * WGSL frame, their baked GLSL (item 99). It replaces the `ModuleHandle` pair
+   * that indexed a shared `modules` pool, so each render pipeline resolves to
+   * exactly one source carrying its own two stage texts and no WGSL document is
+   * shared across two of them. The entry points and fetch keys that name where each
+   * stage's text is run and read ride the pipeline's `vertex`/`fragment` below,
+   * because §9's source arms leave no slot for them (item 103). */
   source: RenderSource;
+  /** The fragment stage's entry point and the document key its text was fetched
+   * under. Every render pipeline has one. */
+  fragment: RenderStage;
+  /** The vertex stage's entry point and fetch key, **absent where the backend
+   * supplies its own three fullscreen corners** and the source has no vertex half.
+   * This absence is the fullscreen marker item 103 relocated off the source (it was
+   * `source.vertex === 'fullscreen'`); a pipeline naming a vertex stage draws that
+   * stage's own geometry. */
+  vertex?: RenderStage;
   /** The geometry this pipeline reads one vertex at a time, absent where the
    * vertex stage reads no buffer at all. The pipeline names it rather than the
    * pass, because what a pipeline needs from it is the layout it was written

@@ -71,10 +71,11 @@ function webgl2SkipReason(id, description) {
     // not one, with the gate still exiting 0. `kind` is the discriminant the
     // description actually carries, so it cannot drift out from under this again.
     if (pipeline.kind !== 'render') return 'a compute stage, which has no place on WebGL 2';
-    const { vertex, fragment } = pipeline.source;
-    if (vertex === 'fullscreen')
+    // The entry points and the fullscreen marker ride the pipeline now (item 103):
+    // a pipeline naming no vertex stage is the fullscreen frame that bakes none.
+    if (!pipeline.vertex)
       return 'a fullscreen WGSL frame, which bakes no vertex for WebGL 2 to link';
-    for (const entry of [vertex.entry, fragment.entry]) {
+    for (const entry of [pipeline.vertex.entry, pipeline.fragment.entry]) {
       if (baked[entry]) continue;
       const why = refused.find((/** @type {any} */ r) => r.entry === entry);
       return why ? `${entry} needs ${why.capability}, which WebGL 2 has not got` : `${entry} baked no GLSL`;

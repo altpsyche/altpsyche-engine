@@ -26,10 +26,12 @@ const description: FrameGraph = {
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'corners', text: '', entry: 'main' },
-        fragment: { document: 'shade', text: '', entry: 'fragMain' },
-      },
+      // Two distinct WGSL documents (item 3): the vertex and fragment name different
+      // fetch keys, so the pair holds two distinct texts once filled rather than one
+      // file twice. Item 102 kept this capability when §9's arm became a pair.
+      source: { wgsl: { vertex: '', fragment: '' } },
+      vertex: { document: 'corners', entry: 'main' },
+      fragment: { document: 'shade', entry: 'fragMain' },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
@@ -59,9 +61,12 @@ describe('a render pipeline whose two stages are distinct WGSL documents', () =>
     // A render frame names no shared module (item 99); the text rides each stage of
     // the pipeline's source, filled by the loader from the fetched documents.
     expect(frame.modules).toEqual([]);
-    const source = (frame.pipelines[0] as RenderPipelineSpec).source;
-    expect(source.vertex).toEqual({ document: 'corners', text: VERTEX, entry: 'main' });
-    expect(source.fragment).toEqual({ document: 'shade', text: FRAGMENT, entry: 'fragMain' });
+    const pipeline = frame.pipelines[0] as RenderPipelineSpec;
+    // Both documents' text arrives intact and distinct on the pipeline's own source
+    // pair — the item 3 capability, held through item 102/103's pair shape.
+    expect(pipeline.source).toEqual({ wgsl: { vertex: VERTEX, fragment: FRAGMENT } });
+    expect(pipeline.vertex).toEqual({ document: 'corners', entry: 'main' });
+    expect(pipeline.fragment).toEqual({ document: 'shade', entry: 'fragMain' });
   });
 
   it('draws, compiling a module from each document’s own text', () => {
@@ -88,10 +93,9 @@ const missing: FrameGraph = {
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'corners', text: '', entry: 'main' },
-        fragment: { document: 'shade', text: '', entry: 'fragMain' },
-      },
+      source: { wgsl: { vertex: '', fragment: '' } },
+      vertex: { document: 'corners', entry: 'main' },
+      fragment: { document: 'shade', entry: 'fragMain' },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],

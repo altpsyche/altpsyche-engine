@@ -26,7 +26,13 @@
  * Nothing is exported from the package door here: like the arena, the cache is a
  * mechanism the backend and the executor reach, not a type a consumer names.
  */
-import type { PipelineSpec, FrameGraph, VertexResource, RenderStageSource } from '../graph/types.js';
+import type {
+  PipelineSpec,
+  FrameGraph,
+  VertexResource,
+  WgslRenderSource,
+  GlslRenderSource,
+} from '../graph/types.js';
 import type { ModuleHandle } from '../graph/handles.js';
 import { moduleOf, resourceOf } from '../graph/types.js';
 
@@ -98,9 +104,19 @@ function stagesOf(frame: FrameGraph, spec: PipelineSpec): { code: string; entry:
     const module = moduleOf(frame, spec.compute.module);
     return [{ code: module ? (module as { wgsl: string }).wgsl : '', entry: spec.compute.entry }];
   }
-  const stage = (named: RenderStageSource) => ({ code: named.text, entry: named.entry });
-  const stages = [stage(spec.source.fragment)];
-  if (spec.source.vertex !== 'fullscreen') stages.unshift(stage(spec.source.vertex));
+  // A render pipeline's two stage texts live on its source pair (item 99/103), the
+  // entry points and the fullscreen marker on the pipeline itself. The pair's arm
+  // is the frame's `authored`, its single home (item 94): a WGSL frame compiles
+  // `wgsl`, a GLSL frame `glsl` — a WGSL frame reaches WebGL 2 only after
+  // `glslFrameOf` turns it into a GLSL one, so no bake map is read here. A pipeline
+  // drawing the backend's own fullscreen corners names no vertex stage, so that
+  // stage is absent from the key.
+  const pair =
+    frame.authored === 'wgsl'
+      ? (spec.source as WgslRenderSource).wgsl
+      : (spec.source as GlslRenderSource).glsl;
+  const stages = [{ code: pair.fragment, entry: spec.fragment.entry }];
+  if (spec.vertex) stages.unshift({ code: pair.vertex, entry: spec.vertex.entry });
   return stages;
 }
 

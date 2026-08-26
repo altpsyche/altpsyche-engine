@@ -22,7 +22,8 @@ import type {
   IndexResource,
   RenderPassSpec,
   RenderPipelineSpec,
-  RenderStageSource,
+  RenderStage,
+  WgslRenderSource,
   SamplerResource,
   FrameGraph,
   StencilMode,
@@ -1357,8 +1358,11 @@ function compileModules(
   for (const module of frame.modules) take(module.name, module.wgsl);
   for (const spec of frame.pipelines) {
     if (spec.kind !== 'render') continue;
-    if (spec.source.vertex !== 'fullscreen') take(spec.source.vertex.document, spec.source.vertex.text);
-    take(spec.source.fragment.document, spec.source.fragment.text);
+    // The two stage texts ride the source pair; the fetch keys ride the pipeline
+    // (item 103). A fullscreen pipeline names no vertex stage.
+    const pair = (spec.source as WgslRenderSource).wgsl;
+    if (spec.vertex) take(spec.vertex.document, pair.vertex);
+    take(spec.fragment.document, pair.fragment);
   }
   const many = documents.length > 1;
   for (const document of documents) {
@@ -1392,7 +1396,7 @@ function buildPipelines(
   // compute stage resolves its `ModuleHandle` to a module's text and then to the
   // same map. Both throw by the document's identity rather than silently drawing a
   // stage the frame never carried.
-  const renderStage = (named: RenderStageSource) => moduleFor(named.text, named.document, named.entry);
+  const renderStage = (text: string, stage: RenderStage) => moduleFor(text, stage.document, stage.entry);
   const computeStage = (named: { module: ModuleHandle; entry: string }) => {
     const module = moduleOf(frame, named.module);
     return moduleFor(module ? (module as { wgsl: string }).wgsl : '', `module ${indexOf(named.module)}`, named.entry);
@@ -1534,8 +1538,10 @@ function buildPipelines(
         };
       }
 
-      // A render pipeline's rung numbers ride its own source now (item 99).
+      // A render pipeline's rung numbers ride its own source now (item 99), and its
+      // two stage texts ride the source's WGSL pair (item 103).
       const constants = spec.source.constants;
+      const pair = (spec.source as WgslRenderSource).wgsl;
       // How one vertex is read out of the buffer, which is spent when the
       // pipeline is made and cannot be given at the draw. A pipeline naming no
       // geometry reads no buffer at all, which is the frame's own corners.
@@ -1556,11 +1562,11 @@ function buildPipelines(
         pipeline: device.createRenderPipeline({
           layout: pipelineLayout,
           vertex:
-            spec.source.vertex === 'fullscreen'
+            spec.vertex === undefined
               ? { module: fullscreen, entryPoint: 'main' }
-              : { ...renderStage(spec.source.vertex), ...(drawn ? { buffers: reads } : {}) },
+              : { ...renderStage(pair.vertex, spec.vertex), ...(drawn ? { buffers: reads } : {}) },
           fragment: {
-            ...renderStage(spec.source.fragment),
+            ...renderStage(pair.fragment, spec.fragment),
             // A pipeline naming its own targets writes textures rather than the
             // frame, so the frame's format is the backend's answer alone and a
             // description never carries a copy of it that could disagree.

@@ -53,10 +53,9 @@ const meshFrame = (data: Uint8Array<ArrayBuffer>): FrameGraph => ({
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'wgsl', text: SOURCE, entry: 'warp' },
-        fragment: { document: 'wgsl', text: SOURCE, entry: 'shade' },
-      },
+      source: { wgsl: { vertex: SOURCE, fragment: SOURCE } },
+      vertex: { document: 'wgsl', entry: 'warp' },
+      fragment: { document: 'wgsl', entry: 'shade' },
       geometry: vertices(1),
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },

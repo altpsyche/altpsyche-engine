@@ -47,10 +47,8 @@ const perDrawFrame = (draws: DrawSpec[], count: number, over: Partial<WgslFrameG
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: 'fullscreen',
-        fragment: { document: 'wgsl', text: WGSL, entry: 'shade' },
-      },
+      source: { wgsl: { vertex: WGSL, fragment: WGSL } },
+      fragment: { document: 'wgsl', entry: 'shade' },
       bindings: [{ group: 0, binding: 0, resource: buffer(0), visibility: ['fragment'], perDraw: { size: RECORD } }],
     },
   ],
@@ -128,10 +126,8 @@ describe('a per-draw slice on WebGPU', () => {
       pipelines: [
         {
           kind: 'render',
-          source: {
-            vertex: 'fullscreen',
-            fragment: { document: 'wgsl', text: WGSL, entry: 'shade' },
-          },
+          source: { wgsl: { vertex: WGSL, fragment: WGSL } },
+          fragment: { document: 'wgsl', entry: 'shade' },
           bindings: [{ group: 0, binding: 0, resource: buffer(0), visibility: ['fragment'] }],
         },
       ],

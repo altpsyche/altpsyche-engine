@@ -111,16 +111,18 @@
     {
       "kind": "render",
       "source": {
-        "vertex": {
-          "document": "scene",
-          "text": "// authored once, fed by the producer",
-          "entry": "project"
-        },
-        "fragment": {
-          "document": "scene",
-          "text": "// authored once, fed by the producer",
-          "entry": "shade"
+        "wgsl": {
+          "vertex": "// authored once, fed by the producer",
+          "fragment": "// authored once, fed by the producer"
         }
+      },
+      "vertex": {
+        "document": "scene",
+        "entry": "project"
+      },
+      "fragment": {
+        "document": "scene",
+        "entry": "shade"
       },
       "bindings": [
         {
@@ -144,16 +146,18 @@
     {
       "kind": "render",
       "source": {
-        "vertex": {
-          "document": "scene",
-          "text": "// authored once, fed by the producer",
-          "entry": "project"
-        },
-        "fragment": {
-          "document": "scene",
-          "text": "// authored once, fed by the producer",
-          "entry": "bloom"
+        "wgsl": {
+          "vertex": "// authored once, fed by the producer",
+          "fragment": "// authored once, fed by the producer"
         }
+      },
+      "vertex": {
+        "document": "scene",
+        "entry": "project"
+      },
+      "fragment": {
+        "document": "scene",
+        "entry": "bloom"
       },
       "bindings": [
         {

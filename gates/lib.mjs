@@ -143,16 +143,25 @@ export async function loadCorpus() {
     const glslBake = Object.fromEntries(
       Object.entries(baked).map(([point, { glsl }]) => [point, glsl])
     );
-    // The bake rides each render pipeline's own source now (item 99): the pipeline
-    // that owns the source owns its translation, keyed by entry point exactly as the
-    // build stored it, and `glslFrameOf` reads it off there. The whole preset's bake
-    // is attached to every render pipeline's source — each reads the entries it needs.
+    // The bake rides each render pipeline's own source now, collapsed to that
+    // pipeline's own `{ vertex; fragment }` pair (item 103): the pipeline that owns
+    // the source owns its translation, built from the two entry points it runs — the
+    // vertex the pipeline names (absent on a fullscreen frame) and its fragment — off
+    // the whole preset's entry-keyed bake. `glslFrameOf` reads the pair's two halves
+    // straight off there. A stage naga refused has no entry in `glslBake`, so its
+    // half is absent and `glslFrameOf` skips the frame by outcome.
+    const bakePair = (/** @type {any} */ spec) => {
+      const pair = {};
+      if (spec.vertex && glslBake[spec.vertex.entry] !== undefined) pair.vertex = glslBake[spec.vertex.entry];
+      if (glslBake[spec.fragment.entry] !== undefined) pair.fragment = glslBake[spec.fragment.entry];
+      return pair;
+    };
     const described =
       Object.keys(glslBake).length > 0
         ? {
             ...description,
             pipelines: description.pipelines.map((/** @type {any} */ spec) =>
-              spec.kind === 'render' ? { ...spec, source: { ...spec.source, glsl: glslBake } } : spec
+              spec.kind === 'render' ? { ...spec, source: { ...spec.source, glsl: bakePair(spec) } } : spec
             ),
             translated: true,
           }

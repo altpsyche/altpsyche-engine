@@ -62,19 +62,17 @@ const masked = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'wgsl', text: SHEETS, entry: 'corner' },
-        fragment: { document: 'wgsl', text: SHEETS, entry: 'marking' },
-      },
+      source: { wgsl: { vertex: SHEETS, fragment: SHEETS } },
+      vertex: { document: 'wgsl', entry: 'corner' },
+      fragment: { document: 'wgsl', entry: 'marking' },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       depth: { format: 'stencil8', stencil: 'mark' },
     },
     {
       kind: 'render',
-      source: {
-        vertex: { document: 'wgsl', text: SHEETS, entry: 'corner' },
-        fragment: { document: 'wgsl', text: SHEETS, entry: 'filling' },
-      },
+      source: { wgsl: { vertex: SHEETS, fragment: SHEETS } },
+      vertex: { document: 'wgsl', entry: 'corner' },
+      fragment: { document: 'wgsl', entry: 'filling' },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       depth: { format: 'stencil8', stencil: 'inside' },
     },

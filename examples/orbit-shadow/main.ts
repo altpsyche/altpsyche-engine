@@ -250,10 +250,11 @@ const VERTEX_STRIDE = 24;
 // those resources by the handle its index becomes.
 const litPipeline: RenderPipelineSpec = {
   kind: 'render',
-  source: {
-    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
-    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shade' },
-  },
+  // Both stages compile the one scene WGSL file (item 103's pair); the entry points
+  // and fetch key ride the pipeline.
+  source: { wgsl: { vertex: SCENE_WGSL, fragment: SCENE_WGSL } },
+  vertex: { document: 'scene', entry: 'project' },
+  fragment: { document: 'scene', entry: 'shade' },
   geometry: vertices(0),
   bindings: [
     { group: 0, binding: 0, resource: buffer(3), visibility: ['vertex'] },
@@ -263,10 +264,9 @@ const litPipeline: RenderPipelineSpec = {
 
 const shadowPipeline: RenderPipelineSpec = {
   kind: 'render',
-  source: {
-    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
-    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shadow' },
-  },
+  source: { wgsl: { vertex: SCENE_WGSL, fragment: SCENE_WGSL } },
+  vertex: { document: 'scene', entry: 'project' },
+  fragment: { document: 'scene', entry: 'shadow' },
   geometry: vertices(0),
   bindings: [
     { group: 0, binding: 0, resource: buffer(2), visibility: ['vertex'] },

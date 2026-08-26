@@ -26,7 +26,7 @@
  * block, and it reads the frame's module text through the same parsers the layout
  * and binding readers use, carrying no new dependency.
  */
-import type { FrameGraph } from '../graph/types.js';
+import type { FrameGraph, GlslRenderSource, WgslRenderSource } from '../graph/types.js';
 import { moduleOf } from '../graph/types.js';
 import { wgslUniformFields } from '../wgsl-layout.js';
 
@@ -136,8 +136,15 @@ function sourceTexts(frame: FrameGraph): string[] {
   };
   for (const spec of frame.pipelines) {
     if (spec.kind === 'render') {
-      if (spec.source.vertex !== 'fullscreen') add(spec.source.vertex.text);
-      add(spec.source.fragment.text);
+      // A render pipeline's two stage texts ride its source pair (item 99/103), read
+      // under the frame's authoring language (item 94). A fullscreen pipeline names
+      // no vertex stage, so only its fragment is added.
+      const pair =
+        frame.authored === 'wgsl'
+          ? (spec.source as WgslRenderSource).wgsl
+          : (spec.source as GlslRenderSource).glsl;
+      if (spec.vertex) add(pair.vertex);
+      add(pair.fragment);
     } else {
       const module = moduleOf(frame, spec.compute.module);
       if (module) add((module as { wgsl: string }).wgsl);

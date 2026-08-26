@@ -91,10 +91,11 @@ npx --yes tsx draw.ts
 cat > bundled.mjs <<'JS'
 import { wgslDescription, WGSL_DOCUMENT } from '@altpsyche/engine';
 // A render pipeline carries its own source now (item 99): the WGSL document
-// `WGSL_DOCUMENT` names rides the pipeline's `source.fragment.document`, not a
-// shared `modules` entry. A bundler that drops the re-exported constant reads
-// `undefined` here and names a document with no name — which is what this catches.
-const document = wgslDescription('x').pipelines[0]?.source.fragment.document;
+// `WGSL_DOCUMENT` names rides the pipeline's `fragment.document` stage descriptor
+// (item 103 relocated it off the source), not a shared `modules` entry. A bundler
+// that drops the re-exported constant reads `undefined` here and names a document
+// with no name — which is what this catches.
+const document = wgslDescription('x').pipelines[0]?.fragment.document;
 if (WGSL_DOCUMENT !== 'wgsl' || document !== 'wgsl') {
   console.error(
     'a bundler lost the door\'s re-exports: WGSL_DOCUMENT=' + JSON.stringify(WGSL_DOCUMENT) +

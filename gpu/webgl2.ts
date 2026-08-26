@@ -18,6 +18,7 @@ import type {
   DeviceReport,
   FrameTraffic,
   FrameGraph,
+  GlslRenderSource,
   RenderPipelineSpec,
   SamplerResource,
   StencilMode,
@@ -526,13 +527,14 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // shares the one buffer `setUniforms` writes — the WGSL model of one uniform
       // buffer read by each pipeline.
       const compileSpec = (spec: RenderPipelineSpec) => {
-        if (spec.source.vertex === 'fullscreen') throw new Error(`the frame for "${frame.id}" carries no vertex document`);
-        // A render pipeline carries its two stages' text on its own source (item 99),
-        // so the GLSL the program links from is read straight off the pipeline rather
-        // than resolved through a shared module pool. The backend guarded a non-GLSL
-        // frame above, so these texts are the authored GLSL of each stage.
-        const vertexGlsl = spec.source.vertex.text;
-        const fragmentGlsl = spec.source.fragment.text;
+        if (spec.vertex === undefined) throw new Error(`the frame for "${frame.id}" carries no vertex document`);
+        // A render pipeline carries its two stage texts on its own source pair (item
+        // 99/103), so the GLSL the program links from is read straight off the source
+        // rather than resolved through a shared module pool. The backend guarded a
+        // non-GLSL frame above, so this arm's pair is the authored GLSL of each stage.
+        const pair = (spec.source as GlslRenderSource).glsl;
+        const vertexGlsl = pair.vertex;
+        const fragmentGlsl = pair.fragment;
         return programCache.resolve(
           programCache.request(pipelineStructureOf(frame, spec), () => {
             const linked = gl.createProgram();

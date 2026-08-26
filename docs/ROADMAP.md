@@ -3885,7 +3885,7 @@ to name and item 3 is back in collision.
 
 ### 103. `RenderSource` takes §9's exact arms with the `GlslPair` bake collapse
 
-**Status.** open
+**Status.** done
 
 **Asks for.** Item 100's residual, once item 102 has settled what shape §9's `wgsl` arm takes: the
 graph's per-pipeline render source becomes §9's discriminated union — the `wgsl` arm
@@ -3908,6 +3908,25 @@ baked-GLSL path still draws, so it runs before this is claimed).
 **Filed 2026-08-26 by the lift of item 100**, the coding half of that lift once its design blocker
 (item 102) is settled. **Reverse:** delete this item; item 100 reverts to `open` and its `Needs` stand.
 `carry`: the shader-source shape a consumer authors against changes with the pair.
+
+**How it landed 2026-08-26.** `RenderSource` is now §9's two arms — `WgslRenderSource { wgsl: WgslPair;
+glsl?: GlslPair; constants? }` and `GlslRenderSource { glsl: GlslPair; constants? }`, both `Pair`s a
+single `{ vertex; fragment }`. The bake collapsed from `Record<string,string>` keyed by entry point to
+that `GlslPair`, built per pipeline from the two entry points it runs (in `gates/lib.mjs` and the node
+reading `tests/webgl2-baked-glsl.test.ts`); `glslFrameOf` reads the two halves straight off `source.glsl`.
+The entry points, the fullscreen marker and the document fetch-keys relocated off the source onto
+`RenderPipelineSpec.vertex?`/`.fragment` (each a new `RenderStage { document; entry }`); **fullscreen is now
+the absence of `pipeline.vertex`**, not a `'fullscreen'` string on the source. Item 3's two-document
+capability holds unchanged — `frame-documents.test.ts` still proves two distinct WGSL texts arrive intact,
+now on the pipeline's `wgsl` pair. **The per-source `authored` discriminant §9's arms carry is dropped;
+the frame's `authored` wins** (item 94's single home, invariant 5): a WGSL frame's pipelines carry the WGSL
+arm, a GLSL frame's the GLSL arm, selected by the frame that owns the pipeline — see the JOURNAL row.
+**Measured:** `npm test` 848 passed (71 files, three scene golden-graph snapshots regenerated to the new
+shape — a shape-only diff), `type-check` clean, `gate:pack` 11 of 11 with 54 door names (out `RenderStageSource`,
+in `WgslPair`/`GlslPair`/`WgslRenderSource`/`GlslRenderSource`/`RenderStage`) and the esbuild bundle keeping
+its re-exports. **Not run here:** `gate:browser` — the only gate that draws the WebGL 2 baked-GLSL path this
+item's `Done when` names (15 of 15). It runs in the closing batch; this change is shape-only over that path,
+but the pixels are unverified on this machine.
 
 ### 104. The corpus gate's WebGL 2 pre-flight reads a field item 99 moved
 

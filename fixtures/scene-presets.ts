@@ -57,10 +57,9 @@ const SCENE_WGSL = '// authored once, fed by the producer';
 // carries its own source, so neither shares a document with the other.
 const SURFACE: RenderPipelineSpec = {
   kind: 'render',
-  source: {
-    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
-    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shade' },
-  },
+  source: { wgsl: { vertex: SCENE_WGSL, fragment: SCENE_WGSL } },
+  vertex: { document: 'scene', entry: 'project' },
+  fragment: { document: 'scene', entry: 'shade' },
   bindings: [
     { group: 0, binding: 0, resource: buffer(1), visibility: ['vertex'] },
     { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
@@ -69,10 +68,9 @@ const SURFACE: RenderPipelineSpec = {
 
 const GLOW: RenderPipelineSpec = {
   kind: 'render',
-  source: {
-    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
-    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'bloom' },
-  },
+  source: { wgsl: { vertex: SCENE_WGSL, fragment: SCENE_WGSL } },
+  vertex: { document: 'scene', entry: 'project' },
+  fragment: { document: 'scene', entry: 'bloom' },
   bindings: [
     { group: 0, binding: 0, resource: buffer(2), visibility: ['vertex'] },
     { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },

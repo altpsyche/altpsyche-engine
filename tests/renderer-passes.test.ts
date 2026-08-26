@@ -49,18 +49,14 @@ const holding = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: 'fullscreen',
-        fragment: { document: 'wgsl', text: SHADER, entry: 'under' },
-      },
+      source: { wgsl: { vertex: SHADER, fragment: SHADER } },
+      fragment: { document: 'wgsl', entry: 'under' },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
     {
       kind: 'render',
-      source: {
-        vertex: 'fullscreen',
-        fragment: { document: 'wgsl', text: SHADER, entry: 'over' },
-      },
+      source: { wgsl: { vertex: SHADER, fragment: SHADER } },
+      fragment: { document: 'wgsl', entry: 'over' },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],

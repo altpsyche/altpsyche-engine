@@ -30,7 +30,8 @@ function frame(over: {
     pipelines: over.pipelines ?? [
       {
         kind: 'render',
-        source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'fragMain' } },
+        source: { wgsl: { vertex: '', fragment: '' } },
+        fragment: { document: 'wgsl', entry: 'fragMain' },
         bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       },
     ],
@@ -73,8 +74,8 @@ describe('cost', () => {
 
   it('counts a pipeline switch on each change but not on a repeat', () => {
     const pipelines: PipelineSpec[] = [
-      { kind: 'render', source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'a' } }, bindings: [] },
-      { kind: 'render', source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'b' } }, bindings: [] },
+      { kind: 'render', source: { wgsl: { vertex: '', fragment: '' } }, fragment: { document: 'wgsl', entry: 'a' }, bindings: [] },
+      { kind: 'render', source: { wgsl: { vertex: '', fragment: '' } }, fragment: { document: 'wgsl', entry: 'b' }, bindings: [] },
     ];
     const passes: PassSpec[] = [
       { pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] },
@@ -91,8 +92,8 @@ describe('cost', () => {
   it('does not count a bind switch when two pipelines bind the same resources', () => {
     const bindings = [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] as ('fragment')[] }];
     const pipelines: PipelineSpec[] = [
-      { kind: 'render', source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'a' } }, bindings },
-      { kind: 'render', source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'b' } }, bindings },
+      { kind: 'render', source: { wgsl: { vertex: '', fragment: '' } }, fragment: { document: 'wgsl', entry: 'a' }, bindings },
+      { kind: 'render', source: { wgsl: { vertex: '', fragment: '' } }, fragment: { document: 'wgsl', entry: 'b' }, bindings },
     ];
     const passes: PassSpec[] = [
       { pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] },
@@ -108,12 +109,14 @@ describe('cost', () => {
     const pipelines: PipelineSpec[] = [
       {
         kind: 'render',
-        source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'a' } },
+        source: { wgsl: { vertex: '', fragment: '' } },
+        fragment: { document: 'wgsl', entry: 'a' },
         bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       },
       {
         kind: 'render',
-        source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'b' } },
+        source: { wgsl: { vertex: '', fragment: '' } },
+        fragment: { document: 'wgsl', entry: 'b' },
         bindings: [{ group: 0, binding: 0, resource: uniform(1), visibility: ['fragment'] }],
       },
     ];
@@ -150,13 +153,15 @@ describe('cost', () => {
     const pipelines: PipelineSpec[] = [
       {
         kind: 'render',
-        source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'a' } },
+        source: { wgsl: { vertex: '', fragment: '' } },
+        fragment: { document: 'wgsl', entry: 'a' },
         bindings: [],
         targets: [{ format: 'rgba8unorm' }],
       },
       {
         kind: 'render',
-        source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'b' } },
+        source: { wgsl: { vertex: '', fragment: '' } },
+        fragment: { document: 'wgsl', entry: 'b' },
         bindings: [],
         targets: [{ format: 'rgba8unorm' }],
       },
@@ -185,7 +190,8 @@ describe('cost', () => {
     const pipelines: PipelineSpec[] = [
       {
         kind: 'render',
-        source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'a' } },
+        source: { wgsl: { vertex: '', fragment: '' } },
+        fragment: { document: 'wgsl', entry: 'a' },
         bindings: [],
         targets: [{ format: 'rgba8unorm' }],
         samples: 4,
@@ -209,7 +215,8 @@ describe('cost', () => {
     const pipelines: PipelineSpec[] = [
       {
         kind: 'render',
-        source: { vertex: 'fullscreen', fragment: { document: 'wgsl', text: '', entry: 'a' } },
+        source: { wgsl: { vertex: '', fragment: '' } },
+        fragment: { document: 'wgsl', entry: 'a' },
         bindings: [],
         depth: { format: 'depth24plus-stencil8', compare: 'less', write: true, stencil: 'mark' },
       },

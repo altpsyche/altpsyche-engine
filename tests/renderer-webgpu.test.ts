@@ -772,10 +772,8 @@ const sampledFrame = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: 'fullscreen',
-        fragment: { document: 'fragment', text: SAMPLED, entry: 'fragMain' },
-      },
+      source: { wgsl: { vertex: SAMPLED, fragment: SAMPLED } },
+      fragment: { document: 'fragment', entry: 'fragMain' },
       bindings: [
         { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] },
         { group: 0, binding: 1, resource: texture(1), visibility: ['fragment'] },

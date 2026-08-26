@@ -77,10 +77,8 @@ const planned = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
     },
     {
       kind: 'render',
-      source: {
-        vertex: 'fullscreen',
-        fragment: { document: 'wgsl', text: PLANS, entry: 'shade' },
-      },
+      source: { wgsl: { vertex: PLANS, fragment: PLANS } },
+      fragment: { document: 'wgsl', entry: 'shade' },
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
@@ -117,10 +115,8 @@ const ordered = (over: Partial<WgslFrameGraph> = {}): FrameGraph => {
       ...base.pipelines.slice(0, 2),
       {
         kind: 'render',
-        source: {
-          vertex: 'fullscreen',
-          fragment: { document: 'wgsl', text: PLANS, entry: 'shade' },
-        },
+        source: { wgsl: { vertex: PLANS, fragment: PLANS } },
+        fragment: { document: 'wgsl', entry: 'shade' },
         geometry: vertices(3),
         bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
       },

@@ -101,6 +101,8 @@ export type {
   DrawSpec,
   GlslFrameGraph,
   GlslModule,
+  GlslPair,
+  GlslRenderSource,
   Groups,
   IndexResource,
   ModuleSpec,
@@ -109,7 +111,7 @@ export type {
   RenderPassSpec,
   RenderPipelineSpec,
   RenderSource,
-  RenderStageSource,
+  RenderStage,
   ResourceSpec,
   SamplerResource,
   FrameGraph,
@@ -122,6 +124,8 @@ export type {
   VertexResource,
   WgslFrameGraph,
   WgslModule,
+  WgslPair,
+  WgslRenderSource,
 } from './graph/types.js';
 
 // The authoring handles a graph is written in terms of (§8, item 87): a resource

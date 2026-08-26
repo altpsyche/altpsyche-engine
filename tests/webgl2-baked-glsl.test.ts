@@ -7,7 +7,7 @@ import { loadFixture } from './support/fixture';
 import { buffer } from '../graph/handles.js';
 import { createFakeGL } from './support/fake-gl';
 import type { FixtureName } from './support/fixture';
-import type { FrameGraph, RenderPipelineSpec, RenderStageSource, WgslFrameGraph } from '@altpsyche/engine';
+import type { FrameGraph, GlslRenderSource, RenderPipelineSpec, WgslFrameGraph } from '@altpsyche/engine';
 
 /**
  * The baked GLSL reaching the WebGL 2 backend through the source that carries it,
@@ -55,14 +55,26 @@ function bytesOf(description: FrameGraph, generated: Map<string, Uint8Array<Arra
 function bakedWgslFrame(id: FixtureName): WgslFrameGraph {
   const { description, code, generated } = loadFixture(id);
   const baked = artifact().presets[id]?.entries ?? {};
-  const glsl = Object.fromEntries(Object.entries(baked).map(([entry, { glsl }]) => [entry, glsl]));
-  // The bake rides each render pipeline's own source now (item 99): the pipeline
-  // that owns the source owns its translation, keyed by entry point, which is what
-  // `glslFrameOf` reads rather than the artifact directly.
+  const glslByEntry: Record<string, string> = Object.fromEntries(
+    Object.entries(baked).map(([entry, { glsl }]) => [entry, glsl])
+  );
+  // The bake rides each render pipeline's own source now, collapsed to that
+  // pipeline's own `{ vertex; fragment }` pair (item 103), built from the two entry
+  // points it runs off the entry-keyed artifact — which is what `glslFrameOf` reads
+  // rather than the artifact directly. A stage naga refused has no entry, so its
+  // half is absent and `glslFrameOf` skips the frame by outcome.
+  const bakePair = (spec: RenderPipelineSpec): { vertex?: string; fragment?: string } => {
+    const pair: { vertex?: string; fragment?: string } = {};
+    if (spec.vertex && glslByEntry[spec.vertex.entry] !== undefined) pair.vertex = glslByEntry[spec.vertex.entry];
+    if (glslByEntry[spec.fragment.entry] !== undefined) pair.fragment = glslByEntry[spec.fragment.entry];
+    return pair;
+  };
   const withBake: WgslFrameGraph = {
     ...(description as WgslFrameGraph),
     pipelines: (description as WgslFrameGraph).pipelines.map((spec) =>
-      spec.kind === 'render' ? { ...spec, source: { ...spec.source, glsl } } : spec
+      spec.kind === 'render'
+        ? { ...spec, source: { ...spec.source, glsl: bakePair(spec) as { vertex: string; fragment: string } } }
+        : spec
     ),
     translated: true,
   };
@@ -78,12 +90,16 @@ describe('the WebGL 2 corpus column draws baked GLSL off the source that carries
     // are the baked vertex and fragment, entered at main, rather than the one WGSL
     // document the source carried. A render frame names no shared module.
     expect(frame!.modules).toEqual([]);
-    const source = (frame!.pipelines[0] as RenderPipelineSpec).source;
-    expect(source.vertex).not.toBe('fullscreen');
-    expect((source.vertex as RenderStageSource).entry).toBe('main');
-    expect(source.fragment.entry).toBe('main');
-    expect((source.vertex as RenderStageSource).text.startsWith('#version 300 es')).toBe(true);
-    expect(source.fragment.text.startsWith('#version 300 es')).toBe(true);
+    const pipeline = frame!.pipelines[0] as RenderPipelineSpec;
+    const source = pipeline.source as GlslRenderSource;
+    // The pipeline names a vertex stage (not the fullscreen frame that bakes none),
+    // both stages enter at main, and the source's GLSL pair carries each stage's
+    // baked text.
+    expect(pipeline.vertex).toBeDefined();
+    expect(pipeline.vertex!.entry).toBe('main');
+    expect(pipeline.fragment.entry).toBe('main');
+    expect(source.glsl.vertex.startsWith('#version 300 es')).toBe(true);
+    expect(source.glsl.fragment.startsWith('#version 300 es')).toBe(true);
 
     const gl = createFakeGL();
     const backend = createWebGL2Backend(gl.canvas);

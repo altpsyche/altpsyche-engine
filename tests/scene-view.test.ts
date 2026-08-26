@@ -45,10 +45,9 @@ const SCENE_WGSL = '// authored once, fed by the producer';
 // `resources`), this pipeline's own objects buffer at index 1.
 const PIPELINE: RenderPipelineSpec = {
   kind: 'render',
-  source: {
-    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
-    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shade' },
-  },
+  source: { wgsl: { vertex: SCENE_WGSL, fragment: SCENE_WGSL } },
+  vertex: { document: 'scene', entry: 'project' },
+  fragment: { document: 'scene', entry: 'shade' },
   bindings: [
     { group: 0, binding: 0, resource: buffer(1), visibility: ['vertex'] },
     { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
@@ -83,10 +82,9 @@ const OPTIONS: SceneViewOptions<Panel> = {
 // resource 2; views stays at 0.
 const GLOW: RenderPipelineSpec = {
   kind: 'render',
-  source: {
-    vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
-    fragment: { document: 'scene', text: SCENE_WGSL, entry: 'bloom' },
-  },
+  source: { wgsl: { vertex: SCENE_WGSL, fragment: SCENE_WGSL } },
+  vertex: { document: 'scene', entry: 'project' },
+  fragment: { document: 'scene', entry: 'bloom' },
   bindings: [
     { group: 0, binding: 0, resource: buffer(2), visibility: ['vertex'] },
     { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },
@@ -358,10 +356,9 @@ describe('sceneView declares a shared depth attachment so solids order by depth,
   // views 0, nearObjects 1, farObjects 2 when both draw (near listed first).
   const NEAR: RenderPipelineSpec = {
     kind: 'render',
-    source: {
-      vertex: { document: 'scene', text: SCENE_WGSL, entry: 'project' },
-      fragment: { document: 'scene', text: SCENE_WGSL, entry: 'shade' },
-    },
+    source: { wgsl: { vertex: SCENE_WGSL, fragment: SCENE_WGSL } },
+    vertex: { document: 'scene', entry: 'project' },
+    fragment: { document: 'scene', entry: 'shade' },
     bindings: [
       { group: 0, binding: 0, resource: buffer(1), visibility: ['vertex'] },
       { group: 0, binding: 1, resource: buffer(0), visibility: ['vertex'] },

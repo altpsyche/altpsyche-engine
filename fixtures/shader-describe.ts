@@ -676,17 +676,19 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
       : {
           kind: 'render',
           // Each render pipeline carries its own source (item 99): both stages read
-          // the one WGSL document a preset compiles from, named for the loader to
-          // fill, their entry points the vertex the pass draws and this pipeline's
-          // fragment. Text is empty until `frameOf` fills it.
-          source: {
-            vertex: drawn.has(name)
-              ? { document: WGSL_DOCUMENT, text: '', entry: (drawn.get(name) as { vertex: string }).vertex }
-              : 'fullscreen',
-            fragment: { document: WGSL_DOCUMENT, text: '', entry: name },
-          },
+          // the one WGSL document a preset compiles from, so the pair holds that one
+          // file's text twice once filled — the common case item 102 records. The
+          // pair's text is empty until `frameOf` fills it. The fetch key and each
+          // stage's entry point ride the pipeline (item 103): the vertex the pass
+          // draws where one is drawn, this pipeline's fragment otherwise, and no
+          // vertex stage at all where the backend covers the frame with its corners.
+          source: { wgsl: { vertex: '', fragment: '' } },
+          fragment: { document: WGSL_DOCUMENT, entry: name },
           ...(drawn.has(name)
-            ? { geometry: vertices(nameIndex.get((drawn.get(name) as { geometry: string }).geometry)!) }
+            ? {
+                vertex: { document: WGSL_DOCUMENT, entry: (drawn.get(name) as { vertex: string }).vertex },
+                geometry: vertices(nameIndex.get((drawn.get(name) as { geometry: string }).geometry)!),
+              }
             : {}),
           bindings: bindingsOf(name),
           ...(draws && draws.targets.length > 0 ? { targets: draws.targets } : {}),

@@ -17,6 +17,7 @@
  * gates' business; that the harness can still assemble them is this file's.
  */
 import { describe, expect, it } from 'vitest';
+import type { GlslRenderSource, WgslRenderSource } from '@altpsyche/engine';
 
 describe('the gate harness still assembles what the browser gates draw', () => {
   it('loads every capability fixture into a frame', async () => {
@@ -41,8 +42,12 @@ describe('the gate harness still assembles what the browser gates draw', () => {
       }
       for (const spec of entry.frame.pipelines) {
         if (spec.kind !== 'render') continue;
-        if (spec.source.vertex !== 'fullscreen') texts.push(spec.source.vertex.text);
-        texts.push(spec.source.fragment.text);
+        const pair =
+          entry.frame.authored === 'wgsl'
+            ? (spec.source as WgslRenderSource).wgsl
+            : (spec.source as GlslRenderSource).glsl;
+        if (spec.vertex) texts.push(pair.vertex);
+        texts.push(pair.fragment);
       }
       expect(texts.length, `${entry.id} carries no source`).toBeGreaterThan(0);
       for (const text of texts) expect(text, `${entry.id} carries an empty source`).toBeTruthy();

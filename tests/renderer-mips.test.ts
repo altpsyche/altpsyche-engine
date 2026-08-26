@@ -57,10 +57,8 @@ const laddered = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: 'fullscreen',
-        fragment: { document: 'wgsl', text: READS, entry: 'fragMain' },
-      },
+      source: { wgsl: { vertex: READS, fragment: READS } },
+      fragment: { document: 'wgsl', entry: 'fragMain' },
       bindings: [
         { group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] },
         { group: 0, binding: 1, resource: texture(1), visibility: ['fragment'], reads: 'sample' },

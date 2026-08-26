@@ -47,10 +47,9 @@ function perDrawFrame(over: Partial<GlslFrameGraph> = {}): FrameGraph {
     pipelines: [
       {
         kind: 'render',
-        source: {
-          vertex: { document: 'vertex', text: VERTEX, entry: 'main' },
-          fragment: { document: 'fragment', text: FRAGMENT, entry: 'main' },
-        },
+        source: { glsl: { vertex: VERTEX, fragment: FRAGMENT } },
+        vertex: { document: 'vertex', entry: 'main' },
+        fragment: { document: 'fragment', entry: 'main' },
         bindings: [{ group: 1, binding: 0, resource: buffer(1), visibility: ['vertex'], perDraw: { size: RECORD } }],
       },
     ],
@@ -184,10 +183,9 @@ describe('a per-draw uniform slice on WebGL 2', () => {
       pipelines: [
         {
           kind: 'render',
-          source: {
-            vertex: { document: 'vertex', text: VERTEX, entry: 'main' },
-            fragment: { document: 'fragment', text: FRAGMENT, entry: 'main' },
-          },
+          source: { glsl: { vertex: VERTEX, fragment: FRAGMENT } },
+          vertex: { document: 'vertex', entry: 'main' },
+          fragment: { document: 'fragment', entry: 'main' },
           bindings: [],
         },
       ],
