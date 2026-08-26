@@ -1431,23 +1431,6 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           }
         },
 
-        // The buffers this backend keeps are inputs it uploads once (a per-draw
-        // slice, a read-only storage buffer): a frame declares none the page fills
-        // and reads back at runtime, since a read-write storage buffer is refused
-        // above and there is no compute stage or query to fill one. A caller asking
-        // to write a buffer does nothing rather than being refused, so the same call
-        // over either backend does nothing wrong on the one with no such buffers. A
-        // readback is the arena's own door now (§9, item 89): its `readNoBuffer`
-        // hands back no bytes, the true answer for a backend that keeps no numbers a
-        // page reads back.
-        writeBuffer() {},
-
-        // Changing the pass list without rebuilding the resources under it is
-        // WebGPU's `setPasses`; this backend's toy frames do not re-plan their
-        // passes at runtime yet, so it does nothing rather than refusing, the same
-        // as before multi-pass. A scene tier that re-plans on WebGL 2 is item 52's.
-        setPasses() {},
-
         dispose() {
           // The uniform buffer, every texture and its framebuffer, and each linked
           // program are this program's own. The buffers and textures go back to

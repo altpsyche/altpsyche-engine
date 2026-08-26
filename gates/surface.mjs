@@ -569,12 +569,13 @@ const gpuResults = await gpuPage.evaluate(
       // `bufferHandle` are the readback bridge, kept off the public `Backend` type
       // and off the drawable shape `program` returns (item 90 deleted the
       // `ShaderProgram` interface that named it), so the gate reaches them through a
-      // cast.
-      const readCopies = async () =>
+      // cast. It takes the program to read from because item 98 replaced the held
+      // program with a re-submitted one for the second read.
+      const readCopies = async (/** @type {any} */ prog) =>
         new Uint32Array(
-          await /** @type {any} */ (rewriteBackend).arena.read(/** @type {any} */ (program).bufferHandle(copiesHandle))
+          await /** @type {any} */ (rewriteBackend).arena.read(prog.bufferHandle(copiesHandle))
         );
-      const before = [...(await readCopies())];
+      const before = [...(await readCopies(program))];
       const pxBefore = await rewriteBackend.readPixels();
 
       // Four fresh copies, a colour and a height each, laid out the way std430 lays
@@ -588,9 +589,25 @@ const gpuResults = await gpuPage.evaluate(
         fresh[copy * 4 + 2] = 0.2;
         fresh[copy * 4 + 3] = 0.35;
       }
-      program.writeBuffer(copiesHandle, new Uint8Array(fresh.buffer));
-      program.draw();
-      const after = [...(await readCopies())];
+      // The buffer's contents change by re-submitting the graph with new bytes, not
+      // by mutating a held program: item 98 dissolved `writeBuffer` into re-submit.
+      // The fresh words go in under the copies buffer's index and `frameOf` lands
+      // them on that resource's `data`, so the next program builds the buffer full.
+      const generatedNext = new Map(generated);
+      generatedNext.set(copiesHandle, new Uint8Array(fresh.buffer));
+      const frameNext = window.frameOf(
+        'core-perdraw',
+        perdraw.description,
+        perdraw.texts,
+        perdraw.block,
+        undefined,
+        generatedNext
+      );
+      program.dispose();
+      const programNext = rewriteBackend.program(frameNext);
+      programNext.setUniforms({ u_time: 1, u_resolution: [200, 100] });
+      programNext.draw();
+      const after = [...(await readCopies(programNext))];
       const pxAfter = await rewriteBackend.readPixels();
 
       const wrote = [...new Uint32Array(fresh.buffer)];
@@ -600,16 +617,16 @@ const gpuResults = await gpuPage.evaluate(
       for (let i = 0; i < pxBefore.length; i++) if (pxBefore[i] !== pxAfter[i]) moved++;
 
       checks.push({
-        name: 'a buffer is rewritten while the surface runs and the card reads the new words back',
+        name: 'a re-submitted graph gives the per-draw buffer new words and the card reads them back',
         ok: readBack && changed,
-        detail: `${before.length} words, ${changed ? 'changed after the write' : 'unchanged'}, the new words ${readBack ? 'read back' : 'did not read back'}`,
+        detail: `${before.length} words, ${changed ? 'changed after the re-submit' : 'unchanged'}, the new words ${readBack ? 'read back' : 'did not read back'}`,
       });
       checks.push({
-        name: 'rewriting the per-draw buffer repaints the picture',
+        name: 're-submitting the per-draw buffer repaints the picture',
         ok: moved > 0,
         detail: `${moved} of ${pxBefore.length} bytes moved`,
       });
-      program.dispose();
+      programNext.dispose();
       rewriteBackend.dispose();
     }
 

@@ -20,7 +20,6 @@ import type {
   DeviceReport,
   DrawSpec,
   IndexResource,
-  PassSpec,
   RenderPassSpec,
   RenderPipelineSpec,
   SamplerResource,
@@ -476,7 +475,6 @@ export function createWebGPUBackend(
         counting,
         partner,
         at,
-        writable,
         declared,
         made,
         spansFrame,
@@ -626,11 +624,6 @@ export function createWebGPUBackend(
           }
         }
 
-        // The indices of the buffers the page is allowed to write, which is the ones
-        // the build gave first contents. A buffer the card fills for itself is not
-        // among them, so a write aimed at one is refused before it reaches the card.
-        const writable = new Set<number>();
-
         // Which buffers a pipeline reaches one per-draw slice of, so each is built
         // as a uniform bound with a dynamic offset rather than as a storage buffer
         // the shader writes (item 27). A per-draw buffer holds a record per draw and
@@ -690,14 +683,13 @@ export function createWebGPUBackend(
           buffers.set(index, built);
           bufferHandles.set(index, handle);
           // The contents the build wrote, uploaded once before anything reads them,
-          // which is what a copy of a pipeline carrying its own numbers is handed.
-          // A buffer arriving with contents is the one kind the page may write later,
-          // so it is remembered as such: it carries COPY_DST for this first upload and
-          // a scratch buffer the card fills does not.
+          // which is what a copy of a pipeline carrying its own numbers is handed. A
+          // graph re-submitted with different bytes here (item 98) writes them the
+          // same way, at build, since a page changes a buffer by re-submitting the
+          // graph rather than mutating a held program.
           if (resource.data) {
             device.queue.writeBuffer(built, 0, resource.data);
             arena.wrote(resource.data.byteLength);
-            writable.add(index);
           }
         }
 
@@ -1164,7 +1156,6 @@ export function createWebGPUBackend(
           groups,
           partner,
           at,
-          writable,
           declared,
           shown,
           made,
@@ -1245,41 +1236,6 @@ export function createWebGPUBackend(
             composite,
             into,
           });
-        },
-
-        writeBuffer(handle: BufferHandle, data: Uint8Array<ArrayBuffer>) {
-          const index = indexOf(handle);
-          const held = buffers.get(index);
-          if (!held) throw new Error(`the frame for "${frame.id}" declares no buffer ${index}`);
-          if (!writable.has(index)) {
-            throw new Error(
-              `the frame for "${frame.id}" fills resource ${index} on the card, so the page has no contents there to replace`
-            );
-          }
-          if (data.byteLength % 4 !== 0) {
-            throw new Error(
-              `the frame for "${frame.id}" writes ${data.byteLength} bytes into resource ${index}, which is no whole number of four-byte words`
-            );
-          }
-          if (data.byteLength > held.size) {
-            throw new Error(
-              `the frame for "${frame.id}" writes ${data.byteLength} bytes into resource ${index}, which holds ${held.size}`
-            );
-          }
-          device.queue.writeBuffer(held, 0, data);
-        },
-
-        setPasses(passes: PassSpec[]) {
-          // The same frame with a different pass list, planned over the modules,
-          // the pipelines and the resources already built. `planFramePasses`
-          // refuses a pass naming a pipeline this frame does not carry, so a pass
-          // for a pipeline the program was not built with is caught by index here
-          // rather than at the draw. The bundles hold the draws of the old list,
-          // so they are recorded again against the new one, and the resolved runs
-          // describe the old passes, so they are resolved again over the new plan.
-          runs = planFramePasses({ ...frame, passes }, geometryOf);
-          recordBundles();
-          resolveTurns();
         },
 
         // The arena handle a buffer resource was allocated under, so a caller

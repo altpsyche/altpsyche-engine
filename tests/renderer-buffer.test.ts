@@ -163,57 +163,25 @@ const dial = (over: Partial<BufferResource> = {}): BufferResource => ({
 const withDial = (over: Partial<BufferResource> = {}): FrameGraph =>
   holding({ resources: [holding().resources[0] as BufferResource, counts(), dial(over)] });
 
-describe('the contents a caller writes in', () => {
-  it('hands the bytes to the buffer the build filled, over the top of the ones it started with', () => {
+describe('the contents a caller replaces between draws', () => {
+  it('fills the buffer over the words it started with when the graph is re-submitted', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.program(withDial());
+    // A page changes a buffer's contents by building the next graph and
+    // re-submitting it, not by mutating a held program: item 98 dissolved
+    // `writeBuffer` into re-submit, the graph being a cheap re-submittable value on
+    // stable handles. The dial buffer starts at one set of words; the re-submitted
+    // graph gives it another.
+    backend.program(withDial());
     const next = new Uint8Array(new Uint32Array([10, 20, 30, 40]).buffer);
-
-    program.writeBuffer(buffer(2), next);
+    backend.program(withDial({ data: next }));
 
     const writes = gpu.calls('writeBuffer').filter((call) => call.label === 'buffer2');
-    // Two writes to it: the build's first contents on creation, then the caller's.
-    // The recorder keeps each byte as a float, so the words are read back off the
-    // bytes rather than off the recorded array directly.
+    // Two writes to it: the first graph's contents at build, then the re-submitted
+    // graph's. The recorder keeps each byte as a float, so the words are read back
+    // off the bytes rather than off the recorded array directly.
     expect(writes).toHaveLength(2);
     const bytes = Uint8Array.from(writes[1]?.data as Float32Array);
     expect([...new Uint32Array(bytes.buffer)]).toEqual([10, 20, 30, 40]);
-  });
-
-  it('refuses a buffer the card fills for itself, since the page put no contents there', () => {
-    const { backend } = backendOver();
-    const program = backend.program(withDial());
-
-    expect(() => program.writeBuffer(buffer(1), new Uint8Array(16))).toThrow(
-      'the frame for "fixture-buffer" fills resource 1 on the card, so the page has no contents there to replace'
-    );
-  });
-
-  it('refuses a handle the frame declares no buffer for, by its index', () => {
-    const { backend } = backendOver();
-    const program = backend.program(withDial());
-
-    expect(() => program.writeBuffer(buffer(5), new Uint8Array(16))).toThrow(
-      'the frame for "fixture-buffer" declares no buffer 5'
-    );
-  });
-
-  it('refuses more bytes than the buffer holds', () => {
-    const { backend } = backendOver();
-    const program = backend.program(withDial());
-
-    expect(() => program.writeBuffer(buffer(2), new Uint8Array(32))).toThrow(
-      'the frame for "fixture-buffer" writes 32 bytes into resource 2, which holds 16'
-    );
-  });
-
-  it('refuses a byte count that is no whole number of four-byte words', () => {
-    const { backend } = backendOver();
-    const program = backend.program(withDial());
-
-    expect(() => program.writeBuffer(buffer(2), new Uint8Array(6))).toThrow(
-      'the frame for "fixture-buffer" writes 6 bytes into resource 2, which is no whole number of four-byte words'
-    );
   });
 });
 

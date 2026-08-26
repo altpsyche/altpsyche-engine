@@ -6,15 +6,16 @@ import { uniform, moduleHandle, pipelineHandle } from '../graph/handles.js';
 import type { PassSpec, FrameGraph } from '@altpsyche/engine';
 
 /**
- * A description whose pass list changes while the program runs.
+ * A description whose pass list changes between draws.
  *
- * A frame is not fixed for the life of a program: a page may draw one pass this
- * second and two the next, so `setPasses` turns a pass on or off the way
- * `setUniforms` feeds the block later numbers. What it may not do is grow a
- * resource or a pipeline, because a texture's usage and a pipeline's layout are
- * spent when the program is made. So both pipelines are declared up front and a
- * pass turning one on names one the program was already built with, and a pass
- * naming a pipeline the frame does not carry is refused here by name.
+ * A frame is not fixed: a page may draw one pass this second and two the next. It
+ * does that by building the next graph and re-submitting it — item 98 dissolved
+ * `setPasses` into re-submit — not by mutating a held program. Re-submitting a
+ * changed pass list is cheap on the lifetimes it does not touch: the shared
+ * pipeline cache (item 63) compiles no pipeline a re-submit already carries, so
+ * both pipelines are built once across every graph that names them and a pass
+ * turning one on names one already compiled. A graph naming a pipeline it does not
+ * declare is refused at build by name.
  *
  * Nothing here draws a picture, so a trace is what says which passes ran. A
  * bundled pass records its draws into a bundle labelled for its pipeline and the
@@ -74,8 +75,8 @@ function backendOver() {
 /** The bundles each draw replayed, one array of labels per `executeBundles`. */
 const played = (gpu: ReturnType<typeof createFakeGPU>) => gpu.calls('executeBundles').map((call) => call.bundles);
 
-describe('a description whose pass list changes between frames', () => {
-  it('runs every pass the frame declares before anything changes it', () => {
+describe('a description whose pass list changes between draws', () => {
+  it('runs every pass the frame declares', () => {
     const { gpu, backend } = backendOver();
     backend.program(holding()).draw();
 
@@ -83,50 +84,46 @@ describe('a description whose pass list changes between frames', () => {
     expect(played(gpu)).toEqual([['pipeline0-bundle-0'], ['pipeline1-bundle-0']]);
   });
 
-  it('turns a pass off, and the draw after runs one fewer without the program being remade', () => {
+  it('re-submitted with one pass fewer draws one fewer, on the pipelines already compiled', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.program(holding());
-    const built = gpu.calls('createShaderModule').length;
+    backend.program(holding()).draw(); // both
 
-    program.setPasses([{ pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] }]);
-    program.draw();
+    backend.program(holding({ passes: [{ pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] }] })).draw();
 
-    expect(gpu.calls('beginRenderPass')).toHaveLength(1);
-    expect(played(gpu)).toEqual([['pipeline1-bundle-0']]);
-    // Nothing was compiled or made again: the modules, the pipelines and the
-    // resources are the ones createProgram built.
-    expect(gpu.calls('createShaderModule')).toHaveLength(built);
+    // Two passes, then one: the second draw is the re-submitted graph.
+    expect(played(gpu)).toEqual([
+      ['pipeline0-bundle-0'],
+      ['pipeline1-bundle-0'],
+      ['pipeline1-bundle-0'],
+    ]);
+    // The shared pipeline cache compiled nothing again: both render pipelines were
+    // built by the first graph and the re-submit reused them.
     expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
   });
 
-  it('turns a pass on for a pipeline the program built but no pass had used', () => {
+  it('re-submitted with a pass turned on draws a pipeline built but no pass had used', () => {
     const { gpu, backend } = backendOver();
-    // Both pipelines are built, only one is drawn to start with.
-    const program = backend.program(holding({ passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }] }));
-    program.draw();
+    // Both pipelines are compiled from the first graph, only one is drawn.
+    backend.program(holding({ passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }] })).draw();
     expect(gpu.calls('beginRenderPass')).toHaveLength(1);
 
-    program.setPasses(both);
-    program.draw();
+    backend.program(holding()).draw();
 
-    // The second draw adds the pass that was off, so two more passes ran and the
-    // over pipeline drew for the first time without being made again.
+    // The re-submit adds the pass that was off, so two more passes ran and the over
+    // pipeline drew for the first time without being compiled again.
     expect(gpu.calls('beginRenderPass')).toHaveLength(3);
     expect(played(gpu)).toEqual([['pipeline0-bundle-0'], ['pipeline0-bundle-0'], ['pipeline1-bundle-0']]);
     expect(gpu.calls('createRenderPipeline')).toHaveLength(2);
   });
 
-  it('records the trace either side of a change, off one program', () => {
+  it('records the trace either side of a re-submit', () => {
     const { gpu, backend } = backendOver();
-    const program = backend.program(holding());
 
-    program.draw();
-    program.setPasses([{ pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] }]);
-    program.draw();
-    program.setPasses(both);
-    program.draw();
+    backend.program(holding()).draw();
+    backend.program(holding({ passes: [{ pipeline: pipelineHandle(1), draws: [{ vertices: 3 }] }] })).draw();
+    backend.program(holding()).draw();
 
-    // Two passes, then one, then two again, all on the resources built once.
+    // Two passes, then one, then two again.
     expect(played(gpu)).toEqual([
       ['pipeline0-bundle-0'],
       ['pipeline1-bundle-0'],
@@ -136,12 +133,11 @@ describe('a description whose pass list changes between frames', () => {
     ]);
   });
 
-  it('refuses a pass naming a pipeline the frame does not carry, by that name', () => {
+  it('refuses a graph naming a pipeline it does not declare, at build by that name', () => {
     const { backend } = backendOver();
-    const program = backend.program(holding());
 
-    expect(() => program.setPasses([{ pipeline: pipelineHandle(2), draws: [{ vertices: 3 }] }])).toThrow(
-      'the frame for "fixture-passes" runs pipeline 2, which it does not declare'
-    );
+    expect(() =>
+      backend.program(holding({ passes: [{ pipeline: pipelineHandle(2), draws: [{ vertices: 3 }] }] }))
+    ).toThrow('the frame for "fixture-passes" runs pipeline 2, which it does not declare');
   });
 });

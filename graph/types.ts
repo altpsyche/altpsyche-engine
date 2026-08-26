@@ -705,11 +705,12 @@ export interface Backend {
    * coat", so the drawable is described inline here and reached only through
    * `submit`/`FrameRenderer`, never as an exported type a consumer builds against.
    * The shape is what a running frame is fed and drawn by — `setUniforms`, `draw`,
-   * and `dispose` on every path; `writeBuffer` and `setPasses` for a frame the page
-   * mutates between draws. Their §14 fate — dissolving into "re-submit a mutated
-   * graph" — is item 98's, not this deletion's; the node suite pins both as live
-   * contract today ([tests/renderer-buffer.test.ts](../tests/renderer-buffer.test.ts),
-   * [tests/renderer-passes.test.ts](../tests/renderer-passes.test.ts)).
+   * and `dispose`, all a frame needs on every path. Item 98 completed §14's
+   * dissolution of the last two: `writeBuffer` and `setPasses` are gone from both
+   * backends, and a page that changed a buffer's bytes or re-planned its pass list
+   * between draws now builds the next graph and re-submits it — the graph being a
+   * cheap, re-submittable value on stable handles (item 87), with the shared
+   * pipeline cache (item 63) compiling nothing a re-submit already carries.
    */
   program(frame: FrameGraph): {
     /** Values by the names the shader declares. Where they land is the backend's
@@ -722,14 +723,6 @@ export interface Backend {
      * the canvas. A backend whose target is not a `GPUTexture` refuses a given
      * `into` by name (§17 decision 7, item 29). */
     draw(into?: GPUTexture): void;
-    /** Replaces the contents of one buffer this frame declares, between one frame
-     * and the next. Only a buffer the build gave first contents can be replaced; a
-     * buffer the card fills for itself is refused here by name. */
-    writeBuffer(handle: BufferHandle, data: Uint8Array<ArrayBuffer>): void;
-    /** Replaces which passes this program runs, between one frame and the next,
-     * without remaking anything the program owns. A pass may only name a pipeline
-     * the program was built with; naming one it was not is refused here by name. */
-    setPasses(passes: PassSpec[]): void;
     dispose(): void;
   };
   resize(width: number, height: number): void;

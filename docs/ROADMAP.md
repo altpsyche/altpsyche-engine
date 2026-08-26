@@ -3623,7 +3623,7 @@ whose thousand-object scene is the first graph large enough to want a read-write
 
 ### 98. `writeBuffer` and `setPasses` dissolve into re-submitting a mutated graph
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The remaining half of §14's "`ShaderProgram` … becomes `Arena` + pipeline cache +
 `submit`". Item 90 deleted the interface but kept two of its methods as inline-typed methods on the
