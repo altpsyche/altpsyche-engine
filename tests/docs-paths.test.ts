@@ -191,6 +191,52 @@ function pathRefs(): Ref[] {
   return refs;
 }
 
+
+/**
+ * A `#heading-anchor` in a link has to name a heading that is actually in the file it
+ * points at.
+ *
+ * `resolvesToFile` deliberately strips a fragment before checking the path, because a
+ * fragment is a place inside a document and not part of its name. That left the other
+ * half unchecked, and the hole was not hypothetical: renaming two headings during a
+ * prose pass ("One door" to "One entry point", "asked the card" to "asked the device")
+ * silently broke both links that pointed at them, and every gate stayed green. A link
+ * into a section is a promise about that section's title, so it is checked here.
+ *
+ * Slugs follow GitHub's rule closely enough for the anchors these documents use: lower
+ * case, punctuation dropped, spaces to hyphens. A heading with a backticked name in it
+ * slugifies to the name without the backticks, which is why `#handles-not-names` works.
+ */
+function headingSlugs(text: string): Set<string> {
+  const slugs = new Set<string>();
+  for (const match of text.matchAll(/^#{1,6}\s+(.*)$/gm)) {
+    const title = (match[1] as string)
+      .replace(/`/g, '')
+      .replace(/\*\*?/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-');
+    slugs.add(title);
+  }
+  return slugs;
+}
+
+/** Every markdown link that carries a `#fragment` naming a section, with where it points. */
+function anchorRefs(): { doc: string; ref: string; file: string; anchor: string }[] {
+  const refs: { doc: string; ref: string; file: string; anchor: string }[] = [];
+  for (const { name, full } of markdownDocs()) {
+    if (name === EXCLUDED_HISTORY) continue;
+    const text = stripFences(readFileSync(full, 'utf-8'));
+    for (const match of text.matchAll(/\]\(([^)\s]+\.md)#([^)\s]+)\)/g)) {
+      const [, file, anchor] = match as unknown as [string, string, string];
+      if (/^L?\d+(-L?\d+)?$/i.test(anchor)) continue; // a line citation, not a section
+      refs.push({ doc: name, ref: `${file}#${anchor}`, file: path.resolve(path.dirname(full), file), anchor });
+    }
+  }
+  return refs;
+}
+
 describe('every path the docs name is a file that is here', () => {
   it('finds paths to check, so a rewrite cannot empty this silently', () => {
     expect(pathRefs().length).toBeGreaterThan(20);
@@ -217,6 +263,25 @@ describe('every path the docs name is a file that is here', () => {
     expect(refs.map((r) => r.ref)).toContain('gpu/webgpu.ts'); // a file label is read
     expect(refs.map((r) => r.ref)).not.toContain('graph/'); // a folder label is not
     expect(refs.every((r) => resolvesToFile(r.ref, r.from))).toBe(true); // and what is read resolves
+  });
+
+it('points every section link at a heading that is there', () => {
+    const refs = anchorRefs();
+    expect(refs.length, 'no section links found, so this check would pass vacuously').toBeGreaterThan(2);
+    const broken = refs
+      .filter((one) => {
+        if (!existsSync(one.file)) return true;
+        return !headingSlugs(readFileSync(one.file, 'utf-8')).has(one.anchor);
+      })
+      .map((one) => `${one.doc}: ${one.ref} names no heading in that file`);
+    expect(broken, `these section links point at headings that are not there:\n${broken.join('\n')}`).toEqual([]);
+  });
+
+  it('reads a heading the way GitHub slugs it, so the check is not vacuous', () => {
+    const slugs = headingSlugs('## Handles, not names\n### `wgslFrame` and friends\n');
+    expect(slugs.has('handles-not-names')).toBe(true);
+    expect(slugs.has('wgslframe-and-friends')).toBe(true);
+    expect(slugs.has('handles-not-names-typo')).toBe(false);
   });
 
   it('keeps the allowlist honest: every named absence is still absent', () => {

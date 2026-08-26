@@ -1,14 +1,14 @@
 # Contributing
 
-Everything in here is for someone changing the package. If you are *using* it, you want
-[README.md](README.md), [docs/EXAMPLES.md](docs/EXAMPLES.md), [docs/API.md](docs/API.md) and the
-guides — none of this matters to you.
+Everything in here is for someone changing the package. If you are *using* it, none of this
+matters to you: read [README.md](README.md), [docs/EXAMPLES.md](docs/EXAMPLES.md),
+[docs/API.md](docs/API.md) and the guides instead.
 
 ## Getting set up
 
 ```bash
 npm install
-npm test           # about a second
+npm test           # about two seconds
 npm run type-check
 ```
 
@@ -23,67 +23,70 @@ change needs one, it needs a decision first.
 | `npm run type-check` | seconds | the types |
 | `npm run gate:pack` | seconds | the built package installs and plain node can import it |
 | `npm run gate:browser` | minutes | four gates in a real browser: the corpus on both backends, the trace contract, a live surface |
-| `npm run gate:card` | a desktop session and a real card | the only thing that reads actual hardware |
+| `npm run gate:card` | a desktop session and a graphics card | the only gate that reads real hardware |
 
-Run `gate:browser`'s gates **one at a time** if you run them by hand. Several at once starve each
-other under the software renderer and time out, which reads as a red gate and is not one.
+Run `gate:browser`'s gates **one at a time** if you run them by hand. Several at once starve
+each other under the software renderer and time out, which looks like a failure and is not
+one.
 
 ## What the documents are held to
 
-Two gates in the node suite, because a document that is wrong is worse than one that is
-missing — a reader copies it and blames the library.
+Two gates in the node suite, because a wrong document is worse than a missing one. A reader
+copies it and blames the library.
 
-**`tests/docs-code.test.ts` compiles every fenced JavaScript or TypeScript block that
-imports the door.** Not runs — compiles: what goes wrong in a document is that it names
-something that is not there, and a type-check is the reading that catches it. Two
-conventions keep the blocks readable. A block may use `canvas` and `frame` without
-declaring them, and one whose first line is `// continues the block above` is checked with
-the previous block of that document in front of it. Neither can hide a wrong argument list
-or an invented property, which is the defect class this exists for.
+**`tests/docs-code.test.ts` compiles every fenced JavaScript or TypeScript block that imports
+the package entry.** It compiles them and does not run them. What goes wrong in a document is
+that it names something which is not there, and a type-check catches exactly that. Two
+conventions keep the blocks readable: a block may use `canvas` and `frame` without declaring
+them, and a block whose first line is `// continues the block above` is checked with the
+previous block of that document in front of it. Neither convention can hide a wrong argument
+list or an invented property, which is the defect this gate exists for.
 
-**`tests/api-signatures.test.ts` prints every run-time export's signature from the
-compiler and matches it against `docs/API.md`.** So a rename, an added argument, a widened
-return type, or a new export arriving undocumented fails a gate rather than sitting in the
-reference as a lie. Signatures in that document are not written by hand; they are pasted
-from what the checker prints.
+**`tests/api-signatures.test.ts` prints every run-time export's signature from the compiler
+and matches it against `docs/API.md`.** A rename, an added argument, a widened return type or a
+new undocumented export fails the gate instead of sitting in the reference as a lie. Nobody
+writes those signatures by hand. They are pasted from what the checker prints.
 
 Neither gate reads prose. A sentence about what a name is *for* is still only as good as
 whoever wrote it.
 
-`npm run example <name>` opens one of the pages in `examples/` in a browser. They are not a gate —
-nothing asserts a pixel in them — but they are the only place the *whole* stack runs the way a
-consumer runs it, and a change that breaks one of them has broken something a gate did not ask
+`npm run example <name>` opens one of the pages in `examples/` in a browser. The examples are
+not a gate, since nothing in them asserts a pixel. They are the only place the *whole* stack
+runs the way a consumer runs it, so a change that breaks one has broken something no gate asked
 about. [docs/DEVICES.md](docs/DEVICES.md) is the hardware log: one dated row per machine, taken
-with `npm run device-report`, and the place a claim about a real card has to come from.
+with `npm run device-report`, and the place a claim about a graphics card has to come from.
 
 ## What the cheap gates cannot see
 
-This is the most important thing to internalise, because it is where mistakes survive.
+This section is the one to read twice. It is where mistakes survive.
 
 **Every headless browser launch reaches SwiftShader, the software renderer, whatever the flags
-say.** So a pixel count from `gate:browser` is a software renderer's. It is a real result about
-the translation and the draw path; it is not a result about a graphics card. `gate:card` needs a
-visible window on a real display, plus `--enable-features=Vulkan` **and** `--ozone-platform=x11`
-together — without the second the window renders as a flickering transparent tile. Do not reach
-for `--use-angle=vulkan`: it moves the whole browser onto Vulkan and produces the same tile.
+say.** So a pixel count from `gate:browser` belongs to a software renderer. It is a real result
+about the translation and the draw path. It is not a result about a graphics card. `gate:card`
+needs a visible window on a real display, plus `--enable-features=Vulkan` **and**
+`--ozone-platform=x11` together. Without the second, the window renders as a flickering
+transparent tile. Do not reach for `--use-angle=vulkan`: it moves the whole browser onto Vulkan
+and produces that same tile.
 
-**A test suite rewritten alongside the code it checks cannot catch a mistake in that code.** When
-a change rewrites resolution logic and the tests move with it, only the browser batch's trace
-agreement is independent. This is not hypothetical: a migration that passed 837 node tests and
-rewrote its own golden snapshots was caught by one browser gate and nothing else.
+**A test suite rewritten alongside the code it checks cannot catch a mistake in that code.**
+When a change rewrites resolution logic and the tests move with it, the only independent
+reading left is the browser batch's trace agreement. This has happened here: a migration that
+passed 837 node tests and rewrote its own golden snapshots was caught by one browser gate and
+nothing else.
 
-**No gate builds a surface on a real card.** `gates/surface.mjs` drives `createSurface` on both
-backends, and it is headless, so its WebGPU arm is the software renderer's. `gates/card.mjs` is
-the one thing that touches the card, and it builds the two backends directly rather than through
-`createFrameRenderer`. So the path a consumer actually takes — `createSurface` with a WebGPU
-device from a real adapter — is asserted by nothing. That hole is not theoretical: four of the
-six pages in `examples/` reported "WebGPU could not give this page a device" on this machine's
-RTX 5080 while every gate was green, because they asked the drawing canvas for a WebGL 2 context
-before handing it to WebGPU and a canvas keeps the first context type it is given.
+**No gate builds a surface on a real graphics card.** `gates/surface.mjs` drives
+`createSurface` on both backends and runs headless, so its WebGPU arm is the software
+renderer's. `gates/card.mjs` is the only gate that touches real hardware, and it builds the two
+backends directly instead of going through `createFrameRenderer`. Nothing asserts the path a
+consumer actually takes, which is `createSurface` with a WebGPU device from a real adapter. That
+hole has already cost something: four of the six pages in `examples/` reported "WebGPU could not
+give this page a device" on this machine's RTX 5080 while every gate was green. They had asked
+the drawing canvas for a WebGL 2 context before handing it to WebGPU, and a canvas keeps the
+first context type it is given.
 
-**A gate that reports a failure as a skip is worse than no gate.** One did, once — the corpus
-gate treated a broken frame build as a capability refusal, went green, and let a defect through.
-If you add a gate, make sure it can fail for the thing it exists to check.
+**A gate that reports a failure as a skip is worse than no gate.** One did that once. The
+corpus gate treated a broken frame build as a capability refusal, went green, and let a defect
+through. If you add a gate, make sure it can fail for the thing it exists to check.
 
 ## Two rules about numbers
 
@@ -100,22 +103,23 @@ own queue, register and direction documents in `docs/`. They were deleted when t
 tracked was emptied: 107 items, every one either landed, superseded by an item that landed, or a
 standing obligation that cannot close.
 
-What survived them is in the code and in the history. Every landed change carries the measurement
-it earned in its commit message, and `git log` is the record — `git log --grep '^item 27'` still
-finds what item 27 landed. If you want the reasoning behind a design, read the doc comments: this
-codebase writes *why* at the point of the decision rather than in a document beside it.
+What survived them is in the code and in the history. Every landed change carries the
+measurement it earned in its commit message, and `git log` is the record: `git log --grep
+'^item 27'` still finds what item 27 landed. If you want the reasoning behind a design, read
+the doc comments. This codebase writes *why* at the point of the decision, not in a document
+beside it.
 
 ## Design rules that are not negotiable
 
-- **No backend grows a method the other has to throw from.** Capability lives in the data: a graph
+- **No backend grows a method the other has to throw from.** Capabilities are data. A graph
   declares what it needs, a device reports what it has, and `refusal` names the gap before a
   driver is reached.
 - **`graph/` imports nothing.** That is what keeps a frame graph serialisable, comparable, and
-  answerable on a machine with no card. `tests/import-graph.test.ts` enforces it.
-- **One door.** Everything public leaves through `index.ts`. Nothing reaches around it.
+  answerable on a machine with no graphics card. `tests/import-graph.test.ts` enforces it.
+- **One entry point.** Everything public leaves through `index.ts`. Nothing reaches around it.
 - **Zero runtime dependencies.**
 
 ## Commits
 
-Say what landed and carry the measurement it earned. If a gate could not see something, say so in
-the message rather than only in a file.
+Say what landed and carry the measurement it earned. If a gate could not see something, say so
+in the message and not only in a file.

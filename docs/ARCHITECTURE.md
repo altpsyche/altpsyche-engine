@@ -1,31 +1,30 @@
 # Architecture, as built
 
-**Why read this.** Every design in here is one you can feel from outside: it is why the
-factories are asynchronous, why a resource is an integer rather than a name, and why a frame is
-refused by name instead of failing halfway through. If you only want to *use* the package,
-[README.md](../README.md) and [API.md](API.md) are enough — this is the layer underneath them.
+**Why read this.** You can feel every design in here from outside the package. It is why the
+factories are asynchronous, why a resource is an integer and not a name, and why a frame that
+cannot be drawn says so before anything starts. If you only want to use the package,
+[README.md](../README.md) and [API.md](API.md) are enough. This is the layer under them.
 
-It describes the library as it stands, verified against the tree. It is not a plan and it queues
-nothing.
+It describes the library as it stands, checked against the tree. It is not a plan.
 
 ---
 
-## One door
+## One entry point
 
-Everything public comes from the package name. `index.ts` is the only export surface, and nothing
-reaches around it — so the files inside can be rearranged without moving anything a consumer
-imports.
+Everything public comes from the package name. `index.ts` is the only export surface and
+nothing reaches around it, so the files inside can be rearranged without moving anything you
+import.
 
-The two backends are reached by **dynamic import**, which is why `createFrameRenderer` and
-`createSurface` are asynchronous. A browser with no WebGPU never downloads the WebGPU
-backend. That is not a micro-optimisation: `gpu/webgpu.ts` is over 1,600 lines such a browser
-could never execute.
+The two backends load by **dynamic import**, which is why `createFrameRenderer` and
+`createSurface` are asynchronous. A browser with no WebGPU never downloads the WebGPU backend.
+That is worth an await: `gpu/webgpu.ts` is over 1,600 lines such a browser could never
+execute.
 
 ## The layers
 
 | folder | owns | may import |
 | --- | --- | --- |
-| `graph/` | the frame graph: types, handles, and pure functions over them — `validate`, `cost`, `refusal`, `capability` | **nothing** |
+| `graph/` | the frame graph: types, handles, and the pure functions over them (`validate`, `cost`, `refusal`, `capability`) | **nothing** |
 | `resource/` | the resident lifetime: `Arena`, and the on-demand translator chunk | `graph/` |
 | `pipeline/` | the static lifetime: the pipeline cache, keyed on structure | `graph/` |
 | `submit/` | the transient lifetime: planning and executing one frame | `graph/`, `resource/`, `pipeline/` |
@@ -35,74 +34,75 @@ could never execute.
 | `host/` | the browser-facing edges: `createSurface`, `probe` | `gpu/` |
 | `trace/` | the recording double and frame coverage | `graph/` |
 
-**`graph/` importing nothing is the load-bearing rule.** It is what keeps a graph
-serialisable, comparable, and sendable to a worker — and what lets `cost`, `refusal` and
-`selectBackend` answer on a machine with no card at all. `tests/import-graph.test.ts`
-enforces it, so the rule is a gate rather than an intention.
+**`graph/` importing nothing is the rule everything else rests on.** It is what keeps a
+graph serialisable, comparable, and safe to post to a worker, and it is what lets `cost`,
+`refusal` and `selectBackend` answer on a machine with no graphics card in it.
+`tests/import-graph.test.ts` enforces the rule, so it is a gate and not an intention.
 
 ## Three lifetimes, kept apart
 
-The mistake this design exists to avoid is fusing them, which is what the old
-`ShaderProgram` did — three lifetimes in one object, so a shader could not be recompiled without
-reallocating its buffers. It was taken apart at 0.3.0 into the three below.
+The mistake this design avoids is fusing them, which is what the old `ShaderProgram` did. It
+held three lifetimes in one object, so recompiling a shader meant reallocating its buffers.
+0.3.0 took it apart into the three below.
 
-- **Resident** — buffers, textures, samplers, query sets. Allocated and freed by `Arena`,
-  addressed by a branded integer handle with a generation packed above the index, so a
-  handle handed out after a free never equals the one before it and a stale handle is
-  *detectable* rather than silently valid.
-- **Static** — shader modules, pipelines, layouts, bind groups. Owned by the pipeline cache
-  and keyed on structure, so two graphs describing the same pipeline share one.
-- **Transient** — what lives for one frame: staging buffers, the frame target. Pooled and
-  aliased by `submit/`.
+- **Resident.** Buffers, textures, samplers and query sets. `Arena` allocates and frees them,
+  addressed by a branded integer handle with a generation packed above the index. A handle
+  handed out after a free never equals the one before it, so a stale handle is detectable
+  instead of silently valid.
+- **Static.** Shader modules, pipelines, layouts and bind groups. The pipeline cache owns
+  them, keyed on structure, so two graphs describing the same pipeline share one.
+- **Transient.** What lives for one frame: staging buffers and the frame target. `submit/`
+  pools and aliases them.
 
-`resource/` never compiles a pipeline, and that is why the boundary holds.
+`resource/` never compiles a pipeline. That is why the boundary holds.
 
 ## Handles, not names
 
-Every resource in a graph is a kind-branded integer — its index in the graph's own resource
-list — rather than a string. `uniform(0)`, `texture(2)`, `vertices(1)` mint them.
+Every resource in a graph is a kind-branded integer, its index in the graph's own resource
+list. `uniform(0)`, `texture(2)` and `vertices(1)` mint them.
 
-Two consequences worth stating. Passing a texture where a buffer belongs is a **compile
-error**, not a map lookup returning `undefined` at draw time. And nothing on the draw path
-does a string lookup at all: the backends resolve by index, with no `Map<string, …>` left on
-either build path.
+Two consequences are worth stating. Passing a texture where a buffer belongs is a **compile
+error** and not a map lookup that returns `undefined` at draw time. And nothing on the draw
+path does a string lookup at all: both backends resolve by index, with no `Map<string, …>`
+left on either build path.
 
-The graph's handle is an **authoring** handle, not the arena's runtime one. A graph is a
-pure value built before any device exists; an arena handle is minted at allocation and
-carries a generation. The cast between them happens in one place.
+A graph's handle is an **authoring** handle and not the arena's runtime one. A graph is built
+before any device exists, while an arena handle is minted at allocation and carries a
+generation. One place casts between them.
 
-## Capability lives in the data
+## Capabilities are data
 
-**A method one backend has to throw from is the wrong method.** That sentence is written at
-the top of `graph/types.ts` and it is the best rule in the codebase.
+**A method one backend has to throw from is the wrong method.** That sentence sits at the top
+of `graph/types.ts` and it is the best rule in the codebase.
 
 So a graph *declares* the capabilities it needs, a device *reports* the ones it has, and
-`refusal(graph, device)` reads the two records and names what is missing — before anything
-reaches a driver. Eleven capability names, and both backends answer honestly about all of
-them. Neither grows a method the other throws from.
+`refusal(graph, device)` reads both and names what is missing, before anything reaches a
+driver. There are eleven capability names and both backends answer honestly about all of them.
+Neither has a method the other throws from.
 
-Selection comes before refusal: `selectBackend` reads the language a graph is authored in
-and what the device offers, and only when nothing is left does a refusal appear. See
+Selection happens first. `selectBackend` reads the language a graph is authored in and what
+the device offers, and a refusal appears only when nothing is left. See
 [GUIDE-backends.md](GUIDE-backends.md).
 
 ## The four invariants
 
-1. **A method one backend has to throw from is the wrong method.** Capability lives in the data.
-   This is the one most easily broken by accident: it goes wrong the moment a backend is handed a
-   job it has to decline at call time rather than a graph that could have been refused by name.
-2. **A description is data, and the build is one producer of it.** The moment something can
-   only be produced by the build, or only at run time, the seam is gone.
-3. **One fact, one home**, and a disagreement stops the build rather than reaching the card.
-4. **Every capability has a preset a gate draws and a trace nothing else asserts.** A
+1. **A method one backend has to throw from is the wrong method.** Capabilities are data.
+   This is the invariant broken by accident most often, and it goes the moment a backend is
+   handed a job it has to decline at call time, when the graph could have been refused by name.
+2. **A description is data, and the build is one producer of it.** As soon as something can
+   only come from the build, or only from a running page, the seam is gone.
+3. **One fact, one home.** A disagreement stops the build before it reaches a graphics card.
+4. **Every capability has a preset some gate draws and a trace nothing else asserts.** A
    capability whose only proof is that the picture still looks right is one nobody can
    maintain.
 
 ## How it is verified
 
-The package is held by a node suite over its pure layers, a packaging check that installs the
-built artefact and imports it with plain node, a set of browser gates that draw the whole preset
-corpus through **both** backends and compare the calls each makes, and a hardware gate that reads
-a real graphics card.
+Four things hold the package. A node suite covers the pure layers. A packaging check
+installs the built artefact and imports it with plain node. A set of browser gates draws the
+whole preset corpus through **both** backends and compares the calls each one makes. And a
+hardware gate reads a real graphics card.
 
-What each of those can and cannot see — and it matters, because a software renderer's pixel count
-is not a card's — is written up for contributors in [CONTRIBUTING.md](../CONTRIBUTING.md).
+What each of those can and cannot see is written up for contributors in
+[CONTRIBUTING.md](../CONTRIBUTING.md), and the difference matters: a software renderer's pixel
+count is not a graphics card's.

@@ -1,12 +1,11 @@
 # Authoring a frame graph
 
-You do not hand this library a shader and hope. You hand it a **frame graph**: a plain
-value saying what resources exist, what pipelines run, and in what order the passes go.
-The renderer reads it and makes the calls.
+A **frame graph** is a plain object saying what resources exist, what pipelines run, and in
+what order the passes go. You hand one to the renderer and it makes the calls.
 
-That indirection buys three things. The graph is serialisable, so it can be built in a
-worker and sent. It is comparable, so two frames can be diffed. And it can be *asked
-questions* — `cost`, `refusal`, `selectBackend` all read it without touching a device.
+Being an object is the point. A graph serialises, so a worker can build one and post it. Two
+graphs can be compared. And `cost`, `refusal` and `selectBackend` all read a graph without
+touching a device, which is why you can ask what a frame needs before you have one.
 
 ## The shortcut, for one fragment shader over the canvas
 
@@ -39,14 +38,14 @@ const surface = await createSurface(canvas, frame, {
 if (surface) surface.start();
 ```
 
-`wgslFrame` is the same for WGSL. Both build a one-pass graph whose vertex half is the
-backend's own three corners, so there is no geometry to supply.
+`wgslFrame` is the same call for WGSL. Both build a one-pass graph whose vertex stage is
+the backend's own three corners, so you supply no geometry.
 
 `createSurface` returns `null` where no backend would give the page a context, so a real page
-checks before it starts — [EXAMPLES.md](EXAMPLES.md) is the complete version of this one.
+checks before it starts. [EXAMPLES.md](EXAMPLES.md) is the complete version of this page.
 
-Note what the `uniforms` callback does **not** have to do: the resolution is read off the
-drawing buffer the surface sizes, so a resize needs no code of yours.
+The `uniforms` callback does not have to work out the resolution. That comes off the drawing
+buffer the surface sizes, so a resize needs no code of yours.
 
 ## The long form
 
@@ -97,35 +96,35 @@ const description: FrameGraph = {
 };
 ```
 
-Five things in there are worth explaining, because each is a decision rather than a
-convention.
+Five fields in there are decisions, so they are worth explaining.
 
-**`authored: 'wgsl'`** is the discriminant. Which language was written is a fact, not
-something to infer from which fields happen to be present, and it is what routes the graph
-to a backend.
+**`authored: 'wgsl'`** is the discriminant. Which language a graph was written in is a fact,
+and it is what sends the graph to a backend. Nothing infers it from which other fields happen
+to be filled in.
 
-**Resources are addressed by handle, not by name.** `uniform(0)`, `vertices(1)`,
-`texture(2)` mint kind-branded integers — the index of that resource in the list above. The
-handle carries its kind, so passing a texture where a buffer belongs is a compile error rather
-than a lookup returning `undefined` at draw time
-([why, in full](ARCHITECTURE.md#handles-not-names)).
+**Resources are addressed by handle, not by name.** `uniform(0)`, `vertices(1)` and
+`texture(2)` mint kind-branded integers, the index of that resource in the list above. A
+handle carries its kind, so passing a texture where a buffer belongs is a compile error
+instead of a lookup that returns `undefined` at draw time.
+[ARCHITECTURE.md](ARCHITECTURE.md#handles-not-names) has the reasoning.
 
-**`size: { scale: 1 }`** means *follow the frame*. It is a whole-size descriptor, so
-`{ scale: 0.5 }` is half resolution and `{ width, height }` is a fixed size. What was in a
-frame-following texture is gone when a resize rebuilds it, so nothing may read it across a
-resize.
+**`size: { scale: 1 }`** means follow the frame. It is a whole-size descriptor, so
+`{ scale: 0.5 }` is half resolution and `{ width, height }` is a fixed size. A resize
+rebuilds a frame-following texture and its old contents are gone, so nothing may read one
+across a resize.
 
-**`use: ['attachment']`** is what the usage flags are built from. A texture a pass writes
-and a later pass reads names both. A flag nothing asked for is a texture the driver refuses
-the pipeline over, so the graph states its intent rather than guessing generously.
+**`use: ['attachment']`** is what the usage flags are built from. A texture that one pass
+writes and a later pass reads names both. Drivers refuse a pipeline over a flag nothing asked
+for, so a graph states what it intends to do with a texture and no more.
 
-**`topology`** belongs to the geometry, not the pipeline: which vertices make one triangle
-is a fact about the order the indices were written in, so the generator that wrote them is
-what answers it.
+**`topology`** belongs to the geometry, not the pipeline. Which vertices make one triangle
+depends on the order the indices were written in, so the generator that wrote them is what
+answers for it.
 
 ## Filling in the text
 
-The description above has `text: ''`. A graph names its documents; a loader fills them:
+The graph above has empty source text. A graph names its documents and a loader fills them
+in:
 
 ```ts
 // continues the block above
@@ -143,9 +142,9 @@ const frame = frameOf(
 );
 ```
 
-`documentNames(description)` tells you which texts are still wanted, and
-`generatedResources(description)` which resources need bytes the build produced. That split
-is deliberate: the build writes an address, the runtime fills in what came back from it.
+`documentNames(description)` tells you which texts are still missing, and
+`generatedResources(description)` which resources still need bytes from the build. The split
+is deliberate. The build writes down an address; the runtime fills in whatever came back.
 
 ## Asking before drawing
 
@@ -154,8 +153,8 @@ import { cost, refusal, webgl2Capabilities } from '@altpsyche/engine';
 
 cost(frame, { width: 800, height: 600 }); // passes, draws, transientBytes, and more
 
-// What a device has not got, by name. The second argument is which backend it is and
-// which capabilities it has — data, so this answers with no device present.
+// What a device has not got, by name. The second argument says which backend it is and
+// which capabilities it has. Both are data, so this answers with no device present.
 const gl = document.createElement('canvas').getContext('webgl2');
 const no = refusal(frame, {
   backend: 'webgl2',
@@ -165,24 +164,24 @@ if (no) console.error(no);
 ```
 
 The renderer runs its own `validate` over every graph it draws, and that one is **not**
-exported: a graph that contradicts itself is refused there by name, and the check is not a
-producer's to skip.
+exported. A graph that contradicts itself is refused there, by name, and no producer can skip
+the check.
 
-`cost` is how you find out a frame is too expensive without drawing it, and it is what the
-package's own budget gates assert against. Every corpus preset asserts an exact cost, so a
-change that quietly doubles a frame's memory shows up as a red gate naming the preset.
+`cost` is how you find out a frame is too expensive without drawing it. The package's own
+budget gates use it: every corpus preset asserts an exact cost, so a change that doubles a
+frame's memory shows up as a failing gate that names the preset.
 
 ## Compute
 
-A pass either draws or dispatches. A dispatch is a compute pass — a shader that writes into
-a buffer or a texture rather than painting pixels — and `groups` says how many workgroups
-run, either a triple or `{ indirect }` reading the count out of a buffer.
+A pass either draws or dispatches. A dispatch is a compute pass, a shader that writes into
+a buffer or a texture instead of painting pixels, and `groups` says how many workgroups run.
+That is either a triple of numbers or `{ indirect }`, which reads the count out of a buffer.
 
-Compute is WebGPU only. WebGL 2 has no compute stage, because GLSL ES 3.0 has none, so a
-graph with a compute pass is refused by name on that backend rather than half-drawn. See
+Compute is WebGPU only. GLSL ES 3.0 has no compute stage, so WebGL 2 has none either, and a
+graph with a compute pass is refused by name on that backend. See
 [GUIDE-backends.md](GUIDE-backends.md).
 
-`npm run example compute-field` is that whole story as a page: it draws where WebGPU is and
-prints the refusal, naming `compute` and `storage-texture`, where it is not.
-[EXAMPLES.md](EXAMPLES.md) has the rest of them, and [API.md](API.md) is the index of every
-name used above.
+`npm run example compute-field` is the whole of this as a page. It draws where WebGPU is
+there and prints the refusal, naming `compute` and `storage-texture`, where it is not.
+[EXAMPLES.md](EXAMPLES.md) has the other five, and [API.md](API.md) lists every name used
+above.

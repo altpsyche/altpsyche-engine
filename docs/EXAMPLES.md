@@ -1,11 +1,11 @@
 # Examples
 
-Everything else in these docs shows a fragment. This page is the whole of a working page,
-start to finish, and then the six pages in this repository you can open and read.
+Every other page in these docs shows a fragment. This one is a whole working page, start to
+finish, followed by the six pages in this repository you can open and read.
 
 ## A first frame, complete
 
-Four files. Nothing is elided and nothing is pseudocode.
+Four files. Nothing is left out and nothing is pseudocode.
 
 ```
 hello-engine/
@@ -14,7 +14,7 @@ hello-engine/
   main.ts
 ```
 
-**`package.json`** — the package is ESM, so the project is too:
+**`package.json`.** The package is ESM, so the project is too.
 
 ```json
 {
@@ -34,13 +34,13 @@ files and lets the browser fetch only the one it can run. A browser with no WebG
 downloads the WebGPU backend. Any bundler does it; `vite` is here because it needs no
 configuration.
 
-The page below is TypeScript, which vite compiles with no setup — the package ships its own
-declarations, so every call is typed without a `@types` package. Plain JavaScript works
-identically: drop the one type assertion and rename the file.
+The page below is TypeScript, which vite compiles with no setup. Declarations come with the
+package, so every call is typed and there is no `@types` install. Plain JavaScript works the
+same way: drop the one type assertion and rename the file.
 
-**`index.html`** — a canvas and a module. The canvas is sized in CSS and the surface is told
-what size that turned out to be, which is the division that lets a page lay out however it
-likes:
+**`index.html`.** A canvas and a module. CSS sizes the canvas, and the page tells the
+surface what size that turned out to be. That division is what lets a page lay itself out
+however it likes.
 
 ```html
 <!doctype html>
@@ -60,7 +60,7 @@ likes:
 </html>
 ```
 
-**`main.ts`** — a GLSL pair and a running surface:
+**`main.ts`.** A GLSL pair and a running surface.
 
 ```ts
 import { createSurface, glslFrame } from '@altpsyche/engine';
@@ -116,31 +116,30 @@ A rolling three-colour gradient fills the window, and it follows a resize.
 
 ### What that page actually did
 
-- **`glslFrame` built a frame graph**, not a shader object. One pass, one pipeline, the
-  backend's own three corners as its geometry. The same value could have been sent to a worker
-  or handed to `cost` without a device existing.
-- **`createSurface` awaited a dynamic import**, and this page fetched the WebGL 2 backend and
-  nothing else. That is not a property of the machine: a GLSL-authored frame selects WebGL 2
-  *even where WebGPU exists*, because the language it is written in is the capability it
-  forfeits. [GUIDE-backends.md](GUIDE-backends.md) is that rule in full.
-- **The uniform callback is handed elapsed seconds** and returns a plain object. The resolution
-  it reads is the drawing buffer the surface sized, so a resize needs no shader code.
-- **A `null` surface is an answer, not a crash.** Nothing throws at a caller who arrived on a
-  browser that would not give a context.
+- **`glslFrame` built a frame graph**, not a shader object. One pass, one pipeline, and the
+  backend's own three corners for geometry. That same graph could have gone to a worker or to
+  `cost` with no device anywhere.
+- **`createSurface` awaited a dynamic import**, and this page downloaded the WebGL 2 backend
+  and nothing else. The machine had nothing to do with it. A GLSL-authored frame selects WebGL
+  2 *even where WebGPU exists*, because the language you write in is the capability you give
+  up. [GUIDE-backends.md](GUIDE-backends.md) has that rule in full.
+- **The uniform callback receives elapsed seconds** and returns a plain object. It reads the
+  resolution off the drawing buffer the surface sized, so a resize needs no shader code.
+- **A `null` surface is an answer.** Nothing throws at a caller who arrived on a browser that
+  would not give the page a context.
 
-To author in WGSL instead, `wgslFrame(id, code, block)` takes the source and the uniform
-block that source implies — `uniformBlockOf(code)` reads that block off the source, so the
-layout is never written twice. Two things it expects: the fragment entry point is called
-`fragMain`, and the uniforms are one struct at group 0, binding 0. The README's tour shows
-the call.
+To write WGSL instead, `wgslFrame(id, code, block)` takes the source and the uniform block
+that source implies. `uniformBlockOf(code)` reads the block off the source, so you never write
+the layout down twice. It expects two things: the fragment entry point is called `fragMain`,
+and the uniforms are one struct at group 0, binding 0. The README shows the call.
 
-One caveat before you try it: a *fullscreen* WGSL frame has no vertex document for WebGL 2 to
-link, so it draws on WebGPU and is refused by name elsewhere. A frame with real geometry has
-both halves and reaches both backends.
+One caveat before you try it. A *fullscreen* WGSL frame has no vertex document for WebGL 2 to
+link, so it draws on WebGPU and is refused by name anywhere else. A frame with real geometry
+has both halves and reaches both backends.
 
 ## The six examples in this repository
 
-These are full pages rather than snippets, each with its reasoning written above the code.
+These are full pages, not snippets, and each carries its reasoning above the code.
 
 ```bash
 git clone https://github.com/altpsyche/altpsyche-engine
@@ -149,22 +148,22 @@ npm install
 npm run example orbit-shadow
 ```
 
-That bundles the example with `@altpsyche/engine` aliased to the door — so it imports the
-package by the name a stranger would — serves it over `http://localhost`, and opens it. It
-needs a display, because these are pages and a page has to be looked at.
+That bundles the example with `@altpsyche/engine` aliased to the package entry, so it imports
+the package by the name you would use. Then it serves the bundle over `http://localhost` and
+opens it. You need a display: these are pages, and a page has to be looked at.
 
 | `npm run example …` | what it is there to show |
 | --- | --- |
 | `fullscreen` | the page above: one GLSL pass, one surface, a resize |
-| `glsl-fragment` | a fragment document a consumer wrote, drawn on WebGL 2 on a machine that has WebGPU — selection, seen from outside |
+| `glsl-fragment` | a fragment document you wrote, drawn on WebGL 2 on a machine that has WebGPU. Selection, seen from outside |
 | `instanced-cubes` | a thousand objects with their own transforms, one pipeline, **one** instanced draw, and the same idea authored in both languages so either backend draws it |
 | `orbit-shadow` | the scene tier: an orbit camera, a shadow-casting light, around fifty objects across two pipelines, with the pass order the producer's to choose |
-| `compute-field` | a compute pass writing a storage texture the frame then shows — WebGPU only, and on WebGL 2 the page prints the refusal *naming* `compute` and `storage-texture` rather than drawing half a frame |
-| `gltf-cube` | a mesh fetched after the page opened, parsed by the example, and drawn mid-session — the asset pipeline is deliberately **not** in this library, and this is the honest test of that |
+| `compute-field` | a compute pass writing a storage texture the frame then shows. WebGPU only: on WebGL 2 the page prints the refusal, *naming* `compute` and `storage-texture`, and draws nothing |
+| `gltf-cube` | a mesh fetched after the page opened, parsed by the example, drawn mid-session. The asset pipeline is deliberately **not** in this library, and this page is the test of that |
 
-`compute-field` is the one worth opening on two machines. The page that refuses is doing the
-same work as the page that draws: reading a graph's declared capabilities against what a device
-reported, and answering by name before a driver is reached.
+`compute-field` is the one worth opening on two machines. The page that refuses does the same
+work as the page that draws. It reads a graph's declared capabilities against what a device
+reported and answers by name, before a driver is reached.
 
 ## Where to go next
 

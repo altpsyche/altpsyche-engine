@@ -1,16 +1,16 @@
 # API
 
 Every name `@altpsyche/engine` exports, with its signature, grouped by what you are doing
-rather than by which file it lives in. There is one import path and no second one, so nothing
-you import moves when the files inside are rearranged:
+and not by which file it lives in. There is one import path and no second one, so nothing you
+import moves when the files inside are rearranged.
 
 ```js
 import { createSurface, submit, wgslFrame, resolve, vec3, mat4 } from '@altpsyche/engine';
 ```
 
-Sixty-nine names leave the door at run time, and the types come with them. Every signature
-below is printed from the compiler's own reading of the source and a gate fails if one drifts
-from it, so what is written here is what you will get.
+Sixty-nine names leave the package at run time and the types come with them. Every signature
+below is printed from the compiler's own reading of the source, and a gate fails if one drifts
+from it. What is written here is what you will get.
 
 For a page that runs, see [EXAMPLES.md](EXAMPLES.md); for the reasoning under the shapes, see
 [ARCHITECTURE.md](ARCHITECTURE.md); for what changes between releases and why `^0.3.0` will not
@@ -36,9 +36,9 @@ card. `createFrameRenderer` is one renderer and no loop, for drawing on your own
 do the same sum. `PROGRAM_CACHE_LIMIT` is how many built programs a renderer keeps before
 evicting the stalest.
 
-Both factories return `null` rather than throwing where no backend would give the canvas a
-context, and both are **asynchronous** because each backend is reached by a dynamic import —
-see [ARCHITECTURE.md](ARCHITECTURE.md#one-door) for what that buys.
+Both factories return `null` where no backend would give the canvas a context. Neither
+throws. Both are **asynchronous** because each backend loads by dynamic import; see
+[ARCHITECTURE.md](ARCHITECTURE.md#one-entry-point) for what that buys.
 
 **A renderer draws through WebGL 2 unless you hand it a WebGPU device**, which is
 `RendererOptions.backend` and `RendererOptions.device` together. Asking for the card is the
@@ -64,12 +64,12 @@ WGSL_DOCUMENT: "wgsl"
 WGSL_FRAGMENT_ENTRY: "fragMain"
 ```
 
-`wgslFrame` expects two things of its source: the fragment entry point is called `fragMain` —
-that is `WGSL_FRAGMENT_ENTRY` — and the uniforms are one struct at group 0, binding 0.
-`uniformBlockOf(code)` is how you get the `block` argument without writing the layout out a
+`wgslFrame` expects two things of its source. The fragment entry point is called `fragMain`,
+which is what `WGSL_FRAGMENT_ENTRY` holds, and the uniforms are one struct at group 0, binding
+0. `uniformBlockOf(code)` gives you the `block` argument without writing the layout out a
 second time. `glslFrame` takes a pair, because WebGL 2 links two documents. The two
-`…Description` functions build the same one-pass shape without the text, when you want the
-description rather than a finished frame.
+`…Description` functions build the same one-pass shape with no text in it, for when you want
+the shape and not a finished frame.
 
 **Filling a description in**, which is what a loader does:
 
@@ -86,8 +86,8 @@ says which resources still want bytes. `glslFrameOf` turns a WGSL frame into the
 WebGL 2 draws, reading the translation a build baked into the source, and returns `null`
 where no bake is there.
 
-**Handles.** Every resource in a graph is addressed by a kind-branded integer — its index in
-the graph's resource list — rather than a string:
+**Handles.** Every resource in a graph is addressed by a kind-branded integer, its index in
+the graph's resource list. No strings:
 
 ```ts
 buffer(index: number): BufferHandle
@@ -100,7 +100,7 @@ moduleHandle(index: number): ModuleHandle
 pipelineHandle(index: number): PipelineHandle
 ```
 
-Passing a texture where a buffer belongs is a compile error rather than a lookup that returns
+Passing a texture where a buffer belongs is a compile error, not a lookup that returns
 `undefined` at draw time. Why an integer and not a name is in
 [ARCHITECTURE.md](ARCHITECTURE.md#handles-not-names). Types: `BufferHandle`, `TextureHandle`,
 `SamplerHandle`, `UniformHandle`, `VertexHandle`, `IndexHandle`, `ModuleHandle`,
@@ -120,7 +120,7 @@ perDrawBinding(spec: PipelineSpec): BindingSpec | undefined
 componentsOf(type: string): number
 ```
 
-The first four are type guards, so reading a graph narrows rather than casts.
+The first four are type guards, so reading a graph narrows a type instead of casting it.
 
 **The graph's own types**: `FrameGraph`, `WgslFrameGraph`, `GlslFrameGraph`, `ModuleSpec`,
 `WgslModule`, `GlslModule`, `WgslPair`, `GlslPair`, `RenderSource`, `WgslRenderSource`,
@@ -142,11 +142,11 @@ webgl2Capabilities(extensions: Iterable<string>): ReadonlySet<Capability>
 ```
 
 All six are pure functions over data, so they answer in a test, in a worker, or on a machine
-with no card. **`resolve` is the one to reach for**: selection first, then the capability
-check, in one reading. `selectBackend` is the first half alone — which backend will draw a
-frame, from the language it is authored in and what the device offers — and `refusal` is the
-second, naming what a device has not got. The two `…Capabilities` functions turn what a device
-reported into the capability set those readings take.
+with no graphics card. **`resolve` is the one to reach for**: selection first, then the
+capability check, in one reading. `selectBackend` is the first half on its own. It says which
+backend will draw a frame, from the language it is authored in and what the device offers.
+`refusal` is the second half, and it names what a device has not got. The two `…Capabilities`
+functions turn what a device reported into the capability set both readings take.
 
 `cost` gives `passes`, `draws`, `dispatches`, `pipelineSwitches`, `bindSwitches`,
 `attachmentLoads`, `attachmentStores` and `transientBytes` at a size, before a pixel is drawn.
@@ -158,7 +158,7 @@ reported into the capability set those readings take.
 `bgra-storage`. A graph declares which it needs; a device reports which it has. See
 [GUIDE-backends.md](GUIDE-backends.md), which shows all of this in use.
 
-**Reading a device, for a row rather than for a decision:**
+**Reading a device, for a row and not for a decision:**
 
 ```ts
 probe(host?: ProbeHost): Promise<DeviceReading>
@@ -169,14 +169,15 @@ readingRow(reading: DeviceReading): string
 
 `probe` draws a frame and returns a dated `DeviceReading`: what was reported, whether an
 adapter came back, whether the device survived being composited, what the adapter says it is.
-It is a diagnostic and a row for [DEVICES.md](DEVICES.md) — **not** the input to selection,
-which is a `DeviceProfile`. `browserProbeHost` is the browser half, injected so `readingOf`
-can be tested without one, and `readingRow` prints a reading as a table row.
+It is a diagnostic, and a row for [DEVICES.md](DEVICES.md). It is **not** the input to
+selection, which is a `DeviceProfile`. `browserProbeHost` is the browser half, injected so
+`readingOf` can be tested without a browser, and `readingRow` prints a reading as a table
+row.
 
 Types: `BackendSelection`, `DeviceOffer`, `DeviceProfile`, `DeviceCapabilities`, `Capability`,
 `FrameCost`, `DeviceReading`, `ProbeFacts`, `ProbeHost`, `ProbeTier`, `BackendFacts`.
 
-## Reflection, over the source rather than the built program
+## Reflection, over the source and not the built program
 
 ```ts
 reflect(frame: FrameGraph): Uniform[]
@@ -214,9 +215,9 @@ const unread = missing(frame, uniforms.map((one) => one.name));
 if (unread.length) console.warn('declared and never read:', unread);
 ```
 
-`missing` is how you catch a uniform you are still feeding that the shader stopped reading —
-silent waste otherwise, because nothing fails. `namesReachedBy` answers which declarations one
-entry point actually reaches. Type: `Uniform`.
+`missing` is how you catch a uniform you are still feeding that the shader stopped reading.
+Nothing fails when that happens, so the waste is silent until you ask. `namesReachedBy` answers
+which declarations one entry point actually reaches. Type: `Uniform`.
 
 ## The scene tier
 
@@ -230,9 +231,9 @@ localMatrix(t: Transform): Mat4
 viewProjection(camera: Camera): Mat4
 ```
 
-`sceneView` is the producer: a world and the cameras watching it in, a `FrameGraph` out. It
-packs each drawn object's record into a read-only storage buffer and the view-projection
-matrices into another, so the shader indexes by instance rather than the page re-uploading a
+`sceneView` is the producer: a world and the cameras watching it go in, a `FrameGraph` comes
+out. It packs each drawn object's record into a read-only storage buffer and the view-projection
+matrices into another, so the shader indexes by instance and the page does not re-upload a
 uniform per object.
 
 ```ts
@@ -323,14 +324,14 @@ const camera: Camera = {
 const graph = view.graph(scene, [camera]);
 ```
 
-`batchScene` groups a world by pipeline into draws, and `batchOnePipeline` refuses a scene
-whose objects do not all share one — grouping across pipelines decides which pipeline runs
-first, and that is a scheduling choice a caller makes with knowledge the library has not got.
+`batchScene` groups a world by pipeline into draws. `batchOnePipeline` refuses a scene whose
+objects do not all share one pipeline, because grouping across pipelines decides which pipeline
+runs first, and that is a scheduling choice you make with knowledge the library has not got.
 `drawList` is the flat list of what to draw, in draw order, each entity's world matrix already
-worked out. `worldMatrix`, `localMatrix` and `viewProjection` are that arithmetic exposed.
+worked out. `worldMatrix`, `localMatrix` and `viewProjection` are that same arithmetic exposed.
 
-A rotation is a `Mat4`, never three angles: Euler orders disagree between codebases and the
-disagreement is silent, so the library never guesses — you compose the rotation you meant.
+A rotation is a `Mat4` and never three angles. Euler orders disagree between codebases, nothing
+tells you when they do, and the library will not guess: you compose the rotation you meant.
 
 Types: `SceneView`, `SceneViewOptions`, `ScenePipeline`, `Scene`, `Entity`, `Transform`,
 `Camera`, `Material`, `MaterialDraw`, `Batch`, `Draw`.
@@ -353,8 +354,8 @@ vec3.magnitude(v: Vec3): number
 vec3.normalize(v: Vec3): Vec3
 ```
 
-`mat4` and `mat3` are namespaces alone — a matrix comes from one of their functions rather
-than from calling the namespace:
+`mat4` and `mat3` are namespaces only. A matrix comes from one of their functions, since
+neither namespace is callable itself:
 
 ```ts
 mat4.IDENTITY: Mat4
@@ -391,8 +392,8 @@ the layout travels with the bytes. Types: `GeometryPrimitive`, `GeometryLayout`,
 ## Resources, by hand
 
 `Arena` owns the resident lifetime: buffers, textures, samplers and query sets, addressed by a
-branded integer handle with a generation packed above the index, so a handle handed out after a
-free never equals the one before it and a stale handle is detectable rather than silently
+branded integer handle with a generation packed above the index. A handle handed out after a
+free never equals the one before it, so a stale handle is detectable instead of silently
 valid.
 
 ```ts
@@ -432,12 +433,12 @@ arena.free(handle); // the next allocate may reuse the slot
 console.log(arena.live(handle)); // false: the generation moved on
 ```
 
-`read` is the one door onto a readback, and an arena built without a `readBack` says so rather
-than answering with empty bytes. `traffic()` reports what was written and sent; its
-`FrameTraffic` type is not on the door yet, so read it inline for now. Types: `Handle`,
-`Range`.
+`read` is the only way a buffer's words come back to the CPU. An arena built without a
+`readBack` says so when you call it, and never answers with empty bytes. `traffic()` reports
+what was written and sent. Its `FrameTraffic` type is not exported yet, so read it inline for
+now. Types: `Handle`, `Range`.
 
-## Checking what your shader asked the card
+## Checking what your shader asked the device
 
 ```ts
 wrapDevice(device: GPUDevice, trace: TraceEntry[], lifetimes?: Lifetimes): GPUDevice
@@ -449,8 +450,8 @@ isFullyPainted(coverage: FrameCoverage): boolean
 describeFrameCoverage(coverage: FrameCoverage): string
 ```
 
-The recording double is part of the package rather than a separate toy: it is the mechanism
-this repository holds its own two backends to.
+The recording double is part of the package. It is the same mechanism this repository uses on
+its own two backends.
 
 ```ts
 import { compareTraces, projectTrace, requestWebGPUDevice, wrapDevice, type TraceEntry } from '@altpsyche/engine';
@@ -476,8 +477,9 @@ if (device) {
 }
 ```
 
-`Lifetimes` is the optional ledger: pass one to `wrapDevice`, and `leaked()` names every
+`Lifetimes` is the optional ledger. Pass one to `wrapDevice` and `leaked()` names every
 resource created and never destroyed, with `born` and `died` recording each. The three
 `…FrameCoverage` functions read a frame's pixels and answer which rows and columns hold
-something other than the frame's commonest colour — one reading of "is there a picture here"
-rather than one per caller. Types: `TraceEntry`, `FrameCoverage`, `FrameCoverageInput`.
+something other than the frame's commonest colour. That is one reading of "is there a picture
+here", shared by every caller who needs it. Types: `TraceEntry`, `FrameCoverage`,
+`FrameCoverageInput`.

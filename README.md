@@ -193,7 +193,7 @@ every call made on it, `projectTrace` cuts a recording down to the calls worth c
 and `compareTraces` says where two recordings differ. So you can show that editing a shader
 did not quietly change what the device was asked to do. The package uses the same three
 calls on its own two backends, and
-[docs/API.md](docs/API.md#checking-what-your-shader-asked-the-card) shows them in use.
+[docs/API.md](docs/API.md#checking-what-your-shader-asked-the-device) shows them in use.
 
 ## What it needs
 
