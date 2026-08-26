@@ -18,11 +18,11 @@ look for a reason that stands on the package's own merits.
 layers, the three lifetimes, handles, the capability model, and what each gate can and cannot
 see. [docs/API.md](docs/API.md) is the export surface; `docs/GUIDE-*.md` are the consumer guides.
 
-[docs/ABSTRACTION.md](docs/ABSTRACTION.md) and [docs/RENDERER-DESIGN.md](docs/RENDERER-DESIGN.md)
-are **historical as of 2026-08-26**: they predate the split from the website and are now stale
-about today's code as well as about direction. Both carry a banner saying so. They are kept
-rather than deleted because RoadToPureEngine.md §1 quotes ABSTRACTION.md to build its central
-argument, and a document whose source has been deleted argues from nothing.
+The two design documents this codebase was built against — one describing the stack as built for
+the website, one owning its type surface — were **deleted on 2026-08-26**. They predated the split
+and had become stale about the code as well as about direction. What was accurate in them is
+carried into ARCHITECTURE.md, and §1 of RoadToPureEngine.md now quotes the invariant it takes
+apart in full rather than by reference.
 
 ## What a number may claim
 

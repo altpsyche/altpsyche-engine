@@ -2105,7 +2105,7 @@ So two documents meant to differ still silently become one. Before item 3 that h
 **How it landed.** The seven website paths named in this item's earlier draft — content/shaders,
 hooks/useShaderSurface.ts, lib/renderer/artefacts.ts, lib/renderer/choose.ts, lib/shader-base.ts,
 public/shaders/build/manifest.json and public/shaders/source/*.wgsl — are out of
-[ABSTRACTION.md](ABSTRACTION.md)'s Mermaid node labels, each replaced by what its layer *is* to a
+`ABSTRACTION.md`'s Mermaid node labels, each replaced by what its layer *is* to a
 reader who no longer has the website's tree (`a source file — WGSL, or GLSL a consumer authors`, `a
 consumer's adapter`, `a consumer's React hook`, and so on) rather than by a path that resolves to
 nothing here. The seven in-tree paths the diagram legitimately names — `toy/frame.ts`,
@@ -2639,7 +2639,7 @@ npm one). [gates/naga-corpus.mjs](../gates/naga-corpus.mjs) reads the fifteen
 entry point (the match reaches across a compute entry's `@workgroup_size` to the
 `fn` name), and runs each through naga to the matching GLSL stage. **All fifteen
 presets, all thirty-four entry points, translate at GLSL ES 3.10 — none refused.**
-The per-preset readings, dated, are [docs/NAGA-CORPUS.md](NAGA-CORPUS.md); the
+The per-preset readings, dated, were `docs/NAGA-CORPUS.md`, deleted 2026-08-26 with its conclusion carried into [GUIDE-backends.md](GUIDE-backends.md); the
 script reproduces them and exits 0 while every preset still translates, 1 if one
 stops (naming the construct), 2 with no naga on PATH. It is not wired into
 `package.json` or `gates/all.mjs`, since it needs a dev tool a clean CI machine has

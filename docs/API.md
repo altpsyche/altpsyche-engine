@@ -7,15 +7,13 @@ which file it lives in. There is one import path and no second one:
 import { createSurface, submit, wgslFrame, probe, vec3, mat4 } from '@altpsyche/engine';
 ```
 
-**69 runtime names**, which is the count `npm run gate:pack` asserts by installing the built
-package and importing it with plain node. Type-only exports sit beside them and are erased at
-runtime, so no gate counts those and this document deliberately does not claim a total: three
-different parsers of `index.ts` gave three different answers, and a number no gate produced is
-not one to publish.
+There is no second import path, so nothing you import moves when the files inside are
+rearranged.
 
-**0.x is unstable.** Names and shapes change between releases without a major bump.
-[RoadToPureEngine.md](RoadToPureEngine.md) §14 is the shape the surface is moving toward,
-and where today's names differ from it, today's names are the ones that move.
+**0.x is unstable.** Names and shapes change between releases without a major bump, and the
+[CHANGELOG](../CHANGELOG.md) says what moved in each one. A caret range on a `0.x` version
+tracks the last number alone, so `^0.3.0` will not pick up a later `0.4.0`: you move to a
+feature release by asking for it.
 
 ---
 
@@ -48,7 +46,7 @@ go. You hand that description to the renderer; you do not hand it a shader and h
 | --- | --- | --- |
 | `wgslFrame` | value | one WGSL fragment shader, drawn fullscreen |
 | `glslFrame` | value | the same for a GLSL vertex/fragment pair |
-| `wgslDescription`, `glslDescription` | value | the long form: name the resources, pipelines and passes yourself |
+| `wgslDescription`, `glslDescription` | value | the same one-pass shape from source alone, when you want the description rather than a finished frame |
 | `assembleFrame`, `frameOf`, `glslFrameOf` | value | build a graph from a description plus fetched document texts |
 | `documentNames`, `generatedResources` | value | what a description still needs before it can be drawn |
 | `ONE_PASS`, `WGSL_DOCUMENT`, `WGSL_FRAGMENT_ENTRY` | value | the names the shortcuts use, exported so the long form can match them |
@@ -164,5 +162,4 @@ valid. `Arena.read` is how a buffer's words come back to the CPU.
 | `FrameCoverage`, `FrameCoverageInput` | type | |
 
 This is how you check that a change to a shader did not quietly change what the device was
-asked to do — and it is the mechanism the package's own browser gates use, not a separate
-toy.
+asked to do. It is the same mechanism the package uses on itself, not a separate toy.

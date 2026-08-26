@@ -59,58 +59,32 @@ The eleven capabilities:
 Read this from `webgpuCapabilities` and `webgl2Capabilities` rather than from the table —
 the code is the authority and the table is a summary of it.
 
-## What each backend actually drew, measured
+## What WebGL 2 reaches today
 
-The corpus gate builds every preset through both backends in a real browser and reports
-the lit pixel count. The most recent run:
+Everything in the toy tier: a fullscreen shader, several passes, several colour attachments,
+depth and stencil, resident textures, a mip ladder, multisampling, vertex geometry of the
+shader's own, and per-draw uniform slices.
 
-| preset | WebGPU | WebGL 2 |
-| --- | --- | --- |
-| `webgl2-fullscreen-probe` | — | 480,000 of 480,000 (100.0%) |
-| `core-geometry` | 129,600 (27.0%) | 129,600 (27.0%) |
-| `core-perdraw-uniform` | 112,896 (23.5%) | 112,896 (23.5%) |
-| `core-depth` | 245,512 (51.1%) | 245,512 (51.1%) |
-| `core-multisample` | 87,479 (18.2%) | 87,479 (18.2%) |
-| `core-scene` | 91,579 (19.1%) | 91,579 (19.1%) |
-| `core-compute`, `core-state`, `core-indirect` | 100.0% | skipped — a compute stage |
-| `core-material` | 84,929 (17.7%) | 84,929 (17.7%) |
-| `core-draw-list` | 78,214 (16.3%) | 78,214 (16.3%) |
-| `core-perdraw` | drew | skipped — its storage buffer has no bake |
-| `core-texture`, `core-target`, `core-mips`, `core-stencil` | drew | skipped — a fullscreen WGSL frame bakes no vertex to link |
-| `core-report` | 270,400 (56.3%) | skipped — declares a buffer no pipeline reads |
+The scene tier draws too — a scene's read-only per-instance records reach WebGL 2 as a uniform
+block indexed per instance. **It does not yet draw the same picture as WebGPU**: on a real card,
+scene-tier frames differ from their WebGPU counterparts by enough to be visible, and the cause is
+under investigation. If you need the two backends to agree pixel-for-pixel on a scene today, use
+the WebGPU path.
 
-**24 of 24 draws lit their buffer, 0 failed, 9 WebGL 2 skips.**
+What it will never reach is what GLSL ES 3.0 has no syntax for: compute, a shader-written storage
+buffer, storage textures, indirect draws, and timestamp or occlusion queries. Those are refused by
+name rather than half-drawn.
 
-`core-material` and `core-draw-list` are the scene tier's own presets, and they draw on WebGL 2
-through a hand-authored GLSL vertex stage plus the uniform-block route for their read-only
-per-instance records. Their WebGL 2 counts equal their WebGPU counts — and **no gate asserts
-that equality**: the corpus bar is "lit > 0" per backend, so the match is observed rather than
-held. Holding it is what the cross-backend three-number reading is for, and that reading is
-hardware-gated and has not been taken.
-
-**Two honest caveats, because a number without them is worse than no number.** First,
-every figure above is **SwiftShader**, the software renderer: each headless browser launch
-here reaches it whatever the flags say. That the two columns agree is a real result about
-the translation and the draw path, and it is *not* a result about a graphics card. Second,
-the WebGL 2 column's matching counts come from the same corpus drawn twice, not from a
-per-pixel comparison — the three-number cross-backend reading is a separate, hardware-gated
-measurement (ROADMAP items 44 and 106) and it has not been taken.
-
-## Where the WebGL 2 skips come from
+## Why a frame might not draw on WebGL 2
 
 Three different mechanisms, worth telling apart because they fail at different times:
 
-1. **A capability the device has not got** — refused by `refusal`, from data, before a
-   driver is reached. `core-perdraw` needs a read-only storage buffer whose GLSL the
-   translator will not emit.
-2. **No baked GLSL** — the build translates every corpus preset to GLSL ES 3.00 with naga
-   ahead of time, and a shader naga refuses is refused at *build* time with the construct
-   named. Today the bake carries **29 entry points across 13 presets**, with 7 refused for
-   capabilities WebGL 2 genuinely lacks. Two vertex stages naga will not emit —
-   `core-material`'s and `core-draw-list`'s, both reading a storage buffer — are supplied as
-   hand-authored GLSL in `fixtures/source/glsl/handwritten/` instead, which is how the scene
-   tier reaches WebGL 2 at all.
-3. **A fullscreen WGSL frame with no vertex stage to bake.** The shortcut frames draw with
+1. **A capability the device has not got** — refused by `refusal`, from data, before a driver
+   is reached.
+2. **No translated GLSL** — WGSL is translated to GLSL ES 3.00 ahead of time, and a shader the
+   translator refuses is refused at *build* time with the construct named. That is the right
+   place to find out.
+3. **A fullscreen WGSL frame with no vertex stage to translate.** The shortcut frames draw with
    the backend's own corners on WebGPU; on WebGL 2 there is no vertex document to link.
 
 Only the first is a runtime answer. The other two are build-time facts, which is the right
@@ -121,9 +95,9 @@ place to find out.
 A producer authors WGSL. WebGL 2 receives a translation of it. That translation happens in
 one of two places, and the split is what keeps the shipped cost at zero:
 
-- **Ahead of time**, for anything a build can see. Every corpus preset is translated once
-  by `npm run translate` and the result travels with the bake. A consumer on WebGL 2
-  downloads **no translator** and pays no translation cost. `dependencies` is `{}`.
+- **Ahead of time**, for anything a build can see. The translation travels with the shipped
+  material, so a consumer on WebGL 2 downloads **no translator** and pays no translation cost.
+  The package has zero runtime dependencies.
 - **On demand**, and only for the editing path — someone typing WGSL into a toy-tier editor
   on a WebGL 2 device. That case fetches the translator by `await import()`, in its own
   chunk, exactly the way a backend is fetched.

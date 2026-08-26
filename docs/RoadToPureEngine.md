@@ -4,7 +4,7 @@
 
 **Where the decisions are.** §17 records the eleven architectural decisions this document rests on, each with what it commits to and what it costs, plus an amendment to decision 4 and the measured evidence behind three of them. Read it first if you want the conclusions before the argument.
 
-**What it is not.** It is not [ABSTRACTION.md](ABSTRACTION.md), which describes the stack as built for a website and still refers to files that left with that website. It is not [RENDERER-DESIGN.md](RENDERER-DESIGN.md), which owns today's type surface. Both of those documents are superseded by this one on the subject of direction; both remain accurate on the subject of what exists today, minus the stale paths noted in §3.
+**What it is not.** It is not the two design documents this codebase was built against — one describing the stack as built for a website, one owning its type surface. **Both were deleted on 2026-08-26 as superseded**, their accurate parts carried into [ARCHITECTURE.md](ARCHITECTURE.md); this document supersedes them on direction and always did.
 
 **The target, stated once so everything below can be measured against it.**
 
@@ -21,7 +21,9 @@ WebGPU is the primary target. WebGL 2 is the fallback. Both tiers reach the card
 
 The most important fact about this codebase is that it was not half built. It was **fully built for a different goal**, and that goal has now left the repository.
 
-[ABSTRACTION.md](ABSTRACTION.md) states five invariants. The first is:
+The design document this codebase was built against stated five invariants. The first, quoted here
+in full because the rest of this section takes it apart and the source file has since been deleted
+as superseded:
 
 > **Code is 1:1 with the shader page**, in the language that shader is written in. This is permanent under D86.
 

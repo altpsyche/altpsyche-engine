@@ -1,12 +1,9 @@
 # Architecture, as built
 
-**What this document is.** How the library is actually put together, today, verified against
-the tree rather than remembered. It replaces [ABSTRACTION.md](ABSTRACTION.md) and
-[RENDERER-DESIGN.md](RENDERER-DESIGN.md) as the description of what exists — both of those
-predate the split from the website and are now wrong about the code as well as about the
-direction. They are kept, not deleted, because [RoadToPureEngine.md](RoadToPureEngine.md)
-§1 quotes ABSTRACTION.md's first invariant to build its central argument, and a document
-whose source has been deleted argues from nothing.
+**What this document is.** How the library is actually put together, verified against the tree
+rather than remembered. It is the only description of what exists: the two design documents this
+codebase was built against were deleted on 2026-08-26, having gone stale about the code as well
+as about direction.
 
 **What this document is not.** It is not direction — [RoadToPureEngine.md](RoadToPureEngine.md)
 owns that. It is not the queue — [ROADMAP.md](ROADMAP.md) is the only thing that queues work.
@@ -17,11 +14,9 @@ Nothing here queues anything.
 
 ## One door
 
-Everything public comes from the package name. `index.ts` is the only export surface: **69
-runtime names**, which is what `npm run gate:pack` asserts by installing the built package and
-importing it with plain node, plus the type-only exports beside them, which are erased at
-runtime and which no gate counts. Nothing reaches around it, so the files inside can be rearranged
-without moving anything a consumer imports.
+Everything public comes from the package name. `index.ts` is the only export surface, and nothing
+reaches around it — so the files inside can be rearranged without moving anything a consumer
+imports.
 
 The two backends are reached by **dynamic import**, which is why `createFrameRenderer` and
 `createSurface` are asynchronous. A browser with no WebGPU never downloads the WebGPU
@@ -93,7 +88,7 @@ and what the device offers, and only when nothing is left does a refusal appear.
 
 ## What the invariants are now
 
-`ABSTRACTION.md` stated five. Four are still the design and one left with the website:
+The original design document stated five. Four are still the design; one left with the website:
 
 1. ~~Code is 1:1 with the shader page~~ — **a website rule, not a library one.** It welded
    together a scope call, a content rule about article text, and a size cap derived on top
@@ -110,25 +105,12 @@ and what the device offers, and only when nothing is left does a refusal appear.
    capability whose only proof is that the picture still looks right is one nobody can
    maintain.
 
-## What proves any of it
+## How it is verified
 
-| gate | cost | what it holds |
-| --- | --- | --- |
-| `npm test` | ~1s | 856 node tests over the pure layers, both backends against recording doubles |
-| `npm run type-check` | seconds | |
-| `npm run gate:pack` | seconds | the built package installs, plain node imports it, the door's name count is exact |
-| `npm run gate:browser` | minutes | four gates in a real browser: the corpus on both backends, the trace contract, a live surface |
-| `npm run gate:card` | a desktop session | the only gate that reads a real graphics card |
+The package is held by a node suite over its pure layers, a packaging check that installs the
+built artefact and imports it with plain node, a set of browser gates that draw the whole preset
+corpus through **both** backends and compare the calls each makes, and a hardware gate that reads
+a real graphics card.
 
-**What the cheap gates cannot see, stated plainly because it matters more than the green.**
-Every headless browser launch on the development machine reaches SwiftShader, the software
-renderer, whatever the flags say. So every pixel count this repository records is a software
-renderer's. That the two backends agree is a real result about the translation and the draw
-path; it is **not** a result about a card. The cross-backend three-number comparison on real
-hardware has not been taken — it is queued, hardware-gated, and named as outstanding rather
-than quietly assumed.
-
-The node suite has a matching blind spot: for a change that rewrites resolution logic, the
-tests are rewritten alongside the code they check, so only the browser batch's trace
-agreement can catch an index-for-name mistake. That is not hypothetical — it is exactly how
-item 87's defect was caught, by the one browser gate that fails loudly.
+What each of those can and cannot see — and it matters, because a software renderer's pixel count
+is not a card's — is written up for contributors in [CONTRIBUTING.md](../CONTRIBUTING.md).

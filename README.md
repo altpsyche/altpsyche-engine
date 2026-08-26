@@ -13,9 +13,9 @@ There is no second path. Everything public comes from the package name, so nothi
 you import can move when the files inside are rearranged.
 
 This is 0.x, and 0.x is unstable: names and shapes change between releases without a
-major bump. §14 of [docs/RoadToPureEngine.md](docs/RoadToPureEngine.md) is the shape
-the surface is moving toward, and where today's names differ from it, today's names
-are the ones that move.
+major bump, and the [CHANGELOG](CHANGELOG.md) says what moved in each one. A caret
+range on a `0.x` version tracks the last number alone, so `^0.3.0` will not pick up a
+later `0.4.0` — you move to a feature release by asking for it.
 
 ## The one thing that will surprise you
 
@@ -187,21 +187,15 @@ library's.
 
 ## What it needs
 
-A browser with WebGL 2, which is everything current, and WebGPU where you want the
-WebGPU path. It has no runtime dependencies at all — `dependencies` is `{}` and stays
-that way.
+A browser with WebGL 2, which is everything current, and WebGPU where you want the WebGPU
+path. **No runtime dependencies at all** — `dependencies` is `{}` and stays that way.
 
-**The two backends are not equal, and the difference is in the data rather than in the
-prose.** WebGL 2 draws several passes, several colour attachments, depth and stencil,
-vertex geometry, resident textures, a mip ladder, multisampling, per-draw uniform
-slices, and a scene's read-only per-instance records as a uniform block. It has no
-compute stage, no read-write storage buffer, no storage texture, no indirect draw and
-no timestamp or occlusion query, because GLSL ES 3.0 has none of them. Ask
-`webgl2Capabilities` or `probe` rather than trusting this paragraph — the capability
-set is the authority and this sentence is a summary of it.
-
-[docs/GUIDE-backends.md](docs/GUIDE-backends.md) has the measured picture, preset by
-preset, including what the corpus draws on each backend today and what it skips.
+The two backends are not equal, and the difference lives in data rather than in prose. WebGL 2
+draws the whole toy tier and the scene tier's per-instance records; it has no compute stage, no
+shader-written storage buffer, no storage texture, no indirect draw and no timestamp or occlusion
+query, because GLSL ES 3.0 has none of them. Ask `probe` or `webgl2Capabilities` rather than
+trusting this paragraph. [docs/GUIDE-backends.md](docs/GUIDE-backends.md) has the detail,
+including one known divergence in the scene tier.
 
 ## Where to read next
 
@@ -209,9 +203,10 @@ preset, including what the corpus draws on each backend today and what it skips.
 | --- | --- |
 | [docs/API.md](docs/API.md) | every name the package exports, grouped by what you are doing |
 | [docs/GUIDE-frame-graph.md](docs/GUIDE-frame-graph.md) | authoring a frame graph by hand |
-| [docs/GUIDE-backends.md](docs/GUIDE-backends.md) | capabilities, selection, refusal, and what each backend measured |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the library is put together, as built |
-| [docs/RoadToPureEngine.md](docs/RoadToPureEngine.md) | where the shape is going, and the decisions behind it |
+| [docs/GUIDE-backends.md](docs/GUIDE-backends.md) | capabilities, selection, refusal, and what each backend reaches |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the library is put together |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | changing the package: gates, rules, how work is queued |
+| [CHANGELOG.md](CHANGELOG.md) | what moved in each release |
 
 ## Licence
 
