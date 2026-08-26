@@ -62,8 +62,9 @@ surface.start();
 ```
 
 The window fills with a gradient that moves, and it follows a resize. `wgslFrame` is the
-same call for WGSL. [docs/EXAMPLES.md](docs/EXAMPLES.md) breaks this page into the four
-files it really is, and lists six longer ones that run in this repository.
+same call for WGSL, though a fullscreen WGSL frame draws on WebGPU only, since there is no
+vertex document for WebGL 2 to link. [docs/EXAMPLES.md](docs/EXAMPLES.md) breaks this page
+into the four files it really is, and lists six longer ones that run in this repository.
 
 ## How it works
 
