@@ -363,7 +363,15 @@ const glslStandIn = glslFrame('gltf-cube', GLSL_VERTEX, GLSL_FRAGMENT);
 // Ask for a WebGPU card first; a WebGL 2 context is offered wherever the canvas gives
 // one. Which the device offers picks which arm draws.
 const device = await requestWebGPUDevice();
-const offer = { webgpu: device !== null, webgl2: canvas.getContext('webgl2') !== null };
+// The WebGL 2 half of the offering is read from a **throwaway canvas**, never from
+// the one this page draws into. A canvas keeps the first context type it is asked
+// for and refuses every other one for the rest of its life, so asking the drawing
+// canvas for `webgl2` here would answer the question and then make the WebGPU
+// configure below fail on a machine that has WebGPU — the page would report no
+// device on the very hardware it was meant to use. Extensions are a driver's
+// property rather than a canvas's, so a spare canvas answers the same question.
+const probeCanvas = document.createElement('canvas');
+const offer = { webgpu: device !== null, webgl2: probeCanvas.getContext('webgl2') !== null };
 
 const wgpu = selectBackend(waitingFrame, offer);
 if ('backend' in wgpu && device) {

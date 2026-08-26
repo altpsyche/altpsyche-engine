@@ -165,7 +165,15 @@ const frame = frameAt(devicePixels());
 // features, a WebGL 2 context's extensions, each mapped to §10's names by the
 // library rather than guessed here. A backend that is not on offer is `null`.
 const device = await requestWebGPUDevice();
-const gl = canvas.getContext('webgl2');
+// The WebGL 2 half of the offering is read from a **throwaway canvas**, never from
+// the one this page draws into. A canvas keeps the first context type it is asked
+// for and refuses every other one for the rest of its life, so asking the drawing
+// canvas for `webgl2` here would answer the question and then make the WebGPU
+// configure below fail on a machine that has WebGPU — the page would report no
+// device on the very hardware it was meant to use. Extensions are a driver's
+// property rather than a canvas's, so a spare canvas answers the same question.
+const probeCanvas = document.createElement('canvas');
+const gl = probeCanvas.getContext('webgl2');
 const profile: DeviceProfile = {
   webgpu: device ? webgpuCapabilities(device.features) : null,
   webgl2: gl ? webgl2Capabilities(gl.getSupportedExtensions() ?? []) : null,
