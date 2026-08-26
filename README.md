@@ -3,10 +3,10 @@
 A renderer for WebGPU and WebGL 2, with a small scene layer above it. One import path, no
 runtime dependencies.
 
-You describe a frame as data — which resources exist, which pipelines run, what order the
-passes go in — and hand it to the renderer, which picks a backend and makes the calls.
-Because the frame is data, you can also ask what it will cost and whether this device can
-draw it, before anything reaches a driver.
+You describe a frame as data: which resources exist, which pipelines run, what order the
+passes go in. Hand that to the renderer and it picks a backend and makes the calls. Because
+the frame is data, you can also ask what it will cost and whether this device can draw it,
+before anything reaches a driver.
 
 [![npm](https://img.shields.io/npm/v/@altpsyche/engine)](https://www.npmjs.com/package/@altpsyche/engine)
 [![gates](https://github.com/altpsyche/altpsyche-engine/actions/workflows/gates.yml/badge.svg)](https://github.com/altpsyche/altpsyche-engine/actions/workflows/gates.yml)
@@ -77,10 +77,10 @@ and `refusal` compares the two and gives you the name of what is missing, or `nu
 Neither backend owns a method the other has to throw from, so a graph WebGL 2 cannot draw
 is refused before a driver sees it.
 
-**You do not name a backend.** `selectBackend` reads two facts — the language the frame is
-authored in, and what the device offers — and answers with one. Where both backends can
-draw a frame they draw the same picture: on an RTX 5080 they agree to within a single
-channel on every scene preset in this repository's corpus.
+**You do not name a backend.** `selectBackend` reads two facts and answers with one: the
+language the frame is authored in, and what the device offers. Where both backends can draw
+a frame they draw the same picture. On an RTX 5080 they agree to within a single channel on
+every scene preset in this repository's corpus.
 
 **A browser downloads one backend.** Each sits behind `await import()`, so a bundler gives
 each its own file and a browser without WebGPU never downloads the WebGPU one. `npm test`
@@ -99,8 +99,8 @@ you are reading:
 | four shared chunks | 15.0 kB | 5.9 kB | as a graph needs them |
 
 A browser with no WebGPU downloads the first row, the second, and whichever shared chunks
-its graph reaches — about 15 kB gzipped at most, and never the WebGPU backend. No page
-downloads a WGSL translator either, because translation happens in the build.
+its graph reaches. That is about 15 kB gzipped at most, and never the WebGPU backend. No
+page downloads a WGSL translator either, because translation happens in the build.
 
 ## Five things to know before you start
 
@@ -123,7 +123,7 @@ downloads a WGSL translator either, because translation happens in the build.
 
 Real geometry, several passes, a depth buffer or a compute stage mean writing the graph
 yourself: resources, pipelines and passes, with every resource addressed by a kind-branded
-handle — `uniform(0)`, `texture(2)` — and never by a string. Hand a texture handle to
+handle like `uniform(0)` or `texture(2)`, never by a string. Hand a texture handle to
 something expecting a buffer and it is a compile error, not an `undefined` at draw time.
 [docs/GUIDE-frame-graph.md](docs/GUIDE-frame-graph.md) builds one line by line.
 
@@ -183,8 +183,8 @@ submit(renderer, frame, { u_time: 0 });          // uniforms are an argument, no
 ```
 
 A fourth argument, `{ into }`, lands the frame in a texture you own as well as on the
-canvas — a capture target, or an XR layer the compositor reads. Where a frame lands is
-yours to decide.
+canvas: a capture target, or an XR layer the compositor reads. Where a frame lands is yours
+to decide.
 
 ## Checking what your shader asked the device
 
