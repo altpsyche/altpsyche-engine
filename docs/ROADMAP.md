@@ -3468,7 +3468,62 @@ through it — which needs that bridge, and its byte agreement per item 44 — i
 
 ### 93. `orbit-shadow`'s two backends, compared by item 44's three numbers
 
-**Status.** open
+**Status.** lifted needs decomposition
+
+**Lifted 2026-08-26: item 93 silently bundles an unfiled WGSL-storage-buffer→GLSL bridge its
+`Needs` never name with a pixel reading no unattended node run can take.** Two independent blockers,
+either one enough to lift; together they are the "asks for work its own `Needs` never named, or
+bundles several items under one `Done when`" case, not a plain machine-lift.
+
+*Blocker one — the item cannot be built as written, card or no card.* `orbit-shadow`'s scene is a
+WGSL producer: `sceneView` bakes each view's matrix into a storage buffer and the shader reads its
+per-object record out of `@group(0) @binding(0) var<storage, read> objects` and the shared
+`@binding(1) var<storage, read> views` ([examples/orbit-shadow/main.ts](../examples/orbit-shadow/main.ts)
+L180–L181). Item 91 routes a `wgsl` frame to WebGL 2 **only when a translated GLSL for it exists**;
+item 92 landed the *backend* raster path for a read-only storage buffer (a uniform block indexed by
+`gl_InstanceID`) but **not** the translation that feeds it, and its own landing note says so exactly:
+*"a WGSL scene's `var<storage, read>` still has no baked GLSL for WebGL 2 — the translate gate skips a
+`BUFFER_STORAGE` construct by design … drawing `orbit-shadow`'s own WGSL scene through it — which needs
+that bridge … — is item 93's."* [gates/translate.mjs](../gates/translate.mjs)'s `classify` maps an
+es300 `BUFFER_STORAGE` failure to a `storage-buffer` **skip**, so no bake is produced; item 104's
+landing confirms the effect on real contexts — the two storage-buffer WGSL presets `core-material` and
+`core-draw-list` sit among the 11 WebGL 2 skips, and the 5 WebGL 2 corpus draws are the uniform-only
+presets (`core-geometry`, `core-perdraw-uniform`, `core-depth`, `core-multisample`, `core-scene`). So
+item 91 refuses `orbit-shadow` on WebGL 2 today for a missing translation, and there is no second frame
+to compare — the bridge item 92 named "item 93's" is real work this item's `Needs` (91, 92) never list
+and its `Done when` never mentions. That is the decomposition, not a hardware gap.
+
+*Blocker two — the reading needs hardware this run has not got.* Even given the bridge, item 93's
+`Done when` is a cross-backend **pixel** reading on real contexts, and the item's own text already says
+it: *"this machine reaches only SwiftShader (§17 note 3), so the reading is taken where a card or the
+browser batch runs, not in an unattended node session."* This session is headless — every launch reaches
+SwiftShader whatever the flags say (§17 note 3) — and the closing browser batch is not this run's to run.
+So the reading is correctly hardware-gated once the bridge exists.
+
+**What is separable, filed as new items.**
+
+- **Item 105 — a WGSL scene's read-only storage buffer gets a WebGL 2 GLSL bake.** The bridge item 92
+  named "item 93's": a `var<storage, read> array<T>` a scene tier authors gets a baked GLSL ES 3.00
+  form item 92's raster path already draws (a uniform block indexed by `gl_InstanceID`), so item 91's
+  selection finds a translation and routes `orbit-shadow` to WebGL 2 rather than refusing it. Pure over
+  the build and node-checkable: the bake either exists for the scene shaders (selection routes) or it
+  does not (selection refuses, naming the missing translation). This is the coding half item 93's
+  `Needs` never named. It is not item 100/102's §9-shape design call — the raster shape is settled
+  (item 92) and the direction is WGSL→GLSL, the one §17 decision 6 permits — but the *production
+  mechanism* is the item's to choose and name, because naga es300 refuses `BUFFER_STORAGE` outright:
+  either a WGSL pre-pass rewrites the storage binding to a uniform block before naga, or the scene
+  shaders carry a hand-authored bake keyed by entry point exactly as item 41's bake is stored in
+  `fixtures/source/glsl/`. `Needs`: item 41, item 91, item 92.
+- **Item 106 — `orbit-shadow`'s two backends, compared by item 44's three numbers.** Item 93's residual
+  once the bridge exists: the cross-backend pixel reading, carrying item 93's title and §17 decision 1's
+  answer forward. Hardware-gated by construction — a card or the browser batch, never an unattended node
+  session — and correctly written to await it. `Needs`: item 105, item 91, item 92, item 44.
+
+**Reverse:** set this item's `Status` back to `open`, delete this lift note and items 105 and 106; this
+row stands as one piece again and its `Needs` (91, 92) stand. **What would change the answer:** the
+bridge already existing under another item — none does; the open queue is 53, 55, 57, 58, 102, 103 —
+would collapse item 93 into item 106 (the reading) alone. `carry`: §17 decision 1's answer belongs in
+the consuming repository's log, and it is item 106 that produces it.
 
 **Asks for.** The subject item 52 names: `orbit-shadow`'s **one** scene graph drawn on WebGL 2
 as well as WebGPU, with the difference between the two reported by item 44's three numbers
@@ -3903,4 +3958,69 @@ JOURNAL records twice, with all five WebGL 2 corpus draws returned — `core-geo
 appear:** none of the five repaired presets throws under item 101's stricter arm, so item 99's
 one-source-per-pipeline change did not break the GLSL it emits. That is a stronger result than
 this item asked for and worth stating as a reading rather than an assumption.
+
+### 105. A WGSL scene's read-only storage buffer gets a WebGL 2 GLSL bake
+
+**Status.** open
+
+**Asks for.** The translation half of the WebGL 2 scene tier that item 92 landed the *backend* half of.
+Item 92 taught WebGL 2 to draw a read-only per-instance record as a uniform block indexed by
+`gl_InstanceID` — the raster shape GLSL ES 3.00 has for a `var<storage, read> array<T>` — but proved it
+with **hand-authored GLSL**, and its landing note is explicit that the WGSL-authored scene has no path
+to it: *"a WGSL scene's `var<storage, read>` still has no baked GLSL for WebGL 2 — the translate gate
+skips a `BUFFER_STORAGE` construct by design."* [gates/translate.mjs](../gates/translate.mjs)'s
+`classify` maps an es300 `BUFFER_STORAGE` failure to a `storage-buffer` **skip**, so
+`fixtures/source/glsl/` carries no bake for the two storage-buffer WGSL corpus presets, and item 104's
+landing confirms `core-material` and `core-draw-list` sit among the 11 WebGL 2 skips rather than the 5
+draws. This item produces that bake, so item 91's selection finds a translation for a scene-tier WGSL
+frame and routes it to WebGL 2's raster path rather than refusing it.
+
+The **production mechanism is this item's to choose and name**, because naga es300 refuses
+`BUFFER_STORAGE` outright and so cannot be the whole of it: either (a) a WGSL pre-pass rewrites a
+read-only storage binding to a uniform block before naga is asked, or (b) the scene shaders carry a
+hand-authored GLSL bake keyed by entry point exactly as item 41's bake is stored in
+`fixtures/source/glsl/`. This is **not** item 100/102's §9-shape design call — the raster shape is
+settled (item 92) and the direction is WGSL→GLSL, the one §17 decision 6 permits, so it is a coding item
+once the mechanism is chosen, not a question carried to the consuming log.
+
+**Done when.** Given a device offering WebGL 2 but not WebGPU, `selectBackend` returns
+`{ backend: 'webgl2' }` for `core-material` and `core-draw-list` (both WGSL, both binding a read-only
+storage buffer) because a translated GLSL for each now exists, where today it refuses them for a missing
+translation; the baked GLSL binds the storage buffer as item 92's uniform block indexed by
+`gl_InstanceID`; the node suite and `type-check` are green; and the browser batch draws `core-material`
+and `core-draw-list` on WebGL 2 — the only gate that proves the baked path actually draws, so it is run
+before this is claimed (the warning items 87, 94 and 100 carry).
+
+**Needs.** item 41, item 91, item 92.
+
+**Filed 2026-08-26 by the lift of item 93.** Item 93 could draw `orbit-shadow` on WebGL 2 only through a
+WGSL-storage-buffer→GLSL bridge its `Needs` (91, 92) never named and item 92's landing note called
+"item 93's" without filing it. **Reverse:** delete this item; item 106's `Needs` drops it and item 93's
+lift note stands with the bridge tracked by nothing. `carry`: whether and how a WGSL scene's storage
+buffers translate onto WebGL 2 is a fact a consumer reads.
+
+### 106. `orbit-shadow`'s two backends, compared by item 44's three numbers
+
+**Status.** open
+
+**Asks for.** The subject item 52 named and item 93 carried: `orbit-shadow`'s **one** scene graph drawn
+on WebGL 2 as well as WebGPU, with the difference between the two reported by item 44's three numbers
+(`hardJumps`, `maxDelta`, `differing`). This is where §17 decision 1 gets its answer — how far the WebGL
+2 scene tier actually reaches, measured rather than asserted — now that item 105 gives `orbit-shadow`'s
+WGSL storage buffers a route onto WebGL 2 at all.
+
+**Done when.** A gate draws `orbit-shadow`'s scene graph through both backends on real contexts and
+prints item 44's three numbers over the two frames. **Reported, never asserted:** the numbers are a
+card's or a browser's, and a headless Linux session reaches only SwiftShader (§17 note 3), so the
+reading is taken where a card or the browser batch runs, **never in an unattended node session** — an
+item that is a hardware reading by construction, correctly written to await hardware rather than to be
+faked on the software renderer.
+
+**Needs.** item 105, item 91, item 92, item 44.
+
+**Filed 2026-08-26 by the lift of item 93.** It is item 93's residual once the bridge (item 105) it
+silently required is a filed prerequisite rather than bundled into the reading. It carries item 93's
+title and decision 1's answer forward, so the subject is tracked rather than dropped by the lift.
+**Reverse:** delete this item; item 52's and item 93's cross-backend reading is tracked by nothing.
+`carry`: §17 decision 1's answer belongs in the consuming repository's log.
 
