@@ -4062,7 +4062,7 @@ is a prediction for the closing batch to confirm, not a number a gate here produ
 
 ### 106. `orbit-shadow`'s two backends, compared by item 44's three numbers
 
-**Status.** open
+**Status.** lifted card gate
 
 **Asks for.** The subject item 52 named and item 93 carried: `orbit-shadow`'s **one** scene graph drawn
 on WebGL 2 as well as WebGPU, with the difference between the two reported by item 44's three numbers
@@ -4084,4 +4084,26 @@ silently required is a filed prerequisite rather than bundled into the reading. 
 title and decision 1's answer forward, so the subject is tracked rather than dropped by the lift.
 **Reverse:** delete this item; item 52's and item 93's cross-backend reading is tracked by nothing.
 `carry`: §17 decision 1's answer belongs in the consuming repository's log.
+
+**Lifted to the card gate 2026-08-26.** This item is, by its own `Done when`, a hardware reading:
+the three numbers are "a card's or a browser's", and the reading is taken "never in an unattended
+node session". This session **is** an unattended headless node session on a Linux machine, and
+[RoadToPureEngine.md](RoadToPureEngine.md) §17 note 3 (line 778) settles that every headless launch
+here reaches SwiftShader whatever the flags say — a WebGPU adapter on the real card needs a visible
+window plus `--enable-features=Vulkan` and `--ozone-platform=x11` together, none of which a headless
+session has. So any three numbers taken here would be SwiftShader's on the WebGPU side, which
+[CLAUDE.md](../CLAUDE.md) forbids quoting as a card's, and item 105's blind-gate row already records
+that the hand-authored GLSL the WebGL 2 side draws has been compiled on no real context. **How I
+established nothing here can settle it:** it is a construction fact, not a gate reading — the item
+forbids the node session by name, §17 note 3 names the SwiftShader floor, and the closing
+`gate:browser` batch is itself SwiftShader; only `gate:card` reaches a real adapter and it needs a
+desktop session and a card this machine has not got. **What would settle it, and where the gate goes:**
+`gate:card` ([gates/card.mjs](../gates/card.mjs)) already draws one control picture written in both
+languages and reports item 44's three numbers through `compareFrames`; the residual work is to wire
+`orbit-shadow`'s **one** scene graph into that page — its WGSL frame through the WebGPU backend and its
+item-105 baked GLSL through the WebGL 2 backend — read both frames back, and print the three numbers
+over them, then run `npm run gate:card` on a machine with a real graphics card. That wiring is
+browser-only code nothing here can compile or run, so it is left to the hand at the card rather than
+committed unverified; the bridge it stands on (item 105) is landed. **Reverse the lift:** set
+`Status` back to `open` and delete this paragraph.
 
