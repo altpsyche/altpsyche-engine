@@ -3830,3 +3830,41 @@ baked-GLSL path still draws, so it runs before this is claimed).
 **Filed 2026-08-26 by the lift of item 100**, the coding half of that lift once its design blocker
 (item 102) is settled. **Reverse:** delete this item; item 100 reverts to `open` and its `Needs` stand.
 `carry`: the shader-source shape a consumer authors against changes with the pair.
+
+### 104. The corpus gate's WebGL 2 pre-flight reads a field item 99 moved
+
+**Status.** open
+
+**Asks for.** `webgl2SkipReason` in [gates/corpus.mjs](../gates/corpus.mjs) to read a render
+pipeline's stages where item 99 put them. L67 is
+`if (!('fragment' in pipeline)) return 'a compute stage, which has no place on WebGL 2';` and L68/L70
+then read `pipeline.vertex` and `pipeline.fragment` directly, but item 99 moved both onto
+`pipeline.source`. So the predicate is false for **every** render pipeline: all sixteen corpus presets
+are skipped as "a compute stage" in node, before the page is ever asked to draw them, and the gate
+prints `17 of 17 draws lit their buffer, with 0 failed and 16 WebGL 2 skips` and exits 0. That is the
+same counter reading this file's item 101 block quotes as the symptom of item 87's regression, and by
+the gate's own arithmetic (`asked = corpus.length * 2 + 1 - skipped.length`, L328) the WebGL 2 corpus
+draws went from five to none against the `22 of 22 … 11 skips` baseline the JOURNAL records twice.
+
+Item 99 migrated this same shape in [gates/pack.sh](../gates/pack.sh) and [gates/lib.mjs](../gates/lib.mjs)
+and left this one predicate behind — the half-migrated-gate-lookup defect of item 87, in the same file,
+for the third time. It enters through the one door item 101 does not cover: `classifyWebgl2` maps only
+the tags the *page* returns, and this skip suppresses the page call.
+
+**Done when.** `webgl2SkipReason` reads the stages through `pipeline.source`, no raster preset is
+reported as "a compute stage", and the browser batch's corpus line is accounted for against the
+`22 of 22 … 11 skips` baseline — either matching it, or naming per preset what changed and why, since
+item 99 also changed `glslFrameOf` to emit one GLSL source per render pipeline. **A red is a legitimate
+outcome here and must not be suppressed:** under item 101 a build throw in that arm is now a `FAIL`, so
+restoring the five draws may turn the batch red, which is the gate doing its job. A node test pinning
+that a raster pipeline's description is not classified as a compute stage keeps this from recurring a
+fourth time.
+
+**Needs.** item 99, item 101.
+
+**Found 2026-08-26 by the closing browser batch over items 97–101**, which was green: 4 of 4 gates,
+`npm test` 848 passed, `type-check` and `gates/pack.sh` green. The cause was reproduced in node with no
+browser — `wgslDescription('core-geometry').pipelines[0]` has keys `kind,source,bindings`, so
+`'fragment' in pipeline` is `false` — and the corpus gate re-run alone repeats the reading. **Reverse:**
+delete this item; the WebGL 2 corpus arm keeps skipping every preset as a compute stage, with nothing
+tracking it.
