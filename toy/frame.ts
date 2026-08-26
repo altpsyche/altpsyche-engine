@@ -16,6 +16,7 @@
  */
 import { uniformBindingOf } from '../wgsl-binding.js';
 import { pipelineHandle, uniform } from '../graph/handles.js';
+import { resourceOf } from '../graph/types.js';
 import type {
   FrameGraph,
   GlslFrameGraph,
@@ -360,10 +361,20 @@ export function glslFrameOf(frame: WgslFrameGraph): GlslFrameGraph | null {
       source: { glsl: { vertex: vertexGlsl, fragment: fragmentGlsl } },
       vertex: { document: 'vertex', entry: 'main' },
       fragment: { document: 'fragment', entry: 'main' },
-      // A GLSL program answers where each uniform block sits, so the block bindings
-      // drop — except a per-draw slice's, whose group and binding tell the per-draw
-      // block apart from the shared one and whose `perDraw` size is one record's.
-      bindings: spec.bindings.filter((binding) => binding.perDraw !== undefined),
+      // A GLSL program answers where each uniform block sits, so the shared uniform
+      // block's binding drops. Two kinds of binding must survive: a per-draw slice's
+      // (item 27/85), whose group and binding tell the per-draw block apart from the
+      // shared one and whose `perDraw` size is one record's; and a read-only storage
+      // buffer's (item 92/105), whose group and binding the WebGL 2 backend reads to
+      // bind the whole buffer as a uniform block indexed by `gl_InstanceID` — drop it
+      // and the backend cannot find the buffer any pipeline reads. Both are told from
+      // the shared uniform block by the resource they name, a buffer rather than a
+      // uniform. This is the last span of the WGSL-storage-buffer→GLSL bridge: the
+      // bake (item 105) gives the shader, and keeping the binding gives the backend
+      // the buffer to feed it.
+      bindings: spec.bindings.filter(
+        (binding) => binding.perDraw !== undefined || resourceOf(frame, binding.resource)?.kind === 'buffer'
+      ),
     });
   }
 

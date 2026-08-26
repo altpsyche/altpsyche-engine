@@ -156,16 +156,36 @@ export async function loadCorpus() {
       if (glslBake[spec.fragment.entry] !== undefined) pair.fragment = glslBake[spec.fragment.entry];
       return pair;
     };
-    const described =
-      Object.keys(glslBake).length > 0
-        ? {
-            ...description,
-            pipelines: description.pipelines.map((/** @type {any} */ spec) =>
-              spec.kind === 'render' ? { ...spec, source: { ...spec.source, glsl: bakePair(spec) } } : spec
-            ),
-            translated: true,
-          }
-        : description;
+    const hasBake = Object.keys(glslBake).length > 0;
+    // A frame is `translated` only when every pipeline is a render pipeline naming a
+    // vertex stage with both halves baked — the exact condition under which
+    // `glslFrameOf` returns a drawable frame (item 105). A fullscreen frame (no
+    // vertex), a compute pipeline, or a stage naga refused for a capability WebGL 2
+    // withholds leaves the frame partly baked, and a partly baked frame must not be
+    // routed to WebGL 2: `selectBackend` would pick a backend `glslFrameOf` then
+    // cannot build. Before item 105 gave core-material and core-draw-list a vertex
+    // bake, they baked only their fragment, so this was false and they were refused
+    // for a missing translation; with the vertex bake both stages are present and it
+    // is true. (The old test was `some bake exists`, which set it true for a
+    // fragment-only fullscreen frame that WebGL 2 cannot draw.)
+    const translated =
+      hasBake &&
+      description.pipelines.every(
+        (/** @type {any} */ spec) =>
+          spec.kind === 'render' &&
+          spec.vertex !== undefined &&
+          bakePair(spec).vertex !== undefined &&
+          bakePair(spec).fragment !== undefined
+      );
+    const described = hasBake
+      ? {
+          ...description,
+          pipelines: description.pipelines.map((/** @type {any} */ spec) =>
+            spec.kind === 'render' ? { ...spec, source: { ...spec.source, glsl: bakePair(spec) } } : spec
+          ),
+          translated,
+        }
+      : description;
 
     // The bytes arrive keyed by the address a description sends a reader to, and a
     // frame wants them keyed by the resource that reads them, which is the

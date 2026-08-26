@@ -25,6 +25,10 @@
     },
     "core-draw-list": {
       "entries": {
+        "project": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n// Hand-authored GLSL ES 3.00 for core-draw-list's `project` vertex (item 105).\n//\n// naga refuses this stage for WebGL 2: it reads `@group(1) @binding(0)\n// var<storage, read> models: array<mat4x4<f32>>`, and GLSL ES 3.00 has no storage\n// buffer, so the build's naga pass records it as a `storage-buffer` skip. This is the\n// item 92 raster path hand-authored for this preset — a read-only storage buffer\n// bound whole as a std140 uniform block and indexed by `gl_InstanceID` — so a WGSL\n// scene's read-only storage buffer has a WebGL 2 translation and item 91's selection\n// routes the frame here rather than refusing it.\n//\n// The shared uniform block follows naga's own es300 shape for the corpus (see\n// core-scene's baked `project`). The storage buffer takes item 92's raster path: a\n// std140 uniform block whose member carries the binding's `_group_1_binding_0` tag,\n// which `resolveBlocks` binds whole to its own point, indexed by `gl_InstanceID`. The\n// `models` array is sized to the preset's three visible objects, so the block's\n// std140 size (3 * 64 bytes) equals the buffer the build packs. The per-object shade\n// is computed from the copy index, exactly as the WGSL colours each object by its\n// place in the draw order.\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_view;\n};\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\nlayout(std140) uniform Models_block_1Vertex { mat4x4 _group_1_binding_0[3]; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\nsmooth out vec3 _vs2fs_location1;\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    mat4x4 model = _group_1_binding_0[gl_InstanceID];\n    vec4 at = ((_group_0_binding_0_vs.u_view * model) * vec4(corner.x, corner.y, 0.0, 1.0));\n    at.x = ((at.x * _group_0_binding_0_vs.u_resolution.y) / _group_0_binding_0_vs.u_resolution.x);\n    float tone = (float(gl_InstanceID) * 2.4);\n    vec3 shade = (vec3(0.5) + (vec3(0.4) * cos(vec3(tone, tone + 2.1, tone + 4.2))));\n    gl_Position = at;\n    _vs2fs_location0 = place;\n    _vs2fs_location1 = shade;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n}\n"
+        },
         "surface": {
           "stage": "fragment",
           "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_view;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n    vec3 shade;\n};\nconst float CELLS = 16.0;\n\nsmooth in vec2 _vs2fs_location0;\nsmooth in vec3 _vs2fs_location1;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded = Surface(gl_FragCoord, _vs2fs_location0, _vs2fs_location1);\n    float _e7 = lines(shaded.place);\n    vec3 lit = mix(shaded.shade, vec3(0.95, 0.97, 1.0), (_e7 * 0.5));\n    _fs2p_location0 = vec4(lit, 1.0);\n    return;\n}\n\n"
@@ -45,6 +49,10 @@
     },
     "core-material": {
       "entries": {
+        "project": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n// Hand-authored GLSL ES 3.00 for core-material's `project` vertex (item 105).\n//\n// naga refuses this stage for WebGL 2: it reads `@group(1) @binding(0)\n// var<storage, read> objects: array<Object>`, and GLSL ES 3.00 has no storage\n// buffer, so the build's naga pass records it as a `storage-buffer` skip\n// (gates/translate.mjs). Item 92 landed the *backend* raster path for exactly this\n// shape — a read-only storage buffer bound whole as a std140 uniform block and\n// indexed by `gl_InstanceID`, GLSL ES 3.00's answer to a read-only `array<T>` — but\n// proved it with hand-authored GLSL. This is that hand-authored bake for this\n// preset, so a WGSL scene's read-only storage buffer finally has a WebGL 2\n// translation and item 91's selection routes the frame here rather than refusing it.\n//\n// The shared uniform block follows naga's own es300 shape for the corpus (see\n// core-scene's baked `project`, one of the WebGL 2 draws): a std140 block whose\n// members `setUniforms` writes through the driver-reported offsets. The storage\n// buffer takes item 92's raster path: a std140 uniform block whose member carries\n// the binding's `_group_1_binding_0` tag, which `resolveBlocks` matches to bind the\n// whole buffer to its own point, and the shader reads its own record by\n// `gl_InstanceID`. The `objects` array is sized to the preset's two panels, so the\n// block's std140 size (2 * 80 bytes) equals the buffer the build packs.\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_view;\n};\nstruct Object {\n    mat4x4 model;\n    vec3 tint;\n};\n\nlayout(std140) uniform Uniforms_block_0Vertex { Uniforms _group_0_binding_0_vs; };\nlayout(std140) uniform Objects_block_1Vertex { Object _group_1_binding_0[2]; };\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\nsmooth out vec3 _vs2fs_location1;\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    Object mine = _group_1_binding_0[gl_InstanceID];\n    vec4 at = ((_group_0_binding_0_vs.u_view * mine.model) * vec4(corner.x, corner.y, 0.0, 1.0));\n    at.x = ((at.x * _group_0_binding_0_vs.u_resolution.y) / _group_0_binding_0_vs.u_resolution.x);\n    gl_Position = at;\n    _vs2fs_location0 = place;\n    _vs2fs_location1 = mine.tint;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n}\n"
+        },
         "surface": {
           "stage": "fragment",
           "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n    mat4x4 u_view;\n};\nstruct Object {\n    mat4x4 model;\n    vec3 tint;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n    vec3 shade;\n};\nconst float CELLS = 16.0;\n\nsmooth in vec2 _vs2fs_location0;\nsmooth in vec3 _vs2fs_location1;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.08, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded = Surface(gl_FragCoord, _vs2fs_location0, _vs2fs_location1);\n    float _e7 = lines(shaded.place);\n    vec3 lit = mix(shaded.shade, vec3(0.95, 0.97, 1.0), (_e7 * 0.5));\n    _fs2p_location0 = vec4(lit, 1.0);\n    return;\n}\n\n"
@@ -172,13 +180,6 @@
         "capability": "compute"
       }
     ],
-    "core-draw-list": [
-      {
-        "entry": "project",
-        "stage": "vertex",
-        "capability": "storage-buffer"
-      }
-    ],
     "core-indirect": [
       {
         "entry": "plan",
@@ -194,13 +195,6 @@
         "entry": "shade",
         "stage": "fragment",
         "capability": "storage-texture"
-      }
-    ],
-    "core-material": [
-      {
-        "entry": "project",
-        "stage": "vertex",
-        "capability": "storage-buffer"
       }
     ],
     "core-perdraw": [

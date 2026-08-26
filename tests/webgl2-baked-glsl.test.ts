@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createWebGL2Backend } from '../gpu/webgl2';
+import { selectBackend } from '../gpu/select';
 import { frameOf, glslFrameOf } from '../toy/frame';
 import { loadFixture } from './support/fixture';
 import { buffer } from '../graph/handles.js';
@@ -69,6 +70,17 @@ function bakedWgslFrame(id: FixtureName): WgslFrameGraph {
     if (glslByEntry[spec.fragment.entry] !== undefined) pair.fragment = glslByEntry[spec.fragment.entry];
     return pair;
   };
+  // `translated` is true only when every pipeline is a render pipeline naming a
+  // vertex stage with both halves baked — the condition under which `glslFrameOf`
+  // returns a drawable frame (item 105), mirroring `gates/lib.mjs`'s `loadCorpus`. A
+  // fullscreen or partly baked preset is not routed to WebGL 2.
+  const translated = (description as WgslFrameGraph).pipelines.every(
+    (spec) =>
+      spec.kind === 'render' &&
+      spec.vertex !== undefined &&
+      bakePair(spec).vertex !== undefined &&
+      bakePair(spec).fragment !== undefined
+  );
   const withBake: WgslFrameGraph = {
     ...(description as WgslFrameGraph),
     pipelines: (description as WgslFrameGraph).pipelines.map((spec) =>
@@ -76,7 +88,7 @@ function bakedWgslFrame(id: FixtureName): WgslFrameGraph {
         ? { ...spec, source: { ...spec.source, glsl: bakePair(spec) as { vertex: string; fragment: string } } }
         : spec
     ),
-    translated: true,
+    translated,
   };
   return frameOf(id, withBake, { wgsl: code }, undefined, undefined, bytesOf(description, generated)) as WgslFrameGraph;
 }
@@ -155,5 +167,90 @@ describe('the WebGL 2 corpus column draws baked GLSL off the source that carries
     // bakes only a fragment and there is no vertex for WebGL 2 to link. The gate
     // skips it by outcome — a reported reason — rather than drawing it.
     expect(glslFrameOf(bakedWgslFrame('core-texture'))).toBeNull();
+    // …and a fragment-only bake is not a translation: a WebGPU-less device is
+    // refused for a missing translation rather than routed to a backend that then
+    // cannot build the frame (item 105 tightened `translated` to full-bake).
+    expect(bakedWgslFrame('core-texture').translated).toBe(false);
+    const outcome = selectBackend(bakedWgslFrame('core-texture'), { webgpu: false, webgl2: true });
+    expect('refusal' in outcome && outcome.refusal).toContain('translation');
   });
+});
+
+/**
+ * A WGSL scene's read-only storage buffer reaching WebGL 2 by a hand-authored GLSL
+ * bake (item 105). naga's es300 target has no storage-buffer syntax, so it records
+ * `core-material`'s and `core-draw-list`'s `project` vertex as a `storage-buffer`
+ * skip; item 92 landed the raster path for it — the buffer bound whole as a std140
+ * uniform block, indexed by `gl_InstanceID` — and this item supplies the bake, so
+ * item 91's selection finds a translation and routes the frame to WebGL 2 rather
+ * than refusing it.
+ *
+ * Before this item both presets baked only their fragment, so `glslFrameOf` returned
+ * null and a WebGPU-less device was refused for a missing translation; the routing
+ * assertions here would have failed. That the picture is byte-correct on a card is a
+ * `gate:browser`/`gate:card` reading (§17 note 3), not run here — the fake records
+ * calls, not pixels, and reports the blocks a driver would rather than compiling the
+ * GLSL, so a red browser gate would mean the driver refused the hand-authored GLSL.
+ */
+describe("a WGSL scene's read-only storage buffer bakes to WebGL 2 (item 105)", () => {
+  const STORAGE = {
+    'core-material': { bytes: 160, instances: 2 },
+    'core-draw-list': { bytes: 192, instances: 3 },
+  } as const;
+
+  for (const id of ['core-material', 'core-draw-list'] as const) {
+    it(`routes ${id} to WebGL 2 now that a full translation exists`, () => {
+      const frame = bakedWgslFrame(id);
+      // Both stages are baked, so the frame carries a translation and a WebGPU-less
+      // device selects WebGL 2 rather than refusing for a missing one.
+      expect(frame.translated).toBe(true);
+      const selection = selectBackend(frame, { webgpu: false, webgl2: true });
+      expect('backend' in selection && selection.backend).toBe('webgl2');
+      // A WebGPU device still draws it natively — the translation is a fallback, not a
+      // redirection (item 91).
+      const onGpu = selectBackend(frame, { webgpu: true, webgl2: true });
+      expect('backend' in onGpu && onGpu.backend).toBe('webgpu');
+    });
+
+    it(`bakes ${id}'s storage buffer as a uniform block indexed by gl_InstanceID (item 92's shape)`, () => {
+      const frame = glslFrameOf(bakedWgslFrame(id));
+      expect(frame, `${id} now bakes both a vertex and a fragment`).not.toBeNull();
+      const source = (frame!.pipelines[0] as RenderPipelineSpec).source as GlslRenderSource;
+      // The read-only storage buffer at @group(1) @binding(0) becomes a std140 uniform
+      // block whose member carries the binding's `_group_G_binding_B` tag, read out by
+      // gl_InstanceID — the one raster path GLSL ES 3.00 has for a read-only array<T>.
+      expect(source.glsl.vertex).toContain('_group_1_binding_0[gl_InstanceID]');
+      expect(source.glsl.vertex.startsWith('#version 300 es')).toBe(true);
+    });
+
+    it(`draws ${id} through the backend that once refused its buffer, bound whole`, () => {
+      const frame = glslFrameOf(bakedWgslFrame(id));
+      const { bytes, instances } = STORAGE[id];
+      const gl = createFakeGL();
+      // The blocks a driver reports for the baked GLSL: the shared Uniforms block
+      // (untagged) and the storage buffer's block, its member carrying the binding's
+      // tag so `resolveBlocks` binds it to its own point above the shared one.
+      gl.blocks = [
+        {
+          bytes: 80,
+          members: [
+            { name: 'Uniforms._group_0_binding_0_vs.u_time', offset: 0 },
+            { name: 'Uniforms._group_0_binding_0_vs.u_resolution', offset: 8 },
+            { name: 'Uniforms._group_0_binding_0_vs.u_view', offset: 16 },
+          ],
+        },
+        { bytes, members: [{ name: '_group_1_binding_0[0]', offset: 0 }] },
+      ];
+      const backend = createWebGL2Backend(gl.canvas)!;
+      backend.resize(800, 600);
+      const program = backend.program(frame!);
+      program.setUniforms({ u_time: 0, u_resolution: [800, 600], u_view: new Array(16).fill(0) });
+      expect(() => program.draw()).not.toThrow();
+      // One instanced draw issuing the object count, and the storage buffer bound whole
+      // to its own block point (STORAGE_POINT_BASE = 2) — item 92's raster path.
+      expect(gl.of('drawElementsInstanced')).toHaveLength(1);
+      expect(gl.of('drawElementsInstanced').at(-1)).toMatchObject({ instances });
+      expect(gl.of('bindBufferBase').map((call) => call.index)).toContain(2);
+    });
+  }
 });

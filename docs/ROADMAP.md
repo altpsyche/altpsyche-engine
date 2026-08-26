@@ -3980,7 +3980,7 @@ this item asked for and worth stating as a reading rather than an assumption.
 
 ### 105. A WGSL scene's read-only storage buffer gets a WebGL 2 GLSL bake
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The translation half of the WebGL 2 scene tier that item 92 landed the *backend* half of.
 Item 92 taught WebGL 2 to draw a read-only per-instance record as a uniform block indexed by
@@ -4017,6 +4017,48 @@ WGSL-storage-buffer→GLSL bridge its `Needs` (91, 92) never named and item 92's
 "item 93's" without filing it. **Reverse:** delete this item; item 106's `Needs` drops it and item 93's
 lift note stands with the bridge tracked by nothing. `carry`: whether and how a WGSL scene's storage
 buffers translate onto WebGL 2 is a fact a consumer reads.
+
+**How it landed 2026-08-26. Mechanism (b) — a hand-authored GLSL bake, overlaid into the build artifact.**
+naga es300 has no storage-buffer syntax and refuses `BUFFER_STORAGE`, so option (a)'s WGSL pre-pass would
+be a translator this package must still author by hand for the one construct that matters; (b) authors
+that GLSL directly and keeps naga for everything else. The `project` vertex of `core-material`
+([fixtures/source/glsl/handwritten/core-material.project.vert](../fixtures/source/glsl/handwritten/core-material.project.vert))
+and `core-draw-list`
+([fixtures/source/glsl/handwritten/core-draw-list.project.vert](../fixtures/source/glsl/handwritten/core-draw-list.project.vert))
+now lives as GLSL ES 3.00, taking item 92's raster path exactly: the read-only storage buffer at `@group(1) @binding(0)` is declared a
+std140 uniform block whose member carries the binding's `_group_1_binding_0` tag, its array sized to the
+preset's instance count so the block's std140 size equals the buffer the build packs, and the shader reads
+its record by `gl_InstanceID`. The shared uniform block follows naga's own es300 shape (as `core-scene`'s
+baked `project` already does, one of the WebGL 2 draws), so `setUniforms` feeds it through the
+driver-reported offsets unchanged.
+
+Four changes carry it. (1) [gates/translate.mjs](../gates/translate.mjs) grows a `handAuthored` overlay:
+where `classify` returns a `storage-buffer` skip and a handwritten file exists, the build bakes that file
+instead of recording the skip — so the committed artifact stays the single thing every reader loads, and a
+naga rebake reproduces it byte-for-byte from the same file rather than from hand-edited JSON. (2)
+[fixtures/source/glsl/corpus.generated.json](../fixtures/source/glsl/corpus.generated.json) carries the two
+`project` bakes and drops both from `refused` — the state a rebake with the overlay would produce, pinned
+against the source files by a `translate-build` test so it cannot drift. (3) `translated` in
+[gates/lib.mjs](../gates/lib.mjs)'s `loadCorpus` (and the mirror in
+[tests/webgl2-baked-glsl.test.ts](../tests/webgl2-baked-glsl.test.ts)) tightened from "some bake exists" to
+"every render pipeline names a vertex and both halves are baked" — the exact condition `glslFrameOf`
+returns a drawable frame under. Before, a fragment-only bake set `translated` true, which would route a
+frame `glslFrameOf` then cannot build; now `core-material`/`core-draw-list` are `translated` (both halves
+baked) and a fullscreen preset is not. (4) [toy/frame.ts](../toy/frame.ts)'s `glslFrameOf` now **keeps** a
+read-only storage buffer's binding where it dropped every non-per-draw binding — the last span of the
+bridge, since the WebGL 2 backend reads that binding's group and binding to find the buffer and bind it as
+the uniform block; without it the backend threw *"declares a buffer resource no pipeline reads"*.
+
+**Measured on this machine:** `npm test` **856 passed** (71 files, up 8 from item 103's 848 — the new
+routing/shape/draw tests and the artifact-vs-source drift guard), `type-check` clean. The export surface
+did not move (`resourceOf` was already a door), so `gate:pack` was not required. **Not run here, and the
+only proof of the clause it settles:** `gate:browser`. The fake records calls, not pixels, and reports the
+blocks a driver would rather than compiling the GLSL, so **nothing on this machine has compiled or linked
+the hand-authored GLSL** — a red browser gate would mean the driver refused it, and the fix would live in
+these two `.vert` files. The corpus line is **expected** to move from item 104's `22 of 22 … 11 skips` to
+two fewer skips and two more draws (`core-material`, `core-draw-list` now drawn rather than skipped); that
+is a prediction for the closing batch to confirm, not a number a gate here produced. See
+[JOURNAL.md](JOURNAL.md).
 
 ### 106. `orbit-shadow`'s two backends, compared by item 44's three numbers
 

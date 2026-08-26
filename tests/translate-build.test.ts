@@ -84,6 +84,45 @@ describe('the build-time translation path bakes GLSL and ships no translator', (
     expect(entryTotal).toBe(36);
   });
 
+  it('overlays a hand-authored GLSL bake where naga has no storage-buffer syntax (item 105)', () => {
+    const a = artifact();
+    const HAND = path.join(SOURCE, 'glsl', 'handwritten');
+    for (const [id, entry] of [
+      ['core-material', 'project'],
+      ['core-draw-list', 'project'],
+    ] as const) {
+      const glsl = readFileSync(path.join(HAND, `${id}.${entry}.vert`), 'utf8');
+      // The committed artifact carries exactly the hand-authored file, so it cannot
+      // drift from the source and a naga rebake — which reads the same file through
+      // translate.mjs's overlay — reproduces it byte-for-byte.
+      expect(a.presets[id]?.entries[entry]?.glsl, `${id}:${entry} artifact ≠ handwritten source`).toBe(glsl);
+      expect(a.presets[id]?.entries[entry]?.stage).toBe('vertex');
+      // It is a translation now, not a skip: no refusal records it.
+      expect((a.refused[id] ?? []).some((r) => r.entry === entry)).toBe(false);
+      // Item 92's raster path: the read-only storage buffer as a uniform block indexed
+      // by gl_InstanceID, the one shape GLSL ES 3.00 has for a read-only array<T>.
+      expect(glsl).toContain('_group_1_binding_0[gl_InstanceID]');
+    }
+    // The overlay applies only where a file exists: core-perdraw's storage-buffer
+    // vertex has none, so it stays a recorded refusal (item 105 scoped to the two).
+    expect((a.refused['core-perdraw'] ?? []).some((r) => r.entry === 'warp')).toBe(true);
+  });
+
+  it('handAuthored overlays exactly the hand-authored stages, nothing else (item 105)', () => {
+    // Drive the gate's overlay reader through a subprocess, the way `classify` is
+    // driven: it proves translateCorpus bakes the file for the two storage-buffer
+    // vertices and leaves every other refused stage a skip, without needing naga.
+    const script =
+      `import { handAuthored } from ${JSON.stringify(gate)};` +
+      `process.stdout.write(JSON.stringify({` +
+      ` material: handAuthored('core-material', 'project', 'vertex') !== null,` +
+      ` drawList: handAuthored('core-draw-list', 'project', 'vertex') !== null,` +
+      ` perdraw: handAuthored('core-perdraw', 'warp', 'vertex') !== null,` +
+      ` compute: handAuthored('core-compute', 'paint', 'compute') !== null }));`;
+    const out = execFileSync('node', ['--input-type=module', '-e', script], { encoding: 'utf8' });
+    expect(JSON.parse(out)).toEqual({ material: true, drawList: true, perdraw: false, compute: false });
+  });
+
   it('names a WebGL 2 capability for every refusal, never a bare symptom', () => {
     const a = artifact();
     const allowed = new Set(['compute', 'storage-buffer', 'storage-texture']);

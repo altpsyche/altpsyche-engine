@@ -34,7 +34,7 @@
  * has not got, and its output is committed so the tests and the runtime read the
  * bake rather than repeating it.
  */
-import { readFileSync, readdirSync, writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, mkdtempSync, mkdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -44,6 +44,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SOURCE = join(here, '..', 'fixtures', 'source');
 const BAKED = join(SOURCE, 'glsl');
 const ARTIFACT = join(BAKED, 'corpus.generated.json');
+/** Where a hand-authored GLSL bake lives for a stage naga cannot translate but
+ * WebGL 2 can still draw by a raster path this package chose (item 105). naga's
+ * es300 target refuses `BUFFER_STORAGE`, so a WGSL scene's read-only storage buffer
+ * has no naga bake; item 92 landed the raster path for it — a std140 uniform block
+ * indexed by `gl_InstanceID` — and these files are that path hand-authored per
+ * preset, overlaid below where naga records a `storage-buffer` skip. Anything naga
+ * *can* translate is never hand-authored: this directory is only the gap es300's
+ * missing storage-buffer syntax leaves. */
+const HANDWRITTEN = join(BAKED, 'handwritten');
 
 /** WebGL 2 is GLSL ES 3.00; that is what the build bakes for, per §9.1. */
 export const WEBGL2_PROFILE = 'es300';
@@ -53,6 +62,24 @@ export const TRANSLATOR = 'naga-cli 30.0.1';
 
 // naga picks its GLSL stage from the output extension.
 const EXT = { vertex: 'vert', fragment: 'frag', compute: 'comp' };
+
+/**
+ * The hand-authored GLSL for one entry point, or null where none exists (item 105).
+ * A preset stage naga cannot translate to es300 for want of storage-buffer syntax,
+ * but which item 92's raster path *can* draw, carries its GLSL here keyed
+ * `<id>.<entry>.<ext>`. The overlay in `translateCorpus` reads this and bakes it in
+ * place of the `storage-buffer` skip, so the committed artifact carries the same
+ * bake a rebake with naga on PATH would produce — the file is the source, not the
+ * hand-edited JSON. Returns null for any stage with no file, so compute and
+ * storage-texture skips (and any storage-buffer stage no one hand-authored) stay
+ * skips exactly as before.
+ * @param {string} id @param {string} entry @param {'vertex' | 'fragment' | 'compute'} stage
+ * @returns {string | null}
+ */
+export function handAuthored(id, entry, stage) {
+  const file = join(HANDWRITTEN, `${id}.${entry}.${EXT[stage]}`);
+  return existsSync(file) ? readFileSync(file, 'utf8') : null;
+}
 
 /** Every `@vertex`/`@fragment`/`@compute` entry point in a source, in file order.
  * A compute entry carries `@workgroup_size(...)` between its stage attribute and
@@ -204,8 +231,24 @@ export function translateCorpus() {
         baked++;
         console.log(`  BAKE ${ep.stage}:${ep.name}  ${glsl.length} bytes of GLSL ES 3.00`);
       } else if (decision.action === 'skip') {
-        (refused[id] ??= []).push({ entry: ep.name, stage: ep.stage, capability: decision.capability });
-        console.log(`  SKIP ${ep.stage}:${ep.name}  refused before translation: needs ${decision.capability}`);
+        // A stage naga refused for a capability WebGL 2 withholds, but which item
+        // 92's raster path can still draw, carries a hand-authored bake (item 105).
+        // Overlaying it here rather than in a consumer keeps the committed artifact
+        // the single thing every reader loads, and keeps that artifact reproducible:
+        // a rebake with naga on PATH bakes the same file. Only `storage-buffer` skips
+        // are overlaid, since that is the one capability item 92 gave a raster path;
+        // compute and storage-texture stay skips (no file, so `hand` is null).
+        const hand = decision.capability === 'storage-buffer' ? handAuthored(id, ep.name, ep.stage) : null;
+        if (hand !== null) {
+          (presets[id] ??= { entries: {} }).entries[ep.name] = { stage: ep.stage, glsl: hand };
+          baked++;
+          console.log(
+            `  BAKE ${ep.stage}:${ep.name}  ${hand.length} bytes of hand-authored GLSL ES 3.00 (naga refused: needs ${decision.capability})`,
+          );
+        } else {
+          (refused[id] ??= []).push({ entry: ep.name, stage: ep.stage, capability: decision.capability });
+          console.log(`  SKIP ${ep.stage}:${ep.name}  refused before translation: needs ${decision.capability}`);
+        }
       } else {
         failures.push({ id, entry: ep.name, stage: ep.stage, construct: decision.construct });
         console.log(`  FAIL ${ep.stage}:${ep.name}  will not translate -> ${decision.construct}`);
