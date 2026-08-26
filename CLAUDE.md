@@ -39,7 +39,7 @@ and it belongs in the commit message.
 
 | command | cost | when |
 | --- | --- | --- |
-| `npm test` | about 1 second | every step, always |
+| `npm test` | about 2 seconds | every step, always |
 | `npm run type-check` | seconds | every step, always |
 | `npm run gate:pack` | seconds | any step touching `package.json`, `index.ts` or the export surface |
 | `npm run gate:browser` | minutes, four gates, needs Playwright's pinned browser | **once over a batch**, not per step |

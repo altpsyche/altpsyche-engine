@@ -37,13 +37,21 @@ function documents(): { name: string; text: string }[] {
   return found.map(({ name, full }) => ({ name, text: readFileSync(full, 'utf-8') }));
 }
 
-/** Named imports from the package, across every fenced block in one document. */
+/**
+ * Named **value** imports from the package, across every fenced block in one document.
+ *
+ * A `type X` specifier is skipped rather than stripped of its keyword. This check asks
+ * whether a name is on the door at run time, and a type is not there to be found however
+ * correct it is — stripping the keyword made every type a document imports read as a
+ * missing export. Types are checked by `docs-code.test.ts`, which compiles the blocks and
+ * so reads the type-only imports the way the compiler does.
+ */
 function importedNames(text: string): string[] {
   const names = new Set<string>();
   for (const match of text.matchAll(/import \{([^}]*)\} from '@altpsyche\/engine'/g)) {
     for (const raw of match[1]!.split(',')) {
-      const name = raw.trim().replace(/^type\s+/, '');
-      if (name) names.add(name);
+      const name = raw.trim();
+      if (name && !/^type\s/.test(name)) names.add(name);
     }
   }
   return [...names];

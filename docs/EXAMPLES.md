@@ -11,7 +11,7 @@ Four files. Nothing is elided and nothing is pseudocode.
 hello-engine/
   package.json
   index.html
-  main.js
+  main.ts
 ```
 
 **`package.json`** — the package is ESM, so the project is too:
@@ -28,10 +28,15 @@ hello-engine/
 npm install @altpsyche/engine vite
 ```
 
-Any bundler works; `vite` is here because it needs no configuration. You do need one, and the
-reason is the one thing to know about this package: the two backends are reached by
-`await import()`, so a bundler is what splits them into separate files and lets the browser
-fetch only the one it can run. A browser with no WebGPU never downloads the WebGPU backend.
+You do need a bundler, and the reason is the one thing to know about this package: the two
+backends are reached by `await import()`, so a bundler is what splits them into separate
+files and lets the browser fetch only the one it can run. A browser with no WebGPU never
+downloads the WebGPU backend. Any bundler does it; `vite` is here because it needs no
+configuration.
+
+The page below is TypeScript, which vite compiles with no setup — the package ships its own
+declarations, so every call is typed without a `@types` package. Plain JavaScript works
+identically: drop the one type assertion and rename the file.
 
 **`index.html`** — a canvas and a module. The canvas is sized in CSS and the surface is told
 what size that turned out to be, which is the division that lets a page lay out however it
@@ -50,14 +55,14 @@ likes:
   </head>
   <body>
     <canvas></canvas>
-    <script type="module" src="/main.js"></script>
+    <script type="module" src="/main.ts"></script>
   </body>
 </html>
 ```
 
-**`main.js`** — a GLSL pair and a running surface:
+**`main.ts`** — a GLSL pair and a running surface:
 
-```js
+```ts
 import { createSurface, glslFrame } from '@altpsyche/engine';
 
 // The three corners are the backend's own, so the vertex half only forwards the
@@ -79,7 +84,7 @@ void main() {
   fragColour = vec4(colour, 1.0);
 }`;
 
-const canvas = document.querySelector('canvas');
+const canvas = document.querySelector('canvas') as HTMLCanvasElement;
 
 // A GLSL pair is one frame graph: one pass, one pipeline, drawn over the canvas.
 const frame = glslFrame('first-frame', VERTEX, FRAGMENT);
@@ -123,11 +128,15 @@ A rolling three-colour gradient fills the window, and it follows a resize.
 - **A `null` surface is an answer, not a crash.** Nothing throws at a caller who arrived on a
   browser that would not give a context.
 
-To author in WGSL instead, `wgslFrame` takes the fragment source, the uniform block layout and
-the uniform slots — the README's tour shows that call. One caveat is worth knowing before you
-try it: a *fullscreen* WGSL frame has no vertex document for WebGL 2 to link, so it draws on
-WebGPU and is refused by name elsewhere. A frame with real geometry has both halves and reaches
-both backends.
+To author in WGSL instead, `wgslFrame(id, code, block)` takes the source and the uniform
+block that source implies — `uniformBlockOf(code)` reads that block off the source, so the
+layout is never written twice. Two things it expects: the fragment entry point is called
+`fragMain`, and the uniforms are one struct at group 0, binding 0. The README's tour shows
+the call.
+
+One caveat before you try it: a *fullscreen* WGSL frame has no vertex document for WebGL 2 to
+link, so it draws on WebGPU and is refused by name elsewhere. A frame with real geometry has
+both halves and reaches both backends.
 
 ## The six examples in this repository
 

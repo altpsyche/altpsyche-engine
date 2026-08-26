@@ -10,8 +10,21 @@ questions* — `cost`, `refusal`, `selectBackend` all read it without touching a
 
 ## The shortcut, for one fragment shader over the canvas
 
-```js
+```ts
 import { createSurface, glslFrame } from '@altpsyche/engine';
+
+const VERTEX = `#version 300 es
+in vec3 position;
+void main() { gl_Position = vec4(position, 1.0); }`;
+
+const FRAGMENT = `#version 300 es
+precision highp float;
+uniform float uTime;
+uniform vec3 iResolution;
+out vec4 fragColour;
+void main() {
+  fragColour = vec4(gl_FragCoord.xy / iResolution.xy, 0.5 + 0.5 * sin(uTime), 1.0);
+}`;
 
 const frame = glslFrame('fullscreen', VERTEX, FRAGMENT);
 
@@ -23,7 +36,7 @@ const surface = await createSurface(canvas, frame, {
   onError: (message) => console.error(message),
 });
 
-surface.start();
+if (surface) surface.start();
 ```
 
 `wgslFrame` is the same for WGSL. Both build a one-pass graph whose vertex half is the
@@ -40,9 +53,14 @@ drawing buffer the surface sizes, so a resize needs no code of yours.
 For anything with real geometry, more than one pass, or a depth buffer, you author the
 graph directly. This is `examples/instanced-cubes`, trimmed:
 
-```js
-import { frameOf, pipelineHandle, texture, uniform, vertices, WGSL_DOCUMENT } from '@altpsyche/engine';
+```ts
+import { pipelineHandle, texture, uniform, vertices, WGSL_DOCUMENT } from '@altpsyche/engine';
 import type { FrameGraph } from '@altpsyche/engine';
+
+/** Position (three floats) then normal (three floats): twenty-four bytes a vertex. */
+const VERTEX_STRIDE = 24;
+const VERTICES = new Uint8Array(VERTEX_STRIDE * 36); // the cube's bytes, from wherever you make them
+const COUNT = 1000;
 
 const description: FrameGraph = {
   authored: 'wgsl',
@@ -65,10 +83,11 @@ const description: FrameGraph = {
   pipelines: [
     {
       kind: 'render',
-      source: {
-        vertex: { document: WGSL_DOCUMENT, text: '', entry: 'cube' },
-        fragment: { document: WGSL_DOCUMENT, text: '', entry: 'shade' },
-      },
+      // The source is the *text* pair, empty until a loader fills it. Which document
+      // and entry point each stage runs is a sibling field, not part of the source.
+      source: { wgsl: { vertex: '', fragment: '' } },
+      vertex: { document: WGSL_DOCUMENT, entry: 'cube' },
+      fragment: { document: WGSL_DOCUMENT, entry: 'shade' },
       geometry: vertices(1),
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['vertex'] }],
       depth: { format: 'depth24plus', compare: 'less', write: true },
@@ -108,8 +127,20 @@ what answers it.
 
 The description above has `text: ''`. A graph names its documents; a loader fills them:
 
-```js
-const frame = frameOf('instanced-cubes', description, { [WGSL_DOCUMENT]: WGSL_SOURCE }, block, undefined, generated);
+```ts
+// continues the block above
+import { frameOf, uniformBlockOf } from '@altpsyche/engine';
+
+const WGSL_SOURCE = '…the WGSL your build fetched or bundled…';
+
+const frame = frameOf(
+  'instanced-cubes',
+  description,                              // the graph above
+  { [WGSL_DOCUMENT]: WGSL_SOURCE },         // the document texts it named
+  uniformBlockOf(WGSL_SOURCE),              // the uniform block the source implies
+  undefined,                                // pipeline constants, where a source takes them
+  new Map([[1, VERTICES]])                  // bytes for resource 1, the vertex buffer
+);
 ```
 
 `documentNames(description)` tells you which texts are still wanted, and
@@ -118,11 +149,19 @@ is deliberate: the build writes an address, the runtime fills in what came back 
 
 ## Asking before drawing
 
-```js
-import { cost, refusal } from '@altpsyche/engine';
+```ts
+import { cost, refusal, webgl2Capabilities } from '@altpsyche/engine';
 
-cost(description, { width: 800, height: 600 });  // bytes, draws, passes — before a pixel
-refusal(description, capabilities);              // what this device has not got, by name
+cost(frame, { width: 800, height: 600 }); // passes, draws, transientBytes, and more
+
+// What a device has not got, by name. The second argument is which backend it is and
+// which capabilities it has — data, so this answers with no device present.
+const gl = document.createElement('canvas').getContext('webgl2');
+const no = refusal(frame, {
+  backend: 'webgl2',
+  capabilities: webgl2Capabilities(gl?.getSupportedExtensions() ?? []),
+});
+if (no) console.error(no);
 ```
 
 The renderer runs its own `validate` over every graph it draws, and that one is **not**

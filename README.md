@@ -44,25 +44,34 @@ The renderer reads that description and makes the calls.
 
 For a single fragment shader drawing over the whole canvas, there is a shortcut:
 
-```js
-import { wgslFrame, createSurface } from '@altpsyche/engine';
+```ts
+import { createSurface, uniformBlockOf, wgslFrame } from '@altpsyche/engine';
 
+// Two things the shortcut expects: the fragment entry is called `fragMain`, and
+// the uniforms are one struct at group 0, binding 0.
 const code = `
+struct Uniforms {
+  u_time: f32,
+  u_resolution: vec2<f32>,
+};
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 @fragment
 fn fragMain(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
-  return vec4<f32>(at.x / 800.0, at.y / 600.0, 1.0, 1.0);
+  let uv = at.xy / uniforms.u_resolution;
+  return vec4<f32>(uv, 0.5 + 0.5 * sin(uniforms.u_time), 1.0);
 }
 `;
 
-const frame = wgslFrame(
-  'my-shader',
-  code,
-  [{ name: 'u_time', offset: 0, size: 4 }],
-  [{ name: 'u_time', type: 'float' }]
-);
+// `uniformBlockOf` reads the offsets out of the source, so the layout is never
+// written down twice and never disagrees with the shader.
+const frame = wgslFrame('my-shader', code, uniformBlockOf(code));
 
 const surface = await createSurface(canvas, frame, {
-  uniforms: () => ({ u_time: performance.now() / 1000 }),
+  uniforms: (elapsedSeconds) => ({
+    u_time: elapsedSeconds,
+    u_resolution: [canvas.width, canvas.height],
+  }),
 });
 ```
 
@@ -136,6 +145,11 @@ A rotation is a `Mat4` rather than three angles. Euler angles disagree between
 codebases about which order the three turns are applied in, and the disagreement is
 silent, so the library never guesses: you compose the rotation you meant.
 
+`sceneView` is the tier above this one: a world and its cameras in, a `FrameGraph` out,
+with each object's record packed into a storage buffer the shader indexes by instance.
+[docs/API.md](docs/API.md#the-scene-tier) shows that call in full, and
+`npm run example orbit-shadow` is a scene of fifty objects across two pipelines.
+
 `batchOnePipeline` turns a scene into one pipeline's worth of draws, with each
 object's material values beside it. It is called that because it refuses a scene whose
 objects do not all share a pipeline. Grouping across pipelines decides which pipeline
@@ -148,65 +162,96 @@ want.
 The recording double is part of the package. `wrapDevice` wraps a real device and
 records every call made on it, `projectTrace` reduces a recording to the calls worth
 comparing, and `compareTraces` reports where two recordings differ. That is how you
-check a change to a shader did not quietly change what the device was asked to do.
+check a change to a shader did not quietly change what the device was asked to do —
+[docs/API.md](docs/API.md#checking-what-your-shader-asked-the-card) shows the three in
+use, and it is the same mechanism this package holds its own backends to.
 
 ## Asking before you draw
 
-Three pure functions answer questions about a graph without touching a device — so you
-can ask them in a test, in a worker, or on a machine with no card at all — and `probe` is
-how you get the reading they answer against:
+These are pure functions over data, so they answer in a test, in a worker, or on a
+machine with no card at all. What they answer against is a **profile**: what each backend
+turned out to offer on this machine.
 
-```js
-import { cost, refusal, selectBackend, probe } from '@altpsyche/engine';
+```ts
+import {
+  cost, requestWebGPUDevice, resolve, webgl2Capabilities, webgpuCapabilities,
+  type DeviceProfile,
+} from '@altpsyche/engine';
 
-const reading = await probe();                    // what this browser actually offers
-const which = selectBackend(frame, reading.offer); // which backend will draw it, or why not
-const no = refusal(frame, reading.capabilities);   // what the frame needs and the device lacks
-const size = cost(frame, { width: 800, height: 600 }); // bytes, draws, passes before a pixel
+// Ask for the card first, because whether asking returns one is the fact selection
+// reads. Read the WebGL 2 half from a throwaway canvas: a canvas keeps the first
+// context type it is asked for, so never spend the one you mean to draw into.
+const device = await requestWebGPUDevice();
+const gl = document.createElement('canvas').getContext('webgl2');
+
+const profile: DeviceProfile = {
+  webgpu: device ? webgpuCapabilities(device.features) : null,
+  webgl2: gl ? webgl2Capabilities(gl.getSupportedExtensions() ?? []) : null,
+};
+
+// One reading: the backend that will draw this frame, or a refusal naming what is
+// missing. `resolve` is selection first and the capability check second.
+const selection = resolve(frame, profile);
+if ('refusal' in selection) console.error(selection.refusal);
+else console.log('drawing on', selection.backend);
+
+// What it costs, before a pixel exists. `transientBytes` is what the frame's own
+// scratch targets allocate at that size; uploads are the arena's to report.
+const { passes, draws, transientBytes } = cost(frame, { width: 800, height: 600 });
 ```
 
-`selectBackend` reads two facts and nothing else: the language the frame is authored in
-and what the device offers. A GLSL-authored frame selects WebGL 2 **even where WebGPU
-exists**, because the language it is written in is the capability it forfeits, and every
-capability it gives up is one GLSL ES 3.0 has no syntax for.
+`resolve` is the two halves in one call, and either half can be had on its own:
+`selectBackend(frame, { webgpu, webgl2 })` reads two facts and nothing else — the language
+the frame is authored in, and what the device offers — and `refusal(frame, { backend,
+capabilities })` names what a device has not got. A GLSL-authored frame selects WebGL 2
+**even where WebGPU exists**, because the language it is written in is the capability it
+forfeits, and every capability it gives up is one GLSL ES 3.0 has no syntax for.
 
 `refusal` answers from data rather than from a call that throws. A graph names the
 capabilities it needs, a device reports the ones it has, and where a needed one is
 missing the graph is refused *by that name* before anything reaches a driver.
+
+`probe()` is a different thing and worth not confusing with these: it draws a frame and
+returns a dated `DeviceReading` — what was reported, what came back, whether the device
+survived being composited, what the adapter says it is. It is a diagnostic and a row for
+[docs/DEVICES.md](docs/DEVICES.md), not the input to selection.
 
 ## Drawing a frame yourself
 
 `createSurface` runs a loop. When you want one frame, on your own schedule, use
 `submit`:
 
-```js
-import { createFrameRenderer, submit } from '@altpsyche/engine';
+```ts
+import { createFrameRenderer, requestWebGPUDevice, submit } from '@altpsyche/engine';
 
-const renderer = await createFrameRenderer(canvas);
-submit(renderer, frame, { u_time: 0 }, { into: myTexture });
-```
-
-The uniforms are an argument and `{ into }` is the options: `into` is where the frame
-lands, and it is the caller's to choose rather than the library's. Leave it out and the
-frame lands on the canvas.
-
-**A renderer draws through WebGL 2 unless you hand it a WebGPU device.** Asking for the
-card is a step the caller takes, because whether asking returns one is the fact selection
-reads — and a renderer that quietly asked would download the WebGPU backend on a page that
-never needed it:
-
-```js
-import { createFrameRenderer, requestWebGPUDevice } from '@altpsyche/engine';
-
-const device = await requestWebGPUDevice();          // null where there is no card
+// A renderer draws through WebGL 2 unless it is handed a WebGPU device. Asking for
+// the card is the caller's step: whether asking returns one is the fact selection
+// reads, and a renderer that quietly asked would pull the WebGPU backend into the
+// first download of a page that never needed it.
+const device = await requestWebGPUDevice();
 const renderer = await createFrameRenderer(canvas, device ? { backend: 'webgpu', device } : {});
+if (!renderer) throw new Error('no backend would give this canvas a context');
+
+// The uniforms are an argument, not an option.
+submit(renderer, frame, { u_time: 0 });
+
+// `{ into }` lands the frame in a texture you own as well as on the canvas — a
+// capture target, or an XR layer the compositor consumes.
+if (device) {
+  const target = device.createTexture({
+    size: [800, 600],
+    format: 'rgba8unorm',
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  submit(renderer, frame, { u_time: 0 }, { into: target });
+}
 ```
 
-`createSurface` takes the same two options. One warning, learnt the hard way in this
+`createSurface` takes those same two options. One warning, learnt the hard way in this
 repository's own examples: **do not test for WebGL 2 by calling `getContext('webgl2')` on
 the canvas you are about to draw into.** A canvas keeps the first context type it is asked
 for and refuses every other one for the rest of its life, so that check makes the WebGPU
-path fail on the machines that have WebGPU. Ask a throwaway canvas, or ask `probe`.
+path fail on the machines that have WebGPU. Ask a throwaway canvas, as the block above does.
 
 ## What it needs
 

@@ -6,17 +6,24 @@ the language the graph is authored in, and what the device offers.
 
 ## Selection comes before refusal
 
-```js
-import { probe, selectBackend, refusal } from '@altpsyche/engine';
+```ts
+import { requestWebGPUDevice, selectBackend } from '@altpsyche/engine';
 
-const reading = await probe();
-const chosen = selectBackend(frame, reading.offer);
+// The offering: two booleans, gathered once by whoever asked the browser for a card.
+// The WebGL 2 half is read from a throwaway canvas, never from the one you draw into.
+const device = await requestWebGPUDevice();
+const offer = {
+  webgpu: device !== null,
+  webgl2: document.createElement('canvas').getContext('webgl2') !== null,
+};
+
+const chosen = selectBackend(frame, offer);
 // { backend: 'webgpu' } | { backend: 'webgl2' } | { refusal: 'no backend can draw a …' }
 ```
 
-`selectBackend` touches no device — the offering is gathered once, by whoever asked the
-browser for a card, and handed in as data. So the whole decision is testable on any
-machine, including the ones that never return a WebGPU adapter.
+`selectBackend` touches no device — the offering is handed in as data. So the whole
+decision is testable on any machine, including the ones that never return a WebGPU
+adapter.
 
 **A GLSL-authored frame selects WebGL 2 even where WebGPU exists.** That is deliberate,
 and it is the one selection rule worth memorising: the language a consumer wrote in is the
@@ -32,9 +39,32 @@ was missing rather than lecturing a caller who arrived with a perfectly drawable
 A graph declares what it needs. A device reports what it has. `refusal` reads the two
 records and names what is missing.
 
-```js
-const no = refusal(frame, reading.capabilities);
+```ts
+// continues the block above
+import { refusal, webgpuCapabilities } from '@altpsyche/engine';
+
+const no = device
+  ? refusal(frame, { backend: 'webgpu', capabilities: webgpuCapabilities(device.features) })
+  : null;
 // null, or a string naming the capability the device has not got
+```
+
+`resolve` is those two readings in one call — selection first, then the capability check
+— over a **profile**, which is each backend's capability set or `null` where that backend
+is not on offer:
+
+```ts
+// continues the block above
+import { resolve, webgl2Capabilities } from '@altpsyche/engine';
+
+const gl = document.createElement('canvas').getContext('webgl2');
+const selection = resolve(frame, {
+  webgpu: device ? webgpuCapabilities(device.features) : null,
+  webgl2: gl ? webgl2Capabilities(gl.getSupportedExtensions() ?? []) : null,
+});
+
+if ('refusal' in selection) console.error(selection.refusal);
+else console.log('drawing on', selection.backend);
 ```
 
 This is the rule the whole design rests on: **no backend grows a method the other has to

@@ -19,7 +19,7 @@ change needs one, it needs a decision first.
 
 | command | costs | proves |
 | --- | --- | --- |
-| `npm test` | ~1s | the pure layers, and both backends against recording doubles |
+| `npm test` | ~2s | the pure layers, both backends against recording doubles, and every code block in the documents |
 | `npm run type-check` | seconds | the types |
 | `npm run gate:pack` | seconds | the built package installs and plain node can import it |
 | `npm run gate:browser` | minutes | four gates in a real browser: the corpus on both backends, the trace contract, a live surface |
@@ -27,6 +27,28 @@ change needs one, it needs a decision first.
 
 Run `gate:browser`'s gates **one at a time** if you run them by hand. Several at once starve each
 other under the software renderer and time out, which reads as a red gate and is not one.
+
+## What the documents are held to
+
+Two gates in the node suite, because a document that is wrong is worse than one that is
+missing — a reader copies it and blames the library.
+
+**`tests/docs-code.test.ts` compiles every fenced JavaScript or TypeScript block that
+imports the door.** Not runs — compiles: what goes wrong in a document is that it names
+something that is not there, and a type-check is the reading that catches it. Two
+conventions keep the blocks readable. A block may use `canvas` and `frame` without
+declaring them, and one whose first line is `// continues the block above` is checked with
+the previous block of that document in front of it. Neither can hide a wrong argument list
+or an invented property, which is the defect class this exists for.
+
+**`tests/api-signatures.test.ts` prints every run-time export's signature from the
+compiler and matches it against `docs/API.md`.** So a rename, an added argument, a widened
+return type, or a new export arriving undocumented fails a gate rather than sitting in the
+reference as a lie. Signatures in that document are not written by hand; they are pasted
+from what the checker prints.
+
+Neither gate reads prose. A sentence about what a name is *for* is still only as good as
+whoever wrote it.
 
 `npm run example <name>` opens one of the pages in `examples/` in a browser. They are not a gate —
 nothing asserts a pixel in them — but they are the only place the *whole* stack runs the way a
