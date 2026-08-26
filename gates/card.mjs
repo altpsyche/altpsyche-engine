@@ -309,7 +309,7 @@ for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
   // resource's index — its handle since item 87 — and are rebuilt inside the page.
   const bytesArrays = Object.fromEntries([...one.bytes].map(([index, made]) => [index, [...made]]));
   const both = await page.evaluate(
-    async ({ id, description, code, bytesArrays, values, W, H }) => {
+    async ({ id, description, code, block, bytesArrays, values, W, H }) => {
       /** @param {any} description */
       const generatedFor = (description) => {
         const generated = new Map();
@@ -335,7 +335,7 @@ for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
       gpu.resize(W, H);
       let fromGPU;
       try {
-        const wgsl = window.frameOf(id, description, { wgsl: code }, undefined, undefined, generatedFor(description));
+        const wgsl = window.frameOf(id, description, { wgsl: code }, block, undefined, generatedFor(description));
         const program = gpu.program(wgsl);
         program.setUniforms(values);
         program.draw();
@@ -353,7 +353,7 @@ for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
       gl.resize(W, H);
       let fromGL;
       try {
-        const wgsl = window.frameOf(id, description, { wgsl: code }, undefined, undefined, generatedFor(description));
+        const wgsl = window.frameOf(id, description, { wgsl: code }, block, undefined, generatedFor(description));
         const glsl = window.glslFrameOf(/** @type {any} */ (wgsl));
         if (!glsl) return { skip: 'the source carried no baked GLSL to draw' };
         const program = gl.program(glsl);
@@ -368,28 +368,21 @@ for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
 
       return window.compareFrames(fromGPU, fromGL, W, H);
     },
-    { id: one.id, description: one.description, code: one.code, bytesArrays, values: one.values, W, H }
+    { id: one.id, description: one.description, code: one.code, block: one.block, bytesArrays, values: one.values, W, H }
   );
 
   const label = `${one.id} on both backends`;
   if (both.skip) say(true, `${label}  skipped: ${both.skip}`);
   else if (both.error) say(false, `${label}  ${both.error}`);
   else {
-    // **Reported, never asserted**, which is item 106's own instruction and not a
-    // softening of it: this is a *reading* of how far the WebGL 2 scene tier
-    // reaches, and a reading that fails the run it is taken in cannot be taken
-    // twice. A failure here would also be attributed to whichever commit happened
-    // to be under it, when what it describes is a standing difference.
-    //
-    // The numbers this printed on 2026-08-26 are large — 245 of 255 worst channel,
-    // ~19% of channels differing, thousands of hard jumps on the WebGL 2 side
-    // against none on WebGPU's. That is a structurally different picture rather
-    // than two compilers rounding apart, and **ROADMAP item 107 owns it.** When
-    // 107 closes, the bar moves here from reporting to asserting within TOLERANCE,
-    // which is the same bar the gradient control above already holds.
-    const verdict = both.maxDelta <= TOLERANCE ? 'agree within tolerance' : 'DISAGREE — item 107';
-    console.log(
-      `READ ${label}  ${verdict}: hard jumps ${both.hardJumps.a} against ${both.hardJumps.b}, ` +
+    // **Asserted, since item 107 closed.** It reported rather than asserted while the
+    // two backends drew different pictures; the mirror is gone and the residual is
+    // now one channel of rounding, so this holds the same bar the gradient control
+    // above does. Three numbers print whether it passes or not: a seam nobody prints
+    // is a seam nobody looks at, and the average that would bury it does not exist.
+    say(
+      both.maxDelta <= TOLERANCE,
+      `${label}  hard jumps ${both.hardJumps.a} against ${both.hardJumps.b}, ` +
         `worst ${both.maxDelta}, ${both.differing.toLocaleString('en-US')} of ${both.channels.toLocaleString('en-US')} channels differ`
     );
   }

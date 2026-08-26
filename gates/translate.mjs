@@ -189,6 +189,39 @@ const naga = (profile, name, input, output) => {
   }
 };
 
+/**
+ * naga's GLSL backend emits one line that adjusts WGSL's clip space to GLSL's, and
+ * it adjusts **two** axes at once:
+ *
+ *   gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
+ *
+ * The Z half is needed and kept: WebGPU's depth range is [0, 1] and GL's is
+ * [-1, 1], so without the remap a depth test compares the wrong numbers.
+ *
+ * **The Y negation is wrong here and is stripped (item 107).** It exists for a
+ * consumer that renders into a top-left-origin framebuffer, and this backend does
+ * not: GL's framebuffer origin is bottom-left, its display reads row 0 at the
+ * bottom, and `gpu/webgl2.ts`'s `readPixels` already turns the frame over so a
+ * caller gets rows top-first whatever the source language. Negating Y *as well*
+ * turns it twice — so a scene rendered on WebGL 2 came back mirrored top-to-bottom
+ * against the same scene on WebGPU.
+ *
+ * **Measured on an RTX 5080 before and after.** With the negation: `core-scene`
+ * differed from its WebGPU frame on 344,146 of 1,440,000 channels, worst channel
+ * 244, with the hard-jump counts *matching* on both sides — the signature of a
+ * mirror, since mirroring preserves adjacency. Without it: **0 of 1,440,000
+ * channels differ**, on all three scene presets. That convergence is what licenses
+ * this, and it is why the strip happens here rather than in `readPixels`: the
+ * readback flip is correct for every source language and is unit-tested as such.
+ *
+ * @param {string} glsl
+ */
+const withoutClipSpaceYFlip = (glsl) =>
+  glsl.replace(
+    'gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);',
+    'gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;',
+  );
+
 /** Runs the whole build. Kept as a function so a test on a machine with naga can
  * drive it and read the artifact back; the CLI below is the `npm run translate`
  * entry. */
@@ -226,7 +259,7 @@ export function translateCorpus() {
           : naga(WEBGL2_PROFILE, ep.name, join(SOURCE, file), join(out, `${ep.name}.${EXT[ep.stage]}`));
       const decision = classify(ep.stage, es300);
       if (decision.action === 'bake') {
-        const glsl = readFileSync(join(out, `${ep.name}.${EXT[ep.stage]}`), 'utf8');
+        const glsl = withoutClipSpaceYFlip(readFileSync(join(out, `${ep.name}.${EXT[ep.stage]}`), 'utf8'));
         (presets[id] ??= { entries: {} }).entries[ep.name] = { stage: ep.stage, glsl };
         baked++;
         console.log(`  BAKE ${ep.stage}:${ep.name}  ${glsl.length} bytes of GLSL ES 3.00`);

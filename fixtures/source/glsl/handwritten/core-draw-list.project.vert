@@ -46,5 +46,6 @@ void main() {
     gl_Position = at;
     _vs2fs_location0 = place;
     _vs2fs_location1 = shade;
-    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
+    // Z only, never Y (item 107): the readback already turns the frame over.
+    gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;
 }

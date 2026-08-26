@@ -4142,7 +4142,59 @@ from `gates/card.mjs` and the two bundle entries it added, and delete item 107.
 
 ### 107. The WebGL 2 scene tier draws a different picture from WebGPU's
 
-**Status.** lifted card gate
+**Status.** done
+
+**Done 2026-08-26 on an RTX 5080. The cause was the double flip after all, and the refutation
+recorded below it was wrong for a reason worth keeping.** That refutation rested on removing the
+readback flip and seeing the numbers not move. They did not move because **the comparison was
+drawing nothing on the WebGPU side**: `gates/card.mjs` passed `undefined` where `frameOf` takes
+the uniform block, so WebGPU had no uniforms and rendered blank while WebGL 2 drew. A blank frame
+has zero hard jumps, which is the whole of the "0 against 8234" asymmetry that was read as wrong
+data. The defect was in the gate written for item 106, not in the library.
+
+**How it was actually found:** dumping both frames and rendering them as luminance maps. One was
+the scene, the other was empty — visible in a second, where reading numbers had gone the wrong
+way twice.
+
+**With the block passed, the reading named its own cause:** hard jumps **8234 against 8234**, 7895
+against 7895, 7527 against 7527 — *matching* on both sides, which is the signature of a mirror,
+since mirroring preserves adjacency. Large `differing` with matching jump counts is a
+correctly-drawn picture the wrong way up.
+
+**The fix, and why it is at the bake rather than the readback.** naga's GLSL backend emits one
+line adjusting two axes at once:
+`gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);`. The Z half is
+required — WebGPU's depth range is [0,1], GL's is [-1,1] — and is kept. The Y negation suits a
+consumer rendering into a top-left-origin framebuffer, which this backend is not: GL's origin is
+bottom-left, its display reads row 0 at the bottom, and `readPixels` already turns the frame over.
+Two turns, so the scene came back mirrored. `gates/translate.mjs` now strips the Y half and keeps
+the Z half, and item 105's two hand-authored vertex stages — which had copied naga's line verbatim
+— match.
+
+**Removing the readback flip instead was tried and rejected**, even though it converged to a
+literal 0 of 1,440,000 channels. Handing rows back top-first is correct for *every* source
+language, and `tests/renderer-webgl2.test.ts` pins it against a bottom-up driver frame; removing
+it would have fixed translated shaders by breaking hand-authored GLSL.
+
+**The measurement, before and after, on the same card:**
+
+```
+before   core-scene      worst 244, 344,146 of 1,440,000 channels differ
+after    core-scene      worst 1,      11 of 1,440,000 channels differ
+after    core-draw-list  worst 1,      36 of 1,440,000 channels differ
+after    core-material   worst 1,      18 of 1,440,000 channels differ
+```
+
+Worst channel 1 is two hardware compilers folding arithmetic apart, which is what `TOLERANCE`
+exists for. **`gates/card.mjs`'s scene-tier lines now assert rather than report**, the second half
+of this item's `Done when`. `gate:browser` 4 of 4 and 856 node tests green over the rebaked
+artifact.
+
+**Reverse:** `git revert` this commit — it restores the negation in `gates/translate.mjs`, the two
+`.vert` files and the committed bake, and returns the gate's scene lines to `READ`. **What would
+change the answer:** a consumer rendering into a top-left-origin framebuffer of their own would
+want the negation back, and would then need the readback flip made conditional on the source
+language rather than unconditional.
 
 **Asks for.** The cause of the divergence item 106 measured on a real card, and its repair. Three
 scene-tier presets drawn through both backends on an RTX 5080 differ by up to **245 of 255** on
