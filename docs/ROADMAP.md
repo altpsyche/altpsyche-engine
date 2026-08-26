@@ -4226,3 +4226,27 @@ barred from `gate:browser` (which is SwiftShader anyway and whose corpus gate as
 per backend, never the cross-backend compare). The mechanism above is reachable by reading; the proof
 that repairing it converges the numbers is not.
 
+**The double-flip diagnosis was tested on the card on 2026-08-26 and is refuted.** Removing the
+row flip from [gpu/webgl2.ts](../gpu/webgl2.ts)'s `readPixels` — one of the two turns the lift
+note named — and re-running `gate:card` changed all nine numbers by **exactly zero**:
+`core-scene` still 0 against 8234 / worst 245 / 274,713, and the other two likewise to the digit.
+The flip was restored; removing it would have been a behaviour change with nothing to show for it.
+
+**Why it could not have been the flip, which the lift note's own numbers already said.** A
+vertical mirror preserves adjacency, so it cannot change a hard-jump count — and the reading's
+loudest signal is an *asymmetry* in exactly that count: **8,234 hard jumps on the WebGL 2 side
+against 0 on WebGPU's.** The WebGL 2 picture has sharp discontinuities WebGPU's does not have.
+That is wrong data reaching the shader, not a correctly-drawn image the wrong way up. A mirror
+would have shown up as a large `differing` with the jump counts *matching*.
+
+**So the mechanism is still unknown, and the search narrows to what makes edges appear.** Wrong
+per-instance records (a stride, an offset, or a block member order), wrong indices, or an
+attribute read at the wrong offset would each add edges where WebGPU has none. Item 105's
+hand-authored vertex stages and item 92's uniform-block route for per-instance data are both in
+that path and both are new. **What the lift note got right and is worth keeping:** `core-scene`
+has neither storage buffers nor instancing — a plain `u_view * u_model` uniform, one instance,
+a pure translated bake — and diverges as much as the two instanced presets. So the cause is
+shared by all three rather than specific to instancing, which rules out a good deal.
+
+**Reverse:** nothing to reverse — the experiment was reverted and only this note remains.
+
