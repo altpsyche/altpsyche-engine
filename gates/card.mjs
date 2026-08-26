@@ -47,7 +47,14 @@ const corpus = await loadCorpus();
 
 const { bundle, staging } = bundleForPage({
   'gpu/webgpu': ['createWebGPUBackend'],
+  // The second backend, so the scene tier can be drawn through both on one card and
+  // compared (item 106). Until then this gate held one backend and compared its
+  // gradient against a hand-built control.
+  'gpu/webgl2': ['createWebGL2Backend'],
   'gpu/webgpu-device': ['requestWebGPUDevice'],
+  // Rebuilding a frame inside the page, and turning a WGSL frame into the GLSL one
+  // WebGL 2 draws — the same two calls `gates/corpus.mjs` uses for its WebGL 2 arm.
+  'toy/frame': ['frameOf', 'glslFrameOf'],
   // `missing` replaced the program's own `unreached` at item 69; a source reading
   // rather than a question put to the built pipeline.
   'index.ts': ['missing'],
@@ -272,6 +279,119 @@ for (const { id, frame, values, entry } of corpus) {
     const lit = /** @type {number} */ (result.lit);
     const total = /** @type {number} */ (result.total);
     say(true, `${id} on the card  ${lit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pixels lit`);
+  }
+}
+
+// ── The scene tier on both backends, on the card (item 106) ────────────────────
+//
+// This is where §17 decision 1 gets its answer: how far the WebGL 2 scene tier
+// actually reaches, measured rather than asserted. The three presets below are the
+// scene tier's own — `sceneView`-shaped graphs with per-instance records — and each
+// is drawn twice on this one card, once through each backend, then compared by item
+// 44's three numbers.
+//
+// **Item 106 was written against `orbit-shadow` and these presets are the vehicle
+// instead**, decided 2026-08-26 with a person present and recorded in JOURNAL.md.
+// `orbit-shadow` is an example driven by `sceneView` from a world and cameras, so
+// putting it here means bundling the producer and building a world inside the page;
+// these three are corpus presets the loader already hands over built, they exercise
+// three graphs rather than one, and the WebGL 2 arm is the path `gates/corpus.mjs`
+// already proves. What is lost is the literal vehicle the item named.
+//
+// The bar is the same as the gradient control's: `differing === 0` in the limit, and
+// the pass is the worst single channel within TOLERANCE, because two hardware
+// compilers fold one graph's arithmetic close rather than equal. All three numbers
+// print whether it passes or not.
+const SCENE_TIER = ['core-scene', 'core-draw-list', 'core-material'];
+console.log('');
+for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
+  // Bytes do not survive `page.evaluate`, so they cross as arrays keyed by the
+  // resource's index — its handle since item 87 — and are rebuilt inside the page.
+  const bytesArrays = Object.fromEntries([...one.bytes].map(([index, made]) => [index, [...made]]));
+  const both = await page.evaluate(
+    async ({ id, description, code, bytesArrays, values, W, H }) => {
+      /** @param {any} description */
+      const generatedFor = (description) => {
+        const generated = new Map();
+        description.resources.forEach((/** @type {any} */ resource, /** @type {number} */ index) => {
+          const source = 'source' in resource ? resource.source : undefined;
+          if (source && bytesArrays[index]) generated.set(index, new Uint8Array(bytesArrays[index]));
+        });
+        return generated;
+      };
+      /** @param {number} w @param {number} h */
+      const canvasOf = (w, h) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        return canvas;
+      };
+
+      // The WebGPU half, on the card.
+      const device = await window.requestWebGPUDevice();
+      if (!device) return { error: 'no WebGPU device on the card' };
+      const gpu = window.createWebGPUBackend(canvasOf(W, H), device);
+      if (!gpu) return { error: 'no webgpu context' };
+      gpu.resize(W, H);
+      let fromGPU;
+      try {
+        const wgsl = window.frameOf(id, description, { wgsl: code }, undefined, undefined, generatedFor(description));
+        const program = gpu.program(wgsl);
+        program.setUniforms(values);
+        program.draw();
+        fromGPU = await gpu.readPixels();
+        program.dispose();
+      } catch (e) {
+        return { error: `webgpu: ${String(/** @type {any} */ (e).message || e).slice(0, 200)}` };
+      }
+      gpu.dispose();
+
+      // The WebGL 2 half, in the same browser on the same card, through the baked
+      // GLSL. A null frame is the bake carrying none — an outcome, not a throw.
+      const gl = window.createWebGL2Backend(canvasOf(W, H));
+      if (!gl) return { error: 'no webgl2 context' };
+      gl.resize(W, H);
+      let fromGL;
+      try {
+        const wgsl = window.frameOf(id, description, { wgsl: code }, undefined, undefined, generatedFor(description));
+        const glsl = window.glslFrameOf(/** @type {any} */ (wgsl));
+        if (!glsl) return { skip: 'the source carried no baked GLSL to draw' };
+        const program = gl.program(glsl);
+        program.setUniforms(values);
+        program.draw();
+        fromGL = await gl.readPixels();
+        program.dispose();
+      } catch (e) {
+        return { error: `webgl2: ${String(/** @type {any} */ (e).message || e).slice(0, 200)}` };
+      }
+      gl.dispose();
+
+      return window.compareFrames(fromGPU, fromGL, W, H);
+    },
+    { id: one.id, description: one.description, code: one.code, bytesArrays, values: one.values, W, H }
+  );
+
+  const label = `${one.id} on both backends`;
+  if (both.skip) say(true, `${label}  skipped: ${both.skip}`);
+  else if (both.error) say(false, `${label}  ${both.error}`);
+  else {
+    // **Reported, never asserted**, which is item 106's own instruction and not a
+    // softening of it: this is a *reading* of how far the WebGL 2 scene tier
+    // reaches, and a reading that fails the run it is taken in cannot be taken
+    // twice. A failure here would also be attributed to whichever commit happened
+    // to be under it, when what it describes is a standing difference.
+    //
+    // The numbers this printed on 2026-08-26 are large — 245 of 255 worst channel,
+    // ~19% of channels differing, thousands of hard jumps on the WebGL 2 side
+    // against none on WebGPU's. That is a structurally different picture rather
+    // than two compilers rounding apart, and **ROADMAP item 107 owns it.** When
+    // 107 closes, the bar moves here from reporting to asserting within TOLERANCE,
+    // which is the same bar the gradient control above already holds.
+    const verdict = both.maxDelta <= TOLERANCE ? 'agree within tolerance' : 'DISAGREE — item 107';
+    console.log(
+      `READ ${label}  ${verdict}: hard jumps ${both.hardJumps.a} against ${both.hardJumps.b}, ` +
+        `worst ${both.maxDelta}, ${both.differing.toLocaleString('en-US')} of ${both.channels.toLocaleString('en-US')} channels differ`
+    );
   }
 }
 

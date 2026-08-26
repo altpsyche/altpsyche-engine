@@ -17,9 +17,10 @@ Nothing here queues anything.
 
 ## One door
 
-Everything public comes from the package name. `index.ts` is the only export surface: **149
-names, 69 values and 80 types**, and `npm run gate:pack` asserts that against the built
-package on every run. Nothing reaches around it, so the files inside can be rearranged
+Everything public comes from the package name. `index.ts` is the only export surface: **69
+runtime names**, which is what `npm run gate:pack` asserts by installing the built package and
+importing it with plain node, plus the type-only exports beside them, which are erased at
+runtime and which no gate counts. Nothing reaches around it, so the files inside can be rearranged
 without moving anything a consumer imports.
 
 The two backends are reached by **dynamic import**, which is why `createFrameRenderer` and
@@ -113,7 +114,7 @@ and what the device offers, and only when nothing is left does a refusal appear.
 
 | gate | cost | what it holds |
 | --- | --- | --- |
-| `npm test` | ~1s | 848 node tests over the pure layers, both backends against recording doubles |
+| `npm test` | ~1s | 856 node tests over the pure layers, both backends against recording doubles |
 | `npm run type-check` | seconds | |
 | `npm run gate:pack` | seconds | the built package installs, plain node imports it, the door's name count is exact |
 | `npm run gate:browser` | minutes | four gates in a real browser: the corpus on both backends, the trace contract, a live surface |

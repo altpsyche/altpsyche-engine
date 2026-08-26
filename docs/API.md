@@ -7,9 +7,11 @@ which file it lives in. There is one import path and no second one:
 import { createSurface, submit, wgslFrame, probe, vec3, mat4 } from '@altpsyche/engine';
 ```
 
-**149 names: 69 values and 80 types.** `npm run gate:pack` asserts that count against the
-built package, so this document and the door cannot drift apart silently — if you add a
-name and this file still says 149, the gate is the thing to believe.
+**69 runtime names**, which is the count `npm run gate:pack` asserts by installing the built
+package and importing it with plain node. Type-only exports sit beside them and are erased at
+runtime, so no gate counts those and this document deliberately does not claim a total: three
+different parsers of `index.ts` gave three different answers, and a number no gate produced is
+not one to publish.
 
 **0.x is unstable.** Names and shapes change between releases without a major bump.
 [RoadToPureEngine.md](RoadToPureEngine.md) §14 is the shape the surface is moving toward,

@@ -131,7 +131,16 @@ export function checkWidened(entry, isPreset) {
 export function printWidened(list = WIDENED) {
   const lines =
     list.length === 0
-      ? ['the widened list is empty — every corpus preset is held byte-exact across the two backends']
+      ? [
+          // **This line used to say "every corpus preset is held byte-exact across the
+          // two backends", and that was a claim the list could not support.** An empty
+          // list means no preset has been *granted an exemption*; it says nothing about
+          // what was measured, because nothing here measures. On 2026-08-26 the card
+          // gate read three scene presets differing across the backends by up to 245 of
+          // 255 on the worst channel while this line printed underneath it, unchanged.
+          // A list that reports its own emptiness as proof is worse than no list.
+          'the widened list is empty — no preset has been granted an exemption, which is not a measurement of agreement',
+        ]
       : [
           `the widened list carries ${list.length} preset${list.length === 1 ? '' : 's'} that cannot be byte-exact:`,
           ...list.map((one) => `  ${one.id}  (${one.date})  ${one.cause}  —  ${one.readings}`),

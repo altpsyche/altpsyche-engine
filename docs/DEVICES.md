@@ -34,6 +34,56 @@ below are `probe()`'s. Both are software-renderer readings — the machine's rea
 is reachable through WebGL 2 but not, headless, through a WebGPU adapter — which is
 exactly why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-08-26 — Linux, a real card, read headed on the machine's own display
+
+**The first hardware reading in this file.** The two rows below it are transcribed
+software-renderer readings; this one was taken by `npm run device-report` on the machine's
+own X11 display, with a person present, and every field is that run's output.
+
+```
+date            2026-08-26
+backend         webgpu
+tier            toy
+webgpu          reported, adapter returned
+compositing     survived a few on-screen frames
+renderer        nvidia
+architecture    blackwell (not swiftshader)
+features        bgra8unorm-storage, clip-distances, core-features-and-limits,
+                depth-clip-control, depth32float-stencil8, dual-source-blending,
+                float32-blendable, float32-filterable, indirect-first-instance,
+                primitive-index, rg11b10ufloat-renderable, subgroups,
+                texture-component-swizzle, texture-compression-bc,
+                texture-compression-bc-sliced-3d, texture-formats-tier1,
+                texture-formats-tier2, timestamp-query
+limits          36 reported
+```
+
+**What `gate:card` read on the same machine in the same session:**
+
+```
+adapter         nvidia / blackwell, 18 adapter features, 0.3 GiB buffer ceiling
+WebGL 2         ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL 4.5.0)
+gradient        hard jumps 0 against 0, worst 0, 0 of 1,440,000 channels differ
+corpus          all 16 presets drew through WebGPU on the card
+```
+
+**Three things this settles**, each of which had only a software-renderer answer before.
+`survivedCompositing` is **true** here where the 2026-08-24 reading lost the device after
+three frames — so that compositing death is the software path's, not a property of the
+package. The adapter architecture is `blackwell`, so the SwiftShader assertion passes on a
+real name rather than by absence. And `timestamp-query` is present, which is the feature
+items 54 and 31 need and which no reading here had confirmed.
+
+**What it does not settle.** The corpus line is WebGPU only — `gate:card`'s loop draws each
+preset through one backend — so this is **not** a cross-backend per-preset comparison. The
+only two-backend reading here is the gradient control. Item 106 closes that gap and is open.
+
+**Pixel counts differ slightly from the software renderer's**, which is expected and worth
+recording rather than smoothing: `core-depth` 245,496 here against 245,512 headless,
+`core-scene` 91,571 against 91,579, `core-stencil` 188,356 against 187,489, `core-mips`
+479,952 against 479,964. A hardware compiler folds arithmetic its own way. Nothing in the
+suite asserts equality between the two, and after this reading nothing should start to.
+
 ### 2026-08-24 — Linux, headless WebGPU on the software renderer
 
 ```

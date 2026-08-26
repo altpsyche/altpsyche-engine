@@ -73,11 +73,20 @@ the lit pixel count. The most recent run:
 | `core-multisample` | 87,479 (18.2%) | 87,479 (18.2%) |
 | `core-scene` | 91,579 (19.1%) | 91,579 (19.1%) |
 | `core-compute`, `core-state`, `core-indirect` | 100.0% | skipped — a compute stage |
-| `core-perdraw`, `core-draw-list`, `core-material` | drew | skipped — needs `storage-buffer` in the bake |
+| `core-material` | 84,929 (17.7%) | 84,929 (17.7%) |
+| `core-draw-list` | 78,214 (16.3%) | 78,214 (16.3%) |
+| `core-perdraw` | drew | skipped — its storage buffer has no bake |
 | `core-texture`, `core-target`, `core-mips`, `core-stencil` | drew | skipped — a fullscreen WGSL frame bakes no vertex to link |
 | `core-report` | 270,400 (56.3%) | skipped — declares a buffer no pipeline reads |
 
-**22 of 22 draws lit their buffer, 0 failed, 11 WebGL 2 skips.**
+**24 of 24 draws lit their buffer, 0 failed, 9 WebGL 2 skips.**
+
+`core-material` and `core-draw-list` are the scene tier's own presets, and they draw on WebGL 2
+through a hand-authored GLSL vertex stage plus the uniform-block route for their read-only
+per-instance records. Their WebGL 2 counts equal their WebGPU counts — and **no gate asserts
+that equality**: the corpus bar is "lit > 0" per backend, so the match is observed rather than
+held. Holding it is what the cross-backend three-number reading is for, and that reading is
+hardware-gated and has not been taken.
 
 **Two honest caveats, because a number without them is worse than no number.** First,
 every figure above is **SwiftShader**, the software renderer: each headless browser launch
@@ -96,8 +105,11 @@ Three different mechanisms, worth telling apart because they fail at different t
    translator will not emit.
 2. **No baked GLSL** — the build translates every corpus preset to GLSL ES 3.00 with naga
    ahead of time, and a shader naga refuses is refused at *build* time with the construct
-   named. Of 34 entry points, 25 bake; the other 9 are refused for capabilities WebGL 2
-   genuinely lacks.
+   named. Today the bake carries **29 entry points across 13 presets**, with 7 refused for
+   capabilities WebGL 2 genuinely lacks. Two vertex stages naga will not emit —
+   `core-material`'s and `core-draw-list`'s, both reading a storage buffer — are supplied as
+   hand-authored GLSL in `fixtures/source/glsl/handwritten/` instead, which is how the scene
+   tier reaches WebGL 2 at all.
 3. **A fullscreen WGSL frame with no vertex stage to bake.** The shortcut frames draw with
    the backend's own corners on WebGPU; on WebGL 2 there is no vertex document to link.
 

@@ -4062,7 +4062,7 @@ is a prediction for the closing batch to confirm, not a number a gate here produ
 
 ### 106. `orbit-shadow`'s two backends, compared by item 44's three numbers
 
-**Status.** lifted card gate
+**Status.** done
 
 **Asks for.** The subject item 52 named and item 93 carried: `orbit-shadow`'s **one** scene graph drawn
 on WebGL 2 as well as WebGPU, with the difference between the two reported by item 44's three numbers
@@ -4106,4 +4106,64 @@ over them, then run `npm run gate:card` on a machine with a real graphics card. 
 browser-only code nothing here can compile or run, so it is left to the hand at the card rather than
 committed unverified; the bridge it stands on (item 105) is landed. **Reverse the lift:** set
 `Status` back to `open` and delete this paragraph.
+
+**Done 2026-08-26, on an RTX 5080 (Blackwell), and the vehicle was changed with Siva present.**
+`gates/card.mjs` now draws `core-scene`, `core-draw-list` and `core-material` — the scene tier's
+own corpus presets — through **both** backends in one browser on one card, and prints item 44's
+three numbers over each pair.
+
+**Why not `orbit-shadow`, which this item named.** It is an example driven by `sceneView` from a
+world and a camera list, so putting it in the gate means bundling the producer and building a
+world inside the page. The three presets are corpus entries the loader hands over already built,
+they exercise three graphs rather than one, and their WebGL 2 arm is the path
+[gates/corpus.mjs](../gates/corpus.mjs) already proves. What is given up is the literal vehicle,
+and that trade was a person's to make rather than a run's.
+
+**The reading, which is the deliverable and is not what anyone hoped for:**
+
+```
+core-scene       hard jumps 0 against 8234, worst 245, 274,713 of 1,440,000 channels differ
+core-draw-list   hard jumps 0 against 7895, worst 240, 234,645 of 1,440,000 channels differ
+core-material    hard jumps 0 against 7527, worst 242, 254,799 of 1,440,000 channels differ
+```
+
+**So §17 decision 1's answer is: the WebGL 2 scene tier draws, and it does not draw the same
+picture.** A worst channel of 245 out of 255 with thousands of hard jumps on one side and none on
+the other is a structurally different image, not two compilers rounding apart. **Item 107 owns
+that difference.** This item is closed because its `Done when` asked for the reading — "reported,
+never asserted" — and the reading exists; it did not ask for agreement.
+
+**Reported, never asserted, and the gate is built that way on purpose.** The scene-tier lines
+print as `READ`, not `PASS`/`FAIL`. A reading that fails the run it is taken in cannot be taken
+twice, and a failure here would be blamed on whichever commit sat under it when what it describes
+is a standing difference. When item 107 closes, the bar moves from reporting to asserting within
+`TOLERANCE`. **Reverse:** set this item back to `lifted card gate`, delete the scene-tier block
+from `gates/card.mjs` and the two bundle entries it added, and delete item 107.
+
+### 107. The WebGL 2 scene tier draws a different picture from WebGPU's
+
+**Status.** open
+
+**Asks for.** The cause of the divergence item 106 measured on a real card, and its repair. Three
+scene-tier presets drawn through both backends on an RTX 5080 differ by up to **245 of 255** on
+the worst channel, across roughly **19% of all channels**, with 7,500–8,200 hard jumps on the
+WebGL 2 side against **zero** on WebGPU's. Hard jumps on one side and none on the other is the
+signature of a different image rather than different arithmetic — a transform, a winding, an
+attribute read at the wrong offset, or per-instance records landing in the wrong slots.
+
+**Done when.** The three numbers for `core-scene`, `core-draw-list` and `core-material` come
+within `TOLERANCE` on a card, **and** `gates/card.mjs`'s scene-tier lines move from `READ` to a
+`PASS`/`FAIL` assertion — the same bar the gradient control already holds. The cause is named in
+the commit, as a mechanism rather than a place.
+
+**Needs.** item 106.
+
+**Found 2026-08-26 by item 106's own reading.** Worth stating what went undetected and why,
+because three green gates sat on top of this. The browser corpus gate draws both backends and
+asserts only *lit > 0* per backend, so two different pictures both pass. `gate:card`'s corpus loop
+draws each preset through **WebGPU alone**. And the widened list printed "every corpus preset is
+held byte-exact across the two backends" while being empty — an empty exemption list reporting
+itself as proof of agreement, which is the wording this run also fixed. **Nothing was measuring
+the thing everyone was reading.** `carry`: how far the WebGL 2 scene tier reaches is §17 decision
+1's answer and belongs in the consuming repository's log.
 
