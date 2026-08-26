@@ -3683,7 +3683,47 @@ consumer authors against changes as its identity moves per-pipeline.
 
 ### 100. `ShaderSource` takes §9's exact `GlslPair` shape
 
-**Status.** open
+**Status.** lifted needs decomposition
+
+**Lifted 2026-08-26: §9's exact `wgsl` arm cannot hold a render pipeline whose two stages are two
+distinct WGSL documents, which item 3 requires and `tests/frame-documents.test.ts` pins.** This is
+item 81's lift pattern one level deeper — "the asked shape cannot hold the data a settled item's
+`Done when` names." §9's `wgsl` arm is `{ authored: 'wgsl'; wgsl: string; glsl?: GlslPair; constants? }`:
+a **single** `wgsl` text, one WGSL module both stages compile from. But item 3 (done) — "A description
+naming two distinct WGSL documents assembles into a frame and draws, and a test asserts both documents'
+text arrives intact" — is pinned by `tests/frame-documents.test.ts`, which builds a render pipeline
+whose vertex is document `corners` and whose fragment is document `shade`, two distinct texts, and
+asserts `documentNames` returns `['corners', 'shade']` (two fetches) and that the backend "compil[es]
+a module from each document's own text" (two modules). A single `wgsl: string` holds one text and one
+module, so §9's exact shape structurally cannot represent that pipeline; adopting it literally regresses
+item 3. Item 99's `RenderStageSource` (`{ document; text; entry }` per stage) is exactly what lets a WGSL
+pipeline carry two documents today, and it is that per-stage carrier §9's single `wgsl` string collapses
+away. Two further wrinkles the same adoption forces, neither named here nor established by item 99 (whose
+only `Needs` this row inherits) — item 99 changed "where a source lives and how it is addressed, **not yet
+its shape**" and deliberately kept these on the source: (a) §9's arms carry **no entry point, no fetch-key,
+and no fullscreen marker**, so those three must relocate onto `RenderPipelineSpec` (the graph has no `§9
+RenderPipelineDesc` to hold them, which is where §9's arena layer puts entries); (b) §9's arms carry
+`authored` **per source**, a second discriminant beside the frame-level one item 94 made the single home
+of authoring language (§17 decision 6) — reintroducing it needs a call on which wins.
+
+**What is separable, filed as new items.**
+
+- **Item 102 — reconcile §9's `wgsl` arm with item 3's two-document render pipeline.** A design decision,
+  not a coding item: either §9's `wgsl` arm is amended so a WGSL pipeline can carry two stage texts (which
+  changes §9's documented exact shape and so is above this run — it is the consuming repo's log to settle,
+  `carry`), or item 3's two-distinct-WGSL-document capability is deliberately narrowed (a capability
+  regression, equally a design call). Until one is chosen, §9's *exact* shape cannot be adopted without a
+  red `frame-documents` test. This is the prerequisite item 99's `Needs` never named.
+- **Item 103 — `RenderSource` takes §9's arms with the `GlslPair` bake collapse**, atop item 102, also
+  relocating the entry points, fullscreen marker and fetch-keys off the source (§9's arms have no slot for
+  them) and resolving the per-source-vs-per-frame `authored` discriminant. This is item 100's residual once
+  the shape reconciliation exists to sit under it.
+
+**Reverse:** set this item's `Status` back to `open`, delete this paragraph and items 102 and 103; this
+row stands as one piece again and its `Needs` stand. **What would change the answer:** item 3's
+two-document WGSL capability being dropped, or §9's `wgsl` arm being revised to carry two stage texts —
+either removes the structural blocker and item 100 collapses into item 103 alone. `carry`: the
+shader-source shape a consumer authors against changes with the pair, and §9's own shape is in question.
 
 **Asks for.** §9's `ShaderSource` in the shape item 81 named exactly — the `wgsl` arm
 `{ authored: 'wgsl'; wgsl; glsl?: GlslPair; constants? }` and the `glsl` arm
@@ -3733,3 +3773,60 @@ before. A gate that goes green having run none of the path it exists to check is
 because the greenness is read as evidence. It was `surface.mjs` that caught item 87, and had that one
 been skip-shaped too the defect would have merged. **Reverse:** delete this item; the WebGL 2 arm
 keeps reporting a throw as a refusal, with nothing tracking it.
+
+### 102. Reconcile §9's `wgsl` arm with item 3's two-document render pipeline
+
+**Status.** open
+
+**Asks for.** A settled answer to the collision the lift of item 100 found: §9's `ShaderSource` `wgsl`
+arm carries a **single** `wgsl: string` (one WGSL text, one module both stages compile from), but item 3
+(done) requires a render pipeline whose vertex and fragment are **two distinct WGSL documents** — two
+texts, two modules — and `tests/frame-documents.test.ts` pins it (`documentNames` returns
+`['corners', 'shade']`, the backend compiles a module from each document's own text). §9's exact shape
+cannot represent that pipeline, so it cannot be adopted without regressing item 3.
+
+This is a design decision rather than a coding item, and it belongs in the consuming repository's log
+(`carry`): either (a) §9's `wgsl` arm is amended so a WGSL pipeline can carry its two stages' texts —
+which changes §9's documented "exact" shape and §14's row, and is not this repository's to change alone;
+or (b) item 3's two-distinct-WGSL-document capability is deliberately narrowed to "one WGSL file per
+render pipeline, both stages from it" — a capability regression that must be chosen on the package's
+merits, not to fit the shape. RoadToPureEngine.md §9/§14 own the answer; this item carries the question
+to whoever maintains that log and records which was chosen and why.
+
+**Done when.** RoadToPureEngine.md §9 (and §14's `ShaderSource` row) state, unambiguously, whether a
+WGSL render pipeline may carry two distinct documents, and if so what shape the `wgsl` arm takes to hold
+them; `tests/frame-documents.test.ts` either still passes against the stated shape or is retired with the
+capability in the same change; and item 103's `Needs` can name a settled shape.
+
+**Needs.** Nothing (a design call, not code). It gates item 103.
+
+**Filed 2026-08-26 by the lift of item 100.** The blocker item 100 could not be worked around without
+either regressing item 3 or unilaterally rewriting §9. **Reverse:** delete this item; item 103's `Needs`
+drops it and item 100's lift note stands unresolved. `carry`: the answer lives in the consuming
+repository's decision log, and §9/§14 change with it.
+
+### 103. `RenderSource` takes §9's exact arms with the `GlslPair` bake collapse
+
+**Status.** open
+
+**Asks for.** Item 100's residual, once item 102 has settled what shape §9's `wgsl` arm takes: the
+graph's per-pipeline render source becomes §9's discriminated union — the `wgsl` arm
+`{ authored: 'wgsl'; wgsl…; glsl?: GlslPair; constants? }` and the `glsl` arm
+`{ authored: 'glsl'; glsl: GlslPair; constants? }`, with `GlslPair` a single `{ vertex; fragment }`. The
+bake collapses from `Record<string, string>` keyed by entry point to that pair, built per pipeline from
+the two entry points the pipeline runs. The entry points, the fullscreen marker (today
+`source.vertex === 'fullscreen'`) and the document fetch-keys relocate off the source onto
+`RenderPipelineSpec`, which §9's arms leave no slot for, and the per-source `authored` discriminant is
+reconciled with the frame-level one item 94 owns (§17 decision 6).
+
+**Done when.** Every render pipeline's source is a `RenderSource` in the shape item 102 settled, its
+`glsl` a single `{ vertex; fragment }`; item 41's bake for each pipeline travels in that pipeline's
+source's `glsl`; item 3's two-document capability holds in whatever form item 102 left it; the node suite
+and `type-check` are green; and the browser batch agrees 15 of 15 (the only gate that proves the WebGL 2
+baked-GLSL path still draws, so it runs before this is claimed).
+
+**Needs.** item 99, item 102.
+
+**Filed 2026-08-26 by the lift of item 100**, the coding half of that lift once its design blocker
+(item 102) is settled. **Reverse:** delete this item; item 100 reverts to `open` and its `Needs` stand.
+`carry`: the shader-source shape a consumer authors against changes with the pair.
