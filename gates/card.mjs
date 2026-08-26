@@ -54,7 +54,9 @@ const { bundle, staging } = bundleForPage({
   'gpu/webgpu-device': ['requestWebGPUDevice'],
   // Rebuilding a frame inside the page, and turning a WGSL frame into the GLSL one
   // WebGL 2 draws — the same two calls `gates/corpus.mjs` uses for its WebGL 2 arm.
-  'toy/frame': ['frameOf', 'glslFrameOf'],
+  'toy/frame': ['frameOf', 'glslFrameOf', 'glslFrame'],
+  // Decision 6's join, on a machine that actually has WebGPU (item 62).
+  'gpu/select': ['selectBackend'],
   // `missing` replaced the program's own `unreached` at item 69; a source reading
   // rather than a question put to the built pipeline.
   'index.ts': ['missing'],
@@ -99,7 +101,7 @@ const card = await page.evaluate(async () => {
 
 if (card.error) {
   console.error(card.error);
-  await browser.close();
+await browser.close();
   server.close();
   rmSync(staging, { recursive: true, force: true });
   process.exit(1);
@@ -282,6 +284,61 @@ for (const { id, frame, values, entry } of corpus) {
   }
 }
 
+// ── Decision 6's promise, on a machine that has WebGPU (item 62) ───────────────
+//
+// A consumer arriving with a GLSL shader gets a picture rather than a lecture: GLSL
+// selects WebGL 2 *even where WebGPU exists*, because the language it is written in
+// is the capability it forfeits. Items 6, 8 and 9 each built a piece of this and
+// each disclosed the half it could not prove — the offering in their tests is a
+// written fixture, because the machine they ran on never returned a WebGPU adapter.
+// This browser did return one, which is the whole point of taking it here.
+console.log('');
+const glslJoin = await page.evaluate(async ({ W, H }) => {
+  const vertex = '#version 300 es\nin vec2 position;void main(){gl_Position=vec4(position,0.0,1.0);}';
+  const fragment =
+    '#version 300 es\nprecision highp float;out vec4 o;void main(){o=vec4(0.2,0.7,0.9,1.0);}';
+  const frame = window.glslFrame('glsl-fragment', vertex, fragment);
+
+  // The offering is this machine's, read rather than written down: an adapter was
+  // returned above, so `webgpu` is true here and the selection is the real question.
+  const adapter = await navigator.gpu?.requestAdapter();
+  const offer = { webgpu: Boolean(adapter), webgl2: Boolean(document.createElement('canvas').getContext('webgl2')) };
+  const chose = window.selectBackend(frame, offer);
+  if (!('backend' in chose)) return { error: `selection refused it: ${chose.refusal}` };
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const backend = window.createWebGL2Backend(canvas);
+  if (!backend) return { error: 'no webgl2 context' };
+  backend.resize(W, H);
+  let lit = 0;
+  try {
+    const program = backend.program(frame);
+    program.draw();
+    const px = await backend.readPixels();
+    for (let i = 0; i < px.length; i += 4) if (px[i] > 4 || px[i + 1] > 4 || px[i + 2] > 4) lit++;
+    program.dispose();
+  } catch (e) {
+    return { error: String(/** @type {any} */ (e).message || e).slice(0, 200) };
+  }
+  backend.dispose();
+  return { offer, backend: chose.backend, lit, total: W * H };
+}, { W, H });
+
+if (glslJoin.error || !glslJoin.offer) {
+  say(false, `a GLSL frame on a WebGPU machine  ${glslJoin.error ?? 'no reading came back'}`);
+} else {
+  // The earlier arm rules out the error shape, so the four readings are all present.
+  const lit = /** @type {number} */ (glslJoin.lit);
+  const total = /** @type {number} */ (glslJoin.total);
+  say(
+    glslJoin.offer.webgpu === true && glslJoin.backend === 'webgl2' && lit > 0,
+    `a GLSL frame selects WebGL 2 where WebGPU exists  webgpu offered: ${glslJoin.offer.webgpu}, ` +
+      `chose ${glslJoin.backend}, ${lit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pixels lit`
+  );
+}
+
 // ── The scene tier on both backends, on the card (item 106) ────────────────────
 //
 // This is where §17 decision 1 gets its answer: how far the WebGL 2 scene tier
@@ -386,6 +443,71 @@ for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
         `worst ${both.maxDelta}, ${both.differing.toLocaleString('en-US')} of ${both.channels.toLocaleString('en-US')} channels differ`
     );
   }
+}
+
+// ── A thousand objects, timed on the card (item 31's millisecond half) ─────────
+//
+// Item 31 asks for two things and insists they are not confused: **counters that
+// are enforced** and **milliseconds that are tracked**. The counters are asserted
+// in CI by `tests/instanced-cubes-cost.test.ts`, which reads `cost()` over a
+// thousand-object frame and holds it to an exact figure. Milliseconds cannot be
+// asserted anywhere — §17 decision 9 settles that wall-clock is *measured on real
+// hardware and never gated*, because a flaky perf gate is disabled within a month
+// and takes the real signal with it.
+//
+// So this prints and asserts nothing. It is a reading, taken where a reading can
+// honestly be taken, with the device named beside it — which is the only form in
+// which a millisecond figure from this project means anything.
+const timed = corpus.find((preset) => preset.id === 'core-draw-list');
+if (timed) {
+  const bytesArrays = Object.fromEntries([...timed.bytes].map(([index, made]) => [index, [...made]]));
+  const times = await page.evaluate(
+    async ({ id, description, code, block, bytesArrays, values, W, H, frames }) => {
+      const generated = new Map();
+      description.resources.forEach((/** @type {any} */ r, /** @type {number} */ i) => {
+        const source = 'source' in r ? r.source : undefined;
+        if (source && bytesArrays[i]) generated.set(i, new Uint8Array(bytesArrays[i]));
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const device = await window.requestWebGPUDevice();
+      if (!device) return { error: 'no WebGPU device on the card' };
+      const backend = window.createWebGPUBackend(canvas, device);
+      if (!backend) return { error: 'no webgpu context' };
+      backend.resize(W, H);
+      const frame = window.frameOf(id, description, { wgsl: code }, block, undefined, generated);
+      const program = backend.program(frame);
+      program.setUniforms(values);
+      // One drawn and read back first, so compilation and first-use allocation are
+      // not counted as frame time.
+      program.draw();
+      await backend.readPixels();
+      /** @type {number[]} */
+      const ms = [];
+      for (let i = 0; i < frames; i++) {
+        const at = performance.now();
+        program.setUniforms(values);
+        program.draw();
+        await backend.readPixels();
+        ms.push(performance.now() - at);
+      }
+      program.dispose();
+      backend.dispose();
+      ms.sort((a, b) => a - b);
+      const at = (/** @type {number} */ q) => ms[Math.min(ms.length - 1, Math.floor(ms.length * q))];
+      return { p50: at(0.5), p95: at(0.95), p99: at(0.99), frames: ms.length };
+    },
+    { id: timed.id, description: timed.description, code: timed.code, block: timed.block, bytesArrays, values: timed.values, W, H, frames: 120 }
+  );
+  console.log('');
+  if (times.error) console.log(`     a thousand objects: ${times.error}`);
+  else
+    console.log(
+      `     a thousand objects on ${card.vendor} / ${card.architecture}, ${W}x${H}, ${times.frames} frames after a warm one:\n` +
+        `     p50 ${/** @type {number} */ (times.p50).toFixed(2)} ms, p95 ${/** @type {number} */ (times.p95).toFixed(2)} ms, ` +
+        `p99 ${/** @type {number} */ (times.p99).toFixed(2)} ms  (draw plus a full readback, reported and never gated)`
+    );
 }
 
 await browser.close();

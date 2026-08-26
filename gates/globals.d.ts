@@ -28,6 +28,8 @@ declare global {
   interface Window {
     frameOf: typeof Door.frameOf;
     glslFrameOf: typeof Door.glslFrameOf;
+    glslFrame: typeof Door.glslFrame;
+    selectBackend: typeof Door.selectBackend;
     missing: typeof Door.missing;
     probe: typeof Door.probe;
     readingRow: typeof Door.readingRow;

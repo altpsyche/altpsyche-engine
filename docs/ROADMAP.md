@@ -832,7 +832,7 @@ and cannot publish a budget before the frame it measures exists. See [JOURNAL.md
 
 ### 31. A published budget for a thousand objects
 
-**Status.** lifted to a machine with a real graphics card (the standing job of items 55, 57, 62)
+**Status.** done
 
 **Asks for.** The first row of the frame budget: counters that are enforced, milliseconds that are tracked.
 
@@ -869,6 +869,35 @@ on a machine whose `probe()` reports WebGPU returned and survived (item 9), wher
 Closes §3 row 8. Implements the §14 renames while they are still free.
 
 *Exit:* `orbit-shadow` runs on both backends and a scene change is reviewable as a graph diff.
+
+**Done 2026-08-26. Both halves exist and are deliberately kept apart, which is what this item
+insisted on.**
+
+**The counters are enforced in CI.** `tests/instanced-cubes-cost.test.ts` reads `cost()` over a
+thousand-object frame and holds it to exact figures, on every `npm test`.
+
+**The milliseconds are a reading, taken on hardware, with the device named:**
+
+```
+a thousand objects on nvidia / blackwell, 800x600, 120 frames after a warm one:
+p50 1.30 ms, p95 3.30 ms, p99 191.60 ms   (draw plus a full readback)
+```
+
+Reported by `gate:card`, asserted by nothing. §17 decision 9 settles that: wall-clock is measured
+on real hardware and never gated, because a flaky perf gate is disabled within a month and takes
+the real signal with it.
+
+**Three things about that number that a reader should not have to guess.** It includes a full
+`readPixels` of an 800×600 frame, so it is *not* a frame time — a real consumer presenting to a
+canvas never pays that readback. One frame is drawn and read before the run so compilation and
+first-use allocation are not counted. And **the p99 of 191.60 ms is an outlier of a different
+kind from the other two** — a single stall, most likely a collection pause or a readback wait, in
+120 frames. It is printed rather than trimmed, because a p99 that only ever looks good is a
+number nobody can act on.
+
+**Reverse:** delete the timing block from `gates/card.mjs`; set this back to `lifted`. **What
+would change the answer:** item 55's harness, which would take this reading over more frames and
+without the readback in the loop, and would supersede this as the place the number lives.
 
 ### 32. `sceneView`
 
@@ -1635,7 +1664,7 @@ See [JOURNAL.md](JOURNAL.md).
 
 ### 49. WebGL 2: instancing and per-draw UBO ranges
 
-**Status.** lifted needs decomposition
+**Status.** lifted decomposed into item 77, item 85
 
 **Done when.** `instanced-cubes` draws here, at the same object count, with alignment respected.
 
@@ -1690,6 +1719,8 @@ pixels deferred to item 79, the shape item 77 took. Both are decomposition calls
 makes, not an unattended run. **Reverse:** set `Status` back to `open` and delete this note; the
 item returns to its pre-lift shape, with its `Done when` still vacuous and its per-draw preset
 still impossible on WebGL 2 — which is the state this lift records rather than the one it caused.
+
+**Status corrected 2026-08-26.** It read `lifted needs decomposition` after the decomposition had already happened. Its instancing half was already delivered by item 77, and its genuine remainder — per-draw UBO ranges wired through the WebGL 2 backend — became item 85, which landed with a corpus preset that reads one. Nothing was waiting on a decomposer, and a stale label of exactly this kind kept item 56 blocked on item 38 for weeks. **Reverse:** set `Status` back to `lifted needs decomposition` and delete this paragraph.
 
 ### 50. WebGL 2: mip generation
 
@@ -2180,7 +2211,7 @@ tests green (+3), `type-check` green. See [JOURNAL.md](JOURNAL.md).
 
 ### 62. Decision 6's promise is confirmed on a machine that has WebGPU
 
-**Status.** lifted to a machine with a real graphics card (the standing job of items 55, 57)
+**Status.** done
 
 **Asks for.** One reading, on a device that actually returns a WebGPU adapter, showing that a GLSL-authored frame is drawn by WebGL 2 there and that the picture comes out.
 
@@ -2196,6 +2227,22 @@ tests green (+3), `type-check` green. See [JOURNAL.md](JOURNAL.md).
 Each row is honest and neither is wrong. What nobody owned is the join: **on a machine that has WebGPU, nothing has yet shown a GLSL paste drawing through WebGL 2.** Three green halves are not a verified whole, and this is the item that says so.
 
 **It cannot be settled on the machine the loop runs on**, per §17's three harness notes: every headless launch there reaches SwiftShader whatever the flags say, and a real adapter needs a visible window with `--enable-features=Vulkan` and `--ozone-platform=x11` together. So an unattended run should **lift this item rather than work it**, and the reading belongs to whoever has the hardware — the same standing job as item 57.
+
+**Done 2026-08-26 on an RTX 5080, and this is the join three items could each only half-prove.**
+`gate:card` now reads the offering off the live browser — an adapter *was* returned, so
+`webgpu: true` is a reading rather than a fixture — hands `selectBackend` a GLSL frame, and gets
+`webgl2` back. It then draws that frame through `createWebGL2Backend` on the same machine:
+**480,000 of 480,000 pixels lit.** So on a machine that has WebGPU, a GLSL paste is drawn by
+WebGL 2 and a picture comes out, which is the whole of §17 decision 6's promise.
+
+**What differs from this item's letter, said plainly.** The item names `examples/glsl-fragment`.
+The gate builds an equivalent GLSL frame through the same `glslFrame` door the example uses,
+rather than serving the example's page and driving it — the example runner serves a URL and waits
+for a person, which a gate cannot do. What is proven is the selection and the draw on a WebGPU
+machine; what is not is that that particular example page renders.
+
+**Reverse:** delete the GLSL-join block from `gates/card.mjs`, the two `globals.d.ts` lines it
+needed, and the `gpu/select`/`glslFrame` bundle entries; set this back to `lifted`.
 
 ### 63. The pipeline cache dedupes across programs
 
@@ -3468,7 +3515,7 @@ through it — which needs that bridge, and its byte agreement per item 44 — i
 
 ### 93. `orbit-shadow`'s two backends, compared by item 44's three numbers
 
-**Status.** lifted needs decomposition
+**Status.** lifted decomposed into items 105, 106
 
 **Lifted 2026-08-26: item 93 silently bundles an unfiled WGSL-storage-buffer→GLSL bridge its
 `Needs` never name with a pixel reading no unattended node run can take.** Two independent blockers,
@@ -3543,6 +3590,8 @@ It carries item 52's title and decision 1's answer forward, so the subject is tr
 dropped by the lift. **Reverse:** delete this item; item 52's cross-backend reading is tracked by
 nothing. `carry`: decision 1's answer belongs in the consuming repository's log.
 
+**Status corrected 2026-08-26.** It read `lifted needs decomposition` after the decomposition had already happened. Item 105 gave a WGSL scene's read-only storage buffer a WebGL 2 bake; item 106 took the cross-backend reading this item was named for. Nothing was waiting on a decomposer, and a stale label of exactly this kind kept item 56 blocked on item 38 for weeks. **Reverse:** set `Status` back to `lifted needs decomposition` and delete this paragraph.
+
 ### 94. The authoring language becomes a discriminant, not `frame.target` or `module.code`
 
 **Status.** done
@@ -3573,7 +3622,7 @@ other is item 95. **Reverse:** delete this item; item 81 reverts to `open` and i
 
 ### 95. `ShaderSource` takes §9's exact `GlslPair` shape
 
-**Status.** lifted needs decomposition
+**Status.** lifted decomposed into items 99, 100
 
 **Lifted 2026-08-26, the curator decision this item's own note deferred to whoever reached it.** The
 `Done when` bundles two structural changes with a hard ordering between them, and the item itself
@@ -3617,6 +3666,8 @@ source per render pipeline may itself be separable from adopting the `GlslPair` 
 curator meeting this once item 87 lands decides. **Reverse:** delete this item; item 81 reverts to
 `open` and its `Needs` stand. `carry`: the shader-source shape a consumer authors against changes
 with this.
+
+**Status corrected 2026-08-26.** It read `lifted needs decomposition` after the decomposition had already happened. Item 99 gave each render pipeline its own source; item 100 carried the `GlslPair` shape and was itself decomposed onward. Nothing was waiting on a decomposer, and a stale label of exactly this kind kept item 56 blocked on item 38 for weeks. **Reverse:** set `Status` back to `lifted needs decomposition` and delete this paragraph.
 
 ### 96. The uniform-block buffer carries a label of its own
 
@@ -3738,7 +3789,7 @@ consumer authors against changes as its identity moves per-pipeline.
 
 ### 100. `ShaderSource` takes §9's exact `GlslPair` shape
 
-**Status.** lifted needs decomposition
+**Status.** lifted decomposed into items 102, 103
 
 **Lifted 2026-08-26: §9's exact `wgsl` arm cannot hold a render pipeline whose two stages are two
 distinct WGSL documents, which item 3 requires and `tests/frame-documents.test.ts` pins.** This is
@@ -3798,6 +3849,8 @@ pipeline's source's `glsl`; the node suite and `type-check` are green; and the b
 the per-pipeline source identity item 99 establishes is what lets the pair shape hold each pipeline's
 bake. **Reverse:** delete this item; item 95 reverts to `open` and its `Needs` stand. `carry`: the
 shader-source shape a consumer authors against changes with the pair.
+
+**Status corrected 2026-08-26.** It read `lifted needs decomposition` after the decomposition had already happened. Item 102 settled §9's `wgsl` arm as a `WgslPair`; item 103 landed the shape over it. Nothing was waiting on a decomposer, and a stale label of exactly this kind kept item 56 blocked on item 38 for weeks. **Reverse:** set `Status` back to `lifted needs decomposition` and delete this paragraph.
 
 ### 101. The corpus gate fails for a WebGL 2 build error instead of skipping it
 
