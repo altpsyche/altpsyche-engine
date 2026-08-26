@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -138,10 +138,24 @@ function mermaidPathRefs(text: string, from: string, doc = ''): Ref[] {
   return refs;
 }
 
+/** Every markdown document a reader is pointed at: the guides under `docs/` and the
+ *  four at the repository root. The root files were outside this check until 0.3.0,
+ *  which was a hole rather than a choice — README.md names more paths than any guide
+ *  does, and a broken link there is the first one a consumer meets. */
+function markdownDocs(): { name: string; full: string }[] {
+  const found = readdirSync(docsDir)
+    .filter((name) => name.endsWith('.md'))
+    .map((name) => ({ name, full: path.join(docsDir, name) }));
+  for (const name of ['README.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'CLAUDE.md']) {
+    const full = path.join(docsDir, '..', name);
+    if (existsSync(full)) found.push({ name, full });
+  }
+  return found;
+}
+
 function pathRefs(): Ref[] {
   const refs: Ref[] = [];
-  for (const name of readdirSync(docsDir)) {
-    if (!name.endsWith('.md')) continue;
+  for (const { name, full: docPath } of markdownDocs()) {
     // JOURNAL.md is a dated record of what was true when each row was written, not a
     // document teaching a reader where anything lives. A row that named a real file
     // correctly must not become a gate failure because a later commit deleted that
@@ -150,9 +164,8 @@ function pathRefs(): Ref[] {
     // worth. Item 6 was reverted and its rows still name the producer it removed,
     // which is exactly the case this skip exists for.
     if (name === EXCLUDED_HISTORY) continue;
-    const full = path.join(docsDir, name);
-    const dir = path.dirname(full);
-    const raw = readFileSync(full, 'utf-8');
+    const dir = path.dirname(docPath);
+    const raw = readFileSync(docPath, 'utf-8');
     refs.push(...mermaidPathRefs(raw, dir, name));
     const text = stripFences(raw);
     for (const m of text.matchAll(/\]\(([^)]+)\)/g)) {

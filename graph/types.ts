@@ -727,7 +727,7 @@ export interface DeviceReport {
  * This is the resident-lifetime reading the graph does not carry, but its shape is
  * part of the `Backend` contract, so it lives here in `graph/` (which imports
  * nothing, per §7 rule 1) rather than in `resource/`, and the arena imports it
- * from here. Per [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §12 point 6
+ * from here. Per RoadToPureEngine.md §12 point 6
  * and §17 decision 9 (item 22). */
 export interface FrameTraffic {
   /** Bytes written once into a resident resource's first contents: geometry a
@@ -781,8 +781,8 @@ export interface Backend {
    * the pipeline cache, and the passes it runs planned for the executor. It
    * replaces `createProgram`, which built all three inside one method; each
    * lifetime now lives in its own module (`resource/`, `pipeline/`, `submit/`) and
-   * this only composes them, per [RoadToPureEngine.md](../docs/RoadToPureEngine.md)
-   * §5 and [ROADMAP.md](../docs/ROADMAP.md) item 15.
+   * this only composes them, per RoadToPureEngine.md
+   * §5 and ROADMAP.md item 15.
    *
    * What it hands back is the composed frame, not a named vocabulary type: item 90
    * deleted the `ShaderProgram` interface §14 called "three lifetimes in a trench

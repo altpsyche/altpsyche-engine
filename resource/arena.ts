@@ -1,5 +1,5 @@
 /**
- * The arena: the resident lifetime of [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §5,
+ * The arena: the resident lifetime of RoadToPureEngine.md §5,
  * addressed by branded integer handle.
  *
  * Buffers, textures, samplers and query sets are what a backend allocates that
@@ -15,7 +15,7 @@
  * the new one. The slot's generation is multiplied into the handle above its
  * index, so the handle a slot is handed out under after a free never equals the
  * one it was handed out under before it, and a stale handle is detectable rather
- * than silently valid — the mistake [RoadToPureEngine.md](../docs/RoadToPureEngine.md)
+ * than silently valid — the mistake RoadToPureEngine.md
  * §5 names as fusing the three lifetimes.
  *
  * It is generic over what it holds, and told how to dispose of one, because the

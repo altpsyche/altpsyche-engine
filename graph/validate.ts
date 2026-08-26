@@ -13,7 +13,7 @@
  *
  * This absorbs the whole of what `renderer/frame-rules.ts` was — the byte widths
  * a query resolves and the whole-words a storage buffer must be — per
- * [ROADMAP.md](../docs/ROADMAP.md) item 19. What is *not* here is a rule that only
+ * ROADMAP.md item 19. What is *not* here is a rule that only
  * ever had one home: the source-against-declaration checks the build alone can
  * make (a texture the source never samples, a binding no resource backs) stay in
  * the build, because a graph carries no source to check them against.

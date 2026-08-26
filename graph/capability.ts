@@ -1,7 +1,7 @@
 /**
  * `Capability`: the optional pieces of a card's power a graph may depend on,
  * given a name so the dependency lives in data rather than in a method a backend
- * throws from, per [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §10 and §17
+ * throws from, per RoadToPureEngine.md §10 and §17
  * decision 2 — "a method one backend has to throw from is the wrong method", the
  * best rule in the codebase, carried forward and given a type.
  *

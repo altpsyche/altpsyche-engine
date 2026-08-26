@@ -1,6 +1,6 @@
 /**
  * `Ref` and its two arms: the distinction that serves both tiers with one type,
- * per [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §8.
+ * per RoadToPureEngine.md §8.
  *
  * A resource a graph points at lives one of two lives, and which one is a fact
  * the ref carries rather than one a reader infers:

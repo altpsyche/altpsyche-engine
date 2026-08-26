@@ -1,6 +1,6 @@
 /**
  * The handles a graph is written in terms of: the authoring side of
- * [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §8.
+ * RoadToPureEngine.md §8.
  *
  * A handle is a branded integer — the **index** of the thing it names in the
  * graph's own list. A resource handle indexes `FrameGraph.resources`, a module
@@ -17,7 +17,7 @@
  * cache's `PipelineHandle`; the same integer travels under an authoring brand
  * here and a runtime brand there, and the two unify as the graph's resource
  * handles become the arena's in Stage 2 (see item 16's row in
- * [JOURNAL.md](../docs/JOURNAL.md)). The cast from an authoring handle to a
+ * JOURNAL.md). The cast from an authoring handle to a
  * device resource lives in the backend (and, in Stage 2, in `FrameResources`),
  * never in `graph/`.
  *

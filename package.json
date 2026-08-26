@@ -1,6 +1,6 @@
 {
   "name": "@altpsyche/engine",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The AltPsyche renderer and the engine above it: one door onto WebGL 2 and WebGPU, and a scene becoming a frame.",
   "license": "MIT",
   "author": "Siva",

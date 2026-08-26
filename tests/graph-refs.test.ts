@@ -14,7 +14,7 @@ import {
 import type { BufferHandle, TransientId } from '../graph/handles';
 
 /**
- * `Ref`'s two arms, per [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §8 and
+ * `Ref`'s two arms, per RoadToPureEngine.md §8 and
  * ROADMAP item 17: a graph declares a transient depth target and a resident mesh
  * buffer in one frame, and each resolves — the resident one through the arena
  * that allocated it, the transient one through the descriptor the graph carries.
@@ -115,7 +115,7 @@ describe('a graph declaring a transient depth target and a resident mesh buffer 
 /**
  * ROADMAP item 18: a transient survives the frame it was made in. Two frames
  * asking for one shape share one allocation, and the second frame makes nothing
- * new — the pooling of [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §8. A
+ * new — the pooling of RoadToPureEngine.md §8. A
  * fresh count-only maker stands in for the device, the way the arena's own test
  * uses a string: the fact under test is that `make` runs once, not twice.
  */

@@ -1,6 +1,6 @@
 /**
  * `refusal(graph, device)`: the third of the pure functions of
- * [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §12, beside `validate` and
+ * RoadToPureEngine.md §12, beside `validate` and
  * `cost`, per §10 and §17 decision 2 (item 24). It reads what a graph declares it
  * `requires` against what a device reports it has, and names every capability the
  * device is missing — or returns null where the device has them all.

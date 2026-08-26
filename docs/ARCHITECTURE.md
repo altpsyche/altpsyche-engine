@@ -5,10 +5,8 @@ rather than remembered. It is the only description of what exists: the two desig
 codebase was built against were deleted on 2026-08-26, having gone stale about the code as well
 as about direction.
 
-**What this document is not.** It is not direction — [RoadToPureEngine.md](RoadToPureEngine.md)
-owns that. It is not the queue — [ROADMAP.md](ROADMAP.md) is the only thing that queues work.
-It is not the register — [JOURNAL.md](JOURNAL.md) holds every call taken with nobody watching.
-Nothing here queues anything.
+**What this document is not.** It is not a plan and it queues nothing. It describes the library
+as it stands; what it should become is decided in the open, not written down here in advance.
 
 ---
 
@@ -91,14 +89,13 @@ and what the device offers, and only when nothing is left does a refusal appear.
 The original design document stated five. Four are still the design; one left with the website:
 
 1. ~~Code is 1:1 with the shader page~~ — **a website rule, not a library one.** It welded
-   together a scope call, a content rule about article text, and a size cap derived on top
-   of both. `RoadToPureEngine.md` §1 tells the three apart; the cap lost its premise when
-   the library and the article corpus stopped being one artifact. An engine's entire value
-   is code you do not read.
+   together three separate things: a scope call, a content rule about article text, and a size
+   cap derived on top of both. The cap lost its premise when the library and the article corpus
+   stopped being one artifact. An engine's entire value is code you do not read.
 2. **A method one backend has to throw from is the wrong method.** Capability lives in the
    data. Still the rule, and still the one most likely to be broken by accident — it was
    broken and repaired twice in one day at items 92 and 97.
-3. **A description is data and the build is one producer of it.** The moment something can
+3. **A description is data, and the build is one producer of it.** The moment something can
    only be produced by the build, or only at run time, the seam is gone.
 4. **One fact, one home**, and a disagreement stops the build rather than reaching the card.
 5. **Every capability has a preset a gate draws and a trace nothing else asserts.** A

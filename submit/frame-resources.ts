@@ -1,6 +1,6 @@
 /**
  * The resolution of a graph's refs, which is where `Ref`'s two arms
- * ([RoadToPureEngine.md](../docs/RoadToPureEngine.md) §8, item 17) meet the
+ * (RoadToPureEngine.md §8, item 17) meet the
  * lifetimes that own them.
  *
  * A resident ref resolves through the arena that allocated it — the resident

@@ -1,5 +1,5 @@
 /**
- * The pipeline cache: the static lifetime of [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §5,
+ * The pipeline cache: the static lifetime of RoadToPureEngine.md §5,
  * addressed by content rather than by name.
  *
  * A pipeline is what a compilation produces — the shader modules, the vertex
@@ -19,7 +19,7 @@
  * to carry every fact any of them depended on or two frames sharing an id would
  * draw the wrong picture. The structure a *pipeline* depends on is the static
  * slice of that, held here; the resident and per-frame slices a program also bakes
- * in are what `frameKey` below still carries until [ROADMAP.md](../docs/ROADMAP.md)
+ * in are what `frameKey` below still carries until ROADMAP.md
  * items 13 and 15 take the program apart. One keyer, owned by the module that owns
  * pipeline structure, rather than two.
  *

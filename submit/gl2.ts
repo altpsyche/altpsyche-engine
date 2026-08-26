@@ -6,10 +6,10 @@
  * command the moment it is made — so this is `submit/`'s whole job here: bind the
  * program the pipeline compiled and the quad the arena allocated, and draw the
  * frame's own corners. It lived inside the backend's `createProgram` until
- * [ROADMAP.md](../docs/ROADMAP.md) item 13 gave the executor its own layer; the
+ * ROADMAP.md item 13 gave the executor its own layer; the
  * calls are unchanged by the move.
  *
- * It names no DOM object, per [RoadToPureEngine.md](../docs/RoadToPureEngine.md)
+ * It names no DOM object, per RoadToPureEngine.md
  * §7 rule 3: the context and the resources it draws with are handed in, and the
  * canvas behind the context is the backend's.
  */

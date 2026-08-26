@@ -1,7 +1,7 @@
 /**
  * A one-shot reading of what this device is, taken once and handed back whole.
  *
- * It answers decision 11 of [RoadToPureEngine.md](../docs/RoadToPureEngine.md)
+ * It answers decision 11 of RoadToPureEngine.md
  * §17: readings are published, a support matrix is not. A matrix rots on hardware
  * nobody here owns and turns every stale row into a lie; a dated reading a device
  * took of itself does not, because it never claims to be anything but what one

@@ -20,7 +20,7 @@
  * GLSL source declares a uniform it never reads, the compiler's answer and the
  * source's diverge, and this is the source's — the one a page drawing controls
  * wants, since a control feeds a value whether or not this frame's code path
- * reads it. See [ROADMAP.md](../docs/ROADMAP.md) item 69.
+ * reads it. See ROADMAP.md item 69.
  *
  * It lives in `toy/` because the toy tier is what has one shader with one uniform
  * block, and it reads the frame's module text through the same parsers the layout

@@ -2,7 +2,7 @@
  * The sixth example: a mesh that is not in the page when it opens, fetched as an
  * asset a moment later, parsed by this file, and drawn — the asset-loading tier.
  *
- * This is where [RoadToPureEngine.md](../../docs/RoadToPureEngine.md) §17 decision 5
+ * This is where RoadToPureEngine.md §17 decision 5
  * lands: **the asset pipeline lives outside this library.** The arena takes bytes —
  * `ImageBitmap`, `ArrayBuffer`, typed arrays — and glTF parsing is a consumer's
  * business, so the library ships no parser and this example writes the small one its

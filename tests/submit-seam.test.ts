@@ -6,7 +6,7 @@ import type { VertexHandle } from '../graph/handles.js';
 import type { DrawnGeometry } from '../submit/plan';
 
 /**
- * The seam of [ROADMAP.md](../docs/ROADMAP.md) item 14: a build-time frame filled
+ * The seam of ROADMAP.md item 14: a build-time frame filled
  * onto the new path in one place.
  *
  * `submit/` is the new path — a graph becomes a plan and then commands. A

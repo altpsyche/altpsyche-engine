@@ -1,5 +1,5 @@
 /**
- * The two frame-attachment analyses of [ROADMAP.md](../docs/ROADMAP.md) item 1,
+ * The two frame-attachment analyses of ROADMAP.md item 1,
  * kept pure and device-free so `cost()` reads one of them and the executor reads
  * both without either restating the rule (item 19's discipline).
  *

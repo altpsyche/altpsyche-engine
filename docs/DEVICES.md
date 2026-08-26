@@ -3,7 +3,7 @@
 **Readings, not a support matrix.** Each row below is what one machine saw of itself
 on one day. This file publishes readings because a matrix — a table of which device
 "supports" the package — rots on hardware nobody here owns and turns every stale row
-into a lie ([RoadToPureEngine.md](RoadToPureEngine.md) §17 decision 11). A reading
+into a lie. A reading
 never claims to be anything but what a device reported when it was asked.
 
 **Absence is not a claim of non-support.** A device with no row here has not been read,
@@ -26,9 +26,8 @@ renderer that a reading trusting the adapter's name would record as hardware.
 
 ## Readings
 
-The two rows below are **transcribed from the measured facts recorded in
-[RoadToPureEngine.md](RoadToPureEngine.md) §17** (measured fact two and decision 11),
-taken on the project's Linux machine. They are the readings that already existed when
+The two software-renderer rows below are **transcribed from measurements recorded during
+development**, taken on the project's Linux machine. They are the readings that already existed when
 this file was created and are carried here rather than re-measured; the field names
 below are `probe()`'s. Both are software-renderer readings — the machine's real card
 is reachable through WebGL 2 but not, headless, through a WebGPU adapter — which is
@@ -72,11 +71,11 @@ corpus          all 16 presets drew through WebGPU on the card
 three frames — so that compositing death is the software path's, not a property of the
 package. The adapter architecture is `blackwell`, so the SwiftShader assertion passes on a
 real name rather than by absence. And `timestamp-query` is present, which is the feature
-items 54 and 31 need and which no reading here had confirmed.
+GPU timestamps need, and which no reading here had confirmed.
 
 **What it does not settle.** The corpus line is WebGPU only — `gate:card`'s loop draws each
-preset through one backend — so this is **not** a cross-backend per-preset comparison. The
-only two-backend reading here is the gradient control. Item 106 closes that gap and is open.
+preset through one backend. The cross-backend comparison is taken separately, over the scene
+presets, and agrees to within one channel.
 
 **Pixel counts differ slightly from the software renderer's**, which is expected and worth
 recording rather than smoothing: `core-depth` 245,496 here against 245,512 headless,
@@ -126,7 +125,7 @@ that motivates the architecture assertion.
 
 ## Wanted
 
-No iPhone has been read; §57 of [ROADMAP.md](ROADMAP.md) wants one. Any reading from
+No iPhone has been read, and one is wanted. Any reading from
 real hardware — a discrete GPU through a headed WebGPU adapter, a phone, an integrated
 card — is a row this file does not yet have. Absence of a row is absence of a reading,
 nothing more.

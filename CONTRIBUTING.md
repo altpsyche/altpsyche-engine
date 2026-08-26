@@ -55,17 +55,17 @@ number from another machine. If a claim needs a measurement, take it or say you 
 **Name what a gate could not see.** A green gate over a picture that cannot move by construction
 proves less than it looks like. One honest line, in the commit message.
 
-## How work is chosen
+## How work is tracked
 
-Work is queued in `docs/ROADMAP.md` and nothing else queues it. Each item carries a `Done when`
-written so that someone who did not do the work can check it. An item whose criterion cannot be
-checked independently is not finished.
+**In the issue tracker and in commit messages, as of 0.3.0.** This repository used to carry its
+own queue, register and direction documents in `docs/`. They were deleted when the queue they
+tracked was emptied: 107 items, every one either landed, superseded by an item that landed, or a
+standing obligation that cannot close.
 
-Calls taken along the way go in `docs/JOURNAL.md` — what was decided, **how to reverse it**, and
-what would change the answer. An entry that does not say how to undo it has not been written.
-
-`docs/RoadToPureEngine.md` owns direction: the settled decisions, the layer stack, the invariants.
-Read §17 before re-opening something it already settled.
+What survived them is in the code and in the history. Every landed change carries the measurement
+it earned in its commit message, and `git log` is the record — `git log --grep '^item 27'` still
+finds what item 27 landed. If you want the reasoning behind a design, read the doc comments: this
+codebase writes *why* at the point of the decision rather than in a document beside it.
 
 ## Design rules that are not negotiable
 

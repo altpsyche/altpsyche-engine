@@ -4,12 +4,12 @@
  * file — a graph becomes a plan by arithmetic and lookup alone, and the plan is
  * what [execute.ts](execute.ts) turns into commands on the card.
  *
- * This is `submit/`'s share of [RoadToPureEngine.md](../docs/RoadToPureEngine.md)
+ * This is `submit/`'s share of RoadToPureEngine.md
  * §5's per-frame lifetime: which passes run, which draws, which attachments each
  * opens with. It reads from the graph (`frame`) and from the resident lifetime
  * only through `geometryOf`, which the backend hands in already resolved, so this
  * file allocates nothing and compiles nothing. It lived inside the WebGPU
- * backend's `createProgram` until [ROADMAP.md](../docs/ROADMAP.md) item 13 split
+ * backend's `createProgram` until ROADMAP.md item 13 split
  * the executor out; the code is unchanged by the move, which is why the twelve
  * trace presets still agree call for call.
  */
@@ -283,7 +283,7 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (handle: VertexHa
  *
  * A build-time `FrameGraph` is the shape a producer hands over — it names its
  * modules rather than carrying their text, and says nothing about a device.
- * The new path of Stage 1 ([RoadToPureEngine.md](../docs/RoadToPureEngine.md) §15)
+ * The new path of Stage 1 (RoadToPureEngine.md §15)
  * is `submit/`: a graph becomes a plan here and then commands in
  * [execute.ts](execute.ts). Between the two sits exactly one translation —
  * `frameOf`, which fills a description's documents with the text a loader fetched
@@ -304,14 +304,14 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (handle: VertexHa
  * what holds them. A fullscreen frame draws its backend's own corners and never
  * asks for it, so the corpus reaches the new path through here touching no device.
  *
- * [ROADMAP.md](../docs/ROADMAP.md) item 15 has since removed the fused
+ * ROADMAP.md item 15 has since removed the fused
  * `createProgram` — each lifetime now reaches its own module and no method both
  * allocates resources and compiles pipelines — but it did so without routing a
  * runtime draw through this seam: a backend receives an already-filled
  * `FrameGraph` and plans it with `planFramePasses` directly, never holding a
  * build-time frame to feed here. This composition waits for the caller that does
  * hold one, the `submit(graph)` model of items 26 to 29; see item 15's
- * [JOURNAL.md](../docs/JOURNAL.md) row.
+ * JOURNAL.md row.
  */
 export function planFromDescription(
   id: string,

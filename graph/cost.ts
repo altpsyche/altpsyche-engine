@@ -1,6 +1,6 @@
 /**
  * `cost(graph, size)`: the third pure function beside `validate` and `refusal`,
- * per [RoadToPureEngine.md](../docs/RoadToPureEngine.md) §12 point 6 and §17
+ * per RoadToPureEngine.md §12 point 6 and §17
  * decision 9. It reads the graph and a `{ width, height }` record and nothing
  * else — no device, no arena, nothing carrying behaviour — and returns the same
  * numbers on any machine. That is the whole point of it: a frame's cost is a

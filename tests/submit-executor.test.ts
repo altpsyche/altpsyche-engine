@@ -10,7 +10,7 @@ import { drawGL2Frame } from '../submit/gl2';
 /**
  * The executor is one layer now, and every draw goes through it.
  *
- * [ROADMAP.md](../docs/ROADMAP.md) item 13 lifted the per-frame command recording
+ * ROADMAP.md item 13 lifted the per-frame command recording
  * out of each backend's `createProgram` into `submit/`: the WebGPU frame loop is
  * [submit/execute.ts](../submit/execute.ts)'s `runFrame`, and the WebGL 2 frame is
  * [submit/gl2.ts](../submit/gl2.ts)'s `drawGL2Frame`. The behaviour is held

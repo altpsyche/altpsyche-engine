@@ -2,11 +2,11 @@
  * The second half of the executor: a plan already resolved to the resources it
  * draws with becomes one command encoder, submitted once.
  *
- * This is the "one encoder" of [RoadToPureEngine.md](../docs/RoadToPureEngine.md)
+ * This is the "one encoder" of RoadToPureEngine.md
  * §7's `submit/` layer. Every pass of the frame is recorded onto a single encoder
  * and the whole frame submitted once, exactly as the WebGPU backend's `draw` did
  * before this was its own layer. It lived inside `createProgram` until
- * [ROADMAP.md](../docs/ROADMAP.md) item 13 lifted it out, and item 16 moved the
+ * ROADMAP.md item 13 lifted it out, and item 16 moved the
  * last string lookups out of the frame loop: what this file reads is a
  * `ResolvedRun` per pass, carrying the pipeline, the bind groups, the attachment
  * textures and the query sets **as the objects themselves** rather than as names

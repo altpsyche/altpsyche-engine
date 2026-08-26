@@ -1,6 +1,6 @@
 /**
  * The pool a transient is drawn from and returned to, which is what lets one
- * allocation serve many frames rather than one — [RoadToPureEngine.md](../docs/RoadToPureEngine.md)
+ * allocation serve many frames rather than one — RoadToPureEngine.md
  * §8's pooling and aliasing, ROADMAP item 18.
  *
  * A transient's whole life is `submit/`'s (item 17): the graph declares it by
