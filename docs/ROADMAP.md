@@ -3776,7 +3776,7 @@ keeps reporting a throw as a refusal, with nothing tracking it.
 
 ### 102. Reconcile §9's `wgsl` arm with item 3's two-document render pipeline
 
-**Status.** open
+**Status.** done
 
 **Asks for.** A settled answer to the collision the lift of item 100 found: §9's `ShaderSource` `wgsl`
 arm carries a **single** `wgsl: string` (one WGSL text, one module both stages compile from), but item 3
@@ -3804,6 +3804,29 @@ capability in the same change; and item 103's `Needs` can name a settled shape.
 either regressing item 3 or unilaterally rewriting §9. **Reverse:** delete this item; item 103's `Needs`
 drops it and item 100's lift note stands unresolved. `carry`: the answer lives in the consuming
 repository's decision log, and §9/§14 change with it.
+
+**Settled 2026-08-26 by Siva, with a person at the keyboard: option (a).** §9's `wgsl` arm now
+carries a `WgslPair` — `{ vertex: string; fragment: string }` — rather than one `wgsl: string`, and
+§14's `ShaderSource` row says so. Item 3's two-distinct-document capability holds unchanged and
+`tests/frame-documents.test.ts` keeps passing.
+
+**Why that way, on the package's merits rather than on what is cheapest.** Authoring the vertex and
+the fragment in separate files is ordinary practice in graphics — a shared vertex library with a
+per-material fragment beside it — so a shape that cannot express it narrows the package for every
+consumer, not only for the one test that exercises it here. And the alternative had the reasoning
+backwards: it would have retired a capability that already shipped in order to fit a documented
+shape, when §9's "exact" wording is a documentation artefact and not a constraint the platform
+imposes. **Read before deciding:** nothing but `tests/frame-documents.test.ts` uses two distinct
+documents today — `examples/orbit-shadow` passes `document: 'scene'` for both stages and every
+corpus preset uses one `WGSL_DOCUMENT` — so this was chosen despite having no internal consumer,
+not because of one. The two fields may hold the same text, which is that common case.
+
+**What it costs.** §9 is no longer exact as originally written, and `RoadToPureEngine.md` changed —
+which item 102 said was not this repository's to do alone, hence the decision being taken with a
+person rather than in an unattended run. **Reverse:** restore §9's `wgsl: string` arm and §14's
+original row, set this item back to `open`, and delete this note; item 103 then has no settled shape
+to name and item 3 is back in collision.
+
 
 ### 103. `RenderSource` takes §9's exact arms with the `GlslPair` bake collapse
 

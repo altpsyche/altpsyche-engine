@@ -352,12 +352,30 @@ export type GlslPair = { vertex: string; fragment: string };
  * optional field on one record. That would be two facts in one home, which
  * invariant 5 forbids and which no reader could disambiguate.
  */
+/**
+ * The WGSL a render pipeline's two stages compile from. **A pair, not one text**,
+ * amended 2026-08-26: authoring the vertex and the fragment in separate files is
+ * ordinary practice in graphics — a shared vertex library with a per-material
+ * fragment beside it — and a single `wgsl: string` cannot express it. The two
+ * fields may hold the same text, which is the common case and what every corpus
+ * preset and `examples/orbit-shadow` do; nothing here forces two files on a
+ * consumer who wants one.
+ *
+ * This shape is what it is because the earlier one collided with a capability
+ * that already shipped: item 3 gives a render pipeline two distinct WGSL
+ * documents and `tests/frame-documents.test.ts` pins it. Adopting a single text
+ * would have been a capability regression chosen to fit a documented shape,
+ * which is the wrong way round — see ROADMAP.md item 102.
+ */
+export type WgslPair = { vertex: string; fragment: string };
+
 export type ShaderSource =
   /** Authored WGSL. Runs on either backend: WebGPU compiles it, WebGL 2 gets a
    *  translation of it, per §9.1. `glsl` here is a translation a build already
    *  performed, carried so the running page does not repeat it; absent means
-   *  translate on demand, which is the editing path. */
-  | { authored: 'wgsl'; wgsl: string; glsl?: GlslPair; constants?: Record<string, number> }
+   *  translate on demand, which is the editing path. `wgsl` is a stage pair for
+   *  the reason `glsl` is: a pipeline's two stages may be authored apart. */
+  | { authored: 'wgsl'; wgsl: WgslPair; glsl?: GlslPair; constants?: Record<string, number> }
   /** Authored GLSL, handed in by a consumer. Runs on WebGL 2, and selects that
    *  backend rather than being refused, per §17 decision 6. Nothing translates
    *  it: there is no `wgsl` arm to fill and this library will not invent one. */
@@ -551,7 +569,7 @@ Renames, all mechanical, all worth doing before the consumer count grows past on
 | `Dispatch = … \| 'frame'` | `groups: [n,n,n] \| { indirect }` | a producer computes the count from the size it knows |
 | `unreached()` | `reflect(source).unused`, dev-only, in `toy/` | a compiler quirk is a diagnostic, not a device method |
 | `report()` | `engine.capabilities` and `engine.limits`, plus a public `probe()` | a set and a record, both consumed by §10; `probe()` is the one-shot reading of §17 decision 11, which is what `report()` was always shaped like and never had a caller for |
-| `ShaderSource` with optional language fields | a union discriminated on `authored` | which language was written is a fact, not something to infer from which fields are present, per §9 |
+| `ShaderSource` with optional language fields | a union discriminated on `authored`, its `wgsl` arm a `WgslPair` | which language was written is a fact, not something to infer from which fields are present, per §9. **Amended 2026-08-26:** the `wgsl` arm carries a stage pair rather than one text, because a render pipeline may author its vertex and fragment apart (item 3) and a single string cannot hold that — ROADMAP.md item 102 |
 | `sceneView(...).graph(world, camera)` | `graph(world, views)` | one camera is a special case of a list, and the list is free now and breaking after Stage 4 |
 | `engine.submit(graph)` alone | `submit(graph, { into })` | where a frame lands is the caller's, per §17 decision 7 |
 | `readBuffer` answering vacuously | gone | with capabilities, a backend without buffers never receives a graph that reads one |
