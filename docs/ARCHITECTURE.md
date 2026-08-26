@@ -1,12 +1,12 @@
 # Architecture, as built
 
-**What this document is.** How the library is actually put together, verified against the tree
-rather than remembered. It is the only description of what exists: the two design documents this
-codebase was built against were deleted on 2026-08-26, having gone stale about the code as well
-as about direction.
+**Why read this.** Every design in here is one you can feel from outside: it is why the
+factories are asynchronous, why a resource is an integer rather than a name, and why a frame is
+refused by name instead of failing halfway through. If you only want to *use* the package,
+[README.md](../README.md) and [API.md](API.md) are enough — this is the layer underneath them.
 
-**What this document is not.** It is not a plan and it queues nothing. It describes the library
-as it stands; what it should become is decided in the open, not written down here in advance.
+It describes the library as it stands, verified against the tree. It is not a plan and it queues
+nothing.
 
 ---
 
@@ -18,8 +18,8 @@ imports.
 
 The two backends are reached by **dynamic import**, which is why `createFrameRenderer` and
 `createSurface` are asynchronous. A browser with no WebGPU never downloads the WebGPU
-backend. That is not a micro-optimisation: it is about 1,700 lines such a browser could
-never execute.
+backend. That is not a micro-optimisation: `gpu/webgpu.ts` is over 1,600 lines such a browser
+could never execute.
 
 ## The layers
 
@@ -43,7 +43,8 @@ enforces it, so the rule is a gate rather than an intention.
 ## Three lifetimes, kept apart
 
 The mistake this design exists to avoid is fusing them, which is what the old
-`ShaderProgram` did — "three lifetimes in a trench coat", deleted at item 90.
+`ShaderProgram` did — three lifetimes in one object, so a shader could not be recompiled without
+reallocating its buffers. It was taken apart at 0.3.0 into the three below.
 
 - **Resident** — buffers, textures, samplers, query sets. Allocated and freed by `Arena`,
   addressed by a branded integer handle with a generation packed above the index, so a
@@ -84,21 +85,15 @@ Selection comes before refusal: `selectBackend` reads the language a graph is au
 and what the device offers, and only when nothing is left does a refusal appear. See
 [GUIDE-backends.md](GUIDE-backends.md).
 
-## What the invariants are now
+## The four invariants
 
-The original design document stated five. Four are still the design; one left with the website:
-
-1. ~~Code is 1:1 with the shader page~~ — **a website rule, not a library one.** It welded
-   together three separate things: a scope call, a content rule about article text, and a size
-   cap derived on top of both. The cap lost its premise when the library and the article corpus
-   stopped being one artifact. An engine's entire value is code you do not read.
-2. **A method one backend has to throw from is the wrong method.** Capability lives in the
-   data. Still the rule, and still the one most likely to be broken by accident — it was
-   broken and repaired twice in one day at items 92 and 97.
-3. **A description is data, and the build is one producer of it.** The moment something can
+1. **A method one backend has to throw from is the wrong method.** Capability lives in the data.
+   This is the one most easily broken by accident: it goes wrong the moment a backend is handed a
+   job it has to decline at call time rather than a graph that could have been refused by name.
+2. **A description is data, and the build is one producer of it.** The moment something can
    only be produced by the build, or only at run time, the seam is gone.
-4. **One fact, one home**, and a disagreement stops the build rather than reaching the card.
-5. **Every capability has a preset a gate draws and a trace nothing else asserts.** A
+3. **One fact, one home**, and a disagreement stops the build rather than reaching the card.
+4. **Every capability has a preset a gate draws and a trace nothing else asserts.** A
    capability whose only proof is that the picture still looks right is one nobody can
    maintain.
 

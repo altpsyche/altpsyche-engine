@@ -1,19 +1,17 @@
 # API
 
-Every name `@altpsyche/engine` exports, grouped by what you are doing rather than by
-which file it lives in. There is one import path and no second one:
+Every name `@altpsyche/engine` exports, grouped by what you are doing rather than by which file
+it lives in. There is one import path and no second one, so nothing you import moves when the
+files inside are rearranged:
 
 ```js
 import { createSurface, submit, wgslFrame, probe, vec3, mat4 } from '@altpsyche/engine';
 ```
 
-There is no second import path, so nothing you import moves when the files inside are
-rearranged.
-
-**0.x is unstable.** Names and shapes change between releases without a major bump, and the
-[CHANGELOG](../CHANGELOG.md) says what moved in each one. A caret range on a `0.x` version
-tracks the last number alone, so `^0.3.0` will not pick up a later `0.4.0`: you move to a
-feature release by asking for it.
+This page is the index of names. For a page that runs, see
+[EXAMPLES.md](EXAMPLES.md); for the reasoning under the shapes, see
+[ARCHITECTURE.md](ARCHITECTURE.md); for what changes between releases and why `^0.3.0` will not
+pick up `0.4.0`, see the [CHANGELOG](../CHANGELOG.md).
 
 ---
 
@@ -31,14 +29,13 @@ feature release by asking for it.
 | `requestWebGPUDevice` | value | ask for a WebGPU device directly, when you want the adapter yourself |
 | `PROGRAM_CACHE_LIMIT` | value | how many built programs a renderer keeps before evicting |
 
-Both factories are **asynchronous**, and that is the whole point: each backend is reached
-by a dynamic import, so your bundler puts it in a file of its own and a browser downloads
-only the one it can run.
+Both factories are **asynchronous**, because each backend is reached by a dynamic import — see
+[ARCHITECTURE.md](ARCHITECTURE.md#one-door) for what that buys.
 
 ## Describing a frame
 
-A frame graph says what resources exist, what pipelines run, and in what order the passes
-go. You hand that description to the renderer; you do not hand it a shader and hope.
+A frame graph says what resources exist, what pipelines run, and in what order the passes go.
+[GUIDE-frame-graph.md](GUIDE-frame-graph.md) authors one; this is the list of names.
 
 **Shortcuts, for a single fragment shader over the whole canvas:**
 
@@ -63,12 +60,12 @@ go. You hand that description to the renderer; you do not hand it a shader and h
 `groupsIndirectly`, `moduleOf`, `resourceOf`, `uniformResourceOf`, `perDrawBinding`,
 `componentsOf`.
 
-**Handles.** Every resource in a graph is addressed by a kind-branded integer rather than
-a string, so passing a texture where a buffer belongs is a compile error rather than a map
-miss. Mint them with `buffer`, `texture`, `sampler`, `uniform`, `vertices`, `indices`,
+**Handles.** Every resource in a graph is addressed by a kind-branded integer rather than a
+string. Mint them with `buffer`, `texture`, `sampler`, `uniform`, `vertices`, `indices`,
 `moduleHandle`, `pipelineHandle`; the types are `BufferHandle`, `TextureHandle`,
 `SamplerHandle`, `UniformHandle`, `VertexHandle`, `IndexHandle`, `ModuleHandle`,
-`PipelineHandle` and the union `ResourceHandle`.
+`PipelineHandle` and the union `ResourceHandle`. Why an integer and not a name is in
+[ARCHITECTURE.md](ARCHITECTURE.md#handles-not-names).
 
 ## Asking questions without touching a device
 
@@ -119,8 +116,8 @@ give the same answer on both backends.
 | `Batch`, `Material`, `MaterialDraw` | type | |
 | `drawList`, `Draw` | value, type | a flat list of what to draw |
 
-A rotation is a `Mat4`, never three angles: Euler orders disagree between codebases and
-the disagreement is silent, so the library never guesses.
+A rotation is a `Mat4`, never three angles: Euler orders disagree between codebases and the
+disagreement is silent, so the library never guesses — you compose the rotation you meant.
 
 ## Maths
 

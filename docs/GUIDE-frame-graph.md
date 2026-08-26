@@ -29,6 +29,9 @@ surface.start();
 `wgslFrame` is the same for WGSL. Both build a one-pass graph whose vertex half is the
 backend's own three corners, so there is no geometry to supply.
 
+`createSurface` returns `null` where no backend would give the page a context, so a real page
+checks before it starts — [EXAMPLES.md](EXAMPLES.md) is the complete version of this one.
+
 Note what the `uniforms` callback does **not** have to do: the resolution is read off the
 drawing buffer the surface sizes, so a resize needs no code of yours.
 
@@ -83,15 +86,15 @@ something to infer from which fields happen to be present, and it is what routes
 to a backend.
 
 **Resources are addressed by handle, not by name.** `uniform(0)`, `vertices(1)`,
-`texture(2)` mint kind-branded integers — the index of that resource in the list above.
-Passing a texture handle where a buffer belongs is a compile error rather than a lookup
-that returns `undefined` at draw time. The handle carries its kind, so the compiler refuses
-the mistake before the driver can.
+`texture(2)` mint kind-branded integers — the index of that resource in the list above. The
+handle carries its kind, so passing a texture where a buffer belongs is a compile error rather
+than a lookup returning `undefined` at draw time
+([why, in full](ARCHITECTURE.md#handles-not-names)).
 
-**`size: { scale: 1 }`** means *follow the frame*. It is a whole-size descriptor, so you can
-also say `{ scale: 0.5 }` for half resolution or `{ width, height }` for a fixed size —
-which the old per-axis pair could not express. What was in a frame-following texture is gone
-when a resize rebuilds it, so nothing may read it across a resize.
+**`size: { scale: 1 }`** means *follow the frame*. It is a whole-size descriptor, so
+`{ scale: 0.5 }` is half resolution and `{ width, height }` is a fixed size. What was in a
+frame-following texture is gone when a resize rebuilds it, so nothing may read it across a
+resize.
 
 **`use: ['attachment']`** is what the usage flags are built from. A texture a pass writes
 and a later pass reads names both. A flag nothing asked for is a texture the driver refuses
@@ -139,3 +142,8 @@ run, either a triple or `{ indirect }` reading the count out of a buffer.
 Compute is WebGPU only. WebGL 2 has no compute stage, because GLSL ES 3.0 has none, so a
 graph with a compute pass is refused by name on that backend rather than half-drawn. See
 [GUIDE-backends.md](GUIDE-backends.md).
+
+`npm run example compute-field` is that whole story as a page: it draws where WebGPU is and
+prints the refusal, naming `compute` and `storage-texture`, where it is not.
+[EXAMPLES.md](EXAMPLES.md) has the rest of them, and [API.md](API.md) is the index of every
+name used above.

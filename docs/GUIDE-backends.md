@@ -18,10 +18,11 @@ const chosen = selectBackend(frame, reading.offer);
 browser for a card, and handed in as data. So the whole decision is testable on any
 machine, including the ones that never return a WebGPU adapter.
 
-**A GLSL-authored frame selects WebGL 2 even where WebGPU exists.** That is deliberate
-(§17 decision 6): the language a consumer wrote in is the capability it forfeits, and every
-capability it gives up is one GLSL ES 3.0 has no syntax for — there is no compute stage in
-ES 3.0 to lose. You get a picture rather than a lecture.
+**A GLSL-authored frame selects WebGL 2 even where WebGPU exists.** That is deliberate,
+and it is the one selection rule worth memorising: the language a consumer wrote in is the
+capability it forfeits, and every capability it gives up is one GLSL ES 3.0 has no syntax for —
+there is no compute stage in ES 3.0 to lose. So the frame is drawn where it runs, and you get a
+picture rather than a lecture about the backend you did not ask for.
 
 Only once selection comes back empty does a refusal appear, and it names the backend that
 was missing rather than lecturing a caller who arrived with a perfectly drawable shader.
@@ -66,10 +67,10 @@ depth and stencil, resident textures, a mip ladder, multisampling, vertex geomet
 shader's own, and per-draw uniform slices.
 
 The scene tier draws too — a scene's read-only per-instance records reach WebGL 2 as a uniform
-block indexed per instance. **It does not yet draw the same picture as WebGPU**: on a real card,
-scene-tier frames differ from their WebGPU counterparts by enough to be visible, and the cause is
-under investigation. If you need the two backends to agree pixel-for-pixel on a scene today, use
-the WebGPU path.
+block indexed per instance — and it draws **the same picture WebGPU draws**. On a real card the
+two backends agree to within a single channel on every scene preset, which is two hardware
+compilers folding the same arithmetic apart rather than a difference you could see. The reading
+is in [DEVICES.md](DEVICES.md), taken by `npm run gate:card`.
 
 What it will never reach is what GLSL ES 3.0 has no syntax for: compute, a shader-written storage
 buffer, storage textures, indirect draws, and timestamp or occlusion queries. Those are refused by
@@ -82,13 +83,12 @@ Three different mechanisms, worth telling apart because they fail at different t
 1. **A capability the device has not got** — refused by `refusal`, from data, before a driver
    is reached.
 2. **No translated GLSL** — WGSL is translated to GLSL ES 3.00 ahead of time, and a shader the
-   translator refuses is refused at *build* time with the construct named. That is the right
-   place to find out.
+   translator refuses is refused at *build* time with the construct named.
 3. **A fullscreen WGSL frame with no vertex stage to translate.** The shortcut frames draw with
    the backend's own corners on WebGPU; on WebGL 2 there is no vertex document to link.
 
-Only the first is a runtime answer. The other two are build-time facts, which is the right
-place to find out.
+Only the first is a runtime answer. The other two are build-time facts, which is the right place
+to find out — a shader that will not reach WebGL 2 says so while you are still at your editor.
 
 ## Translation, and why nothing ships a translator
 

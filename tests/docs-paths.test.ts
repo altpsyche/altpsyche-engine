@@ -46,6 +46,12 @@ const endsInSourceExt = new RegExp(`\\.(${SOURCE_EXT.join('|')})$`);
 const EXCLUDED_HISTORY = 'JOURNAL.md';
 
 const ALLOWED_ABSENT: Record<string, string> = {
+  // A file in the *reader's* own project rather than in this repository.
+  // `docs/EXAMPLES.md` walks through building a page from nothing, so it names the
+  // files a reader creates. This gate exists to catch a reference to one of ours
+  // that has gone, which this is not — and it stays on the list rather than being
+  // un-backticked, so that a future stale `main.js` of ours is still caught.
+  'main.js': "a file the reader creates in docs/EXAMPLES.md's walkthrough, never one of ours",
   'docs/TESTING.md': "the consuming site's file, cited by ROADMAP item 1's phone row",
   'host/loop.ts': 'the host loop, a folder RoadToPureEngine §7 and ROADMAP item 39 will build',
   'components/ui/WgslRefusal.tsx': 'a website path RoadToPureEngine §3 row 12 names as one that does not exist here',
@@ -74,9 +80,12 @@ function repoFiles(): { rel: Set<string>; base: Set<string> } {
 
 const files = repoFiles();
 
-/** Drop a `:line` or `#Lline` suffix that a citation carries. */
+/** Drop the suffix a citation carries: a `:line`, an `#L12` line anchor, or a
+ *  `#heading-anchor` naming a section inside the file. A fragment is a place in a
+ *  document rather than part of its name, so what is checked is the file it hangs
+ *  off — which is the half that can go stale by a file being deleted. */
 function bare(ref: string): string {
-  return ref.replace(/#L?\d+(-L?\d+)?$/i, '').replace(/:\d+(:\d+)?$/, '');
+  return ref.replace(/#.*$/, '').replace(/:\d+(:\d+)?$/, '');
 }
 
 function resolvesToFile(ref: string, fromDir: string): boolean {

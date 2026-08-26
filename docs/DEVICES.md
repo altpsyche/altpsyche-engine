@@ -1,16 +1,22 @@
 # Devices
 
-**Readings, not a support matrix.** Each row below is what one machine saw of itself
-on one day. This file publishes readings because a matrix — a table of which device
-"supports" the package — rots on hardware nobody here owns and turns every stale row
-into a lie. A reading
-never claims to be anything but what a device reported when it was asked.
+**A hardware log, kept by the people changing the package.** If you are *using* the
+package, you do not need a row in here: `await probe()` answers what your browser
+offers, on the machine it is running on, which is the only answer that is true for your
+user. This file exists so that the package's own claims about hardware have a dated
+source, and so a contributor can tell a software renderer's result from a card's.
+
+**Readings, not a support matrix.** Each row below is what one machine saw of itself on
+one day. A matrix — a table of which device "supports" the package — rots on hardware
+nobody here owns and turns every stale row into a lie. A reading never claims to be
+anything but what a device reported when it was asked.
 
 **Absence is not a claim of non-support.** A device with no row here has not been read,
-which is all that its absence says. The package's promise is the capability model of
-§10 — a correct refusal by name on any device, read or unread — and these readings are
-evidence for that promise, never a dependency of it. A shader that would be refused on
-hardware nobody has read is still refused, by name, before it draws.
+which is all that its absence says. The package's promise is the capability model in
+[GUIDE-backends.md](GUIDE-backends.md) — a correct refusal by name on any device, read
+or unread — and these readings are evidence for that promise, never a dependency of it.
+A shader that would be refused on hardware nobody has read is still refused, by name,
+before it draws.
 
 ## How a row is taken
 
@@ -26,10 +32,9 @@ renderer that a reading trusting the adapter's name would record as hardware.
 
 ## Readings
 
-The two software-renderer rows below are **transcribed from measurements recorded during
-development**, taken on the project's Linux machine. They are the readings that already existed when
-this file was created and are carried here rather than re-measured; the field names
-below are `probe()`'s. Both are software-renderer readings — the machine's real card
+The two software-renderer rows are **transcribed from measurements recorded during
+development** on the project's Linux machine, carried here rather than re-measured; the
+field names are `probe()`'s. Both are software-renderer readings — that machine's real card
 is reachable through WebGL 2 but not, headless, through a WebGPU adapter — which is
 exactly why the three-state reading and the SwiftShader assertion exist.
 
@@ -86,7 +91,7 @@ suite asserts equality between the two, and after this reading nothing should st
 ### 2026-08-24 — Linux, headless WebGPU on the software renderer
 
 ```
-date            2026-08-24 (transcribed from §17 measured fact two, not re-measured here)
+date            2026-08-24 (transcribed from a development measurement, not re-measured)
 backend         webgpu
 tier            toy
 webgpu          reported, adapter returned
@@ -106,7 +111,7 @@ reading that motivates `survivedCompositing`.
 ### 2026-08-24 — Linux, `--enable-unsafe-webgpu` reports software while WebGL reports the card
 
 ```
-date            2026-08-24 (transcribed from §17 measured fact two, not re-measured here)
+date            2026-08-24 (transcribed from a development measurement, not re-measured)
 backend         webgpu
 tier            toy
 webgpu          reported, adapter returned
@@ -125,7 +130,7 @@ that motivates the architecture assertion.
 
 ## Wanted
 
-No iPhone has been read, and one is wanted. Any reading from
-real hardware — a discrete GPU through a headed WebGPU adapter, a phone, an integrated
-card — is a row this file does not yet have. Absence of a row is absence of a reading,
-nothing more.
+**No mobile device has been read at all**, and one is wanted more than anything else here:
+every row above is a desktop Linux machine. Any reading from hardware this file does not
+have — a phone, a tablet, an integrated card, macOS, Windows — is worth a pull request.
+Absence of a row is absence of a reading, nothing more.

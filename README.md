@@ -12,6 +12,9 @@ import { createSurface, wgslFrame, vec3, mat4 } from '@altpsyche/engine';
 There is no second path. Everything public comes from the package name, so nothing
 you import can move when the files inside are rearranged.
 
+**[docs/EXAMPLES.md](docs/EXAMPLES.md) is a whole working page** — four files, nothing elided —
+if you would rather start from something that runs than from a tour.
+
 This is 0.x, and 0.x is unstable: names and shapes change between releases without a
 major bump, and the [CHANGELOG](CHANGELOG.md) says what moved in each one. A caret
 range on a `0.x` version tracks the last number alone, so `^0.3.0` will not pick up a
@@ -30,7 +33,7 @@ The reason is worth knowing, because it is the whole point. The two backends are
 loaded with a dynamic import, which means your bundler puts each one in a file of its
 own and the browser downloads only the one it can actually run. A browser with no
 WebGPU never fetches the WebGPU backend at all. If the factory were synchronous, both
-backends would have to be in your first download, and the WebGPU one is about 1,700
+backends would have to be in your first download, and the WebGPU one is over 1,600
 lines that such a browser can never execute.
 
 ## What a frame is
@@ -149,8 +152,9 @@ check a change to a shader did not quietly change what the device was asked to d
 
 ## Asking before you draw
 
-Three pure functions answer questions about a graph without touching a device, so you
-can ask them in a test, in a worker, or on a machine with no card at all:
+Three pure functions answer questions about a graph without touching a device — so you
+can ask them in a test, in a worker, or on a machine with no card at all — and `probe` is
+how you get the reading they answer against:
 
 ```js
 import { cost, refusal, selectBackend, probe } from '@altpsyche/engine';
@@ -179,11 +183,30 @@ missing the graph is refused *by that name* before anything reaches a driver.
 import { createFrameRenderer, submit } from '@altpsyche/engine';
 
 const renderer = await createFrameRenderer(canvas);
-await submit(renderer, frame, { uniforms: { u_time: 0 }, into: myTexture });
+submit(renderer, frame, { u_time: 0 }, { into: myTexture });
 ```
 
-`into` is where the frame lands, and it is the caller's to choose rather than the
-library's.
+The uniforms are an argument and `{ into }` is the options: `into` is where the frame
+lands, and it is the caller's to choose rather than the library's. Leave it out and the
+frame lands on the canvas.
+
+**A renderer draws through WebGL 2 unless you hand it a WebGPU device.** Asking for the
+card is a step the caller takes, because whether asking returns one is the fact selection
+reads — and a renderer that quietly asked would download the WebGPU backend on a page that
+never needed it:
+
+```js
+import { createFrameRenderer, requestWebGPUDevice } from '@altpsyche/engine';
+
+const device = await requestWebGPUDevice();          // null where there is no card
+const renderer = await createFrameRenderer(canvas, device ? { backend: 'webgpu', device } : {});
+```
+
+`createSurface` takes the same two options. One warning, learnt the hard way in this
+repository's own examples: **do not test for WebGL 2 by calling `getContext('webgl2')` on
+the canvas you are about to draw into.** A canvas keeps the first context type it is asked
+for and refuses every other one for the rest of its life, so that check makes the WebGPU
+path fail on the machines that have WebGPU. Ask a throwaway canvas, or ask `probe`.
 
 ## What it needs
 
@@ -193,20 +216,26 @@ path. **No runtime dependencies at all** — `dependencies` is `{}` and stays th
 The two backends are not equal, and the difference lives in data rather than in prose. WebGL 2
 draws the whole toy tier and the scene tier's per-instance records; it has no compute stage, no
 shader-written storage buffer, no storage texture, no indirect draw and no timestamp or occlusion
-query, because GLSL ES 3.0 has none of them. Ask `probe` or `webgl2Capabilities` rather than
-trusting this paragraph. [docs/GUIDE-backends.md](docs/GUIDE-backends.md) has the detail,
-including one known divergence in the scene tier.
+query, because GLSL ES 3.0 has none of them. What it does draw, it draws as WebGPU does: on a
+real card the two agree to within a single channel on every scene preset. Ask `probe` or
+`webgl2Capabilities` rather than trusting this paragraph, and read
+[docs/GUIDE-backends.md](docs/GUIDE-backends.md) for the detail.
 
 ## Where to read next
 
 | document | what it answers |
 | --- | --- |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md) | a complete page, start to finish, and the six that run in this repository |
 | [docs/API.md](docs/API.md) | every name the package exports, grouped by what you are doing |
 | [docs/GUIDE-frame-graph.md](docs/GUIDE-frame-graph.md) | authoring a frame graph by hand |
 | [docs/GUIDE-backends.md](docs/GUIDE-backends.md) | capabilities, selection, refusal, and what each backend reaches |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the library is put together |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | changing the package: gates, rules, how work is queued |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the library is put together, and why |
 | [CHANGELOG.md](CHANGELOG.md) | what moved in each release |
+
+For someone changing the package rather than using it:
+[CONTRIBUTING.md](CONTRIBUTING.md) has the gates and the rules that are not negotiable, and
+[docs/DEVICES.md](docs/DEVICES.md) is the hardware log — dated readings from real machines, kept
+so that a claim about a graphics card has a source.
 
 ## Licence
 

@@ -1,7 +1,8 @@
 # Contributing
 
 Everything in here is for someone changing the package. If you are *using* it, you want
-[README.md](README.md), [docs/API.md](docs/API.md) and the guides — none of this matters to you.
+[README.md](README.md), [docs/EXAMPLES.md](docs/EXAMPLES.md), [docs/API.md](docs/API.md) and the
+guides — none of this matters to you.
 
 ## Getting set up
 
@@ -27,6 +28,12 @@ change needs one, it needs a decision first.
 Run `gate:browser`'s gates **one at a time** if you run them by hand. Several at once starve each
 other under the software renderer and time out, which reads as a red gate and is not one.
 
+`npm run example <name>` opens one of the pages in `examples/` in a browser. They are not a gate —
+nothing asserts a pixel in them — but they are the only place the *whole* stack runs the way a
+consumer runs it, and a change that breaks one of them has broken something a gate did not ask
+about. [docs/DEVICES.md](docs/DEVICES.md) is the hardware log: one dated row per machine, taken
+with `npm run device-report`, and the place a claim about a real card has to come from.
+
 ## What the cheap gates cannot see
 
 This is the most important thing to internalise, because it is where mistakes survive.
@@ -42,6 +49,15 @@ for `--use-angle=vulkan`: it moves the whole browser onto Vulkan and produces th
 a change rewrites resolution logic and the tests move with it, only the browser batch's trace
 agreement is independent. This is not hypothetical: a migration that passed 837 node tests and
 rewrote its own golden snapshots was caught by one browser gate and nothing else.
+
+**No gate builds a surface on a real card.** `gates/surface.mjs` drives `createSurface` on both
+backends, and it is headless, so its WebGPU arm is the software renderer's. `gates/card.mjs` is
+the one thing that touches the card, and it builds the two backends directly rather than through
+`createFrameRenderer`. So the path a consumer actually takes — `createSurface` with a WebGPU
+device from a real adapter — is asserted by nothing. That hole is not theoretical: four of the
+six pages in `examples/` reported "WebGPU could not give this page a device" on this machine's
+RTX 5080 while every gate was green, because they asked the drawing canvas for a WebGL 2 context
+before handing it to WebGPU and a canvas keeps the first context type it is given.
 
 **A gate that reports a failure as a skip is worse than no gate.** One did, once — the corpus
 gate treated a broken frame build as a capability refusal, went green, and let a defect through.
