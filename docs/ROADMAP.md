@@ -4142,7 +4142,7 @@ from `gates/card.mjs` and the two bundle entries it added, and delete item 107.
 
 ### 107. The WebGL 2 scene tier draws a different picture from WebGPU's
 
-**Status.** open
+**Status.** lifted card gate
 
 **Asks for.** The cause of the divergence item 106 measured on a real card, and its repair. Three
 scene-tier presets drawn through both backends on an RTX 5080 differ by up to **245 of 255** on
@@ -4166,4 +4166,63 @@ held byte-exact across the two backends" while being empty — an empty exemptio
 itself as proof of agreement, which is the wording this run also fixed. **Nothing was measuring
 the thing everyone was reading.** `carry`: how far the WebGL 2 scene tier reaches is §17 decision
 1's answer and belongs in the consuming repository's log.
+
+**Lifted to the card gate 2026-08-26, with the mechanism found by reading rather than by a card.**
+The `Done when` has two clauses joined by `and`: the three numbers come within `TOLERANCE`
+**on a card**, and the gate's scene-tier lines move from `READ` to a `PASS`/`FAIL` assertion. The
+first clause is a hardware reading this session cannot take — it is a headless Linux node session,
+[RoadToPureEngine.md](RoadToPureEngine.md) §17 note 3 settles that every headless launch here
+reaches SwiftShader, and both `gate:card` (a card and a desktop session) and `gate:browser`
+(SwiftShader, and the closing batch's, not this run's) are barred here. So the numbers cannot be
+brought within `TOLERANCE` *and shown to be* within it in this session, and item 106's precedent is
+followed: the reading closes at the card, not on the software floor.
+
+**The cause, named as a mechanism and not a place: a vertical double-flip of the scene geometry.**
+The bake gives every `project` **vertex** stage naga's es300 tail `gl_Position.yz = vec2(-gl_Position.y,
+gl_Position.z * 2.0 - gl_Position.w)` — the clip-space Y negation naga emits for WebGPU→GL — and the
+WebGL 2 backend's `readPixels` ([gpu/webgl2.ts](../gpu/webgl2.ts) line 1484) *also* turns the frame
+over, rewriting GL's bottom-up buffer to top-first to match the WebGPU backend's own top-first
+readback. Two turns, so a WGSL vertex at clip `Y = +1` (row 0 / top on the WebGPU side) lands at the
+**bottom** row on the WebGL 2 side: the scene is mirrored top-to-bottom between the two frames. That
+is a structurally different image, matching item 106's reading — a worst channel of 245, thousands of
+hard jumps on the WebGL 2 side (grid edges landing in the wrong rows) against zero on WebGPU's, and
+~19% of channels differing because the sheet covers part of the frame and its own `place.y` shading
+flips with it.
+
+**How three green gates missed it, confirmed by reading.** `core-scene` carries **no** storage buffer
+and **no** instancing — its model matrix is a `u_view * u_model` uniform, one instance, a pure naga
+bake (`fixtures/source/glsl/corpus.generated.json`) — yet it diverges as much as the two instanced
+presets. So the cause is not item 105's hand-authored storage-buffer verts, item 92's `gl_InstanceID`
+records, or an attribute offset: it is the one thing all three share, the vertex-Y flip. The
+fullscreen gradient **control** in `gates/card.mjs` cannot catch it because it never exercises a
+vertex Y — its fragment computes colour from `gl_FragCoord` over a full-screen triangle, through its
+own hand-written path that does not carry naga's flip. The corpus `lit > 0` assertion is
+orientation-blind. And the node suite asserts `readPixels`'s *length*, never its row order
+(`tests/renderer-webgl2.test.ts:1682`). Nothing measured orientation until item 106 compared the two
+frames channel-for-channel.
+
+**What would settle it, and the two candidate repairs — a person's call at the card, per item 106's
+vehicle precedent.** The fix removes exactly one of the two flips from the WebGL 2 scene path, and
+which one is canonical is a design decision with a consequence nothing here checks (it re-orients the
+whole WebGL 2 corpus, which only `lit > 0` gates today). **(a)** Drop the backend `readPixels`
+row-flip so GL's natural bottom-up buffer, already carrying naga's clip-space flip, reads back
+WebGPU-oriented — but this also re-orients every fullscreen preset's readback and the card gate's
+control uses a *separate* manual flip, so the two would then disagree on convention. **(b)** Author
+the WebGL 2 scene path without naga's `-gl_Position.y` (a bake-time or backend viewport correction),
+keeping the readback flip as the single readback-space correction the control already mirrors. Either
+converges the three numbers if the diagnosis holds; **verify by running `npm run gate:card` on a card
+after the change and watching `core-scene`/`core-draw-list`/`core-material` fall within `TOLERANCE`**,
+then move their lines from `READ` to the `say(...)` assertion the gradient control already uses. A
+SwiftShader `gate:browser` run would confirm the *structural* flip cheaply (the mirror is
+deterministic, not vendor-dependent), but the `TOLERANCE` close is the card's. **Reverse the lift:**
+set `Status` back to `open` and delete this paragraph. `carry`: which flip is canonical, and how far
+the WebGL 2 scene tier reaches once it agrees, is §17 decision 1's answer and belongs in the
+consuming repository's log.
+
+**How I established nothing here can settle it.** It is a construction fact: the convergence clause of
+`Done when` reads "on a card", §17 note 3 (line 778) names the SwiftShader floor for every headless
+launch here, `gate:card` needs a card and a desktop session this machine has not got, and this run is
+barred from `gate:browser` (which is SwiftShader anyway and whose corpus gate asserts only `lit > 0`
+per backend, never the cross-backend compare). The mechanism above is reachable by reading; the proof
+that repairing it converges the numbers is not.
 
