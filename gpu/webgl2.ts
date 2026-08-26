@@ -399,11 +399,13 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // bound by a dynamic offset (item 27), or a read-only storage buffer bound
         // whole as a uniform block a shader indexes by `gl_InstanceID` (item 92). A
         // read-write storage buffer is a compute or fragment-stage output this
-        // backend has no stage to fill, refused by name — the "or is refused by
-        // name" half of item 92, so a scene's per-instance data is drawn where it
-        // can be and refused where it cannot rather than claiming to draw and
-        // dropping it. A buffer no pipeline reads is refused too: this backend keeps
-        // only the buffers its draws read.
+        // backend has no stage to fill: it needs the write arm `storage-buffer-readwrite`,
+        // which WebGL 2 does not have, so `refusal()` refuses such a graph before a
+        // program is ever asked for (item 97). The capability model is the refusal
+        // now; this throw is the unreachable backstop that guards a caller who built
+        // without consulting it, rather than the load-bearing refusal item 92 left it
+        // as. A buffer no pipeline reads is refused too: this backend keeps only the
+        // buffers its draws read.
         if (resource.kind === 'buffer') {
           if (perDrawResources.has(index)) continue;
           if (resource.access === 'read-write') {

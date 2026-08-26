@@ -22,7 +22,7 @@
  * `compute` is answered by not asking for compute, where the backend's name is
  * answered by nothing.
  */
-import type { BackendName, FrameGraph } from './types.js';
+import type { BackendName, FrameGraph, ResourceSpec } from './types.js';
 import type { Capability } from './capability.js';
 
 /** What a device is, for the one question this answers: which backend it is and
@@ -32,6 +32,25 @@ import type { Capability } from './capability.js';
 export interface DeviceCapabilities {
   backend: BackendName;
   capabilities: ReadonlySet<Capability>;
+}
+
+/** The capabilities a graph's resources imply, read from the data rather than
+ * from the `requires` list a producer maintains by hand. A read-write buffer is a
+ * storage buffer a compute or fragment stage fills, and its `access` is the fact
+ * that says so, so the write arm `storage-buffer-readwrite` is derived from the
+ * resource rather than trusted to be declared (item 97). This is what makes the
+ * backend's read-write-storage-buffer throw ([gpu/webgl2.ts](../gpu/webgl2.ts))
+ * unreachable by construction: a graph carrying such a buffer needs the write arm
+ * whatever it wrote in `requires`, so `refusal` refuses it on any device without
+ * the write arm — WebGL 2 — before a backend build is ever asked for. The read
+ * arm is left to `requires`, because a read-only storage buffer WebGL 2 draws and
+ * declaring it is the producer's own graceful-degradation choice (§10). */
+function impliedCapabilities(resources: readonly ResourceSpec[]): Capability[] {
+  const implied: Capability[] = [];
+  for (const resource of resources) {
+    if (resource.kind === 'buffer' && resource.access === 'read-write') implied.push('storage-buffer-readwrite');
+  }
+  return implied;
 }
 
 /** Join capability names the way a sentence reads them: one alone, two with
@@ -62,12 +81,20 @@ function lacks(backend: BackendName, count: number): string {
  * A graph declaring no requirements is refused for nothing, whatever the device,
  * so this returns null at once. A graph whose every requirement the device has is
  * likewise null: the device can draw it, and refusal is silence.
+ *
+ * The requirements read are the ones the graph `requires` **and** the ones its
+ * resources imply (`impliedCapabilities`): a read-write storage buffer needs the
+ * write arm whether or not `requires` names it, so a device without the write arm
+ * refuses it here rather than at a backend throw (item 97). A capability named
+ * both ways is missing once, not twice.
  */
 export function refusal(
-  graph: Pick<FrameGraph, 'id' | 'requires'>,
+  graph: Pick<FrameGraph, 'id' | 'requires'> & { resources?: readonly ResourceSpec[] },
   device: DeviceCapabilities
 ): string | null {
-  const required = graph.requires ?? [];
+  const declared = graph.requires ?? [];
+  const implied = impliedCapabilities(graph.resources ?? []);
+  const required = [...new Set<Capability>([...declared, ...implied])];
   const missing = required.filter((capability) => !device.capabilities.has(capability));
   if (missing.length === 0) return null;
   return `the graph "${graph.id}" needs ${andList(missing)}; ${lacks(device.backend, missing.length)}`;

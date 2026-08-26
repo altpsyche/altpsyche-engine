@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolve, webgpuCapabilities, webgl2Capabilities } from '@altpsyche/engine';
-import type { BackendSelection, Capability, DeviceProfile } from '@altpsyche/engine';
+import type { BackendSelection, Capability, DeviceProfile, ResourceSpec } from '@altpsyche/engine';
 
 /**
  * `resolve(frame, device)` wires §10 end to end (item 51): the graph's language
@@ -71,12 +71,37 @@ describe('resolve — selection first, refusal second', () => {
 
   it('draws a scene requiring storage-buffer on WebGL 2 rather than refusing it (item 92)', () => {
     // A GLSL scene declaring `requires: ['storage-buffer']` — the reduced scene
-    // tier's per-instance data — resolves to WebGL 2, which now has the capability
+    // tier's per-instance data — resolves to WebGL 2, which now has the read arm
     // via its uniform-block raster path, rather than being refused for want of a
     // storage buffer. The read-write, compute-filled expression of the same name is
-    // refused by name at the backend, not here.
+    // the separate write arm, refused by the capability model below (item 97).
     const scene = { id: 'panels', authored: 'glsl' as const, requires: ['storage-buffer'] as readonly Capability[] };
     expect(chosen(resolve(scene, webgl2Machine))).toBe('webgl2');
+  });
+
+  it('refuses a read-write storage buffer on WebGL 2 by the capability model, from the resource (item 97)', () => {
+    // A frame carrying a read-write buffer needs the write arm whether or not it
+    // declared it: the capability is read from the resource's `access`, so the
+    // graph is refused on a WebGL 2 machine that has only the read arm — the
+    // refusal §10 wants, not the backend throw item 92 left it as. The GLSL frame
+    // selects WebGL 2 (§17 decision 6), so this is a capability refusal, not a
+    // language one, and it names the write arm.
+    const rw: ResourceSpec = { kind: 'buffer', bytes: 256, access: 'read-write' };
+    const compute = { id: 'sim', authored: 'glsl' as const, requires: undefined, resources: [rw] };
+    const outcome = resolve(compute, webgl2Machine);
+    expect('backend' in outcome).toBe(false);
+    if ('refusal' in outcome) {
+      expect(outcome.refusal).toContain('storage-buffer-readwrite');
+      expect(outcome.refusal).toContain('sim');
+    }
+  });
+
+  it('draws the same read-write storage buffer on WebGPU, which has the write arm (item 97)', () => {
+    // The write arm is core to WebGPU: a compute stage fills a read-write buffer
+    // natively, so the identical frame resolves to WebGPU rather than being refused.
+    const rw: ResourceSpec = { kind: 'buffer', bytes: 256, access: 'read-write' };
+    const compute = { id: 'sim', authored: 'wgsl' as const, requires: undefined, resources: [rw] };
+    expect(chosen(resolve(compute, webgpuMachine))).toBe('webgpu');
   });
 
   it('refuses a WGSL graph needing an optional capability the selected WebGPU device lacks, by name', () => {
@@ -109,7 +134,7 @@ describe('resolve — selection first, refusal second', () => {
 describe('capability derivation from a live device', () => {
   it('reads every core WebGPU capability off a device with no optional features', () => {
     const caps = webgpuCapabilities([]);
-    for (const core of ['compute', 'storage-buffer', 'storage-texture', 'indirect', 'occlusion', 'msaa'] as const) {
+    for (const core of ['compute', 'storage-buffer', 'storage-buffer-readwrite', 'storage-texture', 'indirect', 'occlusion', 'msaa'] as const) {
       expect(caps.has(core)).toBe(true);
     }
     // Optional ones are absent until their feature is reported.
@@ -129,11 +154,12 @@ describe('capability derivation from a live device', () => {
     expect(caps.has('msaa')).toBe(true);
     // `storage-buffer` is the reduced scene tier of §17 decision 1 made real
     // (item 92): a scene's read-only per-instance data gets a uniform-block raster
-    // path here, so a graph requiring it is drawn rather than refused — the
-    // read-write, compute-filled expression of the same name is refused by name at
-    // the backend, not by the capability.
+    // path here, so a graph requiring it is drawn rather than refused. The
+    // read-write, compute-filled expression of the same name is the separate write
+    // arm `storage-buffer-readwrite`, which WebGL 2 does not have, so a graph
+    // carrying a read-write buffer is refused by the capability (item 97).
     expect(caps.has('storage-buffer')).toBe(true);
-    for (const only of ['compute', 'storage-texture', 'indirect', 'timestamp', 'occlusion'] as const) {
+    for (const only of ['storage-buffer-readwrite', 'compute', 'storage-texture', 'indirect', 'timestamp', 'occlusion'] as const) {
       expect(caps.has(only)).toBe(false);
     }
   });

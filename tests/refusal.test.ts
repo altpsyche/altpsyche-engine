@@ -69,6 +69,45 @@ describe('refusal', () => {
     );
   });
 
+  it('derives the write arm from a read-write buffer resource, refusing it where the requires list did not name it (item 97)', () => {
+    // The graph declares no `requires`, but carries a read-write storage buffer.
+    // The write arm `storage-buffer-readwrite` is read from the resource's own
+    // `access`, so a device without it refuses the graph here rather than at a
+    // backend throw. This is what makes the WebGL 2 read-write-buffer throw
+    // unreachable by construction: the capability is in the data, not the list.
+    const graph = {
+      id: 'sim',
+      requires: undefined,
+      resources: [{ kind: 'buffer' as const, bytes: 256, access: 'read-write' as const }],
+    };
+    const message = refusal(graph, device('webgl2', ['storage-buffer']));
+    expect(message).toBe('the graph "sim" needs storage-buffer-readwrite; webgl2 does not have it');
+  });
+
+  it('is silent for a read-write buffer where the device has the write arm', () => {
+    // WebGPU has the write arm, so the same resource-derived need is met and
+    // refusal is silence — the graph draws.
+    const graph = {
+      id: 'sim',
+      requires: undefined,
+      resources: [{ kind: 'buffer' as const, bytes: 256, access: 'read-write' as const }],
+    };
+    expect(refusal(graph, device('webgpu', ['storage-buffer', 'storage-buffer-readwrite']))).toBeNull();
+  });
+
+  it('names a resource-derived capability once, not twice, when the requires list also names it', () => {
+    // A graph both declaring the write arm and carrying a read-write buffer needs
+    // it once: the declared and the implied are unioned, not concatenated.
+    const graph = {
+      id: 'sim',
+      requires: ['storage-buffer-readwrite'] as Capability[],
+      resources: [{ kind: 'buffer' as const, bytes: 256, access: 'read-write' as const }],
+    };
+    expect(refusal(graph, device('webgl2', []))).toBe(
+      'the graph "sim" needs storage-buffer-readwrite; webgl2 does not have it'
+    );
+  });
+
   it('joins two missing capabilities with and, one alone with neither commas nor and', () => {
     expect(refusal(graph('a', ['msaa', 'occlusion']), device('webgl2', []))).toBe(
       'the graph "a" needs msaa and occlusion; webgl2 has neither'

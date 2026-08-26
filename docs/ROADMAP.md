@@ -3594,7 +3594,7 @@ resource and subsume this.
 
 ### 97. WebGL 2's `storage-buffer` capability says more than it can do
 
-**Status.** open
+**Status.** done
 
 **Asks for.** The capability a device declares to mean what the backend will actually accept. Item
 92 added `storage-buffer` to `WEBGL2_CORE` ([gpu/select.ts](../gpu/select.ts) L198) because WebGL 2

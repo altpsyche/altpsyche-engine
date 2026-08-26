@@ -19,7 +19,7 @@
  * capability it forfeits, and every one it forfeits is one GLSL ES 3.0 has no
  * syntax for.
  */
-import type { BackendName, FrameGraph, ShaderTarget } from '../graph/types.js';
+import type { BackendName, FrameGraph, ResourceSpec, ShaderTarget } from '../graph/types.js';
 import type { Capability } from '../graph/capability.js';
 import { refusal } from '../graph/refusal.js';
 
@@ -148,12 +148,15 @@ export interface DeviceProfile {
 }
 
 /** The capabilities every WebGPU device has, whatever optional features it adds:
- * compute, storage buffers and textures, indirect draw and dispatch, occlusion
- * queries and 4× multisampling are core to the API, so a graph needing only these
- * is never refused by a WebGPU device. */
+ * compute, storage buffers read and read-write, storage textures, indirect draw
+ * and dispatch, occlusion queries and 4× multisampling are core to the API, so a
+ * graph needing only these is never refused by a WebGPU device. It carries both
+ * arms of the storage buffer, `storage-buffer` and `storage-buffer-readwrite`,
+ * because a compute stage fills a read-write buffer natively (item 97). */
 const WEBGPU_CORE: readonly Capability[] = [
   'compute',
   'storage-buffer',
+  'storage-buffer-readwrite',
   'storage-texture',
   'indirect',
   'occlusion',
@@ -190,11 +193,13 @@ export function webgpuCapabilities(features: Iterable<string>): ReadonlySet<Capa
  * `gl_InstanceID`, GLSL ES 3.00's answer to a read-only `array<T>`), so a graph
  * requiring `storage-buffer` for that reduced use is drawn rather than refused.
  * The compute-tier expression of the same name — a *read-write* storage buffer a
- * compute or fragment stage fills — has no ES 3.00 syntax and is refused by name
- * at the backend ([gpu/webgl2.ts](./webgl2.ts)), which is the "or is refused by
- * name" half of item 92: the capability lets selection through, the backend draws
- * what it can and refuses by name what it cannot, rather than claiming to draw and
- * dropping the data silently. */
+ * compute or fragment stage fills — is the separate write arm `storage-buffer-readwrite`,
+ * which has no ES 3.00 syntax and is **not** on this list, so a graph carrying a
+ * read-write buffer is refused by `refusal()` before any backend build (item 97).
+ * That refusal used to live as a throw in the backend ([gpu/webgl2.ts](./webgl2.ts)):
+ * splitting the name moves it back into the data, which is where §10 and §17
+ * decision 2 say a capability belongs, and leaves the throw an unreachable
+ * backstop rather than the load-bearing refusal. */
 const WEBGL2_CORE: readonly Capability[] = ['msaa', 'storage-buffer'];
 
 /** The optional WebGL 2 capabilities and the extension name that grants each. The
@@ -238,7 +243,7 @@ export function webgl2Capabilities(extensions: Iterable<string>): ReadonlySet<Ca
  * reading over two records, which is the whole of §17 decision 2.
  */
 export function resolve(
-  frame: Pick<FrameGraph, 'id' | 'authored' | 'requires' | 'translated'>,
+  frame: Pick<FrameGraph, 'id' | 'authored' | 'requires' | 'translated'> & { resources?: readonly ResourceSpec[] },
   device: DeviceProfile
 ): BackendSelection {
   const offer: DeviceOffer = { webgpu: device.webgpu !== null, webgl2: device.webgl2 !== null };
