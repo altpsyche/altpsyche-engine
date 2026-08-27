@@ -15,6 +15,7 @@ look for a reason that stands on the package's own merits.
 | [docs/GUIDE-frame-graph.md](docs/GUIDE-frame-graph.md), [docs/GUIDE-backends.md](docs/GUIDE-backends.md) | the consumer guides |
 | [docs/DEVICES.md](docs/DEVICES.md) | hardware readings, one row per machine per day |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | the gates, what each cannot see, and the rules that are not negotiable |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | what is available to work on, what is blocked, and what is only an idea |
 
 **The queue, the register, the direction document and the session handover were deleted at
 0.3.0**, when the queue they tracked was emptied — 107 items, every one landed, superseded by an
@@ -22,9 +23,11 @@ item that landed, or a standing obligation that cannot close. `git log` is the r
 landed change carries its measurement in its commit message, and `git log --grep '^item 27'`
 still finds what item 27 landed. `git show` recovers any of the four deleted files from history.
 
-**So there is no in-repository queue any more.** Work is decided in the open and tracked outside
-this tree. What has not changed is the standard a change is held to, which is the rest of this
-file.
+**A queue exists again and it is [docs/ROADMAP.md](docs/ROADMAP.md)**, restarted on 2026-08-27
+when the package took on the layer above the renderer. It says what is available, what is blocked
+and what is only an idea, and today it says nothing is queued and names the one decision that
+blocks everything else. `git log` stays the record of what landed. What has not changed is the
+standard a change is held to, which is the rest of this file.
 
 ## What a number may claim
 
