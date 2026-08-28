@@ -25,8 +25,7 @@ still finds what item 27 landed. `git show` recovers any of the four deleted fil
 
 **A queue exists again and it is [docs/ROADMAP.md](docs/ROADMAP.md)**, restarted on 2026-08-27
 when the package took on the layer above the renderer. It says what is available, what is blocked
-and what is only an idea, and today it says nothing is queued and names the one decision that
-blocks everything else. `git log` stays the record of what landed. What has not changed is the
+and what is only an idea. `git log` stays the record of what landed. What has not changed is the
 standard a change is held to, which is the rest of this file.
 
 ## What a number may claim
