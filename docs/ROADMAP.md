@@ -274,6 +274,67 @@ fifty-five commits of its 1.x and 2.0.0 work are the only slack that lead time h
 for this file is that items may arrive from it in one batch**, each still argued on this package's
 own merits or thrown out, and the first of them is already here as item 2.
 
+**That spike has run, and its batch is below.** Read on 2026-09-09 on a `blackwell` adapter through
+`gate:card`'s own launch arguments, drawing a figure's marks as filled and stroked paths. **Eight gaps
+came out of it and three of them are not for this package**: a plain text mark carries a font family
+and no outline, which is that package's own 2.3.0; a mark's colour is a CSS colour string, which is
+that package's own format work; and the counted stencil is item 2 here already, re-measured rather
+than re-found. **One more is documented behaviour of this package rather than a defect** and is
+recorded under the batch instead of in it. **The four left are argued below on this package's own
+merits**, and each names the reading that found it so a session can reproduce it rather than trust it.
+
+### The spike's batch, four findings
+
+**Finding A: `createFrameRenderer` contradicts what `gpu/select.ts` says the library does.** That
+module opens by stating which backend draws a frame is "answered inside the library rather than by the
+caller naming one", and `createFrameRenderer` builds WebGL 2 for every caller that passes neither
+`backend` nor `device`. Nothing on the door runs a selection for a caller and nothing gathers a
+`DeviceOffer`, so the four steps a caller must take are its own: gather the offering, call
+`selectBackend`, call `requestWebGPUDevice`, pass both back in. **The reading.** A WGSL frame handed
+to `createSurface` on a machine whose adapter came back was refused with `WebGL 2 was handed a wgsl
+frame to draw`, while `selectBackend` on that same page answered `{ backend: 'webgpu' }`. **Why it
+stands here.** A stated intent that the code does not carry out is this package's own inconsistency,
+and it is the shape of it rather than a missing convenience: the pure selection exists and the join to
+the renderer does not.
+
+**Finding B: `resolve` and `cost` both accept a description that cannot draw.** The two draw forms are
+`{ vertices }` and `{ instances }`, and `issueDraws` reads the first through `drawsCorners`, calling
+`draw` without ever reaching `setVertexBuffer`, whatever the pipeline's `geometry` names. **The
+reading.** A geometry pipeline drawn with `{ vertices: count }` drew nothing, and the card is what
+said so: `Vertex buffer slot 0 required by [RenderPipeline (unlabeled)] was not set`, followed by an
+invalid render bundle and an invalid command buffer every frame. `resolve` answered
+`{ backend: 'webgpu' }` for that frame and `cost` costed it at 1 pass and 1 draw. **Why it stands
+here.** This package's own comments say a description is refused by name rather than left to fail on
+the card, and both of its pure readings pass this one. A pipeline naming `geometry` drawn by a form
+that binds none is a description no card can draw, which is decidable without a device.
+
+**Finding C: `probe()` leaves a canvas on the page for every backend it trials.** `onScreenCanvas`
+creates a 200 by 100 canvas at `position: fixed; left: 0; top: 0`, appends it to the document and
+removes it from nothing, and the trial is why it is on-screen at all. **The reading.** After one
+`probe()` on a machine offering both backends, two of those canvases stand over the top-left corner of
+the document, and the first picture drawn afterwards had that corner covered by the clear colour
+(0.1, 0.2, 0.3) they hold, read back as (25, 51, 76). **Why it stands here.** A door export that
+changes a caller's document permanently is a defect in this package whatever the caller is. The trial
+needs the canvas composited while it runs and needs nothing of it afterwards.
+
+**Finding D: this package's own plan for 3.1.0 assumes a scissor that does not exist.** The row above
+reads "a path clip is a stencil where a rectangle is a scissor", and `FrameGraph`, `PassSpec` and
+`DrawSpec` name neither a scissor nor a viewport. **The reading.** The word appears nowhere in this
+tree outside this file. **Why it stands here.** A plan in this file resting on a capability this file
+is the only mention of is this package's own inconsistency, and it decides whether 3.1.0 is one item
+or two.
+
+### What the spike found that needs nothing here
+
+**A pass drawing the frame the reader sees keeps one sample of each pixel and can name no blend, and
+both are written down already.** `PipelineSpec.samples` says a pipeline drawing that frame never
+carries one because the frame's own target keeps a single sample, and `targets` says naming it is all
+or nothing and the frame's attachment is not among them. **The reading.** A stroke 2.857 pixels wide
+drew as exactly 2, and a pipeline naming a blend was refused by name with `the pass on pipeline 0
+writes 1 colours and attaches none`. **So this is a consumer learning the rule rather than a gap**: a
+painter wanting either draws into a texture of its own and names it in `present`. It is recorded so
+the next session reading that batch does not file it.
+
 **How that consumer will declare this package, and why it matters here.** As a peer dependency
 rather than a plain one, which is the recommendation in its own roadmap and is a decision it takes at
 its 2.6.0. The reason belongs in this file because the alternative puts two copies of this package in
