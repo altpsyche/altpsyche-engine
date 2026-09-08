@@ -266,6 +266,14 @@ neither side rediscovers it.
 | 3.1.0, a clip that is a path | a clip region that is not a rectangle | item 2 again, since a path clip is a stencil where a rectangle is a scissor |
 | 4.0.0, a figure a reader can act on | nothing decided yet | possibly nothing. Pointer and key state is a candidate above and is doubtful on its own merits |
 
+**When that consumer's spike arrives, and why it matters here.** A throwaway painter over this
+package, drawing a figure's marks as they stand, is a session in that repository scheduled after its
+1.6.0 and before its format work. The reason it is early is this package's release time: a gap found
+there costs an item, a commit and a release here before that painter can use it, and the roughly
+fifty-five commits of its 1.x and 2.0.0 work are the only slack that lead time has. **What that means
+for this file is that items may arrive from it in one batch**, each still argued on this package's
+own merits or thrown out, and the first of them is already here as item 2.
+
 **What this changes about item 2: nothing.** It is argued there on the specification, which carries
 `stencilFront` and `stencilBack` as separate members because the two differ, and a renderer claiming
 the core specification either expresses per-face stencil state or does not claim it. That reason
@@ -273,6 +281,12 @@ stands whether or not anything above ever draws a filled path.
 
 **What it changes about the candidates: nothing.** Every candidate is still blocked on the bound, and
 a row above is not an argument for one.
+
+**The baseline expires while this file waits.** The numbers at the top of it were measured on
+2026-08-29, and a pair of them read 514 tests over 34 files until they were re-taken at 864 over 73,
+so they had expired rather than moved. A stretch with no session here ends with the baseline re-taken
+before an item can be measured against it, which is a session of its own and is worth expecting
+rather than discovering.
 
 ---
 
