@@ -1,13 +1,17 @@
-# The figure format, and what this package does about it
+# The figure language, and what this package does about it
 
-**This document is one of three.** `@altpsyche/maths` is turning a figure from TypeScript code into
-serialisable data, so that a figure can be written by something other than a person typing TypeScript
-and drawn by something other than that package. The change crosses three repositories.
+**A figure language is a declarative language for describing a picture over time**, carrying nodes, a
+timeline, value types and expressions. It is being built so that a figure can be written by something
+other than a person typing TypeScript and drawn by something other than `@altpsyche/maths`, which
+becomes its reference implementation. The specification will live in its own repository with its own
+version.
 
-- [`@altpsyche/maths`](https://github.com/altpsyche/altpsyche-maths/blob/master/docs/FIGURE-FORMAT.md)
+**This document is one of three**, and the change crosses three repositories.
+
+- [`@altpsyche/maths`](https://github.com/altpsyche/altpsyche-maths/blob/master/docs/FIGURE-LANGUAGE.md)
   — the format itself, and most of the work.
 - **This document** — what this package refactors, which is almost nothing, and why that is correct.
-- [`altpsyche.dev`](https://github.com/altpsyche/altpsyche-dev/blob/master/docs/FIGURE-FORMAT.md) —
+- [`altpsyche.dev`](https://github.com/altpsyche/altpsyche-dev/blob/master/docs/FIGURE-LANGUAGE.md) —
   what the website refactors.
 
 **This document exists so a session here knows the change is happening and does not plan against it.**

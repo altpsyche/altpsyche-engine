@@ -128,7 +128,7 @@ refused with that reading recorded, because the alternative is publishing fixtur
 
 ## Item 2 — a stencil that counts, since one face and the other are not the same face
 
-**[`FIGURE-FORMAT.md`](FIGURE-FORMAT.md) is the change in flight above this package**, and this item
+**[`FIGURE-LANGUAGE.md`](FIGURE-LANGUAGE.md) is the figure language, the change in flight above this package**, and this item
 is the only part of it that reaches here. That document says what this package refactors for it,
 which is nothing, and what it must not do.
 
