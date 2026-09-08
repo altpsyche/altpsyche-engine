@@ -274,6 +274,29 @@ fifty-five commits of its 1.x and 2.0.0 work are the only slack that lead time h
 for this file is that items may arrive from it in one batch**, each still argued on this package's
 own merits or thrown out, and the first of them is already here as item 2.
 
+**How that consumer will declare this package, and why it matters here.** As a peer dependency
+rather than a plain one, which is the recommendation in its own roadmap and is a decision it takes at
+its 2.6.0. The reason belongs in this file because the alternative puts two copies of this package in
+one page. That site depends on this one directly in nineteen files, none of which draws a figure, so
+it keeps the dependency after the painter lands there and then holds it twice, once directly and once
+through that package. Both ranges read `^0.3.0` today and a caret on a `0.x` tracks the last number
+alone, so they are identical now and split the moment either side moves a minor.
+
+**What two copies of this package cost, read from it rather than assumed.** Three pieces of
+module-level state exist here: the `Set` in `deprecate.ts` that dedupes a warning, and the two
+`WeakMap`s in `trace/trace.ts` that carry what is behind a handle and how long it lives. No module
+holds a device or an adapter, since capability lives in the data, so two copies do not make two
+devices and a page can hand one `GPUDevice` to both. What they do cost is this renderer twice in a
+consumer's bundle, which `chunk-split` there counts from the outside, and a tracer blind to every
+resource made through the other copy. **That second cost is the one to weigh here**, because being
+able to describe, cost and refuse a frame is this package's distinguishing claim, and half a trace is
+half that claim.
+
+**Reaching 1.0.0 removes the problem rather than managing it.** Two caret ranges on a `1.x`
+intersect across minors and a package manager dedupes them with no help, where two on a `0.x` split
+at every feature release. That is a consequence worth knowing and it is not an argument to bump a
+number: the version moves when the work does.
+
 **What this changes about item 2: nothing.** It is argued there on the specification, which carries
 `stencilFront` and `stencilBack` as separate members because the two differ, and a renderer claiming
 the core specification either expresses per-face stencil state or does not claim it. That reason
