@@ -233,6 +233,49 @@ that from the outside, and the two backends already load by dynamic import for t
 
 ---
 
+## What depends on this package, and which version of it needs what
+
+**This is a record and not a queue.** No row below is a reason to build anything here, which is the
+rule at the top of `CLAUDE.md` and the rule item 2 states about itself: a consumer wanting a
+capability is thrown out and replaced by a reason that stands on this package's own merits. What the
+table is for is the other half of that rule. A dependency nobody wrote down is one a session
+rediscovers by reading another repository's roadmap, and the direction between these two packages is
+a standing refusal here, so the direction is worth stating where it binds.
+
+**The direction.** `@altpsyche/maths` depends on this package, behind a dynamic import in a GPU
+painter it has not built yet. This package never imports that one. The case that looks like it needs
+the second is a shader declaring a camera, and the answer is that whatever holds both reads the
+camera from here and hands it to a figure as data.
+
+**That package is at 1.0.0 with its door frozen, and this one is at 0.3.0.** A frozen door promising
+a consumer that a name does not change cannot be honoured through a dependency below 1.0.0, where a
+minor may break anything. Its answer was to take a clean break of its own: it goes to 2.0.0 for a
+figure format, and until this package reaches 1.0.0 that consumer either pins an exact version or
+takes the churn by hand. **Nothing here is asked to move for that**, and the choice is recorded so
+neither side rediscovers it.
+
+| version of `@altpsyche/maths` | what it draws through this package | what it needs from here |
+| --- | --- | --- |
+| 1.1.0 through 1.6.0 | nothing | nothing |
+| 2.0.0, the figure format | nothing | nothing. That document is [`FIGURE-FORMAT.md`](FIGURE-FORMAT.md), and what this package refactors for it is nothing |
+| 2.1.0 through 2.5.0 | nothing | nothing |
+| 2.6.0, a GPU painter | every mark a figure draws, as filled and stroked paths | a stencil that counts, which is item 2. A filled path with a hole has its interior decided by a winding number, and the mask both `StencilMode` values give cannot count one |
+| 2.7.0, dashes and quadratics | a dashed stroke and a quadratic segment | nothing beyond 2.6.0 |
+| 2.8.0, text on a GPU with a recorder | glyph outlines as filled paths | nothing beyond 2.6.0 |
+| 3.0.0, depth | a figure in space that keeps its depth order | nothing beyond 2.6.0. What gates it is a decision in that repository about whether a figure may be undrawable in SVG |
+| 3.1.0, a clip that is a path | a clip region that is not a rectangle | item 2 again, since a path clip is a stencil where a rectangle is a scissor |
+| 4.0.0, a figure a reader can act on | nothing decided yet | possibly nothing. Pointer and key state is a candidate above and is doubtful on its own merits |
+
+**What this changes about item 2: nothing.** It is argued there on the specification, which carries
+`stencilFront` and `stencilBack` as separate members because the two differ, and a renderer claiming
+the core specification either expresses per-face stencil state or does not claim it. That reason
+stands whether or not anything above ever draws a filled path.
+
+**What it changes about the candidates: nothing.** Every candidate is still blocked on the bound, and
+a row above is not an argument for one.
+
+---
+
 ## How an item is written here
 
 **An item names its steps**, each one commit-sized, each naming the measurement it will quote.
