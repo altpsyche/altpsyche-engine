@@ -128,6 +128,10 @@ refused with that reading recorded, because the alternative is publishing fixtur
 
 ## Item 2 — a stencil that counts, since one face and the other are not the same face
 
+**[`FIGURE-FORMAT.md`](FIGURE-FORMAT.md) is the change in flight above this package**, and this item
+is the only part of it that reaches here. That document says what this package refactors for it,
+which is nothing, and what it must not do.
+
 **Opened on 2026-09-08.** `StencilMode` is `'mark' | 'inside'`, and both of them set `stencilFront`
 and `stencilBack` to one state. `gpu/webgpu.ts` assigns the same `face` object to each, and
 `gpu/webgl2.ts` says why in its own comment: "a mask has no front and back a picture could tell
