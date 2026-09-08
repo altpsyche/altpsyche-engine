@@ -126,6 +126,60 @@ refused with that reading recorded, because the alternative is publishing fixtur
 
 ---
 
+## Item 2 — a stencil that counts, since one face and the other are not the same face
+
+**Opened on 2026-09-08.** `StencilMode` is `'mark' | 'inside'`, and both of them set `stencilFront`
+and `stencilBack` to one state. `gpu/webgpu.ts` assigns the same `face` object to each, and
+`gpu/webgl2.ts` says why in its own comment: "a mask has no front and back a picture could tell
+apart, so one `stencilOp` and one `stencilFunc` — which set both faces — is the whole of it." What
+that gives is a boolean mask. `mark` replaces every bit where it draws and `inside` keeps what
+compares equal.
+
+**Why it stands on this package's own merits.** The distinguishing claim is that this renderer is
+built to the whole WebGPU core specification. `GPUDepthStencilState` carries `stencilFront` and
+`stencilBack` as separate members, and it carries them separately because the two differ: that is the
+only way the specification offers to tell a front-facing fragment from a back-facing one in the
+stencil stage. Collapsing them to one state is the one place a pipeline this package builds cannot
+express a pipeline the specification describes. A device reports no capability that is missing here,
+so `refusal` returns `null` and the frame draws the wrong picture rather than being refused, which is
+the failure mode this package exists to prevent.
+
+**What a counting stencil is for**, stated so a reader can judge the merit rather than take it on
+trust. A filled path with a hole, or one that crosses itself, has its interior decided by a winding
+number, and a winding number is counted by drawing the path's triangles and letting front and back
+faces cancel. That is Loop and Blinn's technique and it is how every GPU vector renderer draws a
+fill. It is also what `@altpsyche/maths` will need, and that is not the reason: **the reason is that a
+renderer claiming the core specification either expresses per-face stencil state or does not claim
+it.**
+
+### Steps
+
+1. `StencilMode` grows the counting pair, as `'count'` and `'nonzero'` beside `'mark'` and
+   `'inside'`, with `count` incrementing on front faces and decrementing on back faces, both
+   wrapping, and `nonzero` covering where the counter is not zero. **Measures:** the two backends
+   agreeing on a fixture that a mask cannot draw, to the single channel the corpus already holds them
+   to.
+2. A fixture that separates them: a path wound so that a mask fills a hole a counter leaves empty.
+   **Measures:** the two pictures differing by a named number of pixels under `mark`, and by none
+   under `count`.
+3. `refusal` answers for a device that cannot do per-face stencil, if any reachable one cannot.
+   **Measures:** the capability read off both backends on the machines the gates run.
+
+### Done when
+
+- `StencilMode` names the counting modes, both backends implement them, and `docs/API.md` says what
+  each does to the mask in the card's own fields the way the current pair are described.
+- A fixture draws a self-crossing filled path correctly under the counting mode and visibly wrongly
+  under the mask, with the pixel difference between them recorded.
+- The two backends agree on that fixture to the single channel the corpus holds every preset to.
+- `npm test`, `npm run type-check` and `gate:browser` are green, and the card gate is re-taken.
+
+**What would change the answer.** If WebGL 2 cannot reach `glStencilOpSeparate` through the path this
+package builds pipelines on, the counting modes are a WebGPU capability and `refusal` names them,
+which is the arrangement this package already uses everywhere the two backends differ.
+
+---
+
 ## What is still to be settled, and it does not block item 1
 
 ### The bound the layer above the renderer is built to

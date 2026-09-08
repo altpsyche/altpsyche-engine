@@ -77,5 +77,9 @@ would change the answer. That belongs in the commit message.
 
 - No runtime dependency is added to this package without a deliberate decision. Zero runtime
   dependencies is a published property.
+- **This package never imports `@altpsyche/maths`.** That package depends on this one, behind a
+  dynamic import in its GPU painter, so a second import in this direction is a cycle. The case that
+  looks like it needs one is a shader declaring a camera, and the answer there is that whatever holds
+  both packages reads the camera from here and hands it to a figure as data.
 - No export moves out from behind the one door in `index.ts`.
 - No backend grows a method the other has to throw from. Capability lives in the data.
