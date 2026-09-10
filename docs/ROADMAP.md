@@ -720,6 +720,32 @@ two — is answered by that difference.
 **Done when** finding D names `scissor` alone, and says a viewport is set from the frame size on the
 draw path but declared nowhere in a graph.
 
+### Should `gate:pack` read the declared types under node's own resolution?
+
+**Found while cutting 0.4.0, and it is a gap rather than a defect.** `gate:pack` asks the installed
+package three questions — plain node imports it, a consumer builds with it through `tsx`, and a
+bundler keeps the door's re-exports — and step 2 of item 3 added a fourth over the second door's
+run-time names. **None of them reads the `types` half of an `exports` entry under
+`moduleResolution: nodenext`**, which is the resolution a consumer on modern TypeScript actually
+uses and the only one that can see a subpath's declarations at all. `tsx` resolves more loosely, and
+that looseness is already recorded in the gate's own header as the reason the plain-node question
+exists beside it.
+
+So a `types` path pointing at nothing would publish, and the failure would land on a consumer as a
+subpath with no declarations while every gate here stayed green. It was checked by hand for this
+release — a two-line program importing `mat4` and the type `Mat4` from the maths door type-checks
+clean under `nodenext` against the installed 0.4.0 — and by hand is exactly what this repository
+does not accept for a claim it repeats.
+
+**Why it is a question and not an item yet.** The cheap version is a `tsc` invocation inside
+`gate:pack` over a fixture consumer with `moduleResolution: nodenext`, which is a few lines. The
+question is whether it wants to be its own gate over every declared entry and both resolution modes,
+since `node16` and `bundler` differ from `nodenext` in ways that have bitten this package before —
+0.2.0's headline fix was precisely a `dist` only a bundler could load.
+
+**Done when** a gate fails for a declared entry whose `types` target does not resolve, and the
+commit says which resolution modes it read.
+
 ### When item 2 grows the counting modes, does the stencil table become data or stay two tables?
 
 **The audit found `StencilMode`'s meaning written once per backend.** `gpu/webgpu.ts:130-139` holds
@@ -807,7 +833,8 @@ the second is a shader declaring a camera, and the answer is that whatever holds
 camera from here and hands it to a figure as data.
 
 **That package was at 1.0.0 with its door frozen when this was written and is at 2.5.1 now**, and
-this one is at 0.3.0. A frozen door promising a consumer that a name does not change cannot be
+this one is at 0.4.0, cut on 2026-09-10 for the second declared entry and unpublished until a
+release is made from the tag. A frozen door promising a consumer that a name does not change cannot be
 honoured through a dependency below 1.0.0, where a minor may break anything. Its answer was to take a
 clean break of its own: it went to 2.0.0 for a figure format, and until this package reaches 1.0.0
 that consumer either pins an exact version or takes the churn by hand. **Nothing here is asked to

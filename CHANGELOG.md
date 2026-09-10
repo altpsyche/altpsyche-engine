@@ -6,8 +6,45 @@ commits landed. It sits at the root of the repository, outside the `files` list 
 
 The middle number carries feature improvements and additions, and the last one
 carries fixes. A caret range on a `0.x` version tracks the last number alone, so
-`^0.2.0` will not pick up a later `0.3.0`: a consumer moves to a feature release by
+`^0.3.0` will not pick up a later `0.4.0`: a consumer moves to a feature release by
 asking for it.
+
+## 0.4.0
+
+**One addition and nothing else.** No name on the main import path changed: 69 run-time names and
+84 types, the same set as 0.3.0 with nothing added, removed or renamed, read off a regenerated diff
+of the built door rather than from memory. No shipped code changed either — the only edit to a file
+that ships was a paragraph of reasoning in the entry point's own header. If you are on `^0.3.0`
+nothing here reaches you until you ask for it, and there is nothing here you need.
+
+### Added: a second import path for the maths, and it is only worth taking without a bundler
+
+`@altpsyche/engine/maths` gives you `vec3`, `mat3` and `mat4`, with the types `Vec3`, `Mat3` and
+`Mat4`. All six stay on the main path as well, so **this is a shortcut and never a move**: every
+import line you have already written is still correct, and importing both paths gives you one copy
+of one module rather than two.
+
+What it is for is the closure behind it, and the honest measurement is that most consumers should
+ignore it. Installed from its own tarball and bundled with esbuild, minified:
+
+| a consumer wanting only those three names | `@altpsyche/engine` | `@altpsyche/engine/maths` |
+| --- | --- | --- |
+| with a bundler | 2,116 B raw, **997 B gzipped** | 2,116 B raw, **995 B gzipped** |
+| without one, counted by plain node | **27 files, 219,294 bytes** | **1 file, 7,520 bytes** |
+
+So a bundler already reduces the main path to the arithmetic alone — the module imports nothing and
+the package declares `sideEffects: false` — and the second path saves it two gzipped bytes. **Take
+it only where there is no bundler**: a page on an import map, a CDN, Deno, plain node. There the
+main path loads the renderer to reach the maths, and this one does not.
+
+The module behind it imports nothing, and that is held by a gate rather than by intention: a
+declared entry past the first is added only where the import walk can hold its closure to the one
+module it points at. An import added to the maths module fails that gate instead of quietly putting
+the renderer back behind the arithmetic.
+
+**Subpaths other than these two do not resolve**, and that has not changed. `exports` refuses a path
+nobody declared, which is what makes the public surface a decision rather than a consequence of
+where a file sits.
 
 ## 0.3.0
 
