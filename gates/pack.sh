@@ -60,7 +60,7 @@ cat > package.json <<'JSON'
   "name": "engine-consumer-check",
   "private": true,
   "type": "module",
-  "devDependencies": { "tsx": "^4.20.3", "@webgpu/types": "^0.1.71" }
+  "devDependencies": { "tsx": "^4.20.3", "@webgpu/types": "^0.1.71", "typescript": "^5.9.3" }
 }
 JSON
 npm install --no-audit --no-fund --silent "${spec:-./$tarball}" >/dev/null
@@ -126,6 +126,85 @@ node --input-type=module -e "
   }
   console.log('the maths door imports it: ' + Object.keys(maths).length + ' names, 1 file loaded, same objects as the first door');
 "
+
+# Every path the manifest declares, asserted to be a file the install actually
+# carries.
+#
+# This is the blunt half and it exists because the compiler forgives what a reader
+# would not. A `types` condition pointing at a file that is not there still resolves,
+# because TypeScript falls back to the `default` condition and picks up the `.d.ts`
+# sitting beside the `.js` — and `tsc` emits one beside every file, so the fallback
+# always succeeds here and a typo in the manifest is invisible to the probe below.
+# Verified by breaking it: the probe passes with `types` pointing at
+# `does-not-exist.d.ts`, and fails only once the sibling declaration is deleted too.
+#
+# So the typo is caught by looking, not by compiling. `tests/import-graph.test.ts`
+# holds every declared door to a file the *build emits*; this holds it to a file the
+# *install carries*, which is the other half — a target the build emits and `files`
+# does not ship would pass there and fail here.
+node -e "
+  const manifest = require('./node_modules/@altpsyche/engine/package.json');
+  const fs = require('node:fs');
+  const missing = [];
+  for (const [subpath, conditions] of Object.entries(manifest.exports)) {
+    for (const [condition, target] of Object.entries(conditions)) {
+      const at = './node_modules/@altpsyche/engine/' + String(target).replace(/^\.\//, '');
+      if (!fs.existsSync(at)) missing.push(subpath + ' ' + condition + ' -> ' + target);
+    }
+  }
+  if (missing.length) {
+    console.error('the manifest declares targets the install does not carry:');
+    for (const one of missing) console.error('  ' + one);
+    process.exit(1);
+  }
+  const count = Object.values(manifest.exports).reduce((n, c) => n + Object.keys(c).length, 0);
+  console.log('every declared target is a file the install carries: ' + count + ' across ' + Object.keys(manifest.exports).length + ' door(s)');
+"
+
+# The `types` half of every declared entry, compiled under node's own resolution.
+#
+# Everything above reads run time or reads paths. `tsx` below reads types but
+# resolves more loosely than a consumer's compiler does, which is the same looseness
+# the plain-node question exists to cover. What this catches is declarations that are
+# absent or do not compile: with the maths door's `.d.ts` deleted it fails TS7016,
+# naming the module whose types it could not find.
+#
+# The probe is generated from the installed manifest rather than written down, so a
+# door added to `exports` is type-checked here without a line being added. `nodenext`
+# is the strict reading of `exports`; a bundler's resolution would forgive a missing
+# condition that node's does not.
+node -e "
+  const manifest = require('./node_modules/@altpsyche/engine/package.json');
+  const fs = require('node:fs');
+  const doors = Object.keys(manifest.exports).map((subpath) =>
+    subpath === '.' ? manifest.name : manifest.name + '/' + subpath.replace(/^\.\//, '')
+  );
+  fs.writeFileSync(
+    'types-probe.ts',
+    doors.map((door, i) => 'import * as door' + i + \" from '\" + door + \"';\").join('\n') +
+      '\n' +
+      doors.map((_, i) => 'void door' + i + ';').join('\n') +
+      '\n'
+  );
+  fs.writeFileSync(
+    'tsconfig.types-probe.json',
+    JSON.stringify({
+      compilerOptions: {
+        module: 'nodenext',
+        moduleResolution: 'nodenext',
+        strict: true,
+        noEmit: true,
+        skipLibCheck: true,
+        lib: ['ES2022', 'DOM', 'DOM.Iterable'],
+        types: ['@webgpu/types'],
+      },
+      files: ['types-probe.ts'],
+    })
+  );
+  console.log('type probe over ' + doors.length + ' declared door(s): ' + doors.join(', '));
+"
+./node_modules/typescript/bin/tsc -p tsconfig.types-probe.json
+echo "every declared door's types resolve under moduleResolution: nodenext"
 
 npx --yes tsx draw.ts
 
