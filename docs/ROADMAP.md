@@ -439,8 +439,9 @@ grepping every markdown file the gate reads:
 - `docs/TESTING.md` — the row says it is "cited by ROADMAP item 1's phone row". This file's item 1 is
   the frame declaration reader and has no phone row; the words "phone" and "mobile" do not appear in
   it.
-- `host/loop.ts` — the row credits "RoadToPureEngine §7 and ROADMAP item 39". Neither document
-  exists: the first was deleted at 0.3.0 and this file's items run 1 to 5.
+- `host/loop.ts` — the row credits "RoadToPureEngine §7 and ROADMAP item 39". Neither reference
+  resolves: the first document was deleted at 0.3.0, and the item number belongs to the queue that
+  was deleted with it rather than to this file, whose items run 1 to 8.
 - `components/ui/WgslRefusal.tsx` and `public/shaders/build/manifest.json` — both rows say they are
   website paths "RoadToPureEngine §3 row 12 names", and that document was deleted at 0.3.0.
 
