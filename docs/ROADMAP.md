@@ -284,11 +284,18 @@ old one, because a classic-resolution consumer cannot reach a subpath at all.
   bytes through `.`; the eager closure of `.` unchanged at 28 files by the walk. Those two byte
   figures are 835 higher than step 1 quoted, and the 835 is the doc comment step 1 added to
   `index.ts`, which `tsc` emits.
-- [ ] **3. The import graph gate walks the new door.** The new entry becomes a third eager root and
-  its closure is held to `scene/maths.ts` alone, so an import added to that module fails a gate rather
-  than quietly putting the renderer back behind the arithmetic. **The measurement**: the closure's
-  file count, and the gate red when an import of `graph/types.ts` is added to that module and green
-  when it is taken out.
+- [x] **3. The import graph gate walks the new door.** Landed on 2026-09-10. Every declared entry is
+  now an eager root of the backend walk, and every entry past `.` has its closure held to the one
+  module it points at. The doors are read out of `package.json` rather than listed in the test, so
+  the next one declared is bound by this without a line being added — which is what makes step 1's
+  bound a gate instead of a note. A second check holds every declared door to a file
+  `tsconfig.build.json` actually emits, since an entry pointing at an unemitted file resolves on this
+  disk and 404s for a consumer. **The measurement**: `tests/import-graph.test.ts` at 9 tests, up from
+  7; the closure of `./maths` at 1 file; and the gate **red** with `import type { FrameGraph } from
+  '../graph/types.js'` added to that module — "the door "./maths" reaches 5 files: scene/maths.ts,
+  graph/types.ts, graph/capability.ts, graph/refs.ts, graph/handles.ts" — and green with it taken out
+  again. Worth noting that a *type-only* import was enough to trip it, which is the strict reading and
+  the right one: a type edge is one keystroke from a value edge.
 - [ ] **4. `docs/API.md` says which names are behind which door.** **The measurement**: the count of
   names under each heading, against the two entries the manifest declares.
 

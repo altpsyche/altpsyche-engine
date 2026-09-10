@@ -184,12 +184,35 @@ describe('what ships imports nothing that does not ship', () => {
   });
 });
 
+/**
+ * Every entry point the manifest declares, as the source file each one resolves to.
+ *
+ * Read out of `package.json` rather than written down here, for the reason the
+ * comparison further down exists: a second list of the doors could drift from the
+ * manifest, and the manifest is the one a consumer's tooling reads. So a door added
+ * to `exports` becomes a root of the walks below without anybody remembering to add
+ * it, which is what makes the bound on adding one a gate rather than a note.
+ *
+ * The mapping is the build's own, inverted: `exports` names a built file under
+ * `dist/`, and the source beside it is the same path with `.ts` where the output has
+ * `.js`.
+ */
+function declaredEntries(): { subpath: string; file: string }[] {
+  const manifest = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')) as {
+    exports: Record<string, { default: string }>;
+  };
+  return Object.entries(manifest.exports).map(([subpath, target]) => ({
+    subpath,
+    file: resolve(ROOT, target.default.replace(/^\.\/dist\//, '').replace(/\.js$/, '.ts')),
+  }));
+}
+
 describe('the WebGPU backend is loaded on demand, not on every page', () => {
   it('keeps the backend out of the eager graph so a card-less browser never fetches it', () => {
-    // The eager graph is what a consumer downloads first: the door and the surface
-    // it re-exports. Neither may reach the backend except through the dynamic
-    // import in the renderer that splits it into its own chunk.
-    const eagerRoots = ['index.ts', 'host/surface.ts'].map((p) => resolve(ROOT, p));
+    // The eager graph is what a consumer downloads first: every declared door and the
+    // surface the first one re-exports. None may reach the backend except through the
+    // dynamic import in the renderer that splits it into its own chunk.
+    const eagerRoots = [...declaredEntries().map((entry) => entry.file), resolve(ROOT, 'host/surface.ts')];
 
     const { files } = walk(eagerRoots, false);
 
@@ -197,6 +220,45 @@ describe('the WebGPU backend is loaded on demand, not on every page', () => {
       files.has(WEBGPU_BACKEND),
       'gpu/webgpu.ts is reachable through a static import, so it lands in the eager chunk a card-less browser downloads. It must be reached only through `await import()`.'
     ).toBe(false);
+  });
+});
+
+describe('a second declared door reaches one file and no more', () => {
+  it('names any door past the first whose closure is more than the module it points at', () => {
+    // The bound the second door was declared under, in CLAUDE.md: a door past the
+    // first is declared only where this walk can hold its closure to a module that
+    // imports nothing. That is what a second door is *for* — `./maths` exists so a
+    // consumer with no bundler loads the arithmetic instead of the renderer with it,
+    // measured at one file against the first door's twenty-seven — and an import
+    // added to that module puts the renderer back behind it while every other gate
+    // stays green. A bundler's consumer would not notice, because tree-shaking undoes
+    // it; the consumer the door exists for pays the whole of it.
+    //
+    // Stated over every entry but `.` rather than over `scene/maths.ts` by name, so
+    // the next door declared is bound by this without a line being added here.
+    const wide: string[] = [];
+    for (const { subpath, file } of declaredEntries()) {
+      if (subpath === '.') continue;
+      const { files } = walk([file], false);
+      if (files.size !== 1) {
+        wide.push(
+          `the door "${subpath}" reaches ${files.size} files: ${[...files].map(rel).join(', ')}. A door past the first is declared only where its closure is the one module it points at, so either sever the import or withdraw the door — and withdrawing a published entry is a breaking change.`
+        );
+      }
+    }
+    expect(wide, wide.join('\n')).toEqual([]);
+  });
+
+  it('holds every declared door to a file the publish build emits', () => {
+    // A door pointing at a file `tsconfig.build.json` does not emit is an entry that
+    // resolves on this disk and 404s for a consumer, which `gate:pack` catches only
+    // for the doors it happens to import. This catches every one of them from the
+    // manifest.
+    const emitted = emittedByTheBuild();
+    const missing = declaredEntries()
+      .filter((entry) => !emitted.has(entry.file))
+      .map((entry) => `the door "${entry.subpath}" points at ${rel(entry.file)}, which the build does not emit`);
+    expect(missing, missing.join('\n')).toEqual([]);
   });
 });
 
