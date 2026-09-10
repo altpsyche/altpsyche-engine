@@ -20,10 +20,11 @@ it" is thrown out and replaced by a reason that stands on the package's own meri
 **Where the package stands, as the baseline any item below is measured against.** The renderer is
 built to the whole WebGPU core specification, every capability has a fixture the gates draw, and the
 gates are green: 4 of 4 browser gates, 16 of 16 on the recording contract, 24 of 24 corpus draws
-with 9 WebGL 2 skips, 21 of 21 surface checks, and 864 node tests over 73 files, **re-taken on
-2026-09-10** on a clean tree. The node pair read 514 over 34 here until it was re-taken at 864 over
-73, and the recording contract read 15 of 15 until it was re-taken at 16 of 16: both had expired
-rather than moved, because the sixteenth capability fixture arrived and neither number followed it.
+with 9 WebGL 2 skips, 21 of 21 surface checks, and **866 node tests over 73 files**, all re-taken on
+2026-09-10 with the batch of that day landed. The node count read 864 until item 3's step 3 added
+two checks over the declared doors; before that it read 514 over 34 files, and the recording
+contract read 15 of 15 until it was re-taken at 16 of 16. Those last two had expired rather than
+moved, because the sixteenth capability fixture arrived and neither number followed it.
 
 **The one line of this baseline no unattended session can re-take is the card**, which read 17 of 17
 on 2026-08-29. `gate:card` needs a desktop session and a real graphics card, every headless launch
@@ -100,8 +101,9 @@ function turning those names into bytes.
    is the sixteen fixtures still drawing under the new shape.
 2. **Move the reader, its declaration type and the source readers out of `fixtures/` into the
    package, without exporting any of them**, with the corpus importing them from their new home.
-   Quote: `npm test` at 864 tests over 73 files, `npm run type-check` clean, and the door's export
-   count unchanged, which is what says a move was a move.
+   Quote: `npm test` at its count on the day (866 over 73 files as of 2026-09-10), `npm run
+   type-check` clean, and the door's export count unchanged at 69 run-time names, which is what says
+   a move was a move.
 3. **Settle `BlendMode`.** Either it goes on the door beside the declaration, or the declaration
    takes a `GPUBlendState` and the fixtures keep their own one-value name for the blend they use.
    Quote: `gate:pack`, and the export count against step 2's.
@@ -326,6 +328,21 @@ what is left to change the answer is the bound rather than the door. If a later 
 `scene/maths.ts` import anything, step 3's gate goes red and the choice is to sever that import or
 withdraw the door — and withdrawing a published entry is a breaking change, which is the cost of
 this decision and the reason the bound is a gate and not a note.
+
+**Where this leaves the item, as of 2026-09-10.** All four steps have landed and every line of the
+`Done when` above is met and checkable: two declared entries with `gate:pack` green at 11 of 11, the
+second entry's closure held to one file by `tests/import-graph.test.ts` and shown red on a type-only
+edge, 69 run-time names still on the first door by `tests/api-signatures.test.ts`, `npm test` at 866
+over 73 with `type-check` clean, `gate:browser` run once over the batch at 4 of 4, and the refusal
+reading the same in `CLAUDE.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/API.md`,
+`README.md` and `index.ts`'s own header.
+
+**What is left is not this file's to do.** Nothing reaches a consumer until the version is cut and
+released, and that is Siva's to run — a declared entry only exists for anyone once it is published,
+which is also the moment withdrawing it becomes breaking. **The entry is left standing rather than
+deleted** because the four steps' reasoning is what a reader will want when the next door is
+proposed, and because the release has not happened; deleting it is a closing act, and `git log` is
+the record either way.
 
 ---
 
