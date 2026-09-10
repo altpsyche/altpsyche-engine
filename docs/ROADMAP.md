@@ -19,9 +19,17 @@ it" is thrown out and replaced by a reason that stands on the package's own meri
 
 **Where the package stands, as the baseline any item below is measured against.** The renderer is
 built to the whole WebGPU core specification, every capability has a fixture the gates draw, and the
-gates are green: 4 of 4 browser gates, 17 of 17 on a real card, 15 of 15 on the recording contract,
-and 864 node tests over 73 files, measured on 2026-08-29. That last pair read 514 over 34 here until
-it was re-taken, so it had expired rather than moved.
+gates are green: 4 of 4 browser gates, 16 of 16 on the recording contract, 24 of 24 corpus draws
+with 9 WebGL 2 skips, 21 of 21 surface checks, and 864 node tests over 73 files, **re-taken on
+2026-09-10** on a clean tree. The node pair read 514 over 34 here until it was re-taken at 864 over
+73, and the recording contract read 15 of 15 until it was re-taken at 16 of 16: both had expired
+rather than moved, because the sixteenth capability fixture arrived and neither number followed it.
+
+**The one line of this baseline no unattended session can re-take is the card**, which read 17 of 17
+on 2026-08-29. `gate:card` needs a desktop session and a real graphics card, every headless launch
+reaches the software renderer whatever the flags say, and the gate's own header says so. So that
+number is carried here as dated and unverified rather than re-asserted, and the four browser gates
+above it belong to a software renderer.
 
 ---
 
@@ -89,7 +97,7 @@ function turning those names into bytes.
    consumer names a format and supplies its own bytes, and keeping the field with the generator
    passed in by the caller. Whichever lands, the fixtures keep their own names for their own data.
    Quote: the count of names the door exports before and after, and `gate:browser` at 4 of 4, which
-   is the fifteen fixtures still drawing under the new shape.
+   is the sixteen fixtures still drawing under the new shape.
 2. **Move the reader, its declaration type and the source readers out of `fixtures/` into the
    package, without exporting any of them**, with the corpus importing them from their new home.
    Quote: `npm test` at 864 tests over 73 files, `npm run type-check` clean, and the door's export
@@ -112,9 +120,9 @@ function turning those names into bytes.
 - None of `'value-noise'`, `'copy-tints'`, `'draw-list-models'`, `'material-objects'` or
   `'perdraw-slices'` reaches the door, read off the declarations a build writes rather than off
   `index.ts`.
-- The fifteen fixtures draw through the exported reader rather than through a copy of it, so the
+- The sixteen fixtures draw through the exported reader rather than through a copy of it, so the
   gates cover the published path and there is one path. `gate:browser` at 4 of 4 and the recording
-  contract at 15 of 15.
+  contract at 16 of 16.
 - `docs/API.md` names both and `docs/GUIDE-frame-graph.md` shows a declared frame of more than one
   pass.
 - `npm test` and `npm run type-check` are green at every step, and `gate:pack` is green on every
@@ -184,18 +192,26 @@ which is the arrangement this package already uses everywhere the two backends d
 
 ---
 
-## Item 3 — the maths behind a door of its own, since 7,520 bytes of arithmetic cost 207,090 to reach
+## Item 3 — the maths behind a door of its own, since 7,520 bytes of arithmetic cost 220,709 to reach
 
 **Opened on 2026-09-10.** `vec3`, `mat4` and `mat3` are published names on the one door, and the only
 way to reach them is that door. `index.ts` re-exports the renderer, the frame graph, the scene, the
 host probe and the toy reflectors alongside them, so a consumer wanting the arithmetic downloads all
 of it.
 
-**The measurement.** Walking static imports from `index.ts` and `host/surface.ts`, which are the two
-eager roots `tests/import-graph.test.ts` already uses, reaches 27 source files whose built JavaScript
-is 207,090 bytes. The built JavaScript of `scene/maths.ts` is 7,520 bytes of that. So the arithmetic is 3.6 per cent of
-what reaching it costs, and the walk confirms `gpu/webgpu.ts` is not among the 27, which is the gate
-that already stands.
+**The measurement, re-taken on 2026-09-10 against a rebuilt `dist/`.** Walking static imports from
+`index.ts` and `host/surface.ts`, which are the two eager roots `tests/import-graph.test.ts` already
+uses, reaches **28 source files whose built JavaScript is 220,709 bytes**. The built JavaScript of
+`scene/maths.ts` is 7,520 bytes of that, so the arithmetic is **3.4 per cent** of what reaching it
+costs. The closure of `scene/maths.ts` on its own is one file, because that module imports nothing.
+The walk confirms `gpu/webgpu.ts` is not among the 28, which is the gate that already stands.
+
+**This item was filed reading 27 files at 207,090 bytes and that number did not reproduce.** The gap
+is exactly 13,619 bytes, which is the built form of `pipeline/cache.ts`, eager through
+`import { frameKey } from '../pipeline/cache.js'` at `gpu/renderer.ts:19`. No code changed between
+the filing and the re-take, so the original walk missed a file rather than the tree moving under it.
+That is the reason a number is re-taken rather than carried: the item's argument is unchanged and its
+headline figure was wrong by one module.
 
 **Why it stands on this package's own merits.** The header of `index.ts` states the reason the
 backends are not re-exported: "re-exporting a backend here would pull both into every consumer's
@@ -222,7 +238,7 @@ guessed. That reading is this item's and the call is not a session's to make sil
   types and default. `scene/maths.ts` keeps every export it has and `index.ts` keeps re-exporting all
   of them, so no name leaves the first door and no consumer's import line changes. **The
   measurement**: `gate:pack` green; the built JavaScript reached through `./maths` against the
-  207,090 bytes reached through `.`; and the eager closure of `.` unchanged at 27 files.
+  220,709 bytes reached through `.`; and the eager closure of `.` unchanged at 28 files.
 - [ ] **3. The import graph gate walks the new door.** The new entry becomes a third eager root and
   its closure is held to `scene/maths.ts` alone, so an import added to that module fails a gate rather
   than quietly putting the renderer back behind the arithmetic. **The measurement**: the closure's
@@ -245,6 +261,314 @@ guessed. That reading is this item's and the call is not a session's to make sil
 deferred, and the arithmetic stays behind the one door. A consumer wanting it then imports the whole
 eager chunk or keeps its own copy of the arithmetic, and holding two copies equal by a gate is that
 consumer's answer instead of this item.
+
+---
+
+## Item 4 — the resource-shape refusals are written once in each backend, and two of them already differ
+
+**Opened on 2026-09-10, out of an audit of this tree for the defect that prompted item 3.** That
+defect was one rule written twice with nothing holding the copies equal. `graph/validate.ts` opens by
+saying it is where such a rule belongs — "every rule about a graph that was once written out twice
+— once by the build as it turned a source into a description, once by a backend as it drew the frame
+that description became — held here in one pure function so the two can no longer drift apart." A
+group of rules about the shape of a declared resource never made it in, and each backend states them
+itself.
+
+**The reading, as file and line pairs.** Six refusals appear in both backends, four of them in
+identical words:
+
+| refusal | WebGL 2 | WebGPU | the two predicates |
+| --- | --- | --- | --- |
+| a ladder over a texture a pass writes | `gpu/webgl2.ts:438` | `gpu/webgpu.ts:747` | `mips && use('attachment')` against `mips && (use('storage') \|\| use('attachment'))` |
+| contents and several samples a pixel | `gpu/webgl2.ts:455` | `gpu/webgpu.ts:765` | **`data \|\| source` against `data`** |
+| a bound texture keeping several samples | `gpu/webgl2.ts:458` | `gpu/webgpu.ts:771` | `use('sample')` against `use('sample') \|\| use('storage')` |
+| a shown texture keeping several samples | `gpu/webgl2.ts:484` | `gpu/webgpu.ts:775` | one reads `frame.present`, the other an index |
+| a shown resource the frame does not declare | `gpu/webgl2.ts:475` | `gpu/webgpu.ts:727` | same |
+| contents and the frame's own size | `gpu/webgl2.ts:467` | `gpu/webgpu.ts:752` | **`(data \|\| source) && followsFrame` against `data && spansFrame`**, and the two messages are not the same sentence |
+
+The doubled span is about 47 lines in `gpu/webgl2.ts` (424 to 470) against about 48 in
+`gpu/webgpu.ts` (730 to 777).
+
+**Two of those rows are a live divergence and not merely a repetition.** A `TextureResource` carries
+`source`, the address its first contents come from, and `data`, the bytes that came back from it, and
+`graph/types.ts` says the build writes the first and the runtime fills the second. So a description
+in hand before its fetch has `source` and no `data`. WebGL 2 refuses such a texture by name where it
+also keeps several samples a pixel or follows the frame's own size; WebGPU reads only `data` and
+lets it through. Whichever reading is right, they cannot both be, and the words the two backends
+print are the same sentence in four of the six rows — which is the state that makes a drift
+unreadable rather than obvious.
+
+**Why it stands on this package's own merits.** The distinguishing claim is that a frame can be
+described, costed and refused before a driver sees it, and a refusal a caller gets on one backend and
+not on the other is that claim holding for one card and not the other. It is also the third
+invariant in `docs/ARCHITECTURE.md` — "one fact, one home" — and `graph/validate.ts` is the home the
+codebase already named.
+
+**What is not a finding here, checked and cleared.** The *capability* refusals are single-homed
+already. `gpu/webgl2.ts:412` and `gpu/webgl2.ts:997` refuse a read-write storage buffer and a compute
+pass, and `gpu/select.ts`'s own comment says the load-bearing refusal for both moved into
+`refusal()` and left "the throw an unreachable backstop rather than the load-bearing refusal". A
+documented backstop is not a second home. `spansFrame` in `gpu/webgpu.ts:731` is a local alias of
+`graph/refs.ts`'s `followsFrame` rather than a second copy of it.
+
+### Steps
+
+1. **Settle the two divergences before moving anything**, by deciding whether a texture carrying a
+   `source` and no `data` yet is refused for its samples and its size. Write the answer where the
+   rule lands. **The measurement**: the refusal each backend gives that description today, read off a
+   test rather than off the source, and one wording after.
+2. **Move the six into `graph/validate.ts`**, with both backends losing their copies and the frame
+   refused before either is built. **The measurement**: `npm test` and `npm run type-check` green,
+   the count of `throw` sites in each backend before and after, and `gate:browser` at 4 of 4 with the
+   recording contract at 16 of 16, which is what says the calls did not move.
+3. **A test per moved rule that fails for the rule and not for the wording**, since a rule moved with
+   its own tests is a rule nothing independent reads — which `CONTRIBUTING.md` names as the mistake
+   that survives. **The measurement**: each of the six red on a graph that breaks it and green
+   otherwise, and the two backends' remaining throws named as unreachable backstops.
+
+### Done when
+
+- None of the six rules appears in either backend, and `graph/validate.ts` states each once.
+- A texture with a `source` and no `data` gets one answer, and the same answer on both backends.
+- `npm test`, `npm run type-check` and `gate:browser` are green, with the recording contract at
+  16 of 16, and the commit says the card gate was not re-taken.
+
+**What would change the answer.** If one of the six turns out to be genuinely backend-specific — a
+rule about what a renderbuffer can do rather than about what a description says — it stays in that
+backend with its own reason written above it, and the item closes having moved five.
+
+---
+
+## Item 5 — the stale-path allowlist can only grow, and all five of its rows are now dead
+
+**Opened on 2026-09-10, out of the same audit.** `tests/docs-paths.test.ts` walks every path the
+documents name and fails on one that does not resolve. It carries `ALLOWED_ABSENT`, five paths that
+do not resolve on purpose, and it already guards one half of that list: "Each entry is asserted still
+absent, so an allowlist row that a real file grows under is flagged for removal rather than left
+hiding a fresh stale path behind it."
+
+**The other half is unguarded, and every row has now fallen through it.** A row is asserted absent
+and never asserted *cited*, so a row survives after the sentence that named it is deleted. Of the
+five rows at `tests/docs-paths.test.ts:56-60`, **no scanned document cites any of them**, checked by
+grepping every markdown file the gate reads:
+
+- `main.js` — the row says it is "a file the reader creates in `docs/EXAMPLES.md`'s walkthrough".
+  That walkthrough now writes `main.ts`, at `docs/EXAMPLES.md:14`, `:58` and `:63`.
+- `docs/TESTING.md` — the row says it is "cited by ROADMAP item 1's phone row". This file's item 1 is
+  the frame declaration reader and has no phone row; the words "phone" and "mobile" do not appear in
+  it.
+- `host/loop.ts` — the row credits "RoadToPureEngine §7 and ROADMAP item 39". Neither document
+  exists: the first was deleted at 0.3.0 and this file's items run 1 to 5.
+- `components/ui/WgslRefusal.tsx` and `public/shaders/build/manifest.json` — both rows say they are
+  website paths "RoadToPureEngine §3 row 12 names", and that document was deleted at 0.3.0.
+
+**Why it stands on this package's own merits.** A gate that cannot fail for the thing it exists to
+check is the defect `CONTRIBUTING.md` names as worse than no gate, and this is that defect's quiet
+half: the list is the gate's only escape hatch, it grows by one whenever a document is edited, and
+nothing shrinks it. Five dead rows is five paths that could go stale for real without the gate ever
+saying so.
+
+### Steps
+
+1. **Assert every allowlist row is still cited by a document the gate reads**, beside the assertion
+   that it is still absent, so a row outlives its sentence by one commit rather than indefinitely.
+   **The measurement**: the new assertion red on all five rows as they stand, and the count of rows
+   after.
+
+   **One wrinkle, and it is this entry's own doing.** The five paths are named above in backticks, so
+   this file now cites all five and a naive citation check would go green on the strength of the
+   finding that filed it. The assertion has to exclude this file — a queue recording that a path is
+   dead is not a document teaching a reader where it lives, which is the same reason
+   `tests/docs-paths.test.ts:46` already excludes the deleted register — or the rows have to be named
+   here without backticks. Whichever, the step's first act is to make the check red.
+2. **Delete the five rows and whatever of them the assertion still wants**, with `main.js` either
+   removed or corrected to `main.ts` on the reading that `docs/EXAMPLES.md` no longer names it.
+   **The measurement**: `npm test` at its new count with `tests/docs-paths.test.ts` green, and the
+   allowlist's length before and after.
+
+### Done when
+
+- `tests/docs-paths.test.ts` fails for an allowlist row nothing cites, shown by adding one and
+  watching it go red.
+- `ALLOWED_ABSENT` holds only rows a scanned document still names.
+- `npm test` and `npm run type-check` are green.
+
+---
+
+## Item 6 — one projection, written four times as literals, held by nothing
+
+**Opened on 2026-09-10, out of the same audit, and it is the closest thing in this tree to the defect
+that prompted item 3.** That defect was two perspective projections in two packages writing clip
+depth into different ranges with nothing catching it. Inside this tree the projection is written in
+three forms, and they agree today:
+
+- `scene/maths.ts:174`, `mat4.perspective`, whose header says the depth output "runs zero at the near
+  plane to one at the far plane".
+- `fixtures/capability-fixtures.ts:385`, `:505`, `:585` and `:649`, four identical sixteen-number
+  literals: `[1.7320508, 0, 0, 0, 0, 1.7320508, 0, 0, 0, 0, -1.1111111, -1, 0, 0, -0.5555556, 0]`.
+- `examples/instanced-cubes/main.ts:96-107`, the same projection written inline in WGSL as
+  `far / (near - far) * view.z + far * near / (near - far)` over `-view.z`.
+
+**The reading.** Evaluating `mat4.perspective(Math.PI / 3, 1, 0.5, 5)` and rounding each entry to
+seven decimals prints those sixteen numbers character for character. So the four fixture literals
+are that call's output, copied. Nothing asserts it: no test names both, and the fixtures import
+`mat4` already for their rotations.
+
+**Why the literal is not simply wrong.** `CONTRIBUTING.md` says a test suite rewritten alongside the
+code it checks cannot catch a mistake in that code, and a fixture that calls
+`mat4.perspective` moves whenever `mat4.perspective` moves, which is the weaker check. The defect is
+not the literal. **The defect is that the agreement is unasserted in either direction**: if
+`mat4.perspective` were changed to write depth from minus one to one, the module's own tests would be
+rewritten with it, these four fixtures would keep the zero-to-one numbers, and the two would disagree
+silently — which is precisely what happened across the two packages.
+
+**Why it stands on this package's own merits.** Every capability here has a fixture some gate draws,
+and the fourth invariant in `docs/ARCHITECTURE.md` is that no capability's only proof is that the
+picture still looks right. Four presets are aimed by a matrix that no gate ties to the arithmetic
+this package publishes.
+
+### Steps
+
+1. **One test asserting the fixture literal equals `mat4.pack(mat4.perspective(Math.PI / 3, 1, 0.5,
+   5))`**, keeping the literal so the check stays independent and naming the projection's arguments
+   where it is stated. **The measurement**: the test red when either side is changed alone, green on
+   the tree as it stands, and `npm test` at its new count.
+2. **The same for the inline WGSL in `examples/instanced-cubes`**, or the reason it is exempt written
+   above it — its `fov`, `near` and `far` are its own and only the convention is shared. **The
+   measurement**: whichever lands, the depth convention stated once in that file with a pointer to
+   `scene/maths.ts` rather than restated.
+
+### Done when
+
+- A test names both the fixture literal and `mat4.perspective` and fails when either moves alone.
+- The four literals are one constant or four with one assertion over them, rather than four
+  unrelated arrays.
+- `npm test` and `npm run type-check` are green, and `gate:browser` is green at 4 of 4 with the
+  recording contract at 16 of 16, which is what says the four presets still draw the same picture.
+
+**What the audit found about depth, and it is the good news.** Every place in this tree that states
+or assumes a clip depth range agrees with `scene/maths.ts`. The four fixture literals carry
+`-1.1111111` and `-0.5555556`, which is zero-to-one. `examples/instanced-cubes` writes the
+zero-to-one form and its comment says so. `docs/API.md:377` and `README.md:136` both say zero to one.
+`gates/translate.mjs:198` remaps out of it deliberately — "WebGPU's depth range is [0, 1] and GL's is
+[-1, 1]" — and the baked artifact carries that remap 12 times with no `gl_Position.yz` negation left
+in it, while the two hand-authored vertex stages under `fixtures/source/glsl/handwritten/` carry the
+z-only line and `tests/translate-build.test.ts:98` holds them to the artifact. **Nothing in this tree
+assumes a range this package does not write.**
+
+---
+
+## Item 7 — three documents state something this tree does not do
+
+**Opened on 2026-09-10, out of the same audit.** `tests/api-signatures.test.ts` holds `docs/API.md`
+to the door by member and `tests/docs-code.test.ts` compiles every fenced block, so what a document
+*calls* is gated. Neither reads prose. These three are prose, each checked against the tree and each
+wrong in a way a reader would act on.
+
+**One: `CONTRIBUTING.md` says this repository has no queue.** Under "How work is tracked" it reads
+"**In the issue tracker and in commit messages.** There is no queue in this repository," and it links
+no roadmap. `CLAUDE.md` says the opposite — "A queue exists again and it is `docs/ROADMAP.md`",
+restarted on 2026-08-27 — and this file's own opening says why it came back. `CONTRIBUTING.md` was
+last touched on 2026-08-27, the same day, so the sentence was true when written and the edit that
+restarted the queue did not reach it. A contributor who reads the file `CLAUDE.md` points at for
+"the rules that are not negotiable" is told this file does not exist.
+
+**Two: `docs/ARCHITECTURE.md`'s layer table understates what three layers import.** Its "may import"
+column is prose and `tests/import-graph.test.ts` does not enforce it — that test enforces `graph/`
+importing nothing, a producer reaching no backend, the DOM rule and the loop rule, and none of them
+is this table. Three rows disagree with the tree:
+
+- `scene/` is given `graph/`, and `scene/scene-view.ts:34` imports `Arena` and `Handle` from
+  `resource/arena.ts`.
+- `host/` is given `gpu/`, and `host/surface.ts:12` imports `BackendName`, `FrameGraph` and
+  `UniformValue` from `graph/types.ts`.
+- `toy/` is given `graph/`, and `toy/frame.ts:17` imports `uniformBindingOf` from
+  `wgsl-binding.ts` while `toy/reflect.ts:31` imports `wgslUniformFields` from
+  `wgsl-layout.ts` — a value import in the first case.
+
+**The table also has no row for the four root-level modules at all**, which are `wgsl-layout.ts`,
+`wgsl-binding.ts`, `wgsl-references.ts` and `shader-geometry.ts`, plus `deprecate.ts`. They ship,
+`toy/` imports two of them, and a reader looking up which layer they belong to finds nothing.
+
+**Three: `docs/FIGURE-FORMAT.md` says one item here is waited on and there are two.** It reads "One
+item is queued here" and "**The counting stencil is the one thing the figure work waits on here.**
+Nothing else in that repository's plan reaches this one." This file's own ladder, re-read on
+2026-09-10, says otherwise: the row that closes the duplication between the two packages "needs from
+here is item 3". That document was last touched on 2026-09-08 and the ladder moved twice after it.
+
+### Steps
+
+1. **`CONTRIBUTING.md`'s "How work is tracked" says what is true**, which is that `docs/ROADMAP.md`
+   is the queue and `git log` is the record of what landed. **The measurement**: the section before
+   and after, and `tests/docs-paths.test.ts` green over the new link.
+2. **`docs/ARCHITECTURE.md`'s table names every edge the tree has**, with a row for the root-level
+   modules. **The measurement**: the table's "may import" column read off a walk rather than written,
+   and every row of it true on the tree the day it lands.
+3. **`docs/FIGURE-FORMAT.md` names both items or defers to this file for the count.** **The
+   measurement**: the two documents naming the same set of items, read side by side.
+
+### Done when
+
+- No sentence in `CONTRIBUTING.md`, `docs/ARCHITECTURE.md` or `docs/FIGURE-FORMAT.md` states
+  something a reader can check against the tree and find false.
+- `npm test` and `npm run type-check` are green.
+
+**What would make step 2 stick rather than rot again.** The table is prose about import edges and a
+walk already exists in `tests/import-graph.test.ts`. Holding the table to that walk is a separate
+piece of work and is filed below as a candidate rather than folded in here, because it is a gate and
+not a correction.
+
+---
+
+## Item 8 — a number in `gates/translate.mjs` belongs to the change that was rejected
+
+**Opened on 2026-09-10, out of the same audit, and it is the one finding that is a wrong measurement
+rather than a stale one.** `gates/translate.mjs:192-215` explains why naga's Y negation is stripped
+and licenses the decision on a reading: "**Measured on an RTX 5080 before and after.** With the
+negation: `core-scene` differed from its WebGPU frame on 344,146 of 1,440,000 channels, worst channel
+244 [...]. Without it: **0 of 1,440,000 channels differ**, on all three scene presets. That
+convergence is what licenses this."
+
+**The commit that landed the strip records different numbers.** `git show 3324f56` — "item 107: the
+scene tier agrees on a card" — carries:
+
+```
+  before   core-scene      worst 244, 344,146 of 1,440,000 channels differ
+  after    core-scene      worst 1,      11 of 1,440,000 channels differ
+  after    core-draw-list  worst 1,      36 of 1,440,000 channels differ
+  after    core-material   worst 1,      18 of 1,440,000 channels differ
+```
+
+and it says where the zero came from: "Removing the readback flip instead was tried and rejected,
+though it converged to a literal 0 of 1,440,000." **So the 0 of 1,440,000 belongs to the alternative
+that was rejected, and the comment attributes it to the change that landed** — over all three scene
+presets, where the commit records 11, 36 and 18 on those three. `CHANGELOG.md:79-80` has it right:
+"the difference across the two backends fell from 344,146 channels to 11."
+
+**Why it stands on this package's own merits.** "Never quote a number a gate did not produce" is the
+first rule about numbers in both `CLAUDE.md` and `CONTRIBUTING.md`, and this is its exact failure:
+a real reading, from the right machine, attached to the wrong change, and then used as the licence
+for a decision. A session reading that comment believes the two backends converge to zero on a card
+and would read the 11 a re-take gives it as a regression.
+
+### Steps
+
+1. **The comment quotes the commit's own after-numbers**, 11, 36 and 18 of 1,440,000 at worst
+   channel 1, and says separately that the rejected alternative is what converged to zero and why it
+   was rejected anyway. **The measurement**: the comment before and after against
+   `git show 3324f56`, which is the reading it should have carried.
+
+### Done when
+
+- `gates/translate.mjs`'s licence paragraph names the numbers the landed change earned.
+- No other file attributes the literal zero to the strip. `docs/DEVICES.md`'s 2026-08-26 row is
+  clear already: its `0 of 1,440,000` is on the *gradient*, not on a scene preset.
+- `npm test` and `npm run type-check` are green.
+
+**What this cannot do without a card.** It is a correction from the record and not a re-measurement.
+`gate:card` needs a desktop session and a real graphics card, so nothing in an unattended run can
+re-take 11, 36 or 18 — the commit and `docs/DEVICES.md` are the only sources, and the step says so
+rather than implying a fresh reading.
 
 ---
 
@@ -276,6 +600,61 @@ without a bound the first one that arrives sets the precedent by accident. It do
 which is an authoring path for the frame graph rather than a candidate, and which passes all three
 of the candidate bounds as they stand.
 
+### Does the library choose the backend, or does the caller?
+
+**Two published documents give opposite answers and the audit of 2026-09-10 could not decide which
+one the package means.** `docs/GUIDE-backends.md:3-4` opens "This package draws through **WebGPU**
+where a browser returns an adapter and **WebGL 2** where it does not. You never name a backend."
+`README.md:110-112` says "**A renderer uses WebGL 2 unless you give it a WebGPU device.** You call
+`requestWebGPUDevice()` and pass `{ backend: 'webgpu', device }`." The README describes what
+`createFrameRenderer` does. `gpu/select.ts` opens on the guide's side, saying which backend draws is
+"answered inside the library rather than by the caller naming one".
+
+**This is finding A above, seen from the documents rather than from the code**, and it is filed here
+as a question because the answer decides what finding A is. If the library chooses, finding A is a
+defect and the guide is right. If the caller chooses, finding A is not a defect and the guide and
+`gpu/select.ts`'s header are both wrong. Correcting the guide to match the code would settle it by
+default, which is why the correction is not in item 7.
+
+**Done when** one answer is written in `gpu/select.ts` at the point of the decision, and the two
+documents say the same thing as each other and as the code.
+
+### Finding D's reading is half right, and the half that is wrong changes what it costs
+
+**Re-taken on 2026-09-10.** Finding D says "`FrameGraph`, `PassSpec` and `DrawSpec` name neither a
+scissor nor a viewport" and then that "The word appears nowhere in this tree outside this file". The
+first half holds for both words at the graph level. The second holds for `scissor` — zero
+occurrences anywhere outside this file — and **fails for `viewport`**, which the WebGL 2 path sets
+per pass at `gates/card.mjs:201` and which `tests/renderer-webgl2.test.ts:540` and
+`tests/submit-executor.test.ts:98` both assert against the frame size, with the double recording it
+at `tests/support/fake-gl.ts:314`.
+
+**Why it matters rather than being a wording nit.** A viewport exists on the draw path and is derived
+from the frame's size; a scissor does not exist at all. So the 3.1.0 row's "a rectangle is a scissor"
+needs one capability built and not two, and finding D's own question — whether 3.1.0 is one item or
+two — is answered by that difference.
+
+**Done when** finding D names `scissor` alone, and says a viewport is set from the frame size on the
+draw path but declared nowhere in a graph.
+
+### When item 2 grows the counting modes, does the stencil table become data or stay two tables?
+
+**The audit found `StencilMode`'s meaning written once per backend.** `gpu/webgpu.ts:130-139` holds
+`STENCIL_MODES`, a `Record<StencilMode, …>` of `GPUStencilFaceState` plus a write mask;
+`gpu/webgl2.ts:294-297` holds `STENCIL_GL`, the same two modes in the card's own fields. Each
+carries a comment saying the other agrees with it, and `gpu/webgl2.ts:285-286` claims to use "the
+same `STENCIL_BITS` the WebGPU backend uses" while in fact writing `0xff` itself at `:293`, `:295`,
+`:1340`, `:1346` and `:1369` against `STENCIL_BITS = 0xff` at `gpu/webgpu.ts:124`.
+
+**Two tables for two APIs is defensible** — a `GPUStencilFaceState` and a `stencilOp` triple are not
+the same values — **and a mask width shared by assertion is not.** Item 2 doubles the rows of both
+tables, so the question is worth settling before it runs rather than after: does the mode's *meaning*
+(what compares, what writes, what each face does) move into `graph/` as data that each backend
+translates, or do the two tables stay and gain a gate that holds them to one another?
+
+**Done when** item 2's step 1 names which, with the reason at the point of the decision, and the
+reference width has one home.
+
 ---
 
 ## Candidates, which are ideas and not items
@@ -294,6 +673,39 @@ written down so the thinking is not lost.
 **One standing obligation rather than a candidate.** Whatever the layer gains, a consumer that
 draws one fullscreen shader must not download it. `chunk-split` in the consuming repository counts
 that from the outside, and the two backends already load by dynamic import for the same reason.
+
+### Three candidates the audit of 2026-09-10 left, each an idea and none an item
+
+**The layer table held to the walk that already exists.** `docs/ARCHITECTURE.md`'s "may import"
+column is prose and item 7 corrects it once. `tests/import-graph.test.ts` already walks every import
+edge in the tree for four other rules, so the column could be an assertion instead of a sentence:
+each layer's permitted set written down once, and the walk failing on an edge outside it. **What makes
+it doubtful** is that the four rules that test holds are each a design promise with a stated reason,
+and a table of every edge is closer to a snapshot of the tree — it would go red for a refactor that
+broke nothing, which is the kind of gate that gets deleted.
+
+**The tree cites four documents that were deleted at 0.3.0.** Twenty-eight files under `graph/`,
+`submit/`, `gpu/`, `host/`, `scene/`, `pipeline/`, `resource/`, `gates/`, `tests/` and
+`examples/` name `RoadToPureEngine.md` by section, `JOURNAL.md`, or the old queue's item numbers.
+`git show` recovers all four, and `CLAUDE.md` says as much, so a reader is not stranded. **One of
+them is worse than stale, though**, and it is the reason this is written down: `graph/validate.ts:17`
+says a rule landed "per ROADMAP.md item 19", and `docs/ROADMAP.md` exists again with items 1 to 8, so
+that reference now points at a live document and a dead item number. `tests/import-graph.test.ts`
+carries the same shape — it says `host/loop.ts` "arrives with submit(graph), item 68" while `submit`
+has been on the door since 0.3.0. **What makes it doubtful** is that these are the *why* at the point
+of the decision, which `CLAUDE.md` says is where a decision goes and which survives a file move; the
+citation is a footnote on reasoning that is still readable without it, and a sweep of twenty-eight
+files touching no behaviour is a large diff whose measurement is only that the tests still pass.
+
+**`scene/`'s headers still describe a package that lives inside a website.** `scene/maths.ts` opens
+saying the arithmetic is written here "so that every line an episode explains is a line a reader can
+open, and it imports nothing from the site so that it can be lifted out into a library later". It
+*is* the library now, and there is no site in this repository. `scene/draw-list.ts` and
+`scene/material.ts` each cite "D88's rule that nothing shipping in the library reaches the site",
+a decision recorded in another repository. **What makes it doubtful** is the same as above, with one
+difference worth noting: `scene/maths.ts`'s header is the file item 3 would put behind a second door,
+and a door of its own is the moment that paragraph is read by someone new — so this one may arrive as
+step 4 of item 3 rather than as a candidate of its own.
 
 ---
 
@@ -444,11 +856,19 @@ stands whether or not anything above ever draws a filled path.
 **What it changes about the candidates: nothing.** Every candidate is still blocked on the bound, and
 a row above is not an argument for one.
 
-**The baseline expires while this file waits.** The numbers at the top of it were measured on
-2026-08-29, and a pair of them read 514 tests over 34 files until they were re-taken at 864 over 73,
-so they had expired rather than moved. A stretch with no session here ends with the baseline re-taken
-before an item can be measured against it, which is a session of its own and is worth expecting
-rather than discovering.
+**The baseline expires while this file waits, and it has now done so twice.** The numbers at the top
+of it were measured on 2026-08-29. A pair of them read 514 tests over 34 files until they were
+re-taken at 864 over 73, and the recording contract read 15 of 15 until it was re-taken at 16 of 16
+on 2026-09-10. Both were the same defect: a sixteenth capability fixture landed and every count
+written down beside the fifteen stayed as it was. A stretch with no session here ends with the
+baseline re-taken before an item can be measured against it, which is a session of its own and is
+worth expecting rather than discovering.
+
+**A count of fixtures is the shape most likely to expire here**, because it is written in prose in
+this file and in a comment in `gates/corpus.mjs`, and `loadCorpus` reads `CAPABILITY_FIXTURES`
+rather than a number. So the gate reports the true count and every sentence about it has to be
+edited by hand. `gates/corpus.mjs:334` still reads "fifteen presets plus the one fullscreen probe"
+while the gate it comments prints 24 of 24 draws over sixteen.
 
 ---
 
