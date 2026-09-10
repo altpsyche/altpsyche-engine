@@ -83,6 +83,50 @@ node --input-type=module -e "
     });
 "
 
+# The second declared door, asked the same question and one more. It exists so a
+# consumer wanting the arithmetic loads the arithmetic: with a bundler the first door
+# tree-shakes to the same bytes, and without one it is 27 files against this one. So
+# what this reads is the closure, counted by node itself rather than inferred, plus
+# the two facts that make a second door safe — that every name behind it is still on
+# the first door, and that both specifiers land on one module rather than two copies.
+# A declared entry `exports` resolves but nothing exercises would be an entry with no
+# gate over it, which is the one thing the refusal it was added under does not allow.
+node --input-type=module -e "
+  import { registerHooks } from 'node:module';
+  const loaded = new Set();
+  registerHooks({
+    load(url, context, next) {
+      if (url.startsWith('file:') && url.includes('@altpsyche/engine')) loaded.add(url);
+      return next(url, context);
+    },
+  });
+  const maths = await import('@altpsyche/engine/maths');
+  const behind = loaded.size;
+  if (behind !== 1) {
+    console.error('the maths door loaded ' + behind + ' files of the package, and it must load one');
+    process.exit(1);
+  }
+  // The run-time names only. `Vec3`, `Mat3` and `Mat4` are types, so they are on
+  // neither door at run time and are read by the tsx consumer check below, which
+  // compiles against the installed declarations.
+  const door = await import('@altpsyche/engine');
+  for (const name of ['vec3', 'mat3', 'mat4']) {
+    if (!(name in maths)) {
+      console.error('the maths door does not carry ' + name);
+      process.exit(1);
+    }
+    if (!(name in door)) {
+      console.error('the first door stopped carrying ' + name + ', and a second door removes nothing from it');
+      process.exit(1);
+    }
+    if (maths[name] !== door[name]) {
+      console.error('the two doors give different objects for ' + name + ', so a consumer using both holds two copies');
+      process.exit(1);
+    }
+  }
+  console.log('the maths door imports it: ' + Object.keys(maths).length + ' names, 1 file loaded, same objects as the first door');
+"
+
 npx --yes tsx draw.ts
 
 # The third question: bundled, the way a consumer's toolchain actually ships it.

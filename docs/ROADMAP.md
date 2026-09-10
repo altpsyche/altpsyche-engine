@@ -273,12 +273,17 @@ old one, because a classic-resolution consumer cannot reach a subpath at all.
   moves out from behind the one door in `index.ts`" before and "No export moves out from behind a
   door this package declares" after, with the two conditions above; and `package.json` declares one
   entry, which step 2 takes to two.
-- [ ] **2. `./maths` is declared and nothing moves.** `package.json` gains the entry with its own
-  types and default. `scene/maths.ts` keeps every export it has and `index.ts` keeps re-exporting all
-  of them, so no name leaves the first door and no consumer's import line changes. **The
-  measurement**: `gate:pack` green; the files and bytes node loads through `./maths` against the 27
-  files and 218,459 bytes it loads through `.`; and the eager closure of `.` unchanged at 28 files by
-  the walk.
+- [x] **2. `./maths` is declared and nothing moves.** Landed on 2026-09-10. `package.json` gained
+  the entry with its own types and default; `scene/maths.ts` kept every export it has and `index.ts`
+  keeps re-exporting all of them, so no name left the first door and no consumer's import line
+  changed. `gates/pack.sh` gained a reading over the new door, because a declared entry `exports`
+  resolves but no gate exercises would be an entry with no gate over it, which is the one thing the
+  refusal it was added under does not allow. **The measurement**: `gate:pack` green at 11 of 11 with
+  69 names on the first door and the new one reporting "3 names, 1 file loaded, same objects as the
+  first door"; node loads 1 file and 7,520 bytes through `./maths` against 27 files and 219,294
+  bytes through `.`; the eager closure of `.` unchanged at 28 files by the walk. Those two byte
+  figures are 835 higher than step 1 quoted, and the 835 is the doc comment step 1 added to
+  `index.ts`, which `tsc` emits.
 - [ ] **3. The import graph gate walks the new door.** The new entry becomes a third eager root and
   its closure is held to `scene/maths.ts` alone, so an import added to that module fails a gate rather
   than quietly putting the renderer back behind the arithmetic. **The measurement**: the closure's
