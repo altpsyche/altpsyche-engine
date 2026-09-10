@@ -105,15 +105,49 @@ function blocks(): Block[] {
   return found;
 }
 
+/**
+ * Every specifier a document may import the package by, and the source file each
+ * one is rewritten to. Read out of `package.json`'s `exports` rather than written
+ * down, so a door added to the manifest is rewritten here without a line being
+ * added — the same reason `tests/import-graph.test.ts` reads its roots from there.
+ *
+ * **Rewriting every door and not just the first is load-bearing.** A specifier
+ * left alone resolves the way a consumer's would: through the manifest, to
+ * `dist/`, which `npm test` must never require. It only ever passes on a machine
+ * that happens to have built, so the block compiles for one session and fails on a
+ * runner — which is exactly what it did, on the publish of 0.4.0, having been
+ * verified locally against a `dist/` left over from packing a tarball.
+ *
+ * Longest specifier first, so `@altpsyche/engine/maths` is rewritten before
+ * `@altpsyche/engine` can match its prefix.
+ */
+function doorRewrites(): { specifier: string; source: string }[] {
+  const manifest = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as {
+    name: string;
+    exports: Record<string, { default: string }>;
+  };
+  return Object.entries(manifest.exports)
+    .map(([subpath, target]) => ({
+      specifier: subpath === '.' ? manifest.name : `${manifest.name}/${subpath.replace(/^\.\//, '')}`,
+      source: target.default.replace(/^\.\/dist\//, './'),
+    }))
+    .sort((a, b) => b.specifier.length - a.specifier.length);
+}
+
 /** Every block type-checked in one program, so the cost is one program's rather than
  *  one per block. Each block becomes a virtual module beside the door, which is what
- *  lets `'@altpsyche/engine'` resolve to the source being tested rather than to
- *  whatever is installed. */
+ *  lets a package specifier resolve to the source being tested rather than to
+ *  whatever is installed — or to a build that may not exist. */
 function diagnose(found: Block[]): string[] {
+  const rewrites = doorRewrites();
   const virtual = new Map<string, string>();
   found.forEach((block, index) => {
     const name = path.join(repoRoot, `__doc-block-${index}.ts`);
-    virtual.set(name, preambleFor(block.code) + block.code.replace(/'@altpsyche\/engine'/g, `'./index.js'`));
+    let code = block.code;
+    for (const { specifier, source } of rewrites) {
+      code = code.split(`'${specifier}'`).join(`'${source}'`);
+    }
+    virtual.set(name, preambleFor(block.code) + code);
   });
 
   const host = ts.createCompilerHost({});
