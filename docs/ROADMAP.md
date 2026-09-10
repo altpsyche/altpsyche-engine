@@ -296,8 +296,18 @@ old one, because a classic-resolution consumer cannot reach a subpath at all.
   graph/types.ts, graph/capability.ts, graph/refs.ts, graph/handles.ts" — and green with it taken out
   again. Worth noting that a *type-only* import was enough to trip it, which is the strict reading and
   the right one: a type edge is one keystroke from a value edge.
-- [ ] **4. `docs/API.md` says which names are behind which door.** **The measurement**: the count of
-  names under each heading, against the two entries the manifest declares.
+- [x] **4. `docs/API.md` says which names are behind which door.** Landed on 2026-09-10. The
+  opening names both paths and says plainly that the second adds nothing and that a reader with a
+  bundler should keep using the first; the Maths section says it is the one group behind two doors
+  and that the module behind the second imports nothing, held by step 3's gate. **The measurement**,
+  printed from the compiler rather than counted by hand: the first door carries **69 run-time names
+  and 84 types, 153 in all**, unchanged; `./maths` carries **3 run-time names and 3 types**, which
+  are `vec3`, `mat3`, `mat4` and `Vec3`, `Mat3`, `Mat4`, all six of them also on the first door.
+  Two entries in the manifest, two paths in the document. **And the second door's block is gated**:
+  `tests/docs-code.test.ts` compiles it and resolves the subpath through the manifest's own
+  self-reference, verified by putting a name that does not exist into it and watching the gate name
+  it — "TS2305: Module '@altpsyche/engine/maths' has no exported member 'notARealName'". So the
+  document's claim about what is behind the new door is checked by a gate rather than by prose.
 
 **Done when.**
 

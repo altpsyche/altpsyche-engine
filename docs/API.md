@@ -1,16 +1,33 @@
 # API
 
 Every name `@altpsyche/engine` exports, with its signature, grouped by what you are doing
-and not by which file it lives in. There is one import path and no second one, so nothing you
-import moves when the files inside are rearranged.
+and not by which file it lives in. Nothing you import moves when the files inside are
+rearranged.
 
 ```js
 import { createSurface, submit, wgslFrame, resolve, vec3, mat4 } from '@altpsyche/engine';
 ```
 
-Sixty-nine names leave the package at run time and the types come with them. Every signature
-below is printed from the compiler's own reading of the source, and a gate fails if one drifts
-from it. What is written here is what you will get.
+**Sixty-nine names leave the package at run time through that one import path, and the types
+come with them.** Every signature below is printed from the compiler's own reading of the
+source, and a gate fails if one drifts from it. What is written here is what you will get.
+
+**There is a second import path and it adds nothing.** `@altpsyche/engine/maths` carries
+three of the sixty-nine — `vec3`, `mat3` and `mat4`, with the types `Vec3`, `Mat3` and `Mat4`
+— and all three stay on the main path as well, so an import line you have already written
+stays correct. What the second path is for is the closure behind it: reaching `mat4` through
+the package name means loading the renderer with it, which is twenty-seven files where the
+maths path is one. A bundler shakes the difference back off and the two come out within two
+gzipped bytes of each other, so this matters only where there is no bundler — a page on an
+import map, a CDN, Deno, plain node. Everyone else should keep using the one path.
+
+```js
+// The same three names, and the same objects: importing both paths gives you one copy.
+import { vec3, mat4, mat3 } from '@altpsyche/engine/maths';
+```
+
+Those two are the only import paths, and a subpath neither of them names does not resolve —
+`exports` refuses it. See [ARCHITECTURE.md](ARCHITECTURE.md#declared-entry-points).
 
 For a page that runs, see [EXAMPLES.md](EXAMPLES.md); for the reasoning under the shapes, see
 [ARCHITECTURE.md](ARCHITECTURE.md); for what changes between releases and why `^0.3.0` will not
@@ -338,6 +355,10 @@ Types: `SceneView`, `SceneViewOptions`, `ScenePipeline`, `Scene`, `Entity`, `Tra
 
 ## Maths
 
+**The one group behind two doors.** Every name here comes from `@altpsyche/engine` like the
+rest of this document, and the same three come from `@altpsyche/engine/maths` on their own.
+The names, signatures and objects are identical either way; only the closure differs.
+
 ```ts
 vec3(x: number, y: number, z: number): Vec3
 ```
@@ -378,6 +399,12 @@ Column major, depth zero to one, which is what WebGPU expects. `pack` gives the
 `Float32Array` a uniform buffer wants. The magnitude is **not** called `length`: a function's
 `length` in JavaScript is its argument count and cannot be replaced. Types: `Vec3`, `Mat3`,
 `Mat4`.
+
+**These three names and these three types are the whole of `@altpsyche/engine/maths`.** The
+module behind that path imports nothing at all, which is not an accident and is held by a
+gate: a door past the first is declared only where `tests/import-graph.test.ts` can hold its
+closure to the one module it points at. So an import added to the maths module fails a gate
+rather than quietly putting the renderer back behind the arithmetic.
 
 ## Geometry the build generates
 

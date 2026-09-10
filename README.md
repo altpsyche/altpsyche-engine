@@ -1,7 +1,7 @@
 # @altpsyche/engine
 
-A renderer for WebGPU and WebGL 2, with a small scene layer above it. One import path, no
-runtime dependencies.
+A renderer for WebGPU and WebGL 2, with a small scene layer above it. One import path for
+everything, no runtime dependencies.
 
 You describe a frame as data: which resources exist, which pipelines run, what order the
 passes go in. Hand that to the renderer and it picks a backend and makes the calls. Because
@@ -135,6 +135,12 @@ object's record into a storage buffer the shader indexes by instance. A rotation
 tells you when they do. The maths is `vec3`, `mat3` and `mat4`, column major, depth from
 zero to one. A vector's length is `vec3.magnitude`, since a function's own `length` in
 JavaScript cannot be replaced. Every signature is in [docs/API.md](docs/API.md).
+
+Those three names have a second import path, `@altpsyche/engine/maths`, and they stay on the
+main one as well — so this is a shortcut and never a move. It is worth using only if you have
+no bundler: reaching `mat4` through the package name loads the renderer with it, twenty-seven
+files against one, and a bundler shakes that difference down to two gzipped bytes. With a
+bundler, keep the one import.
 
 ## Ask before you draw
 
