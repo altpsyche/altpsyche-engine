@@ -192,53 +192,93 @@ which is the arrangement this package already uses everywhere the two backends d
 
 ---
 
-## Item 3 — the maths behind a door of its own, since 7,520 bytes of arithmetic cost 220,709 to reach
+## Item 3 — the maths behind a door of its own, for the consumer that has no bundler to shake it off
 
 **Opened on 2026-09-10.** `vec3`, `mat4` and `mat3` are published names on the one door, and the only
 way to reach them is that door. `index.ts` re-exports the renderer, the frame graph, the scene, the
 host probe and the toy reflectors alongside them, so a consumer wanting the arithmetic downloads all
 of it.
 
-**The measurement, re-taken on 2026-09-10 against a rebuilt `dist/`.** Walking static imports from
-`index.ts` and `host/surface.ts`, which are the two eager roots `tests/import-graph.test.ts` already
-uses, reaches **28 source files whose built JavaScript is 220,709 bytes**. The built JavaScript of
-`scene/maths.ts` is 7,520 bytes of that, so the arithmetic is **3.4 per cent** of what reaching it
-costs. The closure of `scene/maths.ts` on its own is one file, because that module imports nothing.
-The walk confirms `gpu/webgpu.ts` is not among the 28, which is the gate that already stands.
+**The measurement that decides this item, and it is not the one it was filed on.** The package was
+packed with `npm pack`, installed from its own tarball into an empty consumer, and bundled with
+esbuild, so `sideEffects: false` and `exports` are read the way a bundler reads them. A second
+entry was then added to the installed manifest and the same import measured again. Two consumer
+shapes, two answers:
 
-**This item was filed reading 27 files at 207,090 bytes and that number did not reproduce.** The gap
-is exactly 13,619 bytes, which is the built form of `pipeline/cache.ts`, eager through
+| a consumer wanting only `vec3`, `mat4` and `mat3` | through `.` | through `./maths` |
+| --- | --- | --- |
+| **with a bundler**, minified | 2,116 B raw, **997 B gzipped**, 2 files kept | 2,116 B raw, **995 B gzipped** |
+| **without one**, counted by a load hook in plain node | **27 files, 218,459 bytes** | **1 file, 7,520 bytes** |
+
+**So a bundler already answers this and the second door saves it two bytes.** `scene/maths.ts`
+imports nothing and the manifest declares `sideEffects: false`, so tree-shaking reduces the one door
+to the module alone — the eager closure never enters a bundle at all. **The item's original framing
+was wrong about who pays.** It read as though every consumer downloads the renderer to get the
+arithmetic, and only a consumer with no bundler does.
+
+**That consumer is the whole of the argument, and this package has already spent work on it.**
+`gate:pack` exists to prove the built package installs and plain node can import it. 0.2.0's
+headline fix was that the package is importable without a bundler at all, and
+`tsconfig.build.json` carries a paragraph on emitting node's own specifiers for exactly that reason:
+"a published package only a bundler could load" is named there as the defect it was fixing. For a
+page on an import map, a CDN, Deno, or plain node, `import { vec3 } from '@altpsyche/engine'` is 27
+files and 218,459 bytes to reach 7,520, and that is measured above rather than reasoned about.
+
+**The walk and the load differ by one file and it is worth saying why.** A static walk of the
+sources from `index.ts` and `host/surface.ts`, the two eager roots `tests/import-graph.test.ts`
+already uses, reaches 28 files at 220,709 bytes. Node loads 27 at 218,459. The difference is
+`graph/capability.ts`, 2,250 bytes, which exports only a type, so its import is elided at compile
+time and no runtime ever fetches it. The walk is the right measurement for a gate, since a type-only
+edge is still an edge a careless change could make real; the load is the right measurement for a
+claim about a download. Both confirm `gpu/webgpu.ts` is absent, which is the gate that already
+stands.
+
+**This item was also filed reading 27 files at 207,090 bytes, and that pair did not reproduce
+either.** The gap was exactly 13,619 bytes, the built form of `pipeline/cache.ts`, eager through
 `import { frameKey } from '../pipeline/cache.js'` at `gpu/renderer.ts:19`. No code changed between
-the filing and the re-take, so the original walk missed a file rather than the tree moving under it.
-That is the reason a number is re-taken rather than carried: the item's argument is unchanged and its
-headline figure was wrong by one module.
+the filing and the re-take, so the original walk had missed a module.
 
 **Why it stands on this package's own merits.** The header of `index.ts` states the reason the
 backends are not re-exported: "re-exporting a backend here would pull both into every consumer's
-first download whatever card the browser has." That is the same argument one level up. A published
-name whose cost to import is twenty-seven times its own size is a defect of the surface, and the cost
-falls on anyone who wants the vectors and matrices this package publishes, not on any one consumer.
-The package describes itself as the renderer and the engine above it; the arithmetic is the top of
-that stack and the only part with no device in it.
+first download whatever card the browser has." This is that argument one level up, for the consumer
+whose bundler is not there to undo it. The package describes itself as the renderer and the engine
+above it, and the arithmetic is the top of that stack and the only part with no device in it — so it
+is also the only part a consumer might reasonably want without the rest.
 
-**What it changes, and it is the thing to settle before any step runs.** The standing refusal in
-`CLAUDE.md` is that no export moves out from behind the one door in `index.ts`. Its stated reason is
-that the shape of what is public is decided there rather than by which file a caller happened to
-find. **A second entry declared in `exports` keeps that reason and an undeclared subpath breaks it**:
-a declared door is a decided surface with a gate over it, where a subpath is whatever a caller
-guessed. That reading is this item's and the call is not a session's to make silently.
+**What it changed, settled on 2026-09-10 before any other step ran.** The standing refusal read "no
+export moves out from behind the one door in `index.ts`", and its reason is that the shape of what is
+public is decided there rather than by which file a caller happened to find. **A declared entry keeps
+that reason and an undeclared subpath breaks it**: `exports` refuses a subpath nobody listed, which
+was confirmed by measurement: a deep import naming the built file under `dist` does not resolve from
+the installed package today. So the refusal is now written as *every entry point is declared*, with two
+conditions that carry the old rule's whole intent: every name behind a second door is still exported
+by the first, and a second door is declared only where `tests/import-graph.test.ts` can hold its
+closure to a module that imports nothing. **That bound is what makes this a decision rather than a
+precedent** — the next door has to arrive with a measurement, not an argument.
+
+**What the audit checked so the decision was not taken on faith.** Bundling one app that imports
+`mat4` through both specifiers keeps one copy of the built `scene/maths.ts` and folds the comparison to
+`mat4 === mat4`, so there is no dual-package hazard: both doors name the same built file, where the
+hazard needs two. And nothing is duplicated in either direction, since `scene/maths.ts` stays the one
+home and `index.ts` re-exports it. The costs that are real are a second published contract that
+cannot be withdrawn without a breaking change, and subpath types needing a `moduleResolution` of
+`node16`, `nodenext` or `bundler` — which narrows who may use the new door and not who may use the
+old one, because a classic-resolution consumer cannot reach a subpath at all.
 
 **Steps.**
 
-- [ ] **1. The refusal is settled in the words it will keep.** `CLAUDE.md` and
-  `docs/ARCHITECTURE.md` say whether a declared entry point is a decided surface or a break in the
-  one-door rule. **The measurement**: the refusal as it reads before and after, and the number of
-  declared entries in `package.json`, one today.
+- [x] **1. The refusal is settled in the words it will keep.** Settled on 2026-09-10 in the item's
+  favour, and written into `CLAUDE.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md` and `index.ts`'s
+  own header, which is the point of the decision. **The measurement**: the refusal read "No export
+  moves out from behind the one door in `index.ts`" before and "No export moves out from behind a
+  door this package declares" after, with the two conditions above; and `package.json` declares one
+  entry, which step 2 takes to two.
 - [ ] **2. `./maths` is declared and nothing moves.** `package.json` gains the entry with its own
   types and default. `scene/maths.ts` keeps every export it has and `index.ts` keeps re-exporting all
   of them, so no name leaves the first door and no consumer's import line changes. **The
-  measurement**: `gate:pack` green; the built JavaScript reached through `./maths` against the
-  220,709 bytes reached through `.`; and the eager closure of `.` unchanged at 28 files.
+  measurement**: `gate:pack` green; the files and bytes node loads through `./maths` against the 27
+  files and 218,459 bytes it loads through `.`; and the eager closure of `.` unchanged at 28 files by
+  the walk.
 - [ ] **3. The import graph gate walks the new door.** The new entry becomes a third eager root and
   its closure is held to `scene/maths.ts` alone, so an import added to that module fails a gate rather
   than quietly putting the renderer back behind the arithmetic. **The measurement**: the closure's
@@ -255,12 +295,15 @@ guessed. That reading is this item's and the call is not a session's to make sil
 - Every name the one door exported before still comes out of it, which `tests/api-signatures.test.ts`
   checks by member.
 - `npm test` and `npm run type-check` are green, and `gate:browser` is run once over the batch.
-- `CLAUDE.md` reads the refusal in whichever form step 1 settled, and no document disagrees with it.
+- `CLAUDE.md` reads the refusal in the form step 1 settled, and no document disagrees with it —
+  which means `CONTRIBUTING.md`'s non-negotiable list and `index.ts`'s own header too, since both
+  stated the old rule in their own words.
 
-**What would change the answer.** If the refusal stands as it is, this item is refused rather than
-deferred, and the arithmetic stays behind the one door. A consumer wanting it then imports the whole
-eager chunk or keeps its own copy of the arithmetic, and holding two copies equal by a gate is that
-consumer's answer instead of this item.
+**What would change the answer.** The refusal was settled in this item's favour on 2026-09-10, so
+what is left to change the answer is the bound rather than the door. If a later change makes
+`scene/maths.ts` import anything, step 3's gate goes red and the choice is to sever that import or
+withdraw the door — and withdrawing a published entry is a breaking change, which is the cost of
+this decision and the reason the bound is a gate and not a note.
 
 ---
 

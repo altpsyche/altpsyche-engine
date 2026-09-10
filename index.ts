@@ -1,7 +1,19 @@
 /**
- * The one door into the engine. A consumer reaches everything the library draws
- * with through this file and never through a subpath, so the shape of what is
- * public is decided here rather than by which file a caller happened to find.
+ * The first door into the engine, and the one that carries every name. A consumer
+ * reaches everything the library draws with through this file and never through an
+ * undeclared subpath, so the shape of what is public is decided here and in
+ * `package.json`'s `exports` rather than by which file a caller happened to find.
+ *
+ * **A door is declared or it does not exist.** `exports` refuses a subpath nobody
+ * listed, so the difference between a second door and a caller reaching into the
+ * tree is enforced rather than asked for. Where a second door is declared, every
+ * name behind it stays exported here too: a door is a shorter way to reach a name
+ * and never the only way, which is what keeps an import line written against this
+ * file correct forever. The bound on adding one is that
+ * `tests/import-graph.test.ts` must be able to hold its closure to a module that
+ * imports nothing — a door onto a module that reaches further would publish the
+ * tree one file at a time, which is the thing the single door was protecting
+ * against in the first place.
  *
  * The modules live under this package now. This entry re-exports them across the
  * package line, so a consumer names the package once and never a file inside it,

@@ -7,11 +7,20 @@ cannot be drawn says so before anything starts. If you only want to use the pack
 
 ---
 
-## One entry point
+## Declared entry points
 
-Everything public comes from the package name. `index.ts` is the only export surface and
-nothing reaches around it, so the files inside can be rearranged without moving anything you
-import.
+Everything public comes from the package name through a door the manifest declares.
+`package.json`'s `exports` is the list of them and `index.ts` is the first, so the files inside can
+be rearranged without moving anything you import. **Nothing reaches around the list**: a subpath
+that is not declared does not resolve, which is what makes the public shape a decision rather than
+a consequence of where a file happens to sit.
+
+A second door is declared only where `tests/import-graph.test.ts` can hold its closure to a module
+that imports nothing, and **every name behind it is also exported by `index.ts`**. So a door is
+never the only way to reach a name, and adding one changes no import line you already wrote. What a
+second door buys is the closure: reaching `mat4` through the package name means loading the
+renderer with it, which a bundler shakes back off and a browser loading the built files directly
+does not.
 
 The two backends load by **dynamic import**, which is why `createFrameRenderer` and
 `createSurface` are asynchronous. A browser with no WebGPU never downloads the WebGPU backend.

@@ -38,7 +38,7 @@ evicting the stalest.
 
 Both factories return `null` where no backend would give the canvas a context. Neither
 throws. Both are **asynchronous** because each backend loads by dynamic import; see
-[ARCHITECTURE.md](ARCHITECTURE.md#one-entry-point) for what that buys.
+[ARCHITECTURE.md](ARCHITECTURE.md#declared-entry-points) for what that buys.
 
 **A renderer draws through WebGL 2 unless you hand it a WebGPU device**, which is
 `RendererOptions.backend` and `RendererOptions.device` together. Asking for the card is the

@@ -108,7 +108,11 @@ at the point of the decision, not in a document beside it.
   driver is reached.
 - **`graph/` imports nothing.** That is what keeps a frame graph serialisable, comparable, and
   answerable on a machine with no graphics card. `tests/import-graph.test.ts` enforces it.
-- **One entry point.** Everything public leaves through `index.ts`. Nothing reaches around it.
+- **Every entry point is declared.** Everything public leaves through a door named in
+  `package.json`'s `exports`, and `index.ts` is the first door. Nothing reaches around the list: an
+  undeclared subpath does not resolve. A second door is declared only where
+  `tests/import-graph.test.ts` holds its closure to a module that imports nothing, and every name
+  behind it is still exported by `index.ts`.
 - **Zero runtime dependencies.**
 
 ## Commits

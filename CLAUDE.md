@@ -81,5 +81,14 @@ would change the answer. That belongs in the commit message.
   dynamic import in its GPU painter, so a second import in this direction is a cycle. The case that
   looks like it needs one is a shader declaring a camera, and the answer there is that whatever holds
   both packages reads the camera from here and hands it to a figure as data.
-- No export moves out from behind the one door in `index.ts`.
+- **No export moves out from behind a door this package declares.** `package.json`'s `exports` is
+  the list of doors and `index.ts` is the first of them, so the shape of what is public is decided in
+  the manifest and in the door files rather than by which file a caller happened to find. An
+  undeclared subpath is not a door and never becomes one: `exports` refuses it outright, which is
+  what makes a declared entry a decided surface instead of a matter of style. Two conditions hold
+  the line. **Every name behind a second door is still exported by the first**, so adding a door
+  changes no consumer's import line and removes nothing from `index.ts`. And **a second door is
+  declared only where `tests/import-graph.test.ts` can hold its closure to a module that imports
+  nothing** — that bound is what stops a declared entry becoming a way to publish the tree one file
+  at a time, and it is the reason a door arrives on a measurement rather than on an argument.
 - No backend grows a method the other has to throw from. Capability lives in the data.
