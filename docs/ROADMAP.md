@@ -337,12 +337,26 @@ over 73 with `type-check` clean, `gate:browser` run once over the batch at 4 of 
 reading the same in `CLAUDE.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/API.md`,
 `README.md` and `index.ts`'s own header.
 
-**What is left is not this file's to do.** Nothing reaches a consumer until the version is cut and
-released, and that is Siva's to run — a declared entry only exists for anyone once it is published,
-which is also the moment withdrawing it becomes breaking. **The entry is left standing rather than
-deleted** because the four steps' reasoning is what a reader will want when the next door is
-proposed, and because the release has not happened; deleting it is a closing act, and `git log` is
-the record either way.
+**It is released, and the item is closed.** `0.4.0` published on 2026-09-10 from `refs/tags/v0.4.0`
+through `.github/workflows/publish.yml`, with the run's own gates green — `npm test`, `gate:browser`
+and `gate:pack` all ran on the published commit before the publish step, which is the reading that
+matters more than this session's. Read back off the registry rather than off the run: `latest` is
+`0.4.0`, the published `exports` carries both entries, `npm audit signatures` reports a verified
+attestation, and the provenance names repository, workflow, `refs/tags/v0.4.0` and commit
+`e80f3e8` — the same shape `0.3.0` carries. Installed from the registry, the first door loads 27
+files and 219,294 bytes and the maths door loads 1 file and 7,520.
+
+**The first attempt failed and that is worth keeping.** The publish went red at `npm test` on the
+runner and published nothing, because step 4's example block reached the maths door by its published
+specifier, which resolved through the manifest into `dist/` and made `npm test` require a build. It
+passed locally only because a `dist/` was lying about from packing a tarball. The tag was moved to
+the fix and the publish re-run. **The lesson is the one `CONTRIBUTING.md` already states twice**: a
+gate that runs where the build output lives cannot see a dependency on the build, and the runner was
+the only reading that could.
+
+**The entry stays standing rather than deleted**, because the four steps' reasoning is what a reader
+will want when the next door is proposed, and the bound in step 3 is the thing that will be argued
+against. `git log` is the record either way.
 
 ---
 
@@ -720,31 +734,33 @@ two — is answered by that difference.
 **Done when** finding D names `scissor` alone, and says a viewport is set from the frame size on the
 draw path but declared nowhere in a graph.
 
-### Should `gate:pack` read the declared types under node's own resolution?
+### Settled on 2026-09-10: `gate:pack` now reads the declared types, and the claim that prompted it was wrong
 
-**Found while cutting 0.4.0, and it is a gap rather than a defect.** `gate:pack` asks the installed
-package three questions — plain node imports it, a consumer builds with it through `tsx`, and a
-bundler keeps the door's re-exports — and step 2 of item 3 added a fourth over the second door's
-run-time names. **None of them reads the `types` half of an `exports` entry under
-`moduleResolution: nodenext`**, which is the resolution a consumer on modern TypeScript actually
-uses and the only one that can see a subpath's declarations at all. `tsx` resolves more loosely, and
-that looseness is already recorded in the gate's own header as the reason the plain-node question
-exists beside it.
+**This was a question here and it is answered, so it is recorded rather than left open.** The
+question was whether `gate:pack` should read the `types` half of a declared entry, since nothing did:
+it asked plain node, `tsx` and a bundler, none of which reads declarations the way a consumer's
+compiler resolves them. Two checks landed, and the interesting part is what the first one taught.
 
-So a `types` path pointing at nothing would publish, and the failure would land on a consumer as a
-subpath with no declarations while every gate here stayed green. It was checked by hand for this
-release — a two-line program importing `mat4` and the type `Mat4` from the maths door type-checks
-clean under `nodenext` against the installed 0.4.0 — and by hand is exactly what this repository
-does not accept for a claim it repeats.
+**A `types` path pointing at nothing does not fail a compile, which is what this entry claimed it
+would.** TypeScript falls back to the `default` condition and picks up the `.d.ts` beside the `.js`,
+and `tsc` emits one beside every file — so the fallback always succeeds in this package and no
+amount of compiling sees the typo. Verified by pointing the maths door's `types` at a
+declaration file name that is not there, and watching the new probe stay green; it reddens only once
+the sibling declaration is deleted too, as TS7016. **So the gap was narrower than this entry said**, and a wrong
+`types` key here is harmless to a consumer.
 
-**Why it is a question and not an item yet.** The cheap version is a `tsc` invocation inside
-`gate:pack` over a fixture consumer with `moduleResolution: nodenext`, which is a few lines. The
-question is whether it wants to be its own gate over every declared entry and both resolution modes,
-since `node16` and `bundler` differ from `nodenext` in ways that have bitten this package before —
-0.2.0's headline fix was precisely a `dist` only a bundler could load.
+What each check is therefore worth: the compile probe catches declarations that are absent or do not
+compile, which is a build that stopped emitting them or a `files` list that stopped shipping them.
+The path check — every condition of every declared entry asserted to be a file the install carries —
+catches the manifest typo the compiler forgives, and it is the half that fails by name. Both are
+generated from the installed manifest, so a door added to `exports` is read without a line being
+added.
 
-**Done when** a gate fails for a declared entry whose `types` target does not resolve, and the
-commit says which resolution modes it read.
+**What is left of the question.** Only `nodenext` is read, not `node16` or `bundler`. Those differ in
+ways that have bitten this package before — 0.2.0's headline fix was a `dist` only a bundler could
+load — and nothing yet reads a declared entry under the looser two. That is a smaller question than
+the one this section opened with and it is left standing as a candidate below rather than as an open
+question here.
 
 ### When item 2 grows the counting modes, does the stencil table become data or stay two tables?
 
@@ -783,7 +799,17 @@ written down so the thinking is not lost.
 draws one fullscreen shader must not download it. `chunk-split` in the consuming repository counts
 that from the outside, and the two backends already load by dynamic import for the same reason.
 
-### Three candidates the audit of 2026-09-10 left, each an idea and none an item
+### Four candidates left on 2026-09-10, each an idea and none an item
+
+**A declared entry read under the looser two resolution modes.** `gate:pack` now type-checks every
+declared door under `moduleResolution: nodenext`, which is the strict reading of `exports`. Nothing
+reads them under `node16` or `bundler`. **What makes it doubtful** is that the looser modes forgive
+what the strict one refuses, so a door passing `nodenext` almost certainly passes both — the failure
+would have to be a condition only the looser resolvers consult, which this manifest does not use. It
+is written down because 0.2.0's headline fix was a `dist` only a bundler could load, so this package
+has been wrong about resolution before, and because the cost is one more `tsc` invocation over a
+fixture that already exists.
+
 
 **The layer table held to the walk that already exists.** `docs/ARCHITECTURE.md`'s "may import"
 column is prose and item 7 corrects it once. `tests/import-graph.test.ts` already walks every import
@@ -833,8 +859,8 @@ the second is a shader declaring a camera, and the answer is that whatever holds
 camera from here and hands it to a figure as data.
 
 **That package was at 1.0.0 with its door frozen when this was written and is at 2.5.1 now**, and
-this one is at 0.4.0, cut on 2026-09-10 for the second declared entry and unpublished until a
-release is made from the tag. A frozen door promising a consumer that a name does not change cannot be
+this one is at 0.4.0, published on 2026-09-10 for the second declared entry, which is the version
+that carries `@altpsyche/engine/maths`. A frozen door promising a consumer that a name does not change cannot be
 honoured through a dependency below 1.0.0, where a minor may break anything. Its answer was to take a
 clean break of its own: it went to 2.0.0 for a figure format, and until this package reaches 1.0.0
 that consumer either pins an exact version or takes the churn by hand. **Nothing here is asked to

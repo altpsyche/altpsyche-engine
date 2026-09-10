@@ -70,7 +70,18 @@ would change the answer. That belongs in the commit message.
 ## Commits
 
 - The message says what landed and carries the measurement it earned.
-- **Never push.** The remote is not this session's to publish to.
+- **Do not push, tag, or publish without Siva saying so in the session.** Committing is a session's
+  to do; anything the outside world can see is not. That covers `git push`, a tag reaching the
+  remote, and a release — and it covers moving a tag that is already out there, which is a delete
+  and a re-push wearing one word.
+- **A published version cannot be withdrawn**, so the asking is not a formality. npm's unpublish
+  window is narrow and closes; a wrong version is fixed by publishing another one, and a declared
+  entry point is a promise for as long as the package exists.
+- **The release runs in CI and not from a session's terminal.** `.github/workflows/publish.yml`
+  builds and publishes with provenance from the tag, using the job's own identity token, so there is
+  no npm token anywhere and every published version carries an attestation naming the commit it was
+  built from. A local `npm publish` would break that chain even where it succeeded. `gh workflow run
+  publish.yml --ref <tag>` is the whole of it once Siva has said to go.
 - One item per commit, except where an item's own text says it goes alone.
 
 ## Standing refusals
