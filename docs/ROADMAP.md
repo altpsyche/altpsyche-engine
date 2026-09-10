@@ -184,6 +184,70 @@ which is the arrangement this package already uses everywhere the two backends d
 
 ---
 
+## Item 3 — the maths behind a door of its own, since 7,520 bytes of arithmetic cost 207,090 to reach
+
+**Opened on 2026-09-10.** `vec3`, `mat4` and `mat3` are published names on the one door, and the only
+way to reach them is that door. `index.ts` re-exports the renderer, the frame graph, the scene, the
+host probe and the toy reflectors alongside them, so a consumer wanting the arithmetic downloads all
+of it.
+
+**The measurement.** Walking static imports from `index.ts` and `host/surface.ts`, which are the two
+eager roots `tests/import-graph.test.ts` already uses, reaches 27 source files whose built JavaScript
+is 207,090 bytes. The built JavaScript of `scene/maths.ts` is 7,520 bytes of that. So the arithmetic is 3.6 per cent of
+what reaching it costs, and the walk confirms `gpu/webgpu.ts` is not among the 27, which is the gate
+that already stands.
+
+**Why it stands on this package's own merits.** The header of `index.ts` states the reason the
+backends are not re-exported: "re-exporting a backend here would pull both into every consumer's
+first download whatever card the browser has." That is the same argument one level up. A published
+name whose cost to import is twenty-seven times its own size is a defect of the surface, and the cost
+falls on anyone who wants the vectors and matrices this package publishes, not on any one consumer.
+The package describes itself as the renderer and the engine above it; the arithmetic is the top of
+that stack and the only part with no device in it.
+
+**What it changes, and it is the thing to settle before any step runs.** The standing refusal in
+`CLAUDE.md` is that no export moves out from behind the one door in `index.ts`. Its stated reason is
+that the shape of what is public is decided there rather than by which file a caller happened to
+find. **A second entry declared in `exports` keeps that reason and an undeclared subpath breaks it**:
+a declared door is a decided surface with a gate over it, where a subpath is whatever a caller
+guessed. That reading is this item's and the call is not a session's to make silently.
+
+**Steps.**
+
+- [ ] **1. The refusal is settled in the words it will keep.** `CLAUDE.md` and
+  `docs/ARCHITECTURE.md` say whether a declared entry point is a decided surface or a break in the
+  one-door rule. **The measurement**: the refusal as it reads before and after, and the number of
+  declared entries in `package.json`, one today.
+- [ ] **2. `./maths` is declared and nothing moves.** `package.json` gains the entry with its own
+  types and default. `scene/maths.ts` keeps every export it has and `index.ts` keeps re-exporting all
+  of them, so no name leaves the first door and no consumer's import line changes. **The
+  measurement**: `gate:pack` green; the built JavaScript reached through `./maths` against the
+  207,090 bytes reached through `.`; and the eager closure of `.` unchanged at 27 files.
+- [ ] **3. The import graph gate walks the new door.** The new entry becomes a third eager root and
+  its closure is held to `scene/maths.ts` alone, so an import added to that module fails a gate rather
+  than quietly putting the renderer back behind the arithmetic. **The measurement**: the closure's
+  file count, and the gate red when an import of `graph/types.ts` is added to that module and green
+  when it is taken out.
+- [ ] **4. `docs/API.md` says which names are behind which door.** **The measurement**: the count of
+  names under each heading, against the two entries the manifest declares.
+
+**Done when.**
+
+- `package.json` declares two entry points and `npm run gate:pack` is green.
+- The closure of the second entry is one file, held by `tests/import-graph.test.ts` rather than by
+  intention.
+- Every name the one door exported before still comes out of it, which `tests/api-signatures.test.ts`
+  checks by member.
+- `npm test` and `npm run type-check` are green, and `gate:browser` is run once over the batch.
+- `CLAUDE.md` reads the refusal in whichever form step 1 settled, and no document disagrees with it.
+
+**What would change the answer.** If the refusal stands as it is, this item is refused rather than
+deferred, and the arithmetic stays behind the one door. A consumer wanting it then imports the whole
+eager chunk or keeps its own copy of the arithmetic, and holding two copies equal by a gate is that
+consumer's answer instead of this item.
+
+---
+
 ## What is still to be settled, and it does not block item 1
 
 ### The bound the layer above the renderer is built to
