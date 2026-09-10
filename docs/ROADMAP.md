@@ -247,24 +247,38 @@ painter it has not built yet. This package never imports that one. The case that
 the second is a shader declaring a camera, and the answer is that whatever holds both reads the
 camera from here and hands it to a figure as data.
 
-**That package is at 1.0.0 with its door frozen, and this one is at 0.3.0.** A frozen door promising
-a consumer that a name does not change cannot be honoured through a dependency below 1.0.0, where a
-minor may break anything. Its answer was to take a clean break of its own: it goes to 2.0.0 for a
-figure format, and until this package reaches 1.0.0 that consumer either pins an exact version or
-takes the churn by hand. **Nothing here is asked to move for that**, and the choice is recorded so
-neither side rediscovers it.
+**That package was at 1.0.0 with its door frozen when this was written and is at 2.5.1 now**, and
+this one is at 0.3.0. A frozen door promising a consumer that a name does not change cannot be
+honoured through a dependency below 1.0.0, where a minor may break anything. Its answer was to take a
+clean break of its own: it went to 2.0.0 for a figure format, and until this package reaches 1.0.0
+that consumer either pins an exact version or takes the churn by hand. **Nothing here is asked to
+move for that**, and the choice is recorded so neither side rediscovers it.
+
+**Its ladder moved on 2026-09-08 and again on 2026-09-10**, so the rows below are re-read from that
+file rather than kept as they were written. A recorder went in front of the painter and every version
+behind it shifted by one, and its 2.1.0 through 2.5.1 are cut with none of them touching this package.
 
 | version of `@altpsyche/maths` | what it draws through this package | what it needs from here |
 | --- | --- | --- |
 | 1.1.0 through 1.6.0 | nothing | nothing |
 | 2.0.0, the figure format | nothing | nothing. That document is [`FIGURE-FORMAT.md`](FIGURE-FORMAT.md), and what this package refactors for it is nothing |
-| 2.1.0 through 2.5.0 | nothing | nothing |
-| 2.6.0, a GPU painter | every mark a figure draws, as filled and stroked paths | a stencil that counts, which is item 2. A filled path with a hole has its interior decided by a winding number, and the mask both `StencilMode` values give cannot count one |
-| 2.7.0, dashes and quadratics | a dashed stroke and a quadratic segment | nothing beyond 2.6.0 |
-| 2.8.0, text on a GPU with a recorder | glyph outlines as filled paths | nothing beyond 2.6.0 |
-| 3.0.0, depth | a figure in space that keeps its depth order | nothing beyond 2.6.0. What gates it is a decision in that repository about whether a figure may be undrawable in SVG |
+| 2.1.0 through 2.5.1, cut and unpublished | nothing | nothing |
+| 2.6.0, a recorder writing a video file | nothing. It encodes what a painter already drew, and the painter it drives today is a 2D canvas | nothing |
+| 2.7.0, a GPU painter | every mark a figure draws, as filled and stroked paths | a stencil that counts, which is item 2. A filled path with a hole has its interior decided by a winding number, and the mask both `StencilMode` values give cannot count one |
+| 2.8.0, dashes and quadratics | a dashed stroke and a quadratic segment | nothing beyond item 2 |
+| 2.9.0, text on a GPU and a recorder with no page | glyph outlines as filled paths | nothing beyond item 2 |
+| 3.0.0, depth | a figure in space that keeps its depth order | nothing beyond item 2. What gates it is a decision in that repository about whether a figure may be undrawable in SVG |
 | 3.1.0, a clip that is a path | a clip region that is not a rectangle | item 2 again, since a path clip is a stencil where a rectangle is a scissor |
 | 4.0.0, a figure a reader can act on | nothing decided yet | possibly nothing. Pointer and key state is a candidate above and is doubtful on its own merits |
+
+**One row in that ladder needs this package before any painter does, and it is not on the table
+above.** That file decided on 2026-09-10 that the duplication between the two packages closes inside
+its 2.x band rather than being gated inside it: the vector and matrix maths here and there are the
+same arithmetic written twice, six `vec3` functions identical character for character and nine `mat4`
+functions overlapping, and until its 2.5.1 the two projections wrote clip depth into different
+ranges with nothing catching it. So it declares this package and imports these names at whatever
+version does that refactor, which is earlier than its painter. **What it needs from here is item 3**,
+and that item stands on this package's own merits or not at all.
 
 **When that consumer's spike arrives, and why it matters here.** A throwaway painter over this
 package, drawing a figure's marks as they stand, is a session in that repository scheduled after its
@@ -336,8 +350,8 @@ painter wanting either draws into a texture of its own and names it in `present`
 the next session reading that batch does not file it.
 
 **How that consumer will declare this package, and why it matters here.** As a peer dependency
-rather than a plain one, which is the recommendation in its own roadmap and is a decision it takes at
-its 2.6.0. The reason belongs in this file because the alternative puts two copies of this package in
+rather than a plain one, which is the recommendation in its own roadmap and is a decision it takes
+when it first imports a name from here, now earlier than its painter. The reason belongs in this file because the alternative puts two copies of this package in
 one page. That site depends on this one directly in nineteen files, none of which draws a figure, so
 it keeps the dependency after the painter lands there and then holds it twice, once directly and once
 through that package. Both ranges read `^0.3.0` today and a caret on a `0.x` tracks the last number
