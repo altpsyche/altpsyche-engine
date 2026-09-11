@@ -2267,6 +2267,44 @@ wall step 3 hit. `gate:card` was not re-taken.
 trial calls `adapter.requestDevice(...)` and **never calls `device.destroy()`** — `.destroy()` appears
 nowhere in `host/probe.ts`. It is the same family as this item, a reading holding onto something it
 asked the machine for, and it wants an item of its own rather than a line in this one.
+
+### Settled on 2026-09-11, step 2: the WebGL 2 trial keeps its composited canvas, and the measurement is why it is not obvious
+
+**The step asked whether that trial needs the canvas composited at all, and expected the answer to be
+no.** The case for no is good: `never()` means WebGL 2 survival is only `did five draws throw`, a
+throw needs no compositor, and the one place this tree documents needing compositing — the doc on
+`survivesCompositing` — is measured about **WebGPU**, an on-screen WebGPU canvas losing its device
+after three frames. None of that is about WebGL 2.
+
+**Measured, the way the step asked, and named as the software-renderer reading it is.** Both shapes
+were run under the same SwiftShader Chromium the browser gates use, canvas on the document and off
+it:
+
+```
+canvas ON  the document: {"context":true,"renderer":"ANGLE (… SwiftShader driver)","survived":true}
+canvas OFF the document: {"context":true,"renderer":"ANGLE (… SwiftShader driver)","survived":true}
+same answer: true
+```
+
+Identical down to the renderer string. **And that does not settle it**, which is the step's own
+caveat come true. The case that would differ is a driver that kills a context only while compositing:
+off-document the trial answers `survived: true` for a card that on-document would have failed.
+SwiftShader cannot show that and no unattended gate can.
+
+**So the canvas stays on the document, and the deciding reason is not the measurement.** It is the
+field's own name. The answer is reported as `survivedCompositing`; answering it without compositing
+is answering a different question and calling it that one. That is worse than a canvas removed a
+moment later — and step 1 removes it, so nothing leaks either way. **The narrowing was never the fix.
+It was only ever going to make half of step 1 unnecessary, and step 1 is complete without it.**
+
+The reasoning is written at `never()` in `host/probe.ts` with its reversal and what would change it:
+a `gate:card` run showing the two shapes agreeing on a real driver, or the WebGL 2 trial growing a
+`webglcontextlost` listener, which would give it a loss signal and make the compositing real rather
+than nominal.
+
+**Measured.** Documents and one doc comment; `npm test` 945 over 80 files and `npm run type-check`
+clean, unchanged either side. No behaviour changed, which is the point of a step that settles
+something as staying put.
 - `probe()` answers the same for both backends as it did, read off `gate:browser`'s device report.
 - `npm test` and `npm run type-check` are green; `gate:browser` at 4 of 4.
 - The commit says whether step 2 was settled or left standing, and that a software renderer cannot

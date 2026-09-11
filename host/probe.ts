@@ -354,7 +354,37 @@ async function gatherFromBrowser(): Promise<ProbeFacts> {
 }
 
 /** A promise that never settles, for the WebGL 2 trial: WebGL 2 has no device-lost
- * event to race the frames against, so survival there is whether the draws throw. */
+ * event to race the frames against, so survival there is whether the draws throw.
+ *
+ * **This is not a reason to take that trial's canvas off the document** (settled
+ * 2026-09-11, item 15 step 2, and it was asked the other way round). The argument
+ * for taking it off is that a throw needs no compositor, so the composited canvas
+ * buys a trial reading only `did five draws throw` nothing at all — and that the
+ * one place this tree documents needing compositing, at `survivesCompositing`
+ * below, is measured about *WebGPU*: an on-screen WebGPU canvas losing its device
+ * after three frames.
+ *
+ * **Measured, and the measurement does not settle it.** Both shapes were run under
+ * the same SwiftShader Chromium the browser gates use, canvas on the document and
+ * off it, and the answers were identical down to the renderer string —
+ * `survived: true` either way. A software renderer cannot settle this for a real
+ * card, which is the whole difficulty: the case that would differ is a driver that
+ * kills a context only while compositing, where off-document the trial would answer
+ * `survived: true` for a card that on-document would have failed. SwiftShader cannot
+ * show that and neither can any unattended gate.
+ *
+ * **So the canvas stays on the document**, and the deciding reason is the field's own
+ * name. The answer is reported as `survivedCompositing`. Answering it without
+ * compositing is answering a different question and calling it that one, which is
+ * worse than a canvas that is removed a moment later — and step 1 removes it, so
+ * nothing is leaked either way. The narrowing was never the fix; it was only ever
+ * going to make half the fix unnecessary.
+ *
+ * **To reverse**: pass `onScreenCanvas`'s work an off-document canvas for the WebGL 2
+ * trial alone. **What would change the answer**: a `gate:card` run showing the two
+ * shapes agreeing on a real driver, or the WebGL 2 trial growing a
+ * `webglcontextlost` listener, which would give it a loss signal and make the
+ * compositing real rather than nominal. */
 function never(): Promise<never> {
   return new Promise<never>(() => {});
 }
