@@ -2850,48 +2850,73 @@ picture whose geometry moves, which is a different claim from the one that comme
    sixty frames, taken by `npm test` on this machine, **with the wall-clock cost of a recompile named
    as unmeasured and needing a card.** If the compile count is already one, the item closes here as
    refused with that count recorded.
-2. **Rewritten on 2026-09-11 after step 1, and the fork is wider than this step had it. It is a
-   call for Siva and a session should not take it.** Decide what the key carries for a resource
-   whose bytes change per frame, and write the decision, its reversal and its trigger at `frameKey`.
-   **The measurement**: step 1's counts re-taken after —
-   `tests/program-cache-moving-geometry.test.ts` is written to go red on all three.
+2. **Answered by Siva on 2026-09-11: the upload moves out of program-build.** The steps below are
+   this step rewritten to that answer, and the fork that was here is recorded under
+   "What the fork was" at the end of the item so the refused arm is not re-argued.
 
-   **Why the fork is architectural rather than a choice of key.** The bytes are in the key *because
-   the program owns the upload*: `gpu/webgpu.ts:673-676` writes `resource.data` inside
-   `program(frame)`, and its own comment says "a page changes a buffer by re-submitting the graph
-   rather than mutating a held program". So a frame with different bytes genuinely is a different
-   program *as programs are defined today*, and the key is not wrong — the definition is what costs.
-   The two real answers are therefore:
+   **What the answer costs, read off the tree before planning it.** The bytes are in the key
+   because the program owns the upload — `gpu/webgpu.ts:673-676` writes `resource.data` inside
+   `program(frame)` — and the compiled program a backend returns is
+   `{ setUniforms, draw, dispose }` at `graph/types.ts:994-1010`. **Nothing on it can refill a
+   buffer.** So the geometry cannot leave the key until a program can be handed the bytes of the
+   frame it is being drawn with; drop the bytes from the key first and a cache hit draws the
+   *previous* frame's geometry, silently, which is the exact false hit `frameKey`'s header says it
+   exists to prevent. The order below is forced by that and is not a preference.
 
-   - **(i) The program keeps the upload, and the key carries a cheap identity for the bytes**
-     instead of the bytes. Small, local to `frameKey`, and it does not touch either backend — but it
-     still recompiles every frame for a moving figure, because a different identity is still a
-     different program. **It fixes the 31,335-character serialisation and not the sixty compiles.**
-   - **(ii) The upload moves out of program-build**, so a byte change is a buffer write rather than
-     a new program, and the geometry leaves the key because it is no longer something a program
-     bakes in. **This is the one that fixes the compiles**, and it changes what a program owns, in
-     both backends, against the three lifetimes in `docs/ARCHITECTURE.md`.
+   **The upload sites, all of them, so none is missed**: `gpu/webgpu.ts:527`, `:674` and `:767`
+   (buffer, geometry buffer, texture) and `gpu/webgl2.ts:896`, `:909`, `:1038` and `:1061`.
+   `arena.wrote` at `:675` is byte accounting that has to move with the write rather than stay at
+   build.
 
-   **The candidate this step used to name first is now known not to cover the case.** "A resource's
-   `source` where it has one and its bytes only where it does not" — `source` is a *build-time
-   address*, written by `fixtures/shader-content.ts:318,329` as a filename and resolved to baked
-   bytes. **A figure whose geometry is computed per frame has no address**, so that candidate fixes
-   the baked case and does nothing for the measured one.
+3. **A compiled program can be refilled from a frame, and nothing calls it yet.** Both backends'
+   program gains one member that re-uploads the resource bytes of a frame handed to it. **Additive
+   and inert**: no key changes, no caller calls it, so the picture cannot move. The decision, its
+   reversal and its trigger go on the new member and at `Backend.program`. **The measurement**:
+   `npm test` at its new count with a test per backend double showing the re-upload reaching
+   `writeBuffer`/`bufferData`, `npm run type-check`, and run-time names — which should not move,
+   the member being a type.
 
-   **A numbering collision to know about before reading `frameKey`'s header.** It says "when items 13
-   and 15 move resource and pipeline ownership out of `createProgram` … this composite key goes with
-   them". Those are the *old queue's* items 13 and 15, deleted at 0.3.0. This file's items 13 and 15
-   are the `createFrameRenderer` throw and the `probe()` canvases and have nothing to do with it.
-   Whatever lands at step 2 should reword that sentence so the next reader does not chase it.
+4. **The geometry bytes leave the key and the renderer refills on a hit.** `frameKey` stops
+   serialising a resource's `data`; `programFor` refills a cached program from the frame it was
+   asked for. **This is the commit the picture can move in**, which is why it lands after the
+   refill exists and with the tests of step 5 written against it. `frameKey`'s header is reworded
+   in the same commit: its "items 13 and 15" are the *old queue's*, deleted at 0.3.0, and this
+   file's items 13 and 15 are the `createFrameRenderer` throw and the `probe()` canvases.
+   `gpu/webgpu.ts`'s "a page changes a buffer by re-submitting the graph rather than mutating a
+   held program" (item 98) becomes false in this commit and is rewritten with it. **The
+   measurement**: `tests/program-cache-moving-geometry.test.ts` re-taken — it is written to go red
+   on all three of sixty links, one link, and 31,335 characters, so it has to be updated in this
+   commit and the new numbers quoted.
 
-   **Whatever lands has to answer the header's own claim** — that a false *hit* is what `frameKey`
-   exists to make impossible — by saying why two frames sharing a key are the same program.
-3. **A test per field `frameKey` reads, so two frames differing in any one of them still get two
-   programs.** This is the check that the fix did not buy its hits by losing the distinction the key
-   exists for, and `CONTRIBUTING.md`'s rule applies: a test rewritten alongside the code it checks
-   catches nothing, so these are written against the fields rather than against the new key. **The
-   measurement**: each red on a pair differing only in that field, and `gate:browser` at 4 of 4 with
-   the recording contract at its count.
+5. **A test per field `frameKey` reads, and one the fix could break.** Two frames differing in any
+   one field `frameKey` still reads get two programs — written against the fields rather than
+   against the new key, per `CONTRIBUTING.md`. **And the one step 4 puts at risk**: two frames
+   differing *only* in geometry bytes now share a program and must still draw **different
+   pictures**, which is the false-hit question answered by the refill instead of by the key. A
+   double can show the second buffer was written; it cannot show the card read it. **The
+   measurement**: each red on a pair differing only in that field, and `gate:browser` at 4 of 4
+   with the recording contract at its count.
+
+6. **The card reads it, because a double cannot.** A `gates/card.mjs` check drawing a figure whose
+   geometry moves across frames and asserting the picture changes after the cache hit. **This is
+   the only check that can catch a refill that writes a buffer the draw does not read** — a
+   stale-but-written buffer looks identical on both doubles. Needs a display and a person, as
+   items 16 and 17 both did. **The measurement**: the gate at its new count on real hardware.
+
+**What the fork was, so the refused arm is not re-argued.** The alternative was to keep the upload
+in the program and give the key a cheap identity for the bytes instead of the bytes themselves.
+**Refused by Siva on 2026-09-11**: it fixes the 31,335-character per-tick serialisation and leaves
+all sixty compiles standing, because a different identity is still a different program. It is also
+not a step on the way to the chosen answer — under the chosen answer the geometry leaves the key
+entirely and the identity has nothing to key — so staging the two would be work thrown away. **What
+would reverse the choice**: a measurement on a card showing a recompile costs little enough that
+sixty of them a second do not matter, which is still unmeasured.
+
+**A third candidate the original step named first is now known not to apply**: "a resource's
+`source` where it has one and its bytes only where it does not". `source` is a *build-time address*,
+written by `fixtures/shader-content.ts:318,329` as a filename and resolved to baked bytes. A figure
+whose geometry is computed per frame has no address, so it fixes the baked case and does nothing for
+the measured one.
 
 ### Landed on 2026-09-11, step 1: the defect is measured, it is not refused, and the key is four times the geometry
 
