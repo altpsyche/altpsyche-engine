@@ -805,10 +805,11 @@ documented backstop is not a second home. `spansFrame` in `gpu/webgpu.ts:731` is
    out to be in `validate` already and its two backend copies were deleted rather than moved. **The measurement**: `npm test` and `npm run type-check` green,
    the count of `throw` sites in each backend before and after, and `gate:browser` at 4 of 4 with the
    recording contract at 16 of 16, which is what says the calls did not move.
-3. **A test per moved rule that fails for the rule and not for the wording**, since a rule moved with
-   its own tests is a rule nothing independent reads — which `CONTRIBUTING.md` names as the mistake
-   that survives. **The measurement**: each of the six red on a graph that breaks it and green
-   otherwise, and the two backends' remaining throws named as unreachable backstops.
+3. **Landed on 2026-09-11**, reading below. A test per moved rule that fails for the rule and not for
+   the wording, since a rule moved with its own tests is a rule nothing independent reads — which
+   `CONTRIBUTING.md` names as the mistake that survives. **The measurement**: each of the six red on
+   a graph that breaks it and green otherwise, and the two backends' remaining throws named as
+   unreachable backstops.
 
 ### Done when
 
@@ -916,6 +917,42 @@ could disagree about.
 `gate:browser` draws frames that pass, so a rule that now fires on neither path would look exactly
 like a rule that fires on both. Step 3's independent tests are what close that, and they are the
 reason step 3 exists.
+
+### Landed on 2026-09-11, step 3: each of the six is red for its own rule, proved one rule at a time
+
+**`tests/graph-resource-shapes.test.ts`, seventeen tests, importing no backend and no device.** Each
+holds a graph sound but for the one field it bends, and each is paired with the same graph minus the
+fault, which must pass — a test that only ever sees a throw cannot tell a rule from a function that
+throws at everything.
+
+**Measured by disabling one rule at a time** rather than asserted. With each rule's condition
+replaced by `false` in `graph/validate.ts`, one rule per run:
+
+| rule disabled | independent tests red | red in all | the per-backend files that also fell |
+| --- | --- | --- | --- |
+| a ladder over a texture a pass writes | 2 | 5 | `renderer-mips`, `renderer-multisample`, `renderer-webgl2` |
+| a ladder with no contents | 1 | 2 | `renderer-webgl2` |
+| contents and several samples | 2 | 5 | `renderer-multisample`, `renderer-webgl2` |
+| several samples bound to a shader | 2 | 4 | `renderer-multisample`, `renderer-webgl2` |
+| several samples shown | 1 | 4 | `renderer-multisample`, `renderer-webgl2` |
+| contents and the frame's own size | 2 | 6 | `renderer-webgl2`, `renderer-webgpu` |
+
+**Never fewer than one**, so no rule in `validate` is now enforced only by a test that came with it,
+and the right-hand column says each rule is still reached through a backend as well as directly.
+`npm test` 923 passing, up from 906; `type-check` green. **The card gate was not re-taken** and no
+gate that draws was run: this step adds a test file and changes no library code.
+
+**The step asked for something that turned out not to exist.** Its measurement named "the two
+backends' remaining throws named as unreachable backstops", expecting the copies to stay as guards
+the way `gpu/select.ts` describes for the read-write storage buffer. Step 2 deleted all seven
+instead, so there are none to name — and what guards a caller who skips `validate` is that there is
+no way to skip it: the WebGL 2 path calls it and the WebGPU path reaches it through `submit/plan.ts`.
+
+**A mutation probe is only as good as its mutation**, which is worth recording because the first one
+here was wrong. Falsifying a guard by turning `if (a || b)` into `if (false && a || b)` leaves
+`(false && a) || b`, so the rule still fired and the probe read zero red across all six — a green
+that looked like insensitive tests and was a broken probe. Replacing the whole condition with
+`false` is what the numbers above come from.
 
 **What would change the answer.** If one of the six turns out to be genuinely backend-specific — a
 rule about what a renderbuffer can do rather than about what a description says — it stays in that
