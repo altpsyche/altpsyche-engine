@@ -23,6 +23,7 @@
  */
 import {
   createFrameRenderer,
+  openRenderer,
   wgslFrame,
   uniformBlockOf,
   vec3,
@@ -52,7 +53,13 @@ const graph = (): FrameGraph => wgslFrame('consumer-check', CODE, BLOCK);
 
 async function main(): Promise<void> {
   const failures: string[] = [];
+  // Counted rather than written down. The total was the literal `11` in two places
+  // at the end of this file, so a check added here printed "all 11 of 11" while
+  // running thirteen — the gate reporting a number that was not the number it took,
+  // which is the one thing a gate may not do. Item 12 added two checks and found it.
+  let taken = 0;
   const check = (what: string, ok: boolean, saw: unknown): void => {
+    taken += 1;
     console.log(`${ok ? 'PASS' : 'FAIL'} ${what}${ok ? '' : `  saw ${JSON.stringify(saw)}`}`);
     if (!ok) failures.push(what);
   };
@@ -68,6 +75,24 @@ async function main(): Promise<void> {
   check('the renderer reports the backend it built', renderer.backend === 'webgpu', renderer.backend);
   check('one draw reached the device', gpu.calls('draw').length === 1, gpu.calls('draw').length);
   check('a frame of pixels came back', pixels !== undefined && pixels.length === 4 * 3 * 4, pixels?.length);
+
+  // The door that chooses (item 12): one call from a canvas and a frame to a
+  // renderer, with the card handed in rather than asked for, which is the shape a
+  // page with more than one canvas uses. This is the check that says a consumer
+  // outside this repository reaches a drawing renderer without running the four
+  // steps itself.
+  const opening = await openRenderer(gpu.canvas, graph(), { device: gpu.device });
+  check(
+    'one call reaches a renderer that draws',
+    'renderer' in opening && opening.renderer.backend === 'webgpu',
+    'refusal' in opening ? opening.refusal : 'renderer' in opening ? opening.renderer.backend : opening
+  );
+  check(
+    'it hands back the frame that renderer draws',
+    'frame' in opening && opening.frame.authored === 'wgsl',
+    'frame' in opening ? opening.frame.authored : opening
+  );
+  if ('renderer' in opening) opening.renderer.dispose();
 
   // The uniform layout a WGSL source lays out, computed off its struct.
   const block = uniformBlockOf(CODE);
@@ -139,7 +164,7 @@ async function main(): Promise<void> {
   check('two identical traces agree', compareTraces([], []).length === 0, compareTraces([], []).length);
 
   console.log(
-    failures.length === 0 ? `\nall ${11 - failures.length} of 11 checks passed` : `\n${failures.length} failed`
+    failures.length === 0 ? `\nall ${taken} of ${taken} checks passed` : `\n${failures.length} of ${taken} failed`
   );
   process.exit(failures.length === 0 ? 0 : 1);
 }

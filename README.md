@@ -107,13 +107,14 @@ page downloads a WGSL translator either, because translation happens in the buil
 
 1. **Both factories are asynchronous.** The backend behind them is a dynamic import, so
    `createSurface` and `createFrameRenderer` return promises.
-2. **A renderer uses WebGL 2 unless you give it a WebGPU device.** You call
-   `requestWebGPUDevice()` and pass `{ backend: 'webgpu', device }`, so a page that never
-   wants WebGPU never downloads that backend. **That is `createFrameRenderer`'s contract as
-   a primitive, and not this package's answer to which backend should draw** — that answer
-   is `selectBackend`'s, a reading over the frame and the device's offering. A door joining
-   the two is queued; until it lands, a caller that names nothing gets WebGL 2 even on a
-   machine whose adapter would have come back.
+2. **`openRenderer(canvas, frame)` picks the backend for you**, asks for a card only where
+   the answer wants one, translates the frame where the chosen backend speaks another
+   language, and hands back `{ renderer, frame }` or `{ refusal }`. **Submit the frame it
+   hands back**, since a WGSL frame drawn on WebGL 2 is drawn as its GLSL translation.
+   `createFrameRenderer` is the primitive underneath and **uses WebGL 2 unless you give it a
+   WebGPU device** — you call `requestWebGPUDevice()` and pass `{ backend: 'webgpu', device }`
+   — so a page that never wants WebGPU never downloads that backend. Either way the card is
+   yours to own: a page with more than one canvas asks once and hands the same device to each.
 3. **Do not call `getContext('webgl2')` on the canvas you are going to draw into.** A canvas
    keeps the first context type it is given and refuses every other one for as long as it
    lives, so that call as a capability check breaks WebGPU on the machines that have it. Ask

@@ -46,6 +46,7 @@ const SHIPPING = [
   'gpu/webgl2.ts',
   'gpu/webgpu.ts',
   'gpu/webgpu-device.ts',
+  'host/open.ts',
   'host/probe.ts',
   'host/surface.ts',
   'resource/arena.ts',

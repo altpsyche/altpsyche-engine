@@ -5,17 +5,39 @@ where it does not, and which one is a reading over two facts: the language the g
 authored in, and what the device offers. `selectBackend` is that reading, and it is the
 next section.
 
-**Today you still name the backend when you build a renderer.** The only door onto one is
-`createFrameRenderer`, which is a primitive: it takes the answer rather than working it out,
-so running the reading and acting on it is yours. That means four steps — gather the
-offering, select, ask for a device where the selection wants one, and translate the frame
-where the chosen backend needs it — and this page walks them.
+**You do not name a backend.** `openRenderer` runs that reading and acts on it:
 
-**That was decided against on 2026-09-11.** The library answers the question and the caller
-owns the device, and the door joining the two is queued as item 12 in
-[ROADMAP.md](ROADMAP.md). **This page describes the tree as it stands and will be rewritten
-when that lands**, rather than describing a call you cannot make yet. An earlier version of
-this sentence said "You never name a backend", which was the intent and not the tree.
+```ts
+import { openRenderer, submit } from '@altpsyche/engine';
+
+const opened = await openRenderer(canvas, frame);
+if ('refusal' in opened) {
+  // One sentence saying why no renderer could be opened. Nothing threw.
+  console.warn(opened.refusal);
+} else {
+  // Submit the frame it handed back, not the one you passed in.
+  submit(opened.renderer, opened.frame, { u_time: 0 });
+}
+```
+
+It gathers what the machine offers, asks `selectBackend` which backend should draw, asks the
+browser for a card only where that answer wants one, translates the frame where the chosen
+backend speaks another language, and builds the renderer.
+
+**Two things about that call are worth knowing before you write it.**
+
+**Submit the frame it hands back.** A WGSL frame drawn on WebGL 2 is drawn as its GLSL
+translation, so `opened.frame` is what the renderer actually draws. Where no translation was
+needed it is the same object you passed in. Keeping your own copy and submitting that hands a
+WGSL frame to a WebGL 2 renderer, which is refused by name.
+
+**The card is yours to own.** Leave `device` out and one is asked for; hand one in and it is
+used. A page with more than one canvas should ask once with `requestWebGPUDevice()` and hand
+the same device to each, because that function spends a fresh adapter every time it is called
+— six canvases letting the door ask on their behalf get six cards.
+
+`createFrameRenderer` is the primitive underneath and it still takes a backend by name, for a
+caller that already knows which one it wants. That is what [the README](../README.md) describes.
 
 ## Selection comes before refusal
 

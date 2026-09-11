@@ -38,6 +38,7 @@ pick up `0.4.0`, see the [CHANGELOG](../CHANGELOG.md).
 ## Getting something on the screen
 
 ```ts
+openRenderer(canvas: HTMLCanvasElement | OffscreenCanvas, frame: FrameGraph, options?: RendererOptions): Promise<RendererOpening>
 createSurface(canvas: HTMLCanvasElement, graph: FrameGraph, options: SurfaceOptions): Promise<Surface | null>
 createFrameRenderer(canvas: HTMLCanvasElement | OffscreenCanvas, options?: RendererOptions): Promise<FrameRenderer | null>
 submit(renderer: FrameRenderer, graph: FrameGraph, uniforms: Record<string, UniformValue>, options?: SubmitOptions): void
@@ -46,23 +47,41 @@ resolveDensity(dpr: [number, number] | undefined, offered: number): number
 PROGRAM_CACHE_LIMIT: 16
 ```
 
+**`openRenderer` is the one to reach for first.** It works out which backend should draw this
+frame on this machine, asks the browser for a card only where that answer wants one,
+translates the frame where the chosen backend speaks another language, and builds the
+renderer. It answers `{ renderer, frame }` or `{ refusal }` — one sentence naming why no
+renderer could be opened — in the same two-armed shape `selectBackend` and `resolve` use.
+
+**Submit the `frame` it hands back, not the one you passed in.** A WGSL frame drawn on
+WebGL 2 is drawn as its GLSL translation, so the frame that comes back is the one the renderer
+actually draws. Where no translation was needed it is the same object.
+
 `createSurface` is a running loop on a canvas: it draws, resizes, pauses and recovers a lost
-card. `createFrameRenderer` is one renderer and no loop, for drawing on your own schedule;
+card. `createFrameRenderer` is the primitive under `openRenderer` — one renderer and no loop,
+building the backend it is told to build — for a caller that already knows which one it wants;
 `submit` draws one frame through it, and `SubmitOptions.into` says where the frame lands.
 `resolveDensity` is the device-pixel-ratio arithmetic a surface does, exposed so a caller can
 do the same sum. `PROGRAM_CACHE_LIMIT` is how many built programs a renderer keeps before
 evicting the stalest.
 
 Both factories return `null` where no backend would give the canvas a context. Neither
-throws. Both are **asynchronous** because each backend loads by dynamic import; see
+throws. All three are **asynchronous** because each backend loads by dynamic import; see
 [ARCHITECTURE.md](ARCHITECTURE.md#declared-entry-points) for what that buys.
 
-**A renderer draws through WebGL 2 unless you hand it a WebGPU device**, which is
-`RendererOptions.backend` and `RendererOptions.device` together. Asking for the card is the
-caller's step; the README shows the call.
+**`createFrameRenderer` draws through WebGL 2 unless you hand it a WebGPU device**, which is
+`RendererOptions.backend` and `RendererOptions.device` together. That is the primitive's
+contract and not this package's answer to which backend should draw — `openRenderer` is that
+answer. **The card is still yours to own**: hand `openRenderer` a `device` and it uses it,
+leave it out and it asks for one, and a page with more than one canvas should ask once and
+hand the same device to each, because `requestWebGPUDevice` spends a fresh adapter every call.
 
-Types: `Surface`, `SurfaceOptions`, `FrameRenderer`, `RendererOptions`, `SubmitOptions`,
-`DeviceReport`.
+`RendererOptions.backend` works through `openRenderer` as a narrowing rather than an override:
+the named backend is the only one offered to the selection, so a frame it cannot draw is
+refused by name instead of throwing inside it later.
+
+Types: `OpenedRenderer`, `RendererOpening`, `Surface`, `SurfaceOptions`, `FrameRenderer`,
+`RendererOptions`, `SubmitOptions`, `DeviceReport`.
 
 ## Describing a frame
 

@@ -48,6 +48,17 @@ export type {
 } from './host/surface.js';
 export { requestWebGPUDevice } from './gpu/webgpu-device.js';
 
+// The door that carries a backend selection through to a renderer (item 12). It
+// gathers what the machine offers, runs the selection, asks for a card only where
+// the answer wants one, translates the frame where the chosen backend speaks
+// another language, and builds the renderer — or names why it could not. The four
+// steps were the caller's and the fourth was unannounced, so a WGSL frame selected
+// for WebGL 2 reached that backend untranslated and was thrown out of it.
+// `createFrameRenderer` stays the primitive underneath, for a caller that already
+// knows which backend it wants.
+export { openRenderer } from './host/open.js';
+export type { OpenedRenderer, RendererOpening } from './host/open.js';
+
 // Which backend draws a frame, chosen inside the library from what the frame is
 // authored in and what the device offers, rather than named by the caller. Pure
 // and device-free: the offering is gathered elsewhere and handed in as data.

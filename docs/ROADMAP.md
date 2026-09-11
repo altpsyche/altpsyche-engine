@@ -1172,6 +1172,57 @@ did not describe — then **the join returns the refusal and never the fallback*
 this package chose is a picture the caller did not describe, which is the thing every refusal in this
 tree exists to prevent.
 
+### Landed on 2026-09-11
+
+**`openRenderer(canvas, frame, options?)` is on the door**, in `host/open.ts`, answering
+`{ renderer, frame }` or `{ refusal }`. It never came to the fallback question above: a frame with no
+translation is refused by name, and the refusal says which of `glslFrameOf`'s three causes it was.
+
+**The returned `frame` is the part that was not in the item's own text and had to be.** A WGSL frame
+drawn on WebGL 2 is drawn as its GLSL translation, so a caller keeping its own copy and submitting
+that would hand a WGSL frame to a WebGL 2 renderer — which is the throw the item exists to stop,
+re-arriving one line later. So the frame the renderer draws comes back beside it, and where no
+translation was needed it is the same object.
+
+**`RendererOptions.backend` became a narrowing rather than an override**, which is better than the
+item asked for: the named backend is the only one offered to the selection, so a frame it cannot draw
+is refused by name here instead of throwing inside it. The escape hatch item 9 promised to keep is
+kept, and it got safer on the way through.
+
+**Measurements.** `npm test` at **874 over 74 files**, against 866 over 73 — eight checks in
+`tests/open-renderer.test.ts`. `npm run type-check` clean. `gate:pack` green with the door at **70
+run-time names** against 69, which is the one name this item adds, and **13 of 13** consumer checks
+against 11 — two of them the item's own measurement, a consumer outside this repository reaching a
+drawing renderer from a canvas and a frame in one call.
+
+**The four translation checks were shown red before they were trusted**, by removing the translation
+step from `host/open.ts` and re-running: four red and the other four green, so they fail for the rule
+and not for the wording.
+
+**`gpu/webgl2.ts:340`'s throw is named as an unreachable backstop**, in the words `gpu/select.ts`
+already uses for the read-write storage buffer.
+
+**One thing was found rather than planned, and it is fixed in the same commit because this item broke
+it.** `tests/consumer-check.ts` printed `all ${11 - failures.length} of 11 checks passed` with `11`
+written in twice. Adding two checks made it print "all 11 of 11" while running thirteen — a gate
+reporting a number that was not the number it took. It counts itself now rather than being bumped to
+13, because bumping moves the expiry rather than removing it. **This is the shape this file already
+warned about**: "A count of fixtures is the shape most likely to expire here, because it is written
+in prose in this file and in a comment in `gates/corpus.mjs`."
+
+**What no gate here could see.** `gate:browser` was not run: the four browser gates draw the corpus
+through the backends, and this item adds a door over them without changing what either draws — the
+fixtures reach `createFrameRenderer` as they did. `gate:card` was not run and cannot be unattended.
+**And the WebGL 2 offering is read through a double**: `offersWebGL2` asks a throwaway canvas for a
+context, and in the node suite that canvas answers through `tests/support/fake-gl.ts`. Whether a real
+browser answers the same is what `gate:browser` and a card would say, and neither was asked.
+
+**What this leaves for someone else.** `createSurface` has the same default this item fixed for
+`createFrameRenderer` — a caller naming neither backend nor device gets WebGL 2 — and it is out of
+this item's scope, whose `Done when` names a renderer. It is worth a line here rather than a
+rediscovery: **a surface that chooses is the same join over a different constructor**, and it is not
+filed as an item until someone argues it on this package's merits.
+
 ---
 
 ## Item 13 — `createFrameRenderer` can throw where its own signature promises a null

@@ -337,6 +337,15 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
     },
 
     program(frame: FrameGraph) {
+      // An unreachable backstop rather than the load-bearing refusal, which moved
+      // out to the door with item 12. `openRenderer` runs the selection and then
+      // translates a WGSL frame through `glslFrameOf` before any backend is built,
+      // and where no translation can be had it refuses by name — saying which of
+      // the three causes it was — rather than letting a WGSL frame arrive here. So
+      // this throw is reached only by a caller that took the primitive
+      // (`createFrameRenderer`) and skipped the translation itself, which is the
+      // same arrangement `gpu/select.ts` describes for the read-write storage
+      // buffer: the refusal lives in the data and the throw is what is left.
       if (frame.authored !== 'glsl') throw new Error(`WebGL 2 was handed a ${frame.authored} frame to draw`);
       // Every rule about the graph is checked in one place; the WebGL 2 path does
       // not reach `submit/plan.ts`, so it reads the same function directly (item
