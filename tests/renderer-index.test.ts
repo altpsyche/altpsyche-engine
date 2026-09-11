@@ -377,3 +377,46 @@ describe('what the device says about itself', () => {
     expect(Array.isArray(said.features)).toBe(true);
   });
 });
+
+/**
+ * What `createFrameRenderer` does with something that is not a canvas (item 13).
+ *
+ * Its signature is `Promise<FrameRenderer | null>` and both backends guarded the
+ * value `getContext` returned without guarding the method, so a plain object left
+ * an incidental `TypeError: canvas.getContext is not a function` from inside a
+ * backend. The decision written at the signature is that this stays a throw and
+ * becomes a deliberate one: `null` means *this machine cannot give a context*, and
+ * folding a caller's bug into it would have the function report a capability
+ * absence that is not true.
+ *
+ * A TypeScript caller cannot reach any of this — the parameter is
+ * `HTMLCanvasElement | OffscreenCanvas`, which is why every call below casts — and
+ * it is written for the JavaScript consumer `gate:pack` exists for.
+ */
+describe('a renderer asked for over something that is not a canvas', () => {
+  it('throws for what it was actually given, rather than from inside a backend', async () => {
+    await expect(createFrameRenderer({} as never)).rejects.toThrow(/no getContext, so it is not a canvas/);
+  });
+
+  it('says the same thing on the WebGPU branch, since the guard is before the branch', async () => {
+    // Both branches reached `canvas.getContext` and both threw the same incidental
+    // TypeError, so a guard in one backend would have left the other. This asserts
+    // the WebGPU arm by name rather than trusting that one guard covers two paths.
+    await expect(
+      createFrameRenderer({} as never, { backend: 'webgpu', device: createFakeGPU().device })
+    ).rejects.toThrow(/no getContext, so it is not a canvas/);
+  });
+
+  it('is a TypeError, which is what an argument of the wrong kind is', async () => {
+    await expect(createFrameRenderer({} as never)).rejects.toBeInstanceOf(TypeError);
+  });
+
+  it('still returns null, not a throw, where a real canvas gives no context', async () => {
+    // The other half of the decision: the `| null` keeps meaning what it meant. An
+    // object that *has* getContext and returns nothing from it is a device fact, and
+    // it takes the null rather than the throw.
+    const canvas = { getContext: () => null } as never;
+
+    expect(await createFrameRenderer(canvas)).toBeNull();
+  });
+});

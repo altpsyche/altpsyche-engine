@@ -1893,6 +1893,70 @@ same kind of object.
 caller is out of scope, **this item closes as refused with that sentence written at the signature**,
 which is a better outcome than a guard nobody can reach. What it may not do is close silently.
 
+### Landed on 2026-09-11, and the answer is neither of the two the step named
+
+**The step offered "narrow" or "honour", where honouring meant returning the `null`. It throws.**
+Deliberately, before either branch, naming what it was given — which is honouring the contract rather
+than narrowing it, but not by folding the case into the `null`.
+
+**The reason is what `null` means.** It means *this machine cannot give a context*: the browser
+reported WebGPU and handed back nothing when asked, or a WebGL 2 context did not come back. A caller
+reading it tells the reader their browser cannot draw this. **An argument that is not a canvas is not
+that fact.** Returning `null` for it would have `createFrameRenderer` report a capability absence
+that is not true and send a caller off to blame a reader's browser for a bug in the calling code. So
+the throw stays and stops being incidental.
+
+**Before, measured on both branches** by calling the door with `{}`:
+
+```
+webgl2 branch -> TypeError: canvas.getContext is not a function
+webgpu branch -> TypeError: canvas.getContext is not a function
+```
+
+A stack pointing inside a backend at a mistake made by the caller. After, both say
+`createFrameRenderer was given something with no getContext, so it is not a canvas. A device that
+cannot give a context is the null this returns; this is not that.`
+
+**The reading had moved and the line numbers with it** — the `getContext` calls are
+`gpu/webgl2.ts:252` and `gpu/webgpu.ts:145`, not the 233 and 164 this entry was written against. The
+shape was exactly as described.
+
+**One guard, before the branch, rather than one in each backend.** The item's step says "each
+backend's entry tests the method"; `createFrameRenderer` is the single entry both branches leave
+from, so guarding there covers both with one rule instead of two copies that could drift. The tests
+assert each branch by name rather than trusting that.
+
+**Measured.**
+
+| | before | after |
+| --- | --- | --- |
+| `npm test` | 933 over 78 files | **937 over 78 files** |
+| `npm run type-check` | clean | clean |
+| `npm run gate:pack` | 17 of 17 | 17 of 17 |
+| `npm run gate:browser` | 4 of 4 | 4 of 4 |
+
+**Three of the four new tests were proved red, and the fourth is honestly weaker.** Disabling the
+guard reds `throws for what it was actually given` and `says the same thing on the WebGPU branch`,
+each naming its own branch. `still returns null where a real canvas gives no context` holds the other
+half of the decision and passes either way, which is the point — it asserts what did **not** change.
+**`is a TypeError` does not bite on its own**, because the incidental throw was also a `TypeError`;
+it is kept for what it pins rather than for what it catches, and it is recorded here as not carrying
+its own weight.
+
+### Done when, verified
+
+- **Handed an object with no `getContext` it does the one written thing, shown by a test, on both
+  backend branches.** Two tests, one per branch, both red without the guard.
+- **The doc comment on the return type says which, with how to reverse it.** At
+  `createFrameRenderer`'s header: what `| null` promises, why this case does not get that answer,
+  how to reverse, and what would change it.
+- **`npm test` and `npm run type-check` green.** 937 over 78 files, clean.
+
+**What the gates could not see.** No browser ran this. The whole item is a run-time contract for a
+JavaScript caller, and jsdom hands back no WebGL 2 context at all, so the WebGL 2 arm is asserted
+through the shared guard rather than against a real context. `gate:card` was not run and no picture
+changed.
+
 ---
 
 ## Item 14 — disposing a WebGL 2 renderer takes the caller's canvas with it, and disposing a WebGPU one does not

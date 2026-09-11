@@ -144,11 +144,45 @@ export interface RendererOptions {
  * only the one it can run, rather than shipping WebGPU code to a card-less
  * browser. Every caller already awaits the device before reaching here, so the
  * extra await costs a caller nothing.
+ *
+ * **What the `| null` promises, and what it refuses to promise** (decided 2026-09-11,
+ * item 13). `null` means *this machine cannot give a context*: the browser reported
+ * WebGPU and handed back nothing when asked, or a WebGL 2 context did not come back.
+ * It is a fact about the device, and a caller reading it tells the reader their
+ * browser cannot draw this.
+ *
+ * **An argument that is not a canvas is not that fact, so it does not get that
+ * answer.** Each backend guarded the *value* `getContext` returned and neither
+ * guarded the *method*, so a plain object reached `canvas.getContext(…)` and left an
+ * incidental `TypeError: canvas.getContext is not a function` — a stack pointing
+ * inside a backend at a mistake made by the caller. Both branches did it. The fix is
+ * not to fold that into the `null`: doing so would have this function report a
+ * capability absence that is not true, and send a caller off to tell a reader their
+ * browser is at fault for a bug in the calling code. So it still throws, and now it
+ * throws **deliberately, before either branch, naming what was passed**.
+ *
+ * TypeScript callers cannot reach this — the parameter is
+ * `HTMLCanvasElement | OffscreenCanvas` — and it is written for the JavaScript
+ * consumer this package already spends `gate:pack` on.
+ *
+ * **To reverse**: delete the guard below and let each backend's `getContext` call
+ * throw where it stands. **What would change the answer**: a host object that has
+ * `getContext` and returns nothing for reasons that are the machine's rather than the
+ * caller's — that is already the `null` path and would stay one.
  */
 export async function createFrameRenderer(
   canvas: HTMLCanvasElement | OffscreenCanvas,
   options: RendererOptions = {}
 ): Promise<FrameRenderer | null> {
+  // The one operation this function performs on its argument, guarded for its
+  // existence and not only for what it returns. See the header for why this is a
+  // throw rather than the `null` beside it.
+  if (typeof (canvas as { getContext?: unknown }).getContext !== 'function') {
+    throw new TypeError(
+      'createFrameRenderer was given something with no getContext, so it is not a canvas. A device that cannot give a context is the null this returns; this is not that.'
+    );
+  }
+
   let backend;
   if (options.backend === 'webgpu') {
     if (!options.device) return null;
