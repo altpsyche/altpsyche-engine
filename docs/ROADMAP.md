@@ -2688,6 +2688,39 @@ re-read, and the step's "69 run-time names" was three releases stale.
 **Measured.** Run-time names on the first door **73 before and 73 after**, counted off `index.ts`
 rather than remembered. `npm run gate:pack` 17 of 17, `npm test` 954 over 81 files, `npm run
 type-check` clean.
+### Landed on 2026-09-11, step 2: the surface reads back, and step 1's signature was narrowed by one word
+
+**`Surface.read(): Promise<Uint8Array | null>`**, implemented in `host/surface.ts` as one call to
+`renderer.frame(current, options.uniforms(elapsed))`. **Step 1 wrote the signature as
+`Promise<Uint8Array>` and step 2 narrowed it to admit null**, which is a correction rather than a
+re-plan: a surface whose card has been taken back has no pixels, and of the three available answers
+— a throw, a null, a buffer of zeroes — the last is the only dishonest one and this file's own
+precedent is already null, `createSurface` and `setGraph` both answering that way. The reason is
+written at the decision.
+
+**The row-stride repack has one home and this did not add a second**, read off the tree: `read()`
+calls `FrameRenderer.frame`, which is the only caller of `Backend.readPixels`, whose flip is written
+once per backend. **A mutation proved the assertion is live** — inverting the flip in
+`gpu/webgl2.ts` turns the new top-row test red, 1 failed of 23, and the backend was restored.
+
+**Six tests on the WebGL 2 double**, in `tests/renderer-surface.test.ts`: the top row comes back
+first, the read draws its own frame rather than taking the last tick's, one `getContext` was ever
+asked for so no second canvas or renderer was built, the loop is left running with no animation
+frame queued or cancelled, and null comes back after a lost context and after `dispose`. The double
+is WebGL 2 rather than WebGPU because the readback under test is the backend's and the WebGPU fake
+keeps no pixels.
+
+**Measured.** `npm test` **960 over 81 files, 954 before**. `npm run type-check` clean, `npm run
+gate:pack` 17 of 17, run-time names 73 before and after — a member on an interface is a type and
+reaches no door. **The surface gate 21 of 21**, run alone.
+
+**What the gates could not see.** The surface gate at 21 of 21 is the count it already had: it does
+not exercise `read()`, so nothing in it covers this and the 21 is evidence that the live path still
+works rather than that the new member does. That coverage is the six unit tests and they are against
+a double — **no real driver has read a frame back through `Surface.read()`**. `gate:browser`'s other
+three were not run, and **`gate:card` was not re-taken**; the 5.0 ms against 1.9 to 2.5 ms cost is
+still the dated reading quoted from `FrameRenderer.frame`.
+
 
 **What the gates could not see.** Nothing executable changed, so a green run proves only that a
 comment compiles: there is no `read()` to test until step 2. `gate:browser` was not run for a

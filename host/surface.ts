@@ -37,10 +37,18 @@ export interface SurfaceOptions extends RendererOptions {
 }
 
 /**
- * **A live surface is to grow `read(): Promise<Uint8Array>`, and the decision is
- * here rather than on the member because the member is not built yet** (item 17
- * step 1, 2026-09-11). RGBA, top row first, the same bytes and the same order
- * `FrameRenderer.frame` hands back, because that is what it will call.
+ * **A live surface has `read(): Promise<Uint8Array | null>`** (decided item 17
+ * step 1, built step 2, both 2026-09-11). RGBA, top row first, the same bytes
+ * and the same order `FrameRenderer.frame` hands back, because that is what it
+ * calls.
+ *
+ * **Step 1 wrote this signature as `Promise<Uint8Array>` and step 2 narrowed
+ * it.** A surface whose card has been taken back has no pixels to give, and the
+ * two answers available were a throw and a null. Null, on this file's own
+ * precedent: `createSurface` answers null when there is no renderer and
+ * `setGraph` answers null rather than throwing, and a buffer of zeroes would be
+ * the third answer and the only dishonest one. `null` means the card is gone,
+ * not that the frame was black.
  *
  * **The alternative was to add no name at all**: expose the `FrameRenderer` this
  * surface holds and let a caller reach `frame` on it, which is a readback that
@@ -114,6 +122,18 @@ export interface Surface {
    * took.
    */
   setGraph(next: FrameGraph): string | null;
+  /** The pixels this surface is showing, RGBA with the top row first. Draws one
+   * frame at the clock's current value and reads that one back, so what comes
+   * back is the picture as of the call rather than whatever the last tick left.
+   *
+   * **It costs a stall the caller waits on** — measured on one full-screen
+   * shader at 1200x750, drawing is 1.9 to 2.5 ms a frame and drawing then
+   * reading is 5.0. A loop is not the place to call this from.
+   *
+   * Null means the graphics card has been taken back or the surface has been
+   * disposed, so there is nothing to read. See the decision above for why this
+   * is a method and not an accessor onto the renderer underneath. */
+  read(): Promise<Uint8Array | null>;
   /** In CSS pixels. What the drawing buffer becomes is this times the resolved
    * density, which is the only place that multiplication happens. */
   resize(width: number, height: number): void;
@@ -294,6 +314,18 @@ export async function createSurface(
         current = previous;
         return String((e as Error).message ?? e);
       }
+    },
+    async read() {
+      // Read off the `let` at call time rather than closed over, which is the
+      // whole reason this is a method: between a context loss and the restore
+      // that follows it, the renderer this surface holds is a different object
+      // or none at all, and a caller that had been handed one would not know.
+      if (!renderer || lost) return null;
+      // `frame` draws and reads in one step, so this does not stop the loop or
+      // re-enter it — it puts one extra frame through at the current clock and
+      // the next tick draws over it. The row-stride arithmetic that makes the
+      // top row first is `Backend.readPixels`'s and is not repeated here.
+      return await renderer.frame(current, options.uniforms(elapsed));
     },
     resize(w, h) {
       width = w;

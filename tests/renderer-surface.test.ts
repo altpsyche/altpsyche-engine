@@ -8,9 +8,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSurface, resolveDensity } from '@altpsyche/engine';
-import { wgslFrame } from '@altpsyche/engine';
+import { glslFrame, wgslFrame } from '@altpsyche/engine';
 import type { FrameGraph } from '@altpsyche/engine';
 import { createFakeGPU } from './support/fake-gpu';
+import { bottomUpFrame, createFakeGL } from './support/fake-gl';
 
 /**
  * The live case, written down before a frame stops being one draw.
@@ -62,6 +63,35 @@ async function surfaceOver(options: Record<string, unknown> = {}) {
   });
   if (!surface) throw new Error('the canvas gave no surface');
   return { canvas, gpu, surface };
+}
+
+/** The GLSL half of the fixture, for the one group below that reads pixels back.
+ * The readback is the WebGL 2 backend's — `readPixels` and the flip that makes
+ * the top row first — so a test of what a surface hands back has to go through
+ * that backend rather than the WebGPU double, whose fake keeps no pixels. */
+const GL_VERTEX = '#version 300 es\nin vec3 position;\nvoid main(){gl_Position=vec4(position,1.0);}';
+const GL_FRAGMENT = '#version 300 es\nprecision highp float;\nout vec4 c;\nvoid main(){c=vec4(1.0);}';
+
+/** A surface on the WebGL 2 double. The fake GL builds its own stand-in canvas
+ * and a surface needs a real element to put listeners on, so its `getContext` is
+ * moved onto one the document made — the same swap `createFakeGPU`'s `over` does
+ * for the other backend, done here rather than by widening that helper for one
+ * caller. */
+async function glSurfaceOver(width: number, height: number) {
+  const gl = createFakeGL();
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  Object.defineProperty(canvas, 'getContext', {
+    value: (gl.canvas as unknown as { getContext: unknown }).getContext,
+    configurable: true,
+  });
+  const surface = await createSurface(canvas, glslFrame('fixture', GL_VERTEX, GL_FRAGMENT), {
+    backend: 'webgl2',
+    uniforms: () => ({}),
+  });
+  if (!surface) throw new Error('the canvas gave no WebGL 2 surface');
+  return { canvas, gl, surface };
 }
 
 beforeEach(() => {
@@ -286,5 +316,81 @@ describe('what it gives back when it is done', () => {
     canvas.dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
 
     expect(lost).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('reading back what it is showing', () => {
+  it('hands back the frame with the top row first', async () => {
+    const { gl, surface } = await glSurfaceOver(4, 2);
+    // The driver hands a frame over bottom row first and each pixel carries the
+    // row it came from, so a flip that is skipped or done twice shows here as
+    // the wrong row on top rather than as a number nobody can read.
+    gl.frame = bottomUpFrame(4, 2);
+
+    const pixels = await surface.read();
+
+    expect(pixels).not.toBeNull();
+    expect(pixels).toHaveLength(4 * 2 * 4);
+    expect(Array.from(pixels!.subarray(0, 4))).toEqual([1, 1, 1, 1]);
+    expect(Array.from(pixels!.subarray(16, 20))).toEqual([2, 2, 2, 2]);
+  });
+
+  it('draws the frame it reads, rather than reading whatever the last tick left', async () => {
+    const { gl, surface } = await glSurfaceOver(4, 2);
+    gl.frame = bottomUpFrame(4, 2);
+    const drawsBefore = gl.of('drawArrays').length + gl.of('drawArraysInstanced').length;
+
+    await surface.read();
+
+    const drawsAfter = gl.of('drawArrays').length + gl.of('drawArraysInstanced').length;
+    expect(drawsAfter).toBeGreaterThan(drawsBefore);
+    expect(gl.of('readPixels')).toHaveLength(1);
+  });
+
+  it('needs no second canvas and no second renderer to do it', async () => {
+    const { canvas, gl, surface } = await glSurfaceOver(4, 2);
+    gl.frame = bottomUpFrame(4, 2);
+
+    await surface.read();
+
+    // One context was ever asked for, and it was asked of the canvas the caller
+    // handed in. A readback that had to build a renderer of its own would show
+    // up here as a second `getContext`, and on this backend it could not use
+    // this canvas to do it at all.
+    expect(gl.of('getContext')).toHaveLength(1);
+    expect(surface.backend).toBe('webgl2');
+    expect(canvas.width).toBe(4);
+  });
+
+  it('leaves the loop running and does not re-enter it', async () => {
+    const { surface } = await glSurfaceOver(4, 2);
+    surface.start();
+    frame(16);
+    const outstanding = pending.length;
+
+    await surface.read();
+
+    expect(surface.running).toBe(true);
+    // Reading does not queue an animation frame of its own and does not cancel
+    // the one outstanding, which is what "not a control operation" means here.
+    expect(pending).toHaveLength(outstanding);
+    expect(cancelled).toBe(0);
+  });
+
+  it('answers null once the card has been taken back', async () => {
+    const { canvas, surface } = await glSurfaceOver(4, 2);
+    canvas.dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
+
+    // Null rather than a buffer of zeroes: there are no pixels, and a black
+    // frame is a different answer from no frame.
+    expect(await surface.read()).toBeNull();
+  });
+
+  it('answers null once it has been disposed', async () => {
+    const { surface } = await glSurfaceOver(4, 2);
+    surface.dispose();
+
+    expect(await surface.read()).toBeNull();
   });
 });
