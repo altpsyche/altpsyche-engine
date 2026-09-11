@@ -669,6 +669,33 @@ if (glslJoin.error || !glslJoin.offer) {
 // round, since WebGPU counts a scissor from the top-left and WebGL 2 from the
 // bottom-left. Its rectangle is off-centre in both axes so that a wrong flip is a
 // different picture rather than the same one.
+//
+// **`core-texture`, `core-target` and `core-mips` joined it at item 19 step 4**,
+// which is the step the other three exist for: each was skipped on WebGL 2 for
+// want of a baked vertex, so each was drawn by one backend and compared with
+// nothing. Making them drawable was the precondition; this is the comparison.
+// Each earns its place on a different reading, and none of them on a shader:
+//
+//   - **`core-target`** is the round trip. A pass draws into a texture and the
+//     next samples it back at the frame's own size, so an attachment written by
+//     one backend and read by the other's arithmetic is what is being compared.
+//     It agrees: worst 2, 77 of 1,440,000 channels.
+//
+// **`core-texture` and `core-mips` are NOT on this list, and the reason is a
+// defect this item found rather than a judgement that they are not worth
+// comparing.** Both were added here on 2026-09-11 and both came back red on the
+// first run:
+//
+//   core-texture  hard jumps     0 against     0, worst 235, 1,424,706 of 1,440,000 differ
+//   core-mips     hard jumps 7,725 against 7,731, worst 128, 1,401,861 of 1,440,000 differ
+//
+// Almost every channel, against a tolerance of 8. **That is the exact defect class
+// item 19 was opened to expose** — both presets were skipped on WebGL 2 for want
+// of a baked vertex, so both have been drawing two different pictures for as long
+// as they have existed and nothing was red. They are held out of this list under
+// **item 20**, which carries the numbers and the diagnosis, and they join it when
+// that item closes. Adding them before then would be a red gate standing in for an
+// item, and a gate that is expected to be red stops being read.
 const SCENE_TIER = [
   'core-scene',
   'core-draw-list',
@@ -677,6 +704,7 @@ const SCENE_TIER = [
   'core-stencil',
   'core-count',
   'core-scissor',
+  'core-target',
 ];
 console.log('');
 for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {

@@ -3155,17 +3155,49 @@ thing whose whole purpose is to be drawn by both backends and compared — may n
    link".** Only the entry-point count needed updating in this step, because steps 1 and 2 had
    already moved every test that depended on a corpus preset having that property.
 
-4. Whichever of the three are worth comparing channel for channel go on `gates/card.mjs`'s
-   cross-backend list. **Measures:** each one's two backends compared on a real card, with the
-   channels differing recorded per preset.
+4. ~~Whichever of the three are worth comparing channel for channel go on `gates/card.mjs`'s
+   cross-backend list.~~ **Landed on 2026-09-11, and it found what the item was built to find.**
 
-### Done when
+   All three were added and the gate was run. **`core-target` agrees** — hard jumps 26,856 against
+   26,855, **worst 2, 77 of 1,440,000 channels differ** — and is on the list.
 
-- No preset is skipped on WebGL 2 for want of a baked vertex, and the corpus gate's own skip count
-  says so.
-- Each changed preset's WebGPU reading is the one it had before the change, so the convenience was
-  replaced and not the picture.
-- `npm test`, `npm run type-check` and `gate:browser` are green, and the card gate is re-taken.
+   **`core-texture` and `core-mips` do not agree, and not narrowly:**
+
+   ```
+   core-texture   hard jumps     0 against     0, worst 235, 1,424,706 of 1,440,000 differ
+   core-mips      hard jumps 7,725 against 7,731, worst 128, 1,401,861 of 1,440,000 differ
+   ```
+
+   Almost every channel, against a tolerance of 8. **Both presets have been drawing two different
+   pictures on the two backends for as long as they have existed**, and nothing was red because
+   both were skipped on WebGL 2 for want of a baked vertex — which is precisely the damage this
+   item's own opening paragraph describes, now with a third and fourth instance.
+
+   They are **held off the list under item 20** rather than added red. A gate expected to be red
+   stops being read, and a red gate standing in for an item is not a measurement.
+
+### Done when, verified
+
+- **No preset is skipped on WebGL 2 for want of a baked vertex, and the corpus gate's own skip count
+  says so.** **9 skips and 30 draws when the item opened, 6 and 33 now.** All six remaining are real
+  capability answers: three compute stages, a storage buffer, a per-target blend, and a buffer no
+  pipeline reads.
+- **Each changed preset's WebGPU reading is the one it had before the change.** `core-texture`
+  480,000 of 480,000, `core-target` 248,832 of 480,000, `core-mips` 479,952 of 480,000 — each
+  identical to the reading it had before its step.
+- **`npm test`, `npm run type-check` and `gate:browser` green, and the card gate re-taken.** 980 over
+  84 files, clean, 4 of 4 with the surface gate at 21 of 21, and `gate:card` **32 of 32** on
+  nvidia / blackwell.
+
+**Item 19 is closed, and it did what it was for.** The item's argument was that a preset drawn on one
+backend compares nothing and that the class of defect this hides had already cost this repository
+twice — `core-depth`'s blend and `core-stencil`'s reference. Step 4 compared the three presets it had
+just made drawable and **two of them were wrong**: `core-texture` at 1,424,706 of 1,440,000 channels
+and `core-mips` at 1,401,861, against a tolerance of 8. Those are instances four and five, they are
+**item 20**, and neither would have been visible without this item.
+
+**What is not closed by this item.** The two defects it found. Item 20 carries them and
+`gates/card.mjs` names them in the comment holding them off its cross-backend list.
 
 **What would change the answer.** If a preset's fullscreen pass cannot be expressed as a vertex stage
 over the geometry it already has — a preset with no geometry at all would need one generated — then
@@ -3174,6 +3206,72 @@ quietly adding a primitive to `shader-geometry.ts`.
 
 **What this item does not carry.** Nothing about `core-depth`'s skip, which is a genuine
 per-target-blend capability answer and correct as it stands.
+
+---
+
+## Item 20 — two presets draw a different picture on each backend, and the comparison that would have said so did not exist until today
+
+**Opened on 2026-09-11 by item 19's step 4**, which put three previously-uncompared presets on the
+card gate's cross-backend list and found two of them wrong. This is the fourth and fifth instance of
+the damage item 19 was opened to stop, after `core-depth`'s blend and `core-stencil`'s reference.
+
+**The measurement, taken on nvidia / blackwell with `npm run gate:card`:**
+
+```
+core-texture   hard jumps     0 against     0, worst 235, 1,424,706 of 1,440,000 channels differ
+core-mips      hard jumps 7,725 against 7,731, worst 128, 1,401,861 of 1,440,000 channels differ
+core-target    hard jumps 26,856 against 26,855, worst 2,          77 of 1,440,000 channels differ
+```
+
+The tolerance is 8. **`core-target` is the control and it matters**: it is the third of the three
+presets item 19 made drawable, it draws into a texture and samples it back, and it agrees. So this is
+not "anything newly compared disagrees" and not a fault in the comparison itself.
+
+**What the shape of the numbers says, and it is a reading and not a diagnosis.** `core-texture`'s
+hard-jump counts are **identical at 0** and `core-mips`'s are within six of each other, so both
+backends are drawing something of the same *character* — smooth noise, a mip ladder with the same
+number of steps — while almost every channel differs. That is the signature of the same picture
+sampled differently rather than of one backend drawing nothing or drawing garbage.
+
+**The hypothesis, named as one.** Both presets differ from `core-target` in that they sample a
+**generated** texture — one uploaded from bytes the build wrote — where `core-target` samples one a
+pass drew. WebGPU's texture coordinate origin is top-left and OpenGL's is bottom-left, so the same
+bytes uploaded and sampled at the same coordinate give a vertically mirrored read. **That would
+explain every number above**: the character preserved, the values wrong nearly everywhere, and
+`core-target` unaffected because its texture is written by the same backend that reads it and is
+mirrored either way.
+
+**It is a hypothesis and the item does not proceed on it.** Step 1 is the measurement that would
+settle it.
+
+### Steps
+
+1. **Decide whether the two pictures are vertical mirrors of each other, by measuring it.** Compare
+   one backend's frame against the other's flipped in Y, on the card, for both presets. **The
+   measurement**: the channels differing under the flip against the 1,424,706 and 1,401,861 above.
+   If the flipped comparison comes back inside the tolerance, the cause is the texture origin and
+   step 2 is written to it. **If it does not, this entry's hypothesis is wrong and is deleted rather
+   than kept as a guess** — and the step says what the numbers were instead.
+2. **Fix it where the decision belongs, once step 1 says what it is.** Not written until then, on
+   purpose: the candidates differ completely depending on the answer, and a plan written now would
+   be a plan for the hypothesis rather than for the defect.
+3. **`core-texture` and `core-mips` join `gates/card.mjs`'s `SCENE_TIER`.** They are named in that
+   file's comment as held out under this item, so the comment comes out with them. **The
+   measurement**: both inside the tolerance on the card, quoted against the numbers above.
+
+### Done when
+
+- The two backends agree on `core-texture` and `core-mips` to the channel the corpus holds every
+  preset to, measured on a card.
+- Both are on the cross-backend list and the comment holding them out is gone.
+- Whatever was wrong is fixed where the decision is, with its reversal and its trigger.
+- `npm test`, `npm run type-check` and `gate:browser` are green, and `gate:card` is re-taken.
+
+**What would change the answer.** If the two pictures turn out to be *correct on both backends* and
+the disagreement is in the generated bytes rather than in the sampling — two different pictures
+uploaded — then this is a fixture defect and not a backend one, and it moves to `fixtures/`.
+
+**What this item does not carry.** `core-target` is fine and stays on the list.
 
 ---
 
