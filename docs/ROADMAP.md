@@ -34,6 +34,86 @@ above it belong to a software renderer.
 
 ---
 
+## The campaign of 2026-09-11, and why ten new items arrive as one plan
+
+**Twelve readings arrived on 2026-09-11, taken against `0.4.0`.** They come from
+`@altpsyche/maths`, whose GPU painter is live at its 2.8.0 — its paint/gpu.ts and
+figure/gpu-frame.ts build a `FrameGraph` and call `resolve` and `cost` on it, and its manifest
+declares this package at `^0.4.0` both as a dependency and as a peer one. **Every reading was
+re-verified against this tree
+before this plan was written**, and three came back different from how they were handed over, which
+is recorded at the items rather than quietly fixed.
+
+**A consumer's painter is not the reason any of them is here.** That rule is at the top of
+`CLAUDE.md` and this file already states it twice, and it binds hardest where a reading arrives from
+a consumer with a picture waiting. What the painter is good for is that it is a real caller holding
+this package to its own published contract, so the readings are reproducible rather than imagined.
+Each item below is argued on this package's own merits or it is not an item, and the argument is
+written at the item rather than inherited from the group.
+
+**The spine, which is what makes this one campaign rather than ten findings.** `resolve` and `cost`
+are pure readings a caller has in hand before anything is submitted, and this package's
+distinguishing claim is that a frame can be described, costed and refused before a driver sees it.
+Three of the twelve readings show a frame passing both and then either failing on the device or
+drawing a different picture. That is not three defects that happen to rhyme: it is one claim with
+three holes in it, and the holes are in three different files — the executor, the selector and the
+capability list. Group A closes them and is sequenced first for that reason.
+
+**What each group is, which reading is in it, and which item carries it.**
+
+| group | what it is about | readings | items |
+| --- | --- | --- | --- |
+| A | a frame `resolve` and `cost` both pass must draw | 1, 2, 3 | 10, 11, 12 |
+| B | what a frame is allowed to ask for | 4, 5, 6 | 2 (already open), 16 |
+| C | the door and the lifetimes | 7, 8, 9, 10 | 9, 12, 13, 14, 15 |
+| D | reading back what was drawn | 11 | 17 |
+| E | not recompiling every frame | 12 | 18 |
+
+**The order, and what waits on what.** Item 9 lands first because two readings cannot be worked
+until it answers: it is the open question already in this file about whether the library chooses the
+backend, promoted to an item because a reading now depends on the answer rather than merely
+disagreeing with it. **Item 12 is blocked on item 9** and says both branches. **Item 4, already
+available, is preferred before item 10**, because item 10 adds a rule to the file item 4 makes the
+single home of such rules; it is a preference and not a block. Everything else in the campaign —
+items 11, 13, 14, 15, 16, 17, 18 and the standing item 2 — is unblocked and may land in any order.
+
+**Three readings came back different, and each item says which.** Reading 11 said no readback is at
+the door; `FrameRenderer.frame` reads a frame back and is exported, so item 17 is about the live path
+alone. **Reading 3 said WebGL 2 cannot apply a blend; it can** — `gl.blendFuncSeparate` and
+`gl.blendEquationSeparate` are core WebGL 2 and the backend simply never calls them, so item 11 is an
+implementation and a much narrower refusal rather than a refusal. Reading 5's second half said the
+word `viewport` appears nowhere; it appears on the WebGL 2 draw path, which this file already
+recorded on 2026-09-10 and which finding D still contradicts.
+
+**Reading 6 files no item, and here is why.** It asked that the frame vocabulary work be designed
+knowing depth is coming. Depth is in the frame description today — `RenderPassSpec.depth`,
+`RenderPipelineSpec.depth`, and four depth-and-stencil rules in `graph/validate.ts` — so nothing has
+to be built for it. Read off that package's own roadmap rather than reported: a fourth
+decision taken there on 2026-09-11 says a figure declares which painters can draw it, so a figure
+asking for depth is refused by the SVG painter rather than drawn wrongly by it, and that file's 3.0.0
+depth row is "to plan" rather than blocked, depending on this package and naming nothing beyond item
+2. **So the constraint reading 6 asks for is stated once, here, and binds items 2 and 16**: whatever
+either adds to the pass or pipeline vocabulary composes with the depth state already there rather
+than sitting beside it. A scissor is per-pass state like the viewport; a stencil mode is per-pipeline
+state like the depth compare; both already have a home in the types, and nothing in this campaign
+needs the vocabulary designed twice.
+
+**What no session in this campaign can measure, said once here rather than hedged at each item.**
+Every card number the twelve readings carry was read in another repository's session on a
+`blackwell` adapter on 2026-09-09, and is quoted below as that reading's rather than as this
+package's. `gate:card` needs a desktop session and a real graphics card, so an unattended session
+working any item below re-takes none of them, and its commit says so.
+
+**The baseline this campaign is measured against, re-taken on 2026-09-11 by this session's own
+gates.** `npm test` at **866 over 73 files**, `npm run type-check` clean, and `gate:pack` green
+reporting **69 names on the door** and 3 behind the maths door, 4 declared targets across 2 doors,
+every declared door's types resolving under `nodenext`, and 11 of 11 consumer checks. So the numbers
+at the top of this file have not expired. `gate:browser` was not run by this session, which wrote a
+plan and touched no code; its 4 of 4, 16 of 16, 24 of 24 with 9 WebGL 2 skips and 21 of 21 are
+carried from 2026-09-10.
+
+---
+
 ## Item 1 — the frame declaration reader onto the door
 
 **Opened on 2026-08-29.** A consumer describing a frame of more than one pass has to write a
@@ -191,6 +271,15 @@ it.**
 **What would change the answer.** If WebGL 2 cannot reach `glStencilOpSeparate` through the path this
 package builds pipelines on, the counting modes are a WebGPU capability and `refusal` names them,
 which is the arrangement this package already uses everywhere the two backends differ.
+
+**Two things landed on this item on 2026-09-11 without changing what it is for.** **First, reading 6
+of the campaign above puts a constraint on step 1**: depth is in the frame description already, so a
+stencil mode is per-pipeline state beside the depth compare and composes with it rather than sitting
+beside it — there is no second vocabulary to design and the campaign section says why. **Second, the
+question below about whether the stencil table becomes data or stays two tables is step 1's to
+answer**, which that section already says and which is repeated here because step 1 is where it
+binds. Neither changes the argument, which is the specification's: `GPUDepthStencilState` carries
+`stencilFront` and `stencilBack` separately because the two differ.
 
 ---
 
@@ -455,7 +544,7 @@ grepping every markdown file the gate reads:
   it.
 - `host/loop.ts` — the row credits "RoadToPureEngine §7 and ROADMAP item 39". Neither reference
   resolves: the first document was deleted at 0.3.0, and the item number belongs to the queue that
-  was deleted with it rather than to this file, whose items run 1 to 8.
+  was deleted with it rather than to this file, whose items run 1 to 18.
 - `components/ui/WgslRefusal.tsx` and `public/shaders/build/manifest.json` — both rows say they are
   website paths "RoadToPureEngine §3 row 12 names", and that document was deleted at 0.3.0.
 
@@ -669,6 +758,679 @@ rather than implying a fresh reading.
 
 ---
 
+## Item 9 — does the library choose the backend, or does the caller? Three files state two answers and a reading now depends on which
+
+**Opened on 2026-09-11, out of reading 7 of the campaign above, and it is the open question already
+in this file promoted to an item.** It was a question while nothing waited on it. Item 12 now does,
+so the question has to close before that item can be written, which is what makes it an item rather
+than a section.
+
+**The reading, re-verified on 2026-09-11.** `gpu/select.ts` opens by saying which backend draws a
+frame is "answered inside the library rather than by the caller naming one".
+`gpu/renderer.ts:114` opens the other way — "One backend, named by the caller rather than worked out
+here" — and `createFrameRenderer` carries that out: its only branch, at
+`gpu/renderer.ts:134`, tests `options.backend === 'webgpu'`, so a caller passing neither `backend`
+nor `device` falls to the
+`else` arm and gets `createWebGL2Backend`. **Nothing on the door runs a selection for a caller and
+nothing builds the record a selection is read against.** `resolve` takes a `DeviceProfile`, and the
+only two `DeviceProfile` values in this tree are hand-built — `tests/capability-wiring.test.ts:38`
+and `examples/compute-field/main.ts:177`. `probe()` returns `ProbeFacts`, which carries a
+`DeviceReport` per backend and not a `ReadonlySet<Capability>`, so it is not that record either. The
+four steps a caller must take are its own: gather the offering, call `selectBackend`, call
+`requestWebGPUDevice`, pass both back in.
+
+**The two published documents still disagree**, which this file recorded on 2026-09-10 and which
+nothing has changed. `docs/GUIDE-backends.md:3-4` says "You never name a backend."
+`README.md:110-112` says "**A renderer uses WebGL 2 unless you give it a WebGPU device.**" The README
+describes what the code does.
+
+**Why it stands on this package's own merits.** A stated intent the code does not carry out is this
+package's own inconsistency, and here it is stated in four places with two answers, one of them in
+the module header that exists to record the decision. `CLAUDE.md` says a decision goes into the code
+at the point of the decision; this decision is at the point of the decision twice, in opposite
+directions. **It is also not a missing convenience**: the pure selection exists, is exported, and is
+tested. What is absent is the join, and whether the join should exist at all is the question.
+
+### Steps
+
+1. **Answer it, in `gpu/select.ts` and `gpu/renderer.ts` at the point of each decision**, with what
+   was decided, how to reverse it, and what would change it. **The measurement**: the two headers
+   before and after, and the answering sentence quoted in the commit — a decision step, whose
+   measurement is the reading and not a number.
+2. **`docs/GUIDE-backends.md` and `README.md` say the same thing as each other and as the code.**
+   **The measurement**: `npm test` at its count (866 over 73 files on 2026-09-11), `npm run
+   type-check` clean, `tests/docs-paths.test.ts` green, and the two passages read side by side.
+3. **Write into item 12 which branch it is building**, since that item's shape is this item's
+   output. **The measurement**: item 12's text edited to the branch taken, and the other branch
+   struck rather than left standing.
+
+### Done when
+
+- `gpu/select.ts` and `gpu/renderer.ts` state one answer, each with its reversal and its trigger at
+  the point of the decision.
+- No sentence in `docs/GUIDE-backends.md`, `README.md`, `gpu/select.ts` or `gpu/renderer.ts`
+  contradicts another on who names a backend, read side by side by someone who did not do the work.
+- Item 12 names the branch it is building and carries only that one.
+- `npm test` and `npm run type-check` are green.
+
+**What would change the answer.** If the answer is that the caller chooses, then `gpu/select.ts`'s
+header is the wrong one, item 12 shrinks to one refusal and two corrections, and this file gains a
+line saying the library offers a selection a caller may run rather than running one. If the answer
+is that the library chooses, item 12 is a door addition and `gpu/renderer.ts`'s header is the wrong
+one. **Correcting the guide alone would settle it by default**, which is why this is an item and not
+a line in item 7.
+
+---
+
+## Item 10 — a draw naming a vertex count binds no geometry, and `resolve` and `cost` both pass it
+
+**Opened on 2026-09-11, out of reading 1 of the campaign above. This is finding B of the spike batch,
+re-measured and promoted.**
+
+**The reading, re-verified on 2026-09-11 against this tree.** `graph/types.ts:476-479` gives three
+draw forms and `drawsCorners` at `:671` is `'vertices' in draw`. `issueDraws` at
+`submit/execute.ts:351` has three arms in its draw loop, and **the middle one is the only arm that
+never reaches
+`setVertexBuffer`**: `else if (drawsCorners(draw)) into.draw(draw.vertices, draw.instances)` at
+`:375`, taken whatever `spec.geometry` names, where the indirect arm above it and the instances arm
+below it both bind it. **`graph/validate.ts` has no rule over the pair**, read in full across its 234
+lines: it checks that `spec.geometry` names a `vertices` resource that the frame declares, and never
+that a draw in a pass on that pipeline is a form that binds it.
+
+**What the card said, and it is another repository's reading rather than this one's.** On
+2026-09-09, on a `blackwell` adapter: `Vertex buffer slot 0 required by [RenderPipeline (unlabeled)]
+was not set`, then an invalid render bundle and an invalid command buffer every frame. `resolve`
+answered `{ backend: 'webgpu' }` for that frame and `cost` costed it at 1 pass and 1 draw. The form
+that draws is `{ instances: 1 }`, which is what that consumer's figure/gpu-frame.ts now
+writes, at its line 300 — with a comment beside it saying the backend refuses the other form, and
+**it does not; the
+card does**, which is the whole of this item.
+
+**Why it stands on this package's own merits.** The distinguishing claim is that a frame can be
+described, costed and refused before a driver sees it, and both pure readings pass this one. This
+package's comments say a description is refused by name rather than left to fail on the card —
+`graph/validate.ts`'s own header says a frame that would "draw the wrong picture or one the card
+would refuse at a call with a message naming a size rather than the name the description gave it" is
+"stopped here first, before anything is built". **A pipeline naming `geometry` drawn by a form that
+binds none is decidable from the graph alone, with no device**, which is exactly the class that file
+exists for.
+
+### Steps
+
+1. **`validate` refuses a `{ vertices }` draw in a pass whose pipeline names `geometry`**, in words
+   naming the pass's pipeline index and both halves, the way the per-draw rules beneath it already
+   do. It belongs in `graph/validate.ts` because it reads the graph and nothing else, and the reason
+   goes above the rule. **The measurement**: the new refusal red on a graph pairing the two and green
+   on every fixture in the corpus, `npm test` at its new count against 866 over 73 files, and the
+   corpus still at 24 of 24 draws with 9 WebGL 2 skips, which is what says no fixture was pairing
+   them.
+2. **Settle the reverse and write the answer where the rule is**: a pipeline naming no `geometry`
+   drawn with `{ instances }` alone falls through `submit/execute.ts:376`'s `else if (geometry)` and
+   **draws nothing at all, silently** — no call is made and no error is raised on either backend.
+   **The measurement**: that arm's behaviour read off a test before anything changes, the decision
+   (refuse it, or draw the backend's own corners) written at the rule, and the test green after.
+3. **`docs/API.md`'s `DrawSpec` entry and `docs/GUIDE-frame-graph.md` say which form draws which
+   pipeline**, since the type alone reads as three interchangeable shapes. **The measurement**:
+   `tests/api-signatures.test.ts` and `tests/docs-code.test.ts` green, and `gate:browser` at 4 of 4
+   with the recording contract at 16 of 16.
+
+### Done when
+
+- A `FrameGraph` pairing a `{ vertices }` draw with a geometry-naming pipeline is refused by name
+  before any backend is built, shown by a test that names neither backend.
+- The reverse pairing has one written answer and a test holding it to that answer, rather than
+  drawing nothing in silence.
+- `docs/API.md` and `docs/GUIDE-frame-graph.md` say which form binds geometry.
+- `npm test` and `npm run type-check` are green; `gate:browser` at 4 of 4 with the recording contract
+  at 16 of 16 and the corpus at 24 of 24.
+- The commit says the card gate was not re-taken, and that the card message above belongs to another
+  repository's session on another machine.
+
+**What would change the answer.** If the intended reading is that `{ vertices }` on a geometry
+pipeline should *bind* the geometry rather than be refused — the middle arm of `issueDraws` growing a
+`setVertexBuffer` like the two either side of it — then this is a backend fix rather than a refusal,
+the measurement moves to a corpus fixture drawing that pair, and `validate` gains nothing. **That
+branch has to be settled in step 1 and not discovered in step 3**, because the two answers put the
+change in different files.
+
+---
+
+## Item 11 — the WebGL 2 backend applies no blend a pipeline names, and it is able to
+
+**Opened on 2026-09-11, out of reading 3 of the campaign above. The reading as handed over said
+WebGL 2 cannot blend, and that is wrong**, which changes this item from a refusal into an
+implementation. `gl.blendFuncSeparate`, `gl.blendEquationSeparate` and `gl.blendColor` are core
+WebGL 2, and the backend never calls any of them.
+
+**The reading, re-verified on 2026-09-11.** The string `blend` appears **zero times** in
+`gpu/webgl2.ts`'s 1,497 lines, and zero times in `tests/support/fake-gl.ts`, so no test could catch
+it either. `gpu/webgpu.ts:1576` carries a target's blend through to the pipeline descriptor as
+`...(target.blend ? { blend: target.blend } : {})`. `graph/types.ts:419` declares the field —
+`targets?: { format: GPUTextureFormat; blend?: GPUBlendState }[]` — and `glslFrameOf` at
+`toy/frame.ts:361` spreads `...spec`, so `targets` and the blend on it survive translation intact
+and reach a backend that ignores them.
+
+**Nothing in the data names the difference.** `graph/capability.ts:41-52` lists eleven capabilities
+and none is a blend. `float-blend` is not it: `gpu/select.ts:171` maps it to WebGPU's
+`float32-blendable` and `:209` to WebGL 2's `EXT_float_blend`, and both are about blending a float
+target rather than about whether blending happens. So `refusal` returns `null`, `resolve` answers a
+backend, and the frame draws a different picture. The consumer's reading, on a card on 2026-09-09 and
+not re-takeable here: an interior pixel of a stroke at opacity 0.5 read `0,0,255,128` on the card
+against `127,127,255,255` on the page.
+
+**Why it stands on this package's own merits.** §10's rule is that capability lives in the data,
+never as a method one backend answers by throwing — and a silence is worse than a throw, because a
+throw is at least a word. This is the one place a pipeline this package *accepts* draws a different
+picture on the two backends with no refusal and no name for the difference, which is the failure mode
+the package exists to prevent. It is also the fourth invariant in `docs/ARCHITECTURE.md`: no
+capability's only proof is that the picture still looks right, and a blend has no proof at all here.
+**And the specification argument is item 2's, which this file already accepted**: a renderer built to
+the whole WebGPU core specification either expresses `GPUBlendState` on both backends it claims or
+does not claim them.
+
+### Steps
+
+1. **Map `GPUBlendState` onto WebGL 2 and name the corner that does not reach**, written where the
+   mapping lands. Most of it is a direct translation — the operations onto `blendEquationSeparate`,
+   the factors onto `blendFuncSeparate`, `constant` and `one-minus-constant` onto `blendColor`. **The
+   family that has no WebGL 2 form is the dual-source one** — `src1`, `one-minus-src1`, `src1-alpha`,
+   `one-minus-src1-alpha` — which WebGPU itself gates behind the `dual-source-blending` feature. So
+   that family is a capability in `graph/capability.ts` which `refusal` names, exactly as
+   `storage-buffer-readwrite` is, and everything else is implemented. **One more corner is known now
+   rather than
+   found in step 2, because it changes where the refusal goes**: WebGL 2 has one blend state for all
+   draw buffers, where WebGPU carries one per entry of `targets`. So a pass whose targets name
+   *different* blends is the second thing this backend cannot express, and it is refused by name
+   rather than drawn with whichever one was set last. **The measurement**: the count of
+   `GPUBlendFactor` values mapped against the count refused, the capability added to
+   `graph/capability.ts` with `WEBGPU_OPTIONAL` gaining its feature name, and the differing-targets
+   refusal red on a graph that names two blends.
+2. **The WebGL 2 backend applies the blend a pipeline's `targets` name**, enabled per target and
+   reset with the pass, with `tests/support/fake-gl.ts` recording the calls so a test can read them.
+   **The measurement**: the blend calls the double records for a pipeline naming `over`, and
+   `npm test` at its new count.
+3. **A fixture the two backends agree on that a missing blend would separate.** **The
+   measurement**: the two pictures differing by a named number of channels before the change and
+   agreeing to the single channel the corpus already holds every preset to after, `gate:browser` at
+   4 of 4, and the recording contract at its new count.
+4. **`refusal` answers for the dual-source family, and `docs/API.md` says what `targets[].blend`
+   does on each backend.** **The measurement**: `gate:pack` and the door's export count against 69
+   run-time names, since a new `Capability` member widens a published union.
+
+### Done when
+
+- A pipeline naming `targets[].blend` draws the same picture on both backends, to the single channel
+  the corpus holds every preset to, shown by a fixture some gate draws.
+- A pipeline naming a dual-source factor is refused by `refusal` by the capability's name, on any
+  device without it, before either backend is built.
+- `graph/capability.ts` names the dual-source capability and `gpu/select.ts` maps it on both sides.
+- `docs/API.md` says what a blend does on each backend and which factors do not reach WebGL 2.
+- `npm test`, `npm run type-check` and `gate:pack` are green; `gate:browser` at 4 of 4 with the
+  recording contract at its new count.
+- The commit says the card gate was not re-taken, and that the `0,0,255,128` reading belongs to
+  another repository's session.
+
+**What would change the answer.** If step 2 finds that a blend cannot be reset per pass without
+re-reading state the backend does not keep — this backend records its plans once and replays them,
+and a blend left enabled leaks into the next pass — then the blend is set and cleared around every
+pass whatever it costs, and the cost is measured and recorded rather than traded away silently. **If
+instead the mapping turns out to need more of `GPUBlendState` than WebGL 2 has**, beyond the two
+corners step 1 already names, the extra becomes capability and the item lands having implemented
+less; what it may not do is land having implemented a blend that is silently approximate, which is
+the state it is fixing.
+## Item 12 — a selected backend refuses the frame object it was selected for, and nothing on the door joins the two
+
+**Opened on 2026-09-11, out of readings 2 and 7 of the campaign above. Blocked on item 9**, which
+decides whether this item is a door addition or a refusal and two corrections. Both branches are
+written below and step 1 of item 9 strikes one of them.
+
+**The reading, re-verified on 2026-09-11.** `gpu/select.ts:60-61` lists the candidates —
+`glsl: ['webgl2']`, `wgsl: ['webgpu', 'webgl2']` — and `:126` returns a backend where
+`NATIVE[backend] === frame.authored || frame.translated`. So on a machine whose adapter did not come
+back, **a WGSL frame carrying `translated: true` selects `webgl2`**, and `gpu/webgl2.ts:340` then
+throws ``WebGL 2 was handed a wgsl frame to draw``. The step between the two is `glslFrameOf` at
+`toy/frame.ts:338`, which returns a frame whose `authored` is `'glsl'` — and which **returns `null`**
+for a fullscreen WGSL frame that baked no vertex, a compute stage, or a stage the build refused to
+translate. **Nothing in `selectBackend`'s answer, in `resolve`'s answer, or in
+`docs/GUIDE-backends.md` says that step exists or that it may come back empty.** The consumer's
+reading, on 2026-09-09: a WGSL frame handed to `createSurface` on a machine whose adapter *did* come
+back was refused with that same sentence while `selectBackend` on the same page answered
+`{ backend: 'webgpu' }` — which is the join half of the same defect and is reading 7.
+
+**Why it stands on this package's own merits.** `selectBackend` answers a question about a frame and
+its answer is true of a frame the caller does not have. That is not a missing convenience: it is an
+answer whose subject is a different object from the one it was asked about, and the caller cannot
+tell from the answer. And `resolve` is this package's headline pure reading — `gpu/select.ts` calls
+it "selection and refusal as one reading" — so a `resolve` a caller cannot act on without a step
+nobody named is the claim holding halfway.
+
+### Steps, if item 9 answers that the library chooses
+
+1. **One door function gathers the offering, selects, requests the device where the selection wants
+   one, translates where the selected backend needs it, and returns the renderer or a refusal naming
+   why.** It is built over `selectBackend`, `requestWebGPUDevice`, `glslFrameOf` and
+   `createFrameRenderer` and replaces none of them, because each is a pure or single-purpose name
+   this package already publishes and a caller doing the four steps by hand stays able to.
+   **The measurement**: the door's export count before and after against 69 run-time names,
+   `gate:pack` green, and a consumer outside this repository reaching a drawing renderer from a
+   canvas and a frame in one call, shown by `gate:pack` rather than by an import from inside the
+   tree.
+2. **A WGSL frame on a WebGL 2 machine draws through that function or is refused by name for the
+   reason `glslFrameOf` returned null**, rather than throwing from inside a backend. **The
+   measurement**: the refusal's own words for each of `glslFrameOf`'s three null cases, read off a
+   test, and `gpu/webgl2.ts:340`'s throw named as an unreachable backstop the way
+   `gpu/select.ts` already names the read-write-storage-buffer one.
+3. **`docs/GUIDE-backends.md` shows the one call and `docs/API.md` names it.** **The measurement**:
+   `tests/api-signatures.test.ts` and `tests/docs-code.test.ts` green, `gate:pack`, and
+   `gate:browser` at 4 of 4.
+
+### Steps, if item 9 answers that the caller chooses
+
+1. **`selectBackend` says what it is answering about.** A `wgsl` frame selecting `webgl2` returns an
+   answer that names the translation as required — the field, or the shape of the answer, is the
+   step's to decide and its reason goes at `gpu/select.ts:126`. **The measurement**: the answer's
+   shape before and after, the door's export count against 69, and `gate:pack`.
+2. **`docs/GUIDE-backends.md` and `docs/API.md` carry the four steps a caller takes, with
+   `glslFrameOf`'s null cases named.** **The measurement**: `tests/docs-code.test.ts` compiling the
+   worked example, which is what says the four steps are writable as published.
+
+### Done when
+
+- A caller that has a canvas, a frame and a browser reaches either a drawing renderer or a refusal
+  naming the reason, without reading this package's source to learn that a translation step exists.
+- No `FrameGraph` that `selectBackend` or `resolve` answers a backend for reaches that backend and
+  throws; where one cannot be drawn, the refusal names why before a backend is built.
+- `docs/GUIDE-backends.md` and `docs/API.md` agree with the code and with each other, and only one
+  of the two branches above survives in this entry.
+- `npm test`, `npm run type-check` and `gate:pack` are green; `gate:browser` at 4 of 4.
+
+**What would change the answer.** If the join cannot be written without this package deciding for the
+caller what to do when `glslFrameOf` returns null — draw nothing, or fall back to a frame the caller
+did not describe — then **the join returns the refusal and never the fallback**, because a fallback
+this package chose is a picture the caller did not describe, which is the thing every refusal in this
+tree exists to prevent.
+
+---
+
+## Item 13 — `createFrameRenderer` can throw where its own signature promises a null
+
+**Opened on 2026-09-11, out of reading 8 of the campaign above. It is the smallest item of the
+twelve and may reasonably close as refused**, which is said here so that a session working it does
+not inflate it to justify the commit.
+
+**The reading, re-verified on 2026-09-11.** `createFrameRenderer` returns
+`Promise<FrameRenderer | null>`. `gpu/webgl2.ts:233` is
+`canvas.getContext('webgl2', { antialias: false, alpha: false }) as WebGL2RenderingContext | null`
+followed by `if (!gl) return null`, and `gpu/webgpu.ts:164` is the same shape. **Each guards the
+value and neither guards the method**, so a canvas with no `getContext` throws a `TypeError` out of
+an async function whose whole reason to return `null` is that a context may not come back.
+
+**What is honest about how narrow this is.** The declared parameter is
+`HTMLCanvasElement | OffscreenCanvas`, so a TypeScript caller cannot reach it through the types. The
+reading is about the published *run-time* contract, which is what a JavaScript consumer has — and
+this package spends a gate on exactly that consumer: `gate:pack` exists to prove the built package
+installs and plain node can import it, and 0.2.0's headline fix was for a consumer with no bundler.
+
+**Why it stands on this package's own merits.** A `| null` return is a promise about a class of
+failure, and this one covers half the class. `gpu/renderer.ts`'s own header gives the reason the null
+exists — "a browser was measured reporting WebGPU and then handing back nothing when asked" — which
+is a run-time surprise from a host object, and an absent method is the same kind of surprise from the
+same kind of object.
+
+### Steps
+
+1. **Decide whether the run-time contract is narrowed or honoured, and write it where the return
+   type is.** Narrowing means the header says a caller must pass a real canvas and the throw is
+   correct; honouring means each backend's entry tests the method before calling it. **The
+   measurement**: the decision at `gpu/renderer.ts:129`'s doc comment with its reversal and trigger,
+   and — whichever lands — a test passing an object with no `getContext` and asserting the written
+   outcome. `npm test` at its new count.
+
+### Done when
+
+- `createFrameRenderer` handed an object with no `getContext` does the one written thing, shown by a
+  test, on both backend branches.
+- The doc comment on the return type says which, with how to reverse it.
+- `npm test` and `npm run type-check` are green.
+
+**What would change the answer.** If the decision is that the type is the contract and a JavaScript
+caller is out of scope, **this item closes as refused with that sentence written at the signature**,
+which is a better outcome than a guard nobody can reach. What it may not do is close silently.
+
+---
+
+## Item 14 — disposing a WebGL 2 renderer takes the caller's canvas with it, and disposing a WebGPU one does not
+
+**Opened on 2026-09-11, out of reading 9 of the campaign above. It is the strongest of group C**,
+because the defect is not the call: it is that one name on one interface means two different things,
+and the one a caller cannot recover from is the unannounced one.
+
+**The reading, re-verified on 2026-09-11.** `gpu/webgl2.ts:1492-1494` is the whole of that backend's
+`dispose`: `arena.free(quadHandle)` and then
+`gl.getExtension('WEBGL_lose_context')?.loseContext()`. `gpu/webgpu.ts:1315-1323` frees its target,
+clears the shared pipeline cache, and calls `context.unconfigure()` — **which is reversible, and
+losing a context is not**. A canvas hands back the same graphics context for as long as it exists, so
+the next `getContext('webgl2')` on that canvas returns the lost one, where every `getParameter`
+answers null.
+
+**This tree already knows.** `host/surface.ts:42-55`'s doc comment on `setGraph` says it outright:
+"A canvas hands back the same graphics context for as long as it exists, and disposing a surface
+loses that context on purpose, so building a second surface over the first leaves it drawing into a
+dead one. Nothing reports that: the draw calls are accepted and the picture stops moving." **So
+`setGraph` exists because of this**, and the fact is written on the workaround rather than on the
+thing that causes it.
+
+**Why it stands on this package's own merits.** `docs/ARCHITECTURE.md`'s three lifetimes say what a
+renderer owns, and the canvas is not among them — it is the caller's, handed in as a parameter. **A
+`dispose` that destroys a caller-owned object it did not create is reaching past what it owns**, and
+it does so on one backend and not the other, so a caller that wrote its cleanup against WebGPU and
+shipped to a machine without an adapter loses its canvas and is told nothing. `docs/API.md`'s
+`dispose` entries say neither thing.
+
+### Steps
+
+1. **Settle what `dispose` does to the context, and write it where the call is**, with how to
+   reverse it and what would change it. Three answers, and the cost of each has to be named rather
+   than assumed: never lose it, which gives up the one prompt way a backend with no explicit free
+   hands card memory back; keep losing it and say so at the door on both `FrameRenderer.dispose` and
+   `Surface.dispose`; or lose it only where the caller asks. **The measurement**:
+   `gates/surface.mjs:293-315` already loses a context deliberately to check that a lost card is
+   noticed — that check read against the change, and the surface gate at 21 of 21.
+2. **Whichever lands, the two backends' `dispose` mean the same thing to a caller, or the difference
+   is on the door and in the type.** **The measurement**: a test building a renderer on a canvas a
+   previous renderer disposed, on both backends through their doubles, asserting the written outcome;
+   `npm test` at its new count; `gate:browser` at 4 of 4 with the surface gate at 21 of 21.
+3. **`docs/ARCHITECTURE.md`'s lifetimes and `docs/API.md`'s `dispose` entries say what a caller may
+   do with its canvas afterwards**, and `host/surface.ts:42-55`'s paragraph points at that statement
+   rather than being its only home. **The measurement**: `tests/api-signatures.test.ts` green and the
+   two passages read side by side.
+
+### Done when
+
+- A test builds a renderer on a canvas a previous renderer disposed, and the outcome is the written
+  one on both backends.
+- `FrameRenderer.dispose` and `Surface.dispose` say in `docs/API.md` what happens to the canvas, and
+  say the same thing for both backends or name the difference.
+- `gates/surface.mjs`'s lost-card check still fails for a real loss, which is what says the change
+  did not blind the gate that covers it.
+- `npm test` and `npm run type-check` are green; `gate:browser` at 4 of 4 with the surface gate at
+  21 of 21.
+- The commit says the card gate was not re-taken.
+
+**What would change the answer.** If losing the context turns out to be the only way this backend
+returns card memory promptly — which is the reason it is there — then it stays, **and the item lands
+as a door statement and a symmetry rather than a behaviour change**: `Surface.dispose` and
+`FrameRenderer.dispose` both say it, and the WebGPU side says what it does instead. That is a smaller
+landing and it is still the whole of the defect, which was that a caller could not find this out.
+## Item 15 — `probe()` leaves a canvas on the caller's page for every backend it trials
+
+**Opened on 2026-09-11, out of reading 10 of the campaign above. This is finding C of the spike
+batch, re-verified and promoted.**
+
+**The reading, re-verified on 2026-09-11.** `onScreenCanvas` at `host/probe.ts:344-355` creates a 200
+by 100 canvas, sets `position: fixed; left: 0; top: 0`, appends it to `document.body`, and returns
+it. It is called twice — `:304` for the WebGPU trial and `:326` for the WebGL 2 one — and **no line
+in the file removes either.** The clear colour the trials leave behind is `(0.1, 0.2, 0.3)`, at
+`:358` and `:369`. The consumer's reading, on 2026-09-09: after one `probe()` on a machine
+offering both backends, two of those canvases stand over the top-left corner of the document and the
+first picture drawn afterwards had that corner covered, read back as `(25, 51, 76)`.
+
+**The canvas is on-screen on purpose** and the file says why: "the device loss the trial exists to
+catch only happens for a canvas the browser is compositing, not one off the document." So the fix is
+not to take it off the document — it is that the trial needs the canvas while it runs and needs
+nothing of it afterwards.
+
+**Why it stands on this package's own merits.** A door export that changes a caller's document
+permanently is a defect in this package whatever the caller is, and `probe()` is a *reading*: its
+whole shape is that of a pure question about the machine, answered as data. A reading that leaves
+two composited rectangles over the top-left corner of the page is not a reading.
+
+### Steps
+
+1. **Each trial removes its own canvas once it has settled, in a `finally` rather than after the
+   last statement.** `:320`'s `catch` swallows everything the WebGPU trial throws, so a removal that
+   is not in a `finally` leaks on exactly the failure that `catch` exists for. **The measurement**:
+   the count of `document.body` children before and after `probe()` in a jsdom test, taken for the
+   success path and for a trial made to throw; `npm test` at its new count.
+2. **Settle whether the WebGL 2 trial needs the canvas composited at all**, since `never()` at
+   `:340-342` means WebGL 2 survival is "whether the draws throw" and a throw needs no compositor.
+   If it does not, that trial's canvas never reaches the document and the whole class of leak is
+   gone for half the function. **The measurement**: the WebGL 2 trial's answer with its canvas off
+   the document against its answer on it, **named as a software-renderer reading**, since
+   `gate:browser` is the only gate that can take it unattended and a software renderer cannot settle
+   it for a real card. If it cannot be settled, step 1 stands alone and the step says so.
+3. **`probe()`'s answers are unchanged**, which is what says the removal did not break the trial it
+   exists for. **The measurement**: `gate:browser`'s device report naming both backends and carrying
+   the same `survivedCompositing` for each, at 4 of 4.
+
+### Done when
+
+- `probe()` adds nothing to `document.body` that it does not remove, including where a trial throws,
+  shown by a test counting children before and after.
+- `probe()` answers the same for both backends as it did, read off `gate:browser`'s device report.
+- `npm test` and `npm run type-check` are green; `gate:browser` at 4 of 4.
+- The commit says whether step 2 was settled or left standing, and that a software renderer cannot
+  settle it for a card.
+
+---
+
+## Item 16 — a pass may name no scissor, and the plan that assumed one is corrected before anything is built
+
+**Opened on 2026-09-11, out of readings 5 and 6 of the campaign above. This is finding D of the spike
+batch, and step 1 corrects that finding before step 2 decides whether to build anything** — because
+the finding is the only place in this tree the word appears, and a plan resting on its own only
+mention is the inconsistency rather than the missing capability.
+
+**The reading, re-verified on 2026-09-11.** `scissor` appears **nowhere in this tree outside
+`docs/ROADMAP.md`**, re-grepped over every `.ts`, `.mjs` and `.md`. `FrameGraph`, `PassSpec` and
+`DrawSpec` name it nowhere. `viewport` is a different matter and this file recorded so on 2026-09-10:
+it is set per pass on the WebGL 2 draw path, asserted against the frame size by
+`tests/renderer-webgl2.test.ts:540` and `tests/submit-executor.test.ts:98`, and recorded by the
+double at `tests/support/fake-gl.ts:314`. **Finding D still says the word appears nowhere**, so the
+correction this file already wrote a `Done when` for has not landed.
+
+**And the consumer needs no scissor, read off its own file rather than reported.**
+That package's own roadmap gives its 3.1.0, in its ladder table — a clip that is a path — as depending on
+"`@altpsyche/engine`'s counting stencil, its item 2", and names no scissor at all. **So the one
+argument for a scissor that was not this package's own is gone**, which is the right time to decide
+the question rather than the wrong one.
+
+**Why it stands on this package's own merits, and the merit is weaker than item 2's.**
+`GPURenderPassEncoder.setScissorRect` is core WebGPU and `gl.scissor` is core WebGL 2, and a pass in
+this package can reach neither — which is item 2's argument in the same shape: a renderer built to
+the whole core specification either expresses a scissor or does not claim it. **It is weaker than
+item 2's for a reason worth writing down**: a per-face stencil state is the only way the
+specification offers to express a counted winding, so a frame that wants one cannot be written at
+all; a scissor changes which pixels a pass writes and not what a pipeline computes, so a caller can
+reach the same picture by drawing into a texture of its own and presenting it. That weakness is this
+item's own risk and is why step 2 is a decision and not a build.
+
+**The constraint reading 6 puts on this item and on item 2**, stated once in the campaign section
+above and repeated here because it binds at the type: depth is in the frame description already, so a
+scissor is per-pass state beside the depth attachment and a stencil mode is per-pipeline state beside
+the depth compare. Both have a home in the types today and neither needs the vocabulary redesigned.
+
+### Steps
+
+1. **Correct finding D first, so the plan stops resting on its own only mention.** Finding D names
+   `scissor` alone; says a viewport is set from the frame size on the WebGL 2 draw path and declared
+   nowhere in a graph; and the 3.1.0 row in the dependants table stops claiming that consumer needs a
+   scissor, re-read against its own ladder. **The measurement**: the three passages before and after,
+   and `npm test` green — a documentation step whose measurement is the reading and not a number.
+2. **Decide whether a scissor is built, on the specification argument alone, with the weakness in
+   the paragraph above answered rather than skipped.** **The measurement**: the decision written in
+   `graph/types.ts` above the pass type, with how to reverse it and what would change it. **If the
+   answer is no, the item closes here**, having corrected the plan and recorded that a rectangle clip
+   is not a capability in this package.
+3. **If built: `RenderPassSpec` names an optional scissor rectangle**, `validate` refuses one outside
+   the frame's own size the way it refuses a per-draw slice past the end of its buffer, `cost` says
+   whether a scissor changes a cost, and both backends apply it — `setScissorRect` and `gl.scissor`
+   with `gl.enable(gl.SCISSOR_TEST)`, with the flip between the two origins in one place, beside the
+   one the viewport already uses. **The measurement**: a fixture whose scissor leaves a named number
+   of pixels at the frame's clear colour, the two backends agreeing on it to the single channel the
+   corpus already holds every preset to, `gate:browser` at 4 of 4 and the recording contract at its
+   new count.
+4. **If built: `docs/API.md` and `docs/GUIDE-frame-graph.md` name it.** **The measurement**:
+   `gate:pack`, and the door's export count against 69 run-time names.
+
+### Done when
+
+- Finding D names `scissor` alone, says a viewport exists on the draw path and is declared in no
+  graph, and no longer claims that consumer's 3.1.0 needs a scissor.
+- A written decision in `graph/types.ts` says whether a pass may name a scissor, with its reversal
+  and its trigger, whichever way it went.
+- If built: a fixture draws a scissored pass, the two backends agree on it to the single channel,
+  `validate` refuses a rectangle outside the frame by name, and `docs/API.md` names the field.
+- `npm test` and `npm run type-check` are green; `gate:browser` at 4 of 4 with the recording contract
+  at its count, and `gate:pack` green on step 4.
+- The commit says the card gate was not re-taken.
+
+**What would change the answer.** If step 2 decides a rectangle clip is caller-side — drawn into a
+texture the caller owns and presented — the item closes at step 2 with that written where the pass
+type is, and this file gains one line saying so, so the question is not re-opened by the next reader
+who notices `setScissorRect` is unreachable.
+## Item 17 — the live path cannot read back the frame it is showing
+
+**Opened on 2026-09-11, out of reading 11 of the campaign above. Reading 11 was wrong in half and the
+half that is right is this item**, which is recorded here rather than quietly narrowed.
+
+**What the reading got wrong.** It said no readback is at the door.
+`FrameRenderer.frame(shader, uniforms, into?)` returns `Promise<Uint8Array>` — RGBA, top row first,
+with the row-stride repack owned in the library (§17 decision 7, item 29) — and `createFrameRenderer`
+is exported, so **a one-shot caller reads a frame back through the published door today**.
+`gpu/webgpu.ts:1283-1313` and `gpu/webgl2.ts:1474-1492` are the two implementations.
+
+**What is right, re-verified on 2026-09-11, is that the live path has none.** `Surface` at
+`host/surface.ts:39-66` carries `start`, `stop`, `setGraph`, `resize`, `dispose`, `running` and
+`backend`. No member gives back pixels. **And the canvas cannot substitute.**
+`gpu/webgpu.ts:363-368` configures the canvas context
+`RENDER_ATTACHMENT | COPY_DST` and copies the frame onto the current drawable; the texture that
+carries `COPY_SRC` is the backend's own target at `:344`, and that is the one `readPixels` reads. The
+consumer's reading, on a card on 2026-09-09 and not re-takeable here: `drawImage` of the drawn canvas
+into a 2D context gave `(0,0,0,0)` at every one of 120,000 pixels, while a screenshot of that same
+canvas read `(240, 92, 51)` inside the triangle.
+
+**Why it stands on this package's own merits.** `gpu/renderer.ts`'s own header says there are two
+interfaces because a build script and a page want different things, and that the one-shot interface
+is the primitive with the live one built on top of it. **A page wanting one frame of what it is
+already showing has to build a second renderer over a second canvas and draw the frame twice** — and
+on WebGL 2 it cannot reuse the first canvas at all, for the reason item 14 is about. The readback
+arithmetic is already owned here and has one home; the live path is the one path that cannot reach
+it.
+
+### Steps
+
+1. **Decide where the readback goes and write it where the decision is.** Two shapes: `Surface`
+   grows a `read()` that draws and reads on the next tick, or `Surface` exposes the `FrameRenderer`
+   it holds and the readback stays the one that already exists. **The second adds no name and hands
+   out the renderer's whole lifetime**, which is the cost to weigh against the first's one new name.
+   **The measurement**: the door's export count before and after against 69 run-time names, and
+   `gate:pack`.
+2. **Whichever lands, one path reads pixels back and the row-stride repack is not written a second
+   time.** **The measurement**: a test reading a known frame back through the live path on the
+   WebGL 2 double, `npm test` at its new count, and the surface gate at 21 of 21.
+3. **`docs/API.md` and `docs/GUIDE-backends.md` say a live surface can be read and what it costs.**
+   `FrameRenderer.frame`'s own comment already carries a reading — 1.9 to 2.5 ms a frame drawing
+   against 5.0 drawing and reading, on one fullscreen shader at 1200x750 — and **that number is
+   quoted as the dated reading it is rather than re-asserted**, since no unattended session can
+   re-take it. **The measurement**: `tests/api-signatures.test.ts` and `tests/docs-code.test.ts`
+   green.
+
+### Done when
+
+- A caller holding a `Surface` reads back the pixels it is showing, through one published path,
+  shown by a test.
+- Neither a second canvas nor a second renderer is needed to do it.
+- The row-stride repack has one home, read off the tree rather than asserted.
+- `docs/API.md` names the path; `npm test`, `npm run type-check` and `gate:pack` are green;
+  `gate:browser` at 4 of 4 with the surface gate at 21 of 21.
+- The commit says the card gate was not re-taken and that the `(0,0,0,0)` reading belongs to another
+  repository's session.
+
+**What would change the answer.** If step 1 finds that reading the live path back requires the
+surface to stop its own loop and re-enter it — which would make `read()` a control operation wearing
+a reading's name — then the readback is the `FrameRenderer`'s and `Surface` exposes it, and the
+reason goes on `Surface` rather than on the new name that was not added.
+
+---
+
+## Item 18 — the program cache is keyed on the geometry bytes, so a picture whose shape moves recompiles every frame
+
+**Opened on 2026-09-11, out of reading 12 of the campaign above. Its first step is a measurement this
+repository can take**, because what the defect *costs* is unmeasured and measuring it properly needs
+a card.
+
+**The reading of the code, re-verified on 2026-09-11.** `frameKey` at `pipeline/cache.ts:337-351`
+serialises `frame.resources` through `canonical` at `:312-316`, whose replacer turns a `Uint8Array`
+into `{ $bytes: <a latin1 string of every byte> }`. **So a `VertexResource.data` is in the key byte
+for byte.** `gpu/renderer.ts:170-177` holds a `WeakMap<FrameGraph, string>` in front of it, keyed on
+the frame *object*, and its own comment gives the reason that is enough: "a frame is a fresh object
+per edit and its fields never change after it is made". **A frame rebuilt once per animation tick is
+a fresh object every tick**, so that WeakMap misses every tick, `frameKey` runs, the string differs
+because the geometry differs, `programs` misses too, and `backend.program(shader)` compiles.
+
+**What is already there to fix it.** `VertexResource.source` at `graph/types.ts:269` is the field
+that would let a frame name geometry rather than carry it, and `graph/types.ts:266-268` already
+states the split: "the build writes an address and the runtime fills in what came back from it."
+
+**What is measured and what is not.** The paragraphs above are a reading of this tree's source. The
+figure of 106,632 bytes serialised per frame for one real figure was counted in the consumer's
+session and is theirs. **What a recompile costs in milliseconds is unmeasured on any machine**,
+because it needs a card and `gate:card` never runs unattended. So step 1 takes the measurement this
+repository *can* take and the item is not worked past it on a guess.
+
+**Why it stands on this package's own merits.** `gpu/renderer.ts:21-27` says why the cache exists —
+"compiling is most of what a frame costs when the frame is one triangle" — and why
+`PROGRAM_CACHE_LIMIT` is 16: "a program owns a set of card resources, so a renderer that never lets
+one go grows its card memory by one source's worth every time a reader edits and recompiles."
+**A cache whose key contains the one field that changes every frame cannot hit for a moving picture,
+and it evicts sixteen programs' worth of card resources while missing.** The comment above the key
+says "a false miss only recompiles"; the reading is that a false miss is the *normal* case for a
+picture whose geometry moves, which is a different claim from the one that comment is making.
+
+### Steps
+
+1. **Measure it here, before changing anything.** A node test building sixty frames of one figure's
+   geometry as fresh objects and counting, through the WebGL 2 double: `frameKey` calls, the key's
+   length in characters, and `backend.program` calls. **The measurement**: those three counts over
+   sixty frames, taken by `npm test` on this machine, **with the wall-clock cost of a recompile named
+   as unmeasured and needing a card.** If the compile count is already one, the item closes here as
+   refused with that count recorded.
+2. **Decide what the key carries for a resource whose bytes change per frame, and write the decision,
+   its reversal and its trigger at `frameKey`.** The candidates: a resource's `source` where it has
+   one and its bytes only where it does not; a content identity the frame carries rather than the
+   bytes; or the resident slice leaving the key entirely, which is what `frameKey`'s own comment
+   already says items 13 and 15 would have done. **Whatever lands has to answer the header's own
+   claim** — that a false *hit* is what `frameKey` exists to make impossible — by saying why two
+   frames sharing a key are the same program. **The measurement**: step 1's three counts re-taken
+   after.
+3. **A test per field `frameKey` reads, so two frames differing in any one of them still get two
+   programs.** This is the check that the fix did not buy its hits by losing the distinction the key
+   exists for, and `CONTRIBUTING.md`'s rule applies: a test rewritten alongside the code it checks
+   catches nothing, so these are written against the fields rather than against the new key. **The
+   measurement**: each red on a pair differing only in that field, and `gate:browser` at 4 of 4 with
+   the recording contract at its count.
+
+### Done when
+
+- A frame whose `VertexResource.data` changes every tick compiles its program once over sixty
+  frames, shown by a count through the WebGL 2 double, against the count step 1 recorded.
+- Two frames differing in anything a program bakes in still get two programs, shown by a test per
+  field `frameKey` reads.
+- The decision, its reversal and its trigger are written at `frameKey`.
+- `npm test` and `npm run type-check` are green; `gate:browser` at 4 of 4 with the recording contract
+  at its count.
+- The commit says what a card would have measured and this did not: the milliseconds one recompile
+  costs, and therefore what the fix is worth in time rather than in compiles.
+
+**What would change the answer.** If step 1 finds the compile count is already one — the WeakMap
+hitting because a caller reuses its frame object — **the item closes as refused with that count
+recorded**, and this file gains a line saying `frameKey` serialises geometry bytes and that it costs a
+serialisation per new frame object rather than a compile. That line is worth having either way,
+because the next reader will find the same replacer and file the same item.
+
+---
+
 ## What is still to be settled, and it does not block item 1
 
 ### The bound the layer above the renderer is built to
@@ -697,7 +1459,14 @@ without a bound the first one that arrives sets the precedent by accident. It do
 which is an authoring path for the frame graph rather than a candidate, and which passes all three
 of the candidate bounds as they stand.
 
-### Does the library choose the backend, or does the caller?
+### Does the library choose the backend, or does the caller? — **settled as a question, promoted to item 9 on 2026-09-11**
+
+**This stopped being a question that could wait on 2026-09-11**, when reading 2 of the campaign above
+found a second consequence of the same ambiguity — a backend `selectBackend` answers for a frame the
+caller does not have — and item 12 was written needing the answer before it could name its own steps.
+**So it is item 9 now**, with the reasoning below kept where it was written rather than moved, because
+it is what item 9 has to answer. The paragraph beginning "Two published documents" is the reading;
+item 9 is the work.
 
 **Two published documents give opposite answers and the audit of 2026-09-10 could not decide which
 one the package means.** `docs/GUIDE-backends.md:3-4` opens "This package draws through **WebGPU**
@@ -732,7 +1501,9 @@ needs one capability built and not two, and finding D's own question — whether
 two — is answered by that difference.
 
 **Done when** finding D names `scissor` alone, and says a viewport is set from the frame size on the
-draw path but declared nowhere in a graph.
+draw path but declared nowhere in a graph. **That correction is item 16's step 1 as of 2026-09-11**,
+which also re-read the consumer's own 3.1.0 row and found it names item 2's counting stencil and no
+scissor at all — so the correction and the decision whether to build one land together.
 
 ### Settled on 2026-09-10: `gate:pack` now reads the declared types, and the claim that prompted it was wrong
 
@@ -824,7 +1595,7 @@ broke nothing, which is the kind of gate that gets deleted.
 `examples/` name `RoadToPureEngine.md` by section, `JOURNAL.md`, or the old queue's item numbers.
 `git show` recovers all four, and `CLAUDE.md` says as much, so a reader is not stranded. **One of
 them is worse than stale, though**, and it is the reason this is written down: `graph/validate.ts:17`
-says a rule landed "per ROADMAP.md item 19", and `docs/ROADMAP.md` exists again with items 1 to 8, so
+says a rule landed "per ROADMAP.md item 19", and `docs/ROADMAP.md` exists again with items 1 to 18, so
 that reference now points at a live document and a dead item number. `tests/import-graph.test.ts`
 carries the same shape — it says `host/loop.ts` "arrives with submit(graph), item 68" while `submit`
 has been on the door since 0.3.0. **What makes it doubtful** is that these are the *why* at the point
@@ -857,6 +1628,19 @@ a standing refusal here, so the direction is worth stating where it binds.
 painter it has not built yet. This package never imports that one. The case that looks like it needs
 the second is a shader declaring a camera, and the answer is that whatever holds both reads the
 camera from here and hands it to a figure as data.
+
+**Re-read on 2026-09-11, and the rows below had gone stale by four versions.** That package is at
+**2.8.0** with its GPU painter built — its paint/gpu.ts and figure/gpu-frame.ts exist, the second
+builds a `FrameGraph` and calls `resolve` and `cost` — so the "2.7.0, a GPU painter" row below is
+landed rather than pending, and so is "2.8.0, dashes and quadratics". **The peer-dependency question
+below is answered too**: its manifest declares `@altpsyche/engine` at `^0.4.0` in both
+`dependencies` and `peerDependencies`. **And what its 2.x needed from here has landed** — two of its
+value modules import their spatial arithmetic from `@altpsyche/engine/maths`, which is item 3 and
+0.4.0. Its ladder now runs 2.9.0, 3.0.0, 3.1.0 and 4.0.0, and **its 3.1.0 names item 2's counting
+stencil and no scissor**, which is the reading item 16 turns on. The table below is left as written
+with this paragraph in front of it rather than rewritten row by row, because the rows are a record of
+what was expected and this is what happened; **the next session to touch this table re-reads it from
+that file rather than from here.**
 
 **That package was at 1.0.0 with its door frozen when this was written and is at 2.5.1 now**, and
 this one is at 0.4.0, published on 2026-09-10 for the second declared entry, which is the version
@@ -909,7 +1693,15 @@ than re-found. **One more is documented behaviour of this package rather than a 
 recorded under the batch instead of in it. **The four left are argued below on this package's own
 merits**, and each names the reading that found it so a session can reproduce it rather than trust it.
 
-### The spike's batch, four findings
+### The spike's batch, four findings — **all four now carry items, as of 2026-09-11**
+
+**Read this section as the record of how each was found, not as the queue.** Each finding was
+re-verified against this tree on 2026-09-11 and promoted: **finding A is item 9 and item 12**, split
+because the contradiction and the join are two commits; **finding B is item 10**; **finding C is item
+15**; **finding D is item 16, whose step 1 corrects the finding's own wording first**. The readings
+below stand as written, except where an item says the reading came back different, which two of them
+do.
+
 
 **Finding A: `createFrameRenderer` contradicts what `gpu/select.ts` says the library does.** That
 module opens by stating which backend draws a frame is "answered inside the library rather than by the
