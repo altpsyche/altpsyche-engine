@@ -39,6 +39,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { loadFromRoot } from './lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SOURCE = join(here, '..', 'fixtures', 'source');
@@ -248,14 +249,30 @@ const withoutClipSpaceYFlip = (glsl) =>
 /** Runs the whole build. Kept as a function so a test on a machine with naga can
  * drive it and read the artifact back; the CLI below is the `npm run translate`
  * entry. */
-export function translateCorpus() {
+export async function translateCorpus() {
   const out = mkdtempSync(join(tmpdir(), 'translate-'));
   const files = readdirSync(SOURCE)
     .filter((f) => f.endsWith('.wgsl'))
     .sort();
 
-  if (files.length !== 16) {
-    console.error(`expected 16 corpus WGSL presets, found ${files.length}`);
+  // **What the registry says this corpus is**, read rather than written down. This
+  // guard was the literal `16` in two places and it expired the moment a
+  // seventeenth preset arrived — the same shape as the `11 of 11` that
+  // `tests/consumer-check.ts` printed while running thirteen checks, and the shape
+  // `docs/ROADMAP.md` names as the one most likely to go stale here. Bumping the
+  // number would have moved the expiry rather than removed it, so the check now
+  // compares the files on disk against the sources `CAPABILITY_FIXTURES` names.
+  // That makes it a stronger guard than it was as well as a durable one: it catches
+  // a source file that went missing *and* one that nothing in the registry draws.
+  const { CAPABILITY_FIXTURES } = await loadFromRoot('fixtures/capability-fixtures.ts');
+  const declared = CAPABILITY_FIXTURES.filter((/** @type {any} */ one) => one.language === 'wgsl')
+    .map((/** @type {any} */ one) => one.source)
+    .sort();
+  const missing = declared.filter((/** @type {string} */ name) => !files.includes(name));
+  const unclaimed = files.filter((/** @type {string} */ name) => !declared.includes(name));
+  if (missing.length || unclaimed.length) {
+    if (missing.length) console.error(`the registry names WGSL sources that are not here: ${missing.join(', ')}`);
+    if (unclaimed.length) console.error(`these WGSL sources are here and no fixture names them: ${unclaimed.join(', ')}`);
     process.exit(1);
   }
 
@@ -345,7 +362,7 @@ export function translateCorpus() {
 // Run when invoked directly, not when imported by a test for its pure helpers.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
-    translateCorpus();
+    await translateCorpus();
   } catch (e) {
     if (/** @type {any} */ (e).code === 'ENOENT') {
       console.error('\nno `naga` on PATH — install with: cargo install naga-cli --version 30.0.1');

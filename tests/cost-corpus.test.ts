@@ -120,6 +120,26 @@ const EXPECTED: Record<string, FrameCost> = {
     // the frame the reader sees rather than a transient of its own.
     transientBytes: 0,
   },
+  'core-blend': {
+    // Two passes, one draw each: the sheet underneath and the sheet blended over
+    // it. A blend costs nothing here — it is pipeline state, not work the counter
+    // counts — which is itself worth having asserted, since a reading that started
+    // charging for one would show up as this row changing.
+    passes: 2,
+    draws: 2,
+    dispatches: 0,
+    pipelineSwitches: 2,
+    // Both passes bind the one uniform block, so one bind across the two.
+    bindSwitches: 1,
+    // The second pass loads the picture the first left, which is the whole point
+    // of the preset: it blends against what is already there rather than clearing.
+    attachmentLoads: 1,
+    // The first stores the picture for the second to read, the second stores the
+    // presented picture: two.
+    attachmentStores: 2,
+    // One frame-sized rgba8unorm picture: 800*600*4.
+    transientBytes: 1920000,
+  },
   'core-depth': {
     passes: 2,
     draws: 2,

@@ -1233,12 +1233,47 @@ surface 21 of 21.
 pixels through WebGPU and the three cross-backend readings are unchanged at 11, 36 and 18 of
 1,440,000, which is what says this moved nothing on the backend that was already right.
 
-**What no gate could see.** There is still no fixture whose *two backends are compared* under a
-blend, which is what step 3 of this item asked for and what would have caught `core-depth` years
-earlier. The preset that names a blend is now the one WebGL 2 refuses, so the comparison cannot be
-built from the corpus as it stands: it needs a new fixture with **one** blended target, and that is
-left standing as this item's unfinished half rather than claimed. **Until it exists, the blend this
-item implemented is covered by recorded calls against a double and by no picture.**
+**Step 3 landed the same day and the item is closed.** `core-blend` is the seventeenth capability
+fixture: two sheets offset sideways so they overlap down the middle, the second drawn at half alpha
+over the first, **one colour target and no depth** so nothing but the blend is being read. It is on
+`gates/card.mjs`'s cross-backend list beside the three scene presets, which is the only comparison
+this package takes between the two backends and the list `core-depth` was never on.
+
+**The reading, on `nvidia / blackwell`:**
+
+```
+core-blend on both backends   hard jumps 4006 against 4006, worst 0, 0 of 1,440,000 channels differ
+```
+
+**A literal zero, channel for channel** — better than the three scene presets, which sit at 11, 36
+and 18 because two hardware compilers fold a projection apart. This preset has no projection, which
+is deliberate: item 6 is about four copied projection literals and a fifth would have made it worse.
+
+**And it was proved to catch the defect rather than asserted to.** With the blend application
+disabled — the state this backend was in before item 11 — the card gate goes red:
+
+```
+FAIL core-blend on both backends   hard jumps 4006 against 3947, worst 124, 326,612 of 1,440,000 channels differ
+```
+
+So the fixture fails for the thing it exists to check. **Had it existed earlier, `core-depth`'s
+unblended WebGL 2 column would not have survived a single run.**
+
+**Three hardcoded fixture counts were found on the way, all the same defect.**
+`gates/translate.mjs` refused to run with "expected 16 corpus WGSL presets, found 17", and
+`tests/translate-build.test.ts` asserted `files.length` was 16. Both now compare the sources on disk
+against the ones `CAPABILITY_FIXTURES` names, which is a **stronger** check than the literal was —
+it says which source is missing or unclaimed rather than only that a number moved — and it cannot
+expire. The third, `tests/consumer-check.ts`'s `11 of 11`, was fixed under item 12. A fourth
+literal in `tests/translate-build.test.ts` counts entry points and **stays a literal on purpose**:
+it is a hand-kept ledger recording each change, and a total recomputed the way it is checked would
+assert nothing.
+
+**Measurements for step 3.** `npm test` at **894 over 76 files**, against 892. `npm run type-check`
+clean, `gate:pack` green at 70 names and 13 of 13. **`gate:browser` at 4 of 4** with the corpus at
+**25 of 25 draws, 0 failed, 10 WebGL 2 skips** and the recording contract at **17 of 17**, which is
+`core-blend` agreeing call for call between the double and the device. **`gate:card` at 24 of 24
+PASS, 0 FAIL.**
 
 **What would change the answer.** If step 2 finds that a blend cannot be reset per pass without
 re-reading state the backend does not keep — this backend records its plans once and replays them,

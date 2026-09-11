@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { CAPABILITY_FIXTURES } from '../fixtures/capability-fixtures';
 
 /**
  * Item 41, the build-time translation path. `gates/translate.mjs` (run as
@@ -60,7 +61,17 @@ describe('the build-time translation path bakes GLSL and ships no translator', (
     const files = readdirSync(SOURCE)
       .filter((f) => f.endsWith('.wgsl'))
       .sort();
-    expect(files.length).toBe(16);
+    // Held to the registry rather than to a literal. This read `toBe(16)` and went
+    // red the moment a seventeenth preset arrived, which is the third place in this
+    // tree a fixture count was written down by hand — the others being
+    // `tests/consumer-check.ts`'s `11 of 11` and `gates/translate.mjs`'s own guard,
+    // both fixed the same way. A literal here could only ever say "the number
+    // changed"; the registry says *which* source is missing or unclaimed, and it
+    // cannot expire.
+    const declared = CAPABILITY_FIXTURES.filter((one) => one.language === 'wgsl')
+      .map((one) => one.source)
+      .sort();
+    expect(files).toEqual(declared);
 
     let entryTotal = 0;
     for (const file of files) {
@@ -79,9 +90,15 @@ describe('the build-time translation path bakes GLSL and ships no translator', (
         if (refused) expect(refused.stage).toBe(ep.stage);
       }
     }
-    // The corpus item 75 measured 34 entry points across 15 presets; item 85 added
-    // `core-perdraw-uniform`'s two (a per-draw uniform slice), so it is 36 now.
-    expect(entryTotal).toBe(36);
+    // A hand-kept ledger rather than a count of a list read two ways, which is why
+    // this one stays a literal where the two above it became registry comparisons:
+    // it is a tripwire for a source quietly losing an entry point, and a total
+    // recomputed the same way it is checked would assert nothing. Each change is
+    // recorded so the number carries its own history. Item 75 measured 34 across 15
+    // presets; item 85 added `core-perdraw-uniform`'s two, making 36; item 11 added
+    // `core-blend`'s four — two vertex stages and two fragment stages, the pair of
+    // sheets and the pair of colours — making 40.
+    expect(entryTotal).toBe(40);
   });
 
   it('overlays a hand-authored GLSL bake where naga has no storage-buffer syntax (item 105)', () => {

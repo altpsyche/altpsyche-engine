@@ -429,6 +429,48 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
     },
   },
   {
+    // The blend, on its own and with nothing else going on (item 11). Every other
+    // preset that leans on a blend leans on something else too — `core-depth`
+    // blends and tests distances and writes two colours at once — so a blend that
+    // was never applied hid there for as long as that preset existed. This one has
+    // one colour target and no depth, so the only thing a comparison between the
+    // two backends can be reading is the blend.
+    id: 'core-blend',
+    language: 'wgsl',
+    source: 'core-blend.wgsl',
+    uniforms: [
+      { name: 'u_time', type: 'float', value: 0 },
+      { name: 'u_resolution', type: 'vec2', value: [800, 600] },
+    ],
+    frame: {
+      // The same grid the other geometry presets draw, so what is being compared
+      // is the blend rather than a primitive nothing else uses.
+      geometry: [{ name: 'sheet', primitive: 'quad-grid', size: [16, 16] }],
+      attachments: [{ name: 'picture', size: { scale: 1 }, format: 'rgba8unorm' }],
+      passes: [
+        // The first sheet, opaque, emptying the picture. This is what the second is
+        // blended against, so it is drawn at full alpha.
+        {
+          pipeline: 'under',
+          vertex: 'back',
+          geometry: 'sheet',
+          colour: [{ resource: 'picture', clear: [0, 0, 0, 1] }],
+        },
+        // The second sheet, offset sideways and drawn at half alpha over the first.
+        // **One target naming a blend and no other target at all**, so this needs
+        // no `per-target-blend` and draws on both backends — which is what lets the
+        // two pictures be compared.
+        {
+          pipeline: 'over',
+          vertex: 'front',
+          geometry: 'sheet',
+          colour: [{ resource: 'picture', blend: 'over' }],
+        },
+      ],
+      present: 'picture',
+    },
+  },
+  {
     id: 'core-target',
     language: 'wgsl',
     source: 'core-target.wgsl',

@@ -359,7 +359,18 @@ if (glslJoin.error || !glslJoin.offer) {
 // the pass is the worst single channel within TOLERANCE, because two hardware
 // compilers fold one graph's arithmetic close rather than equal. All three numbers
 // print whether it passes or not.
-const SCENE_TIER = ['core-scene', 'core-draw-list', 'core-material'];
+//
+// **`core-blend` is here and is not a scene preset** (item 11). It is on this list
+// for the reason the list exists at all: it is the one preset whose two backends
+// can be compared under a blend. That gap is not hypothetical — `core-depth` blends
+// and drew unblended on WebGL 2 for as long as it was in the corpus, and nothing
+// saw it, because the only comparison this package takes between the two backends
+// is the one below and `core-depth` was never on it. A preset that blends and is
+// drawn by both backends is what closes that, and it is why `core-blend` was
+// written with one colour target and no depth: a second target naming a different
+// blend needs `per-target-blend`, which WebGL 2 has not got, and the preset would
+// be skipped there and compare nothing.
+const SCENE_TIER = ['core-scene', 'core-draw-list', 'core-material', 'core-blend'];
 console.log('');
 for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
   // Bytes do not survive `page.evaluate`, so they cross as arrays keyed by the
