@@ -30,6 +30,20 @@ const TILES: f32 = 3.0;
 // rather than the frame being a still.
 const DRIFT: f32 = 0.04;
 
+// A cover for the frame, so this pass draws the shader's own corners rather than
+// the backend's three. A pipeline naming no vertex stage bakes no GLSL vertex and
+// `gates/corpus.mjs` skips such a preset on WebGL 2 entirely, which left this one
+// drawn by a single backend and compared with nothing (item 19). This is the last
+// of the three that were skipped for that reason.
+//
+// The lookup below is taken from `@builtin(position)`, which the card fills from
+// this stage exactly as it filled it from the backend's corners, so the picture is
+// unchanged by construction.
+@vertex
+fn cover(@location(0) corner: vec2<f32>, @location(1) place: vec2<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(place * 2.0 - 1.0, 0.5, 1.0);
+}
+
 @fragment
 fn fragMain(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
     let across = at.xy / uniforms.u_resolution;

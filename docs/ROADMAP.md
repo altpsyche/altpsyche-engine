@@ -3141,11 +3141,20 @@ thing whose whole purpose is to be drawn by both backends and compared — may n
    bake itself, and says why in its own comment. A test that borrows a corpus preset for a property
    the corpus is being cured of keeps breaking correctly and reading like a defect.
 
-3. The same for `core-mips`, which is the last of the three. **Measures:** the same two numbers,
-   and the skip count reaching **6 — every remaining skip a real capability answer**. ~~And it is
-   not done until `tests/webgl2-baked-glsl.test.ts` builds its own fullscreen frame.~~ **Done at
-   step 2**, along with `tests/corpus-webgl2-outcome.test.ts` at step 1, so no test now depends on a
-   corpus preset baking no vertex.
+3. ~~The same for `core-mips`, the last of the three.~~ **Landed on 2026-09-11.** One quad covering
+   the frame and a `cover` stage, the same change as `core-texture`'s, which it matches in shape.
+
+   **Measured.** The corpus gate: **7 WebGL 2 skips before, 6 after**, and **32 draws before, 33
+   after**. **`core-mips on the card` 479,952 of 480,000 pixels lit, identical to its reading before
+   the change.** `npm run translate` baked `vertex:cover 512 bytes`; entry total 50 to 51. `npm
+   test` 980 over 84 files, `npm run type-check` clean, `gate:browser` 4 of 4, `gate:card` 31 of 31.
+
+   **The first line of this item's `Done when` is met.** All six remaining WebGL 2 skips are real
+   capability answers — three compute stages, a storage buffer, a per-target blend, and a buffer no
+   pipeline reads. **Not one is "a fullscreen WGSL frame, which bakes no vertex for WebGL 2 to
+   link".** Only the entry-point count needed updating in this step, because steps 1 and 2 had
+   already moved every test that depended on a corpus preset having that property.
+
 4. Whichever of the three are worth comparing channel for channel go on `gates/card.mjs`'s
    cross-backend list. **Measures:** each one's two backends compared on a real card, with the
    channels differing recorded per preset.

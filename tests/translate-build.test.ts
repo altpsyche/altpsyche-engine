@@ -115,8 +115,11 @@ describe('the build-time translation path bakes GLSL and ships no translator', (
     // the same reason, on the first of the three presets that were still skipped on
     // WebGL 2 for want of a baked vertex — making 49. Step 2 added `core-target`'s
     // covering stage for its grading pass, which spends the sheet the first pass
-    // already draws rather than declaring a grid of its own — making 50.
-    expect(entryTotal).toBe(50);
+    // already draws rather than declaring a grid of its own — making 50. Step 3
+    // added `core-mips`'s, the last of the three — making 51. After it no preset is
+    // skipped on WebGL 2 for want of a baked vertex: every remaining skip is a real
+    // capability answer.
+    expect(entryTotal).toBe(51);
   });
 
   it('overlays a hand-authored GLSL bake where naga has no storage-buffer syntax (item 105)', () => {

@@ -614,7 +614,12 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // as hard edges. Repeating, because the source tiles the picture three times
       // across and the value noise joins up with itself.
       samplers: [{ name: 'grainSampler', filter: 'linear', wrap: 'repeat' }],
-      passes: [{ pipeline: 'fragMain' }],
+      // One quad covering the frame, so the pass draws the shader's own corners
+      // rather than the backend's (item 19). The last of the three presets that
+      // were skipped on WebGL 2 for want of a baked vertex, and so drawn by one
+      // backend and compared with nothing.
+      geometry: [{ name: 'cover', primitive: 'quad-grid', size: [1, 1] }],
+      passes: [{ pipeline: 'fragMain', vertex: 'cover', geometry: 'cover' }],
     },
   },
   {
