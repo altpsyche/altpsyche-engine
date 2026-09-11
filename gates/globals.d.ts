@@ -29,6 +29,7 @@ declare global {
     frameOf: typeof Door.frameOf;
     glslFrameOf: typeof Door.glslFrameOf;
     glslFrame: typeof Door.glslFrame;
+    wgslFrame: typeof Door.wgslFrame;
     selectBackend: typeof Door.selectBackend;
     missing: typeof Door.missing;
     probe: typeof Door.probe;

@@ -51,7 +51,7 @@ WebGL 2         ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, Op
 gradient        hard jumps 0 against 0, worst 0, 0 of 1,440,000 channels differ
 corpus          19 presets drew through WebGPU on the card
 selection       a GLSL frame selected WebGL 2 where WebGPU was offered, 480,000 of 480,000 lit
-gate            29 of 29 PASS, 0 FAIL
+gate            29 of 29 PASS, 0 FAIL, then 30 of 30 with the live-readback check added
 ```
 
 **The reading item 16 was waiting for.**
@@ -85,11 +85,27 @@ core-material    hard jumps 7527 against 7527, worst 1, 18 of 1,440,000 channels
 that reading and this one, and they moved no pixel on real hardware. Item 14 changed what `dispose`
 does to a canvas and item 17 added a readback; neither should show here, and neither does.
 
+**The live path was read back on the card in the same session**, through a check added to
+`gates/card.mjs` for exactly this, which took the gate to 30 of 30:
+
+```
+live readback    480,000 of 480,000 pixels are the drawn colour, worst channel off by 0
+                 loop still running after the read, null after dispose
+same canvas 2D   alpha 0 at the centre  (reported, never gated)
+```
+
+**The second line is the consumer's 2026-09-09 finding re-taken on this machine.** They measured
+`(0,0,0,0)` from `drawImage` of a drawn canvas and the roadmap recorded that as a reading no session
+here could take. This one takes it: the canvas a WebGPU surface drew reads alpha 0 through a 2D
+context while `Surface.read()` on the same surface gives back every pixel exactly. That is the whole
+argument for the method, measured rather than asserted.
+
 **The timing line the gate prints and never gates**: a thousand objects at 800x600, 120 frames after
 a warm one, **p50 1.30 ms, p95 1.80 ms, p99 196.10 ms** — draw plus a full readback, against
-1.20 / 3.20 / 198.50 earlier the same day. The p99 is a readback stall and not a frame time. **This
-is not a reading of `Surface.read()`**: it is the gate's own draw-and-read loop over a scene, and
-nothing here goes through the live path.
+1.20 / 3.20 / 198.50 earlier the same day, and 1.10 / 3.90 / 118.10 on the run that added the check.
+The p99 is a readback stall and not a frame time, and the spread across three runs of the same
+machine on one day is why this line is reported and never gated. **None of these three is a reading
+of `Surface.read()`**: they are the gate's own draw-and-read loop over a scene.
 
 ---
 

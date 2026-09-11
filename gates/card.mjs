@@ -54,12 +54,18 @@ const { bundle, staging } = bundleForPage({
   'gpu/webgpu-device': ['requestWebGPUDevice'],
   // Rebuilding a frame inside the page, and turning a WGSL frame into the GLSL one
   // WebGL 2 draws — the same two calls `gates/corpus.mjs` uses for its WebGL 2 arm.
-  'toy/frame': ['frameOf', 'glslFrameOf', 'glslFrame'],
+  'toy/frame': ['frameOf', 'glslFrameOf', 'glslFrame', 'wgslFrame'],
   // Decision 6's join, on a machine that actually has WebGPU (item 62).
   'gpu/select': ['selectBackend'],
   // `missing` replaced the program's own `unreached` at item 69; a source reading
   // rather than a question put to the built pipeline.
   'index.ts': ['missing'],
+  // The live path, so a real driver reads a frame back through the interface a
+  // page actually holds (item 17). Everything else in this gate reaches a backend
+  // directly, which is the one thing `Surface.read()` exists not to make a caller
+  // do.
+  'host/surface': ['createSurface'],
+
   // The cross-backend comparison, bundled so the gate calls exactly the function
   // the node suite tests rather than a restatement of it (item 44).
   'gates/compare.mjs': ['compareFrames'],
@@ -282,6 +288,135 @@ for (const { id, frame, values, entry } of corpus) {
     const total = /** @type {number} */ (result.total);
     say(true, `${id} on the card  ${lit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pixels lit`);
   }
+}
+
+// ── The live path reads itself back, on a real driver (item 17) ───────────────
+//
+// `Surface.read()` landed with six tests against a double and no driver had ever
+// run it: the surface gate's checks never call it, and every other check in this
+// file reaches a backend directly, which is the one thing this method exists so a
+// page does not have to do. So the gap this closes is specific — not "does a
+// readback work", which the control above already says, but "does the readback a
+// page reaches through the interface it holds give back the frame on its canvas".
+//
+// The canvas is on the page and the loop is running when the read is taken,
+// because that is the case that has no other answer: a caller wanting these
+// pixels any other way needs a second renderer over a second canvas, and on
+// WebGL 2 cannot reuse the first canvas at all.
+console.log('');
+const liveRead = await page.evaluate(
+  async ({ W, H }) => {
+    // A flat colour rather than a gradient: what is under test is whether the
+    // bytes are the frame at all, and a single expected triple says that without
+    // a tolerance argument about interpolation. 240, 92, 51 is the colour the
+    // consumer's own 2026-09-09 reading used, so the two readings name the same
+    // number.
+    const code =
+      '@fragment fn fragMain() -> @location(0) vec4<f32> { return vec4<f32>(240.0/255.0, 92.0/255.0, 51.0/255.0, 1.0); }';
+    const frame = window.wgslFrame('live-readback', code, [{ name: 'u_time', offset: 0, size: 4 }]);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.width = `${W}px`;
+    canvas.style.height = `${H}px`;
+    document.body.appendChild(canvas);
+
+    const adapter = await navigator.gpu?.requestAdapter();
+    if (!adapter) return { error: 'no adapter' };
+    const device = await adapter.requestDevice();
+
+    const surface = await window.createSurface(canvas, frame, {
+      backend: 'webgpu',
+      device,
+      dpr: [1, 1],
+      uniforms: (elapsed) => ({ u_time: elapsed }),
+    });
+    if (!surface) return { error: 'the canvas gave no surface' };
+
+    try {
+      surface.start();
+      // A few real animation frames, so the read below is taken against a loop
+      // that is genuinely running rather than against a surface that has drawn
+      // once.
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(done))));
+
+      const runningBefore = surface.running;
+      const pixels = await surface.read();
+      const runningAfter = surface.running;
+      if (!pixels) return { error: 'read() gave null on a live surface' };
+
+      let matched = 0;
+      let worst = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const dr = Math.abs(pixels[i] - 240);
+        const dg = Math.abs(pixels[i + 1] - 92);
+        const db = Math.abs(pixels[i + 2] - 51);
+        const off = Math.max(dr, dg, db);
+        if (off > worst) worst = off;
+        if (off <= 1) matched++;
+      }
+
+      // What the canvas alone would have given, which is the trap the guide warns
+      // about: a 2D context drawn from this canvas reads nothing on WebGPU,
+      // because the canvas texture is configured to be copied *to* and the one
+      // carrying COPY_SRC is the backend's own target.
+      let canvasAlpha = -1;
+      try {
+        const flat = document.createElement('canvas');
+        flat.width = W;
+        flat.height = H;
+        const ctx = flat.getContext('2d');
+        if (!ctx) throw new Error('no 2d context');
+        ctx.drawImage(canvas, 0, 0);
+        canvasAlpha = ctx.getImageData(W >> 1, H >> 1, 1, 1).data[3];
+      } catch {
+        canvasAlpha = -1;
+      }
+
+      const afterDispose = (surface.dispose(), await surface.read());
+      document.body.removeChild(canvas);
+      return {
+        length: pixels.length,
+        expected: W * H * 4,
+        matched,
+        total: W * H,
+        worst,
+        runningBefore,
+        runningAfter,
+        nullAfterDispose: afterDispose === null,
+        canvasAlpha,
+      };
+    } catch (e) {
+      return { error: String(/** @type {any} */ (e).message || e).slice(0, 200) };
+    }
+  },
+  { W, H }
+);
+
+if (liveRead.error) {
+  say(false, `a live surface reads itself back on the card  ${liveRead.error}`);
+} else {
+  const matched = /** @type {number} */ (liveRead.matched);
+  const total = /** @type {number} */ (liveRead.total);
+  const ok =
+    liveRead.length === liveRead.expected &&
+    matched === total &&
+    liveRead.runningBefore === true &&
+    liveRead.runningAfter === true &&
+    liveRead.nullAfterDispose === true;
+  say(
+    ok,
+    `a live surface reads itself back on the card  ${matched.toLocaleString('en-US')} of ` +
+      `${total.toLocaleString('en-US')} pixels are the drawn colour, worst channel off by ${liveRead.worst}, ` +
+      `loop still running, null after dispose`
+  );
+  // Reported and never gated: it is the consumer's finding re-taken on this
+  // machine, and a browser that changed it would not be a fault in this package.
+  console.log(
+    `     the same canvas through a 2D context: alpha ${liveRead.canvasAlpha} at the centre ` +
+      `(reported, never gated — it is why Surface.read() exists)`
+  );
 }
 
 // ── Decision 6's promise, on a machine that has WebGPU (item 62) ───────────────

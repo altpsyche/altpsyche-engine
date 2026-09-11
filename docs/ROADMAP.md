@@ -2717,10 +2717,19 @@ change and `gate:card` was not re-taken.
 - **The commit says the card gate was not re-taken and that the `(0,0,0,0)` reading belongs to
   another repository's session.** Both said, in every commit of the three and in the guide itself.
 
-**What is left of item 17 is what the surface gate does not cover.** Its 21 checks are the count it
-already had and none of them calls `read()`, so **no real driver has read a frame back through the
-live path** — the only coverage is against a double. A gate check that draws a known colour on a
-surface and reads it back on both backends would close that, and it needs a display and a person.
+**Item 17 is closed. The gap the three steps could not close was closed on 2026-09-11** by a check
+added to `gates/card.mjs` and run with Siva present. A surface on a canvas on the page, its loop
+running, reading itself back on a real driver: **480,000 of 480,000 pixels are the drawn colour,
+worst channel off by 0**, the loop still running after the read and `null` after `dispose`. So the
+live path is no longer covered only by a double.
+
+**The same run re-takes the reading this item was opened on.** The consumer measured `(0,0,0,0)` from
+`drawImage` of a drawn canvas on a card on 2026-09-09, in their repository. The new check draws that
+same canvas into a 2D context and reads **alpha 0 at the centre** — the same finding, on this
+machine, in this package, which the item's text said could not be re-taken here. It is reported and
+never gated, because a browser that changed it would not be a fault in this package.
+
+The gate is **30 of 30** with the check added. `docs/DEVICES.md` carries the row.
 
 **What would change the answer.** If step 1 finds that reading the live path back requires the
 surface to stop its own loop and re-enter it — which would make `read()` a control operation wearing
