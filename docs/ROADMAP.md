@@ -522,6 +522,87 @@ widening is proved by the compiler and by the two backends' existing capability 
 by a picture. A fixture drawing an additive blend across both backends would close that, and it is
 item 19's kind of work rather than this item's.
 
+### Landed on 2026-09-11, step 4, and the step found a name the newly published type could not reach
+
+**`declaredFrame` and `DeclaredFrame` are on the door**, `docs/API.md` carries both and
+`docs/GUIDE-frame-graph.md` works a frame of two passes end to end. What the step did not expect is
+a third name.
+
+**`groupsToCover` was not on the door and `DeclaredFrame`'s own doc comment names it.** The comment
+on `passes[].groups` says the count is "the whole workgroup count a producer worked out from the size
+it had (`groupsToCover` covers a pixel size in whole blocks of the entry point's own workgroup
+size)", and that function lived in `graph/refs.ts` reachable only from inside the tree — the corpus
+imports it as `'../graph/refs'`. Publishing the type is what made the reference dangle, so the fix
+belongs to this step rather than to a later one: a consumer declaring a compute pass would otherwise
+have to redo the one piece of arithmetic in a frame that is neither in the source nor a free choice,
+and rounding it down leaves the edge of a picture unwritten with nothing to say so. It is exported
+with that reason written above it.
+
+**The example in the guide was run before it was written down.** It is a compute pass growing a
+field out of the field it left last frame and a render pass drawing what that pass left behind: four
+resources, a compute pipeline and a render one, two passes, and no handle or binding number written
+anywhere in the declaration. `tests/docs-code.test.ts` compiles it, and it was executed first to
+check the numbers the prose quotes. The section sits at the **end** of the guide and not beside the
+long form, because a block marked `// continues the block above` chains to the previous checked block
+of the same document, and inserting a section in the middle re-pointed a later block at the wrong
+one — caught by that gate, not by reading.
+
+**Measured.**
+
+| | before | after |
+| --- | --- | --- |
+| run-time names on the door | 71 | **73** |
+| files reachable from `index.ts` | 36 | **39** |
+| `gate:pack` consumer checks | 13 of 13 | **17 of 17** |
+| `npm test` | 933 over 78 files | 933 over 78 files |
+| `npm run type-check` | clean | clean |
+| `npm run gate:browser` | 4 of 4 | 4 of 4 |
+| recording contract | 18 of 18 | 18 of 18 |
+| corpus draws | 28, 0 failed, 9 WebGL 2 skips | 28, 0 failed, 9 WebGL 2 skips |
+
+The two new names are `declaredFrame` and `groupsToCover`; `DeclaredFrame` is a type and does not
+count at run time. The three newly reachable files are `declare/declared.ts`,
+`declare/declared-frame.ts` and `wgsl-pipelines.ts`, which is what earns the 72,159 bytes step 2
+added to the install and could not yet justify.
+
+**The corpus now reaches the reader through the door.** `tests/support/fixture.ts` imports
+`declaredFrame` from the door rather than from the module directly, so the sixteen — now
+eighteen — fixtures, the recording contract and the browser gates all exercise the published path.
+There is one reader and no copy of it.
+
+### Done when, verified line by line
+
+- **A consumer outside this repository builds a `FrameGraph` from a WGSL source and a declaration,
+  shown by `gate:pack`.** Four new checks in `tests/consumer-check.ts`, run against the installed
+  tarball outside the repository: `a declared frame of two passes becomes a graph` (2 passes, 4
+  resources), `the stage each pipeline runs at came off the source rather than the declaration`
+  (`compute,render`), `it is the same kind of graph the builders make`, and `an entry point the
+  source does not declare is refused by name`. **17 of 17.**
+- **None of the five content names reaches the door, read off the declarations a build writes.**
+  Checked against a freshly rebuilt `dist`: no `.d.ts` carries `TextureContent`, `BufferContent` or
+  any of the five string literals as a **type**. `'draw-list-models'` does appear once in the built
+  declaration for `declare/declared-frame.ts` — inside the doc comment that explains why it must not cross —
+  which is prose and not surface, and is named here rather than rounded to zero.
+- **The fixtures draw through the exported reader rather than through a copy of it.** One reader,
+  reached through the door. `gate:browser` **4 of 4** and the recording contract **18 of 18** — the
+  sixteen this line was written against is now eighteen, which the step 1 entry above records.
+- **`docs/API.md` names both and `docs/GUIDE-frame-graph.md` shows a declared frame of more than one
+  pass.** API.md gained `declaredFrame` and `groupsToCover` under *Describing a frame*, each held to
+  its compiler-given signature by `tests/api-signatures.test.ts`. The guide gained the two-pass
+  example above.
+- **`npm test` and `npm run type-check` green at every step, `gate:pack` green on every step that
+  moves the door.** 933 over 78 files and clean at all four; `gate:pack` 13 of 13 at steps 1 and 2,
+  13 of 13 at step 3 and 17 of 17 here.
+
+**What the gates could not see.** `gate:browser` is the software renderer, and `gate:card` has not
+been run for any step of this item — none of the four touched a backend, and no picture changed. The
+guide's example is **compiled and was run once by hand, but nothing draws it**: no gate renders a
+declared frame written outside `fixtures/`, so the example is proved to describe correctly and not to
+draw correctly. The corpus covers drawing, through the same reader.
+
+**Step 5 is what remains**: close the item, move what it leaves behind into the documents, and delete
+the entry.
+
 ---
 
 ## Item 2 — a stencil that counts, since one face and the other are not the same face

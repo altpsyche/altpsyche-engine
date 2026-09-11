@@ -194,3 +194,112 @@ graph with a compute pass is refused by name on that backend. See
 there and prints the refusal, naming `compute` and `storage-texture`, where it is not.
 [EXAMPLES.md](EXAMPLES.md) has the other five, and [API.md](API.md) lists every name used
 above.
+
+## Declaring a frame instead of building one
+
+The graph above is written by hand, and two things about that are worth noticing. Every handle
+is an index into a list you are also writing, so `texture(2)` means "the third resource" and
+stays correct only as long as nobody inserts one above it. And every binding number is written
+twice — once in your WGSL, once in `bindings` — with nothing checking that the two agree.
+
+`declaredFrame` reads the source instead. You declare the handful of things a WGSL file cannot
+say about itself — how big each resource is, how much of a pipeline to run, which resource is
+the picture — and it works out the rest from the file: every compute entry point, storage
+texture, storage buffer, uniform block, sampler and vertex input, and which stage each entry
+point is at.
+
+Here is a frame of two passes. A compute pass grows a field out of the field it left last
+frame, and a render pass draws what that pass left behind:
+
+```ts
+import { declaredFrame, groupsToCover } from '@altpsyche/engine';
+import type { DeclaredFrame } from '@altpsyche/engine';
+
+const CODE = `
+struct Uniforms { u_time: f32, u_resolution: vec2<f32> }
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+@group(0) @binding(1) var previous: texture_2d<f32>;
+@group(0) @binding(2) var next: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(3) var fieldSampler: sampler;
+
+@compute @workgroup_size(8, 8)
+fn step(@builtin(global_invocation_id) cell: vec3<u32>) {
+  let size = vec2<i32>(textureDimensions(next));
+  let at = vec2<i32>(i32(cell.x), i32(cell.y));
+  if (at.x >= size.x || at.y >= size.y) { return; }
+  let was = textureLoad(previous, at, 0).rg;
+  textureStore(next, at, vec4<f32>(was.r, was.g + uniforms.u_time * 0.0, 0.0, 1.0));
+}
+
+@fragment
+fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
+  let at = pixel.xy / uniforms.u_resolution;
+  const level = textureSample(previous, fieldSampler, at).g;
+  return vec4<f32>(level, level * 0.5, 1.0 - level, 1.0);
+}
+`;
+
+const GRID = { width: 256, height: 256 };
+
+const declared: DeclaredFrame = {
+  pairs: [{ read: 'previous', write: 'next', size: GRID }],
+  samplers: [{ name: 'fieldSampler', filter: 'linear', wrap: 'clamp' }],
+  passes: [
+    { pipeline: 'step', groups: groupsToCover(GRID, [8, 8, 1]) },
+    { pipeline: 'shade' },
+  ],
+};
+
+const declaredDescription = declaredFrame('field', CODE, declared);
+```
+
+That builds the same `FrameGraph` the long form does — four resources, a compute pipeline and a
+render one, two passes — and everything downstream reads it identically. It is an authoring
+path, not a second kind of graph.
+
+**No handles and no binding numbers appear above.** Resources are named by the name the source
+binds them under, and `declaredFrame` allocates the handles and reads the group and binding of
+each one off the file. There is no index to keep in step and no number written twice.
+
+**`pairs` is one declaration for two textures**, which is what a field growing out of its own
+last state needs: a shader cannot read the texture it is writing. The source samples `previous`
+and stores into `next`, and the backend hands it a different one of the two each frame. Both
+halves are the same size and the same format and are used both ways, so declaring it twice
+would be saying it twice.
+
+**`groupsToCover` is the dispatch count**, the size being covered divided by the
+`@workgroup_size` the entry point declares, rounded up. It is the one number in a frame that is
+neither in the source nor a free choice, and getting it wrong leaves the edge of a picture
+unwritten with nothing to say so. Note it covers the grid — 256 by 256 — and not the frame,
+because that is the texture this pass writes.
+
+**Which kind of work a pass is comes off the source.** `step` is declared `@compute` and
+`shade` is declared `@fragment`, so the first pass is a dispatch and the second is a draw, and
+neither says so in the declaration. A pass that names a group count for a fragment entry point
+is refused for that reason rather than drawn as something else.
+
+**Every disagreement stops the build with a sentence naming it**, which is the point of
+declaring rather than constructing. Each one is otherwise silent on the card:
+
+```ts
+// continues the block above
+try {
+  declaredFrame('field', CODE, { ...declared, passes: [{ pipeline: 'absent' }] });
+} catch (error) {
+  // the frame for "field" runs "absent" and its source declares no such entry
+  console.log((error as Error).message);
+}
+```
+
+A dispatch of an entry point the file does not declare is a pipeline the driver refuses after
+the fact. A texture nothing binds is a picture that stays whatever the memory held. A `present`
+naming nothing copies out the wrong texture. None of those show up as an error at the point you
+made the mistake; all of them show up here.
+
+**A sampled texture and a pre-filled buffer name their own bytes.** A texture the source samples
+declares `sampled: { format, source }` and a buffer filled before the frame runs declares
+`source` — a format and an address you supply, not the name of a generator this package holds.
+Generated geometry is the exception and names a `GeometryPrimitive`, because
+`GEOMETRY_PRIMITIVE` is on the door: a generator you can already reach is one a declaration may
+name. [API.md](API.md) lists the fields.

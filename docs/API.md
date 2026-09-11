@@ -107,6 +107,48 @@ second time. `glslFrame` takes a pair, because WebGL 2 links two documents. The 
 `…Description` functions build the same one-pass shape with no text in it, for when you want
 the shape and not a finished frame.
 
+**Declaring a frame of more than one pass**, which is the alternative to building one by hand:
+
+```ts
+declaredFrame(id: string, code: string, declared: DeclaredFrame): FrameGraph
+```
+
+A `DeclaredFrame` says the handful of things a WGSL source cannot say about itself — how big
+each resource is, how much of a pipeline to run, which resource is the picture — and nothing
+else. Everything the file already declares is read off the file: every compute entry point,
+storage texture, storage buffer, uniform block, sampler and vertex input, with the stage each
+entry point is at. Build a graph by hand and you allocate every handle in the order the arrays
+are built and repeat every binding number your own WGSL already carries, and nothing tells you
+when the two disagree. `declaredFrame` checks them against each other and **stops with a
+sentence naming the disagreement**, which matters because every one of them is silent on the
+card: a dispatch of an entry point the file does not declare is a pipeline the driver refuses
+after the fact, a texture nothing binds is a picture that stays whatever the memory held, and a
+`present` naming nothing copies out the wrong texture.
+
+It is not a second way to describe a frame. It returns the same `FrameGraph` the builders
+return, so `cost`, `validate`, `refusal` and both backends read it the same way.
+[GUIDE-frame-graph.md](GUIDE-frame-graph.md) works an example of two passes end to end. Type:
+`DeclaredFrame`.
+
+A sampled texture and a pre-filled buffer name their own format and their own fetch address —
+`sampled: { format, source }` and `source` — rather than naming a generator this package holds.
+Generated geometry is the exception and names a `GeometryPrimitive`, because
+`GEOMETRY_PRIMITIVE` is on the door: a generator you can already reach is one a declaration may
+name.
+
+**The dispatch count a compute pass carries:**
+
+```ts
+groupsToCover(pixels: { width: number; height: number; }, workgroup: readonly [number, number, number]): [number, number, number]
+```
+
+The size being covered divided by the `@workgroup_size` the entry point declares, rounded up.
+It is the one number in a frame that is neither in the source nor a free choice, and getting it
+wrong leaves the edge of a picture unwritten with nothing to say so. Both
+`ComputePassSpec.groups` and a declaration's `passes[].groups` carry the result. Covering the
+whole frame is `groupsToCover(sizeAt({ scale: 1 }, frame), …)`; covering a texture of your own
+is that texture's size.
+
 **Filling a description in**, which is what a loader does:
 
 ```ts

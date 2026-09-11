@@ -23,6 +23,8 @@
  */
 import {
   createFrameRenderer,
+  declaredFrame,
+  groupsToCover,
   openRenderer,
   wgslFrame,
   uniformBlockOf,
@@ -31,6 +33,7 @@ import {
   drawList,
   batchOnePipeline,
   compareTraces,
+  type DeclaredFrame,
   type FrameGraph,
 } from '@altpsyche/engine';
 import { createFakeGPU, paddedFrame } from './support/fake-gpu';
@@ -162,6 +165,74 @@ async function main(): Promise<void> {
 
   // The recording double's comparison, which travels with the library.
   check('two identical traces agree', compareTraces([], []).length === 0, compareTraces([], []).length);
+
+  // The frame declaration reader (item 1). This is the check the item's `Done when`
+  // names: a consumer outside this repository turning a WGSL source and a declaration
+  // into a `FrameGraph`, through the installed tarball rather than through an import
+  // from inside the tree. Two passes, because one pass over the whole frame is what
+  // `wgslFrame` already does and proves nothing about this path.
+  //
+  // Nothing here names a generator. The pair's size is declared, the dispatch count
+  // is arithmetic on that size, and no fixture name crosses the door — which is the
+  // other half of the `Done when` and is why this compiles at all.
+  const FIELD = `
+struct Uniforms { u_time: f32, u_resolution: vec2<f32> }
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var previous: texture_2d<f32>;
+@group(0) @binding(2) var next: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(3) var fieldSampler: sampler;
+@compute @workgroup_size(8, 8)
+fn step(@builtin(global_invocation_id) cell: vec3<u32>) {
+  let size = vec2<i32>(textureDimensions(next));
+  let at = vec2<i32>(i32(cell.x), i32(cell.y));
+  if (at.x >= size.x || at.y >= size.y) { return; }
+  let was = textureLoad(previous, at, 0).rg;
+  textureStore(next, at, vec4<f32>(was.r, was.g + uniforms.u_time * 0.0, 0.0, 1.0));
+}
+@fragment
+fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
+  let at = pixel.xy / uniforms.u_resolution;
+  let level = textureSample(previous, fieldSampler, at).g;
+  return vec4<f32>(level, level * 0.5, 1.0 - level, 1.0);
+}
+`;
+  const GRID = { width: 256, height: 256 };
+  const declared: DeclaredFrame = {
+    pairs: [{ read: 'previous', write: 'next', size: GRID }],
+    samplers: [{ name: 'fieldSampler', filter: 'linear', wrap: 'clamp' }],
+    passes: [
+      { pipeline: 'step', groups: groupsToCover(GRID, [8, 8, 1]) },
+      { pipeline: 'shade' },
+    ],
+  };
+  const declaredGraph = declaredFrame('field', FIELD, declared);
+
+  check(
+    'a declared frame of two passes becomes a graph',
+    declaredGraph.passes.length === 2 && declaredGraph.resources.length === 4,
+    { passes: declaredGraph.passes.length, resources: declaredGraph.resources.length }
+  );
+  check(
+    'the stage each pipeline runs at came off the source rather than the declaration',
+    declaredGraph.pipelines.map((one) => one.kind).join(',') === 'compute,render',
+    declaredGraph.pipelines.map((one) => one.kind)
+  );
+  check(
+    'it is the same kind of graph the builders make',
+    declaredGraph.authored === wgslFrame('x', CODE, BLOCK).authored,
+    declaredGraph.authored
+  );
+
+  // The half that is the reason the reader exists: a disagreement between the
+  // declaration and the source stops here with a sentence naming it, rather than
+  // reaching a driver that refuses the pipeline after the fact.
+  let named = '';
+  try {
+    declaredFrame('field', FIELD, { ...declared, passes: [{ pipeline: 'absent' }] });
+  } catch (error) {
+    named = (error as Error).message;
+  }
+  check('an entry point the source does not declare is refused by name', named.includes('absent'), named);
 
   console.log(
     failures.length === 0 ? `\nall ${taken} of ${taken} checks passed` : `\n${failures.length} of ${taken} failed`

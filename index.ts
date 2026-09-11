@@ -185,6 +185,17 @@ export type {
 // `{ scale: 0.5 }` is a half-resolution target, `{ width, height }` a fixed one.
 export type { TransientSize } from './graph/refs.js';
 
+// How many workgroups cover a size, which is what a compute pass's `groups` holds.
+// A dispatch count is the one number in a frame that is neither in the source nor a
+// free choice: it is the size being covered divided by the `@workgroup_size` the
+// entry point declares, rounded up, and getting it wrong leaves the edge of a
+// picture unwritten with nothing to say so. `ComputePassSpec.groups` and a frame
+// declaration's `passes[].groups` both carry the result, so the arithmetic is here
+// rather than written out at each call. A producer covering the whole frame passes
+// `sizeAt({ scale: 1 }, frame)`; one covering a texture of its own passes that
+// texture's size.
+export { groupsToCover } from './graph/refs.js';
+
 // The uniform block a WGSL source lays out, computed off its struct because
 // nothing here compiles WGSL.
 export { uniformBlockOf } from './wgsl-layout.js';
@@ -221,6 +232,29 @@ export {
 export {
   uniformBindingOf,
 } from './wgsl-binding.js';
+
+// The frame declaration reader (item 1). `assembleFrame` and the handle
+// constructors build a `FrameGraph` by hand, which means allocating every handle in
+// the order the arrays are built and repeating every binding number the WGSL already
+// declares, with nothing checking that the two agree. `declaredFrame` reads the
+// source for every entry point, storage texture, storage buffer, uniform block,
+// sampler and vertex input, checks what the declaration says against what the file
+// says, and stops with a sentence naming any disagreement. Each of those
+// disagreements is silent on the card: a dispatch of an entry point the file does
+// not declare is a pipeline the driver refuses after the fact, a texture nothing
+// binds is a picture that stays whatever the memory held, and a `present` naming
+// nothing copies out the wrong texture.
+//
+// It is not a second way to describe a frame. It produces the same `FrameGraph` the
+// builders do and everything downstream — `cost`, `validate`, `refusal`, both
+// backends — reads that one type, so a frame is still described, costed and refused
+// before a driver sees it whichever way it was written.
+export {
+  declaredFrame,
+} from './declare/declared.js';
+export type {
+  DeclaredFrame,
+} from './declare/declared-frame.js';
 
 // The engine above the renderer: the maths, the scene, and a scene becoming a
 // list of draws with the values each object feeds its material.
