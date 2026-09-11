@@ -3397,13 +3397,47 @@ they are, and the zero the first attempt reached was something else about that r
 plausibly pixel-centre alignment. **They are unexplained, not exonerated and not convicted**, and
 `docs/DEVICES.md` and `gates/translate.mjs` both say so now rather than carrying the stronger claim.
 
+### Measured on 2026-09-12: a presentation step costs about 1% of a frame, so it is affordable and the choice is settled
+
+**The open question was the cost of the fix, and it is now a number.** A block in `gates/card.mjs`
+draws the same frame three ways at 800x600, 200 frames a round, five rounds interleaved so drift
+lands on every path rather than on whichever went second:
+
+```
+straight to the canvas, which is what happens today   0.0020 ms a frame
+offscreen, then copied                                0.0125
+offscreen, then copied turned over — what the fix does 0.0148
+```
+
+**The fix costs 0.0128 ms a frame**, and the flip itself only 0.0023 ms more than a plain copy. The
+same gate's scene reading is p50 1.10 to 1.30 ms a frame for a thousand objects, so this is **about
+1% of a real frame** and 0.08% of a 60 fps budget.
+
+**So the choice between always-offscreen and translated-only is settled: always.** The cheaper
+variant existed only to avoid charging the copy to pages that do not need it, and at 1% of a frame
+there is nothing worth the second mode — and a second mode is exactly what made conditioning
+`readPixels` uncomfortable in the first attempt. One path, one meaning.
+
+**Two honest limits on that number.** It is one card, an RTX 5080, at 800x600. **The cost is a
+fullscreen copy, so it scales with pixels**: a 3840x2160 frame is about 17 times the area, which puts
+it near 0.22 ms — still close to 1% of a 16.7 ms budget, but arithmetic rather than measurement, and
+a weaker or integrated GPU would be slower again. **And getting the number honestly took two
+attempts**: the first read 0.0 ms for a thousand fullscreen draws, because an uncomposited canvas
+lets the driver discard the work and answer `finish` immediately. It is forced now by reading one
+pixel out of the default framebuffer per round, which is a sync amortised over 200 frames.
+
+**What this does not measure** is the memory a second full-size colour target costs, which is one
+frame's worth per surface and is not in any reading here.
+
 ### Steps, rewritten after the second revert
 
 2c. **Give the backend a presentation step it owns.** Every frame renders into an offscreen colour
-    target; the canvas receives a blit. **This is the prerequisite and it is worth landing on its own
-    merits** — it is also what would let `readPixels` stop depending on which way a frame was drawn.
-    **The measurement**: every gated preset unchanged, the canvas line still starting at the top, and
-    `gate:browser` at 4 of 4.
+    target; the canvas receives a blit. **Always, not only for translated frames** — decided on the
+    measurement above, 0.0128 ms a frame being too little to buy a second mode with. It is the
+    prerequisite for the rest, it is worth landing on its own merits, and it is what lets
+    `readPixels` stop depending on which way a frame was drawn. **The measurement**: every gated
+    preset unchanged, the canvas line still starting at the top, `gate:browser` at 4 of 4, and the
+    frame-time line re-read so the cost that was predicted is the cost that landed.
 2d. **Then the vertex flip**, with the winding inverted, the readback unconditional again because the
     offscreen target is always WebGPU-oriented, and the present blit carrying the y flip.
     **The measurement**: `core-texture` inside the tolerance, the canvas line unchanged, and the eight

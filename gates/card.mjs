@@ -998,6 +998,167 @@ for (const one of corpus.filter((preset) => HELD_OUT.includes(preset.id))) {
   );
 }
 
+// ── What a presentation step would cost, on the card (item 20, step 2c) ───────
+//
+// Item 20's remaining fix needs the backend to stop drawing into the caller's
+// canvas directly and to render into an offscreen target it blits at present —
+// that being the only place a y flip can go once the geometry is flipped, and the
+// reason both earlier attempts were reverted. **The cost of that is a copy per
+// frame on every page, forever, and nothing had measured it.**
+//
+// So this draws the same frame both ways at the frame's own size and reports the
+// per-frame difference: straight into the default framebuffer, which is what
+// happens today, and into a renderbuffer-backed framebuffer blitted onto the
+// default one, which is what the fix would do.
+//
+// **Amortised over many frames with one `finish` at the end**, rather than a
+// `finish` per frame: forcing a sync every frame measures the stall and not the
+// work. Reported and never gated, like every millisecond in this file — §17
+// decision 9 says wall-clock is measured on real hardware and never gated.
+//
+// **Step 2d or 3 deletes this block** once the number has been read and the choice
+// between always-offscreen and translated-only is made.
+console.log('');
+const presentCost = await page.evaluate(async ({ W, H, frames }) => {
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  document.body.appendChild(canvas);
+  const gl = canvas.getContext('webgl2', { antialias: false });
+  if (!gl) return { error: 'no webgl2 context' };
+  try {
+    const compile = (/** @type {number} */ kind, /** @type {string} */ src) => {
+      const sh = /** @type {WebGLShader} */ (gl.createShader(kind));
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(String(gl.getShaderInfoLog(sh)));
+      return sh;
+    };
+    const program = /** @type {WebGLProgram} */ (gl.createProgram());
+    gl.attachShader(program, compile(gl.VERTEX_SHADER, '#version 300 es\nin vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}'));
+    gl.attachShader(
+      program,
+      compile(
+        gl.FRAGMENT_SHADER,
+        '#version 300 es\nprecision highp float;out vec4 c;void main(){vec2 u=gl_FragCoord.xy/vec2(' +
+          W +
+          '.0,' +
+          H +
+          '.0);c=vec4(u,0.5,1.0);}'
+      )
+    );
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(String(gl.getProgramInfoLog(program)));
+    gl.useProgram(program);
+
+    const quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const at = gl.getAttribLocation(program, 'p');
+    gl.enableVertexAttribArray(at);
+    gl.vertexAttribPointer(at, 2, gl.FLOAT, false, 0, 0);
+    gl.viewport(0, 0, W, H);
+
+    // The offscreen target the fix would render into: a colour renderbuffer, which
+    // is what a backend that never samples its own output would allocate.
+    const fbo = gl.createFramebuffer();
+    const colour = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, colour);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, W, H);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, colour);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) return { error: 'offscreen target incomplete' };
+
+    const drain = new Uint8Array(4);
+    /** `mode` 0 draws straight into the canvas, which is what happens today; 1
+     * renders offscreen and copies; 2 renders offscreen and copies **turned over**,
+     * which is what the fix would actually do — a flipped blit is a different
+     * access pattern from a straight one and is the figure the decision needs. */
+    /** @param {number} mode */
+    const run = (mode) => {
+      for (let i = 0; i < frames; i++) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, mode === 0 ? null : fbo);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (mode !== 0) {
+          gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+          gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+          // The y flip is the source rectangle read bottom-to-top, which is how
+          // `blitFramebuffer` turns an image over.
+          if (mode === 2) gl.blitFramebuffer(0, H, W, 0, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+          else gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        }
+      }
+      // **`finish` alone does not force this work.** The canvas is never
+      // composited here, so the driver is free to discard every draw and answer
+      // `finish` immediately — measured, and it read 0.0 ms for a thousand
+      // fullscreen draws, which is what sent this measurement back for a second
+      // attempt. Reading one pixel out of the default framebuffer forces the queue
+      // to drain, and one readback amortised over `frames` draws is a sync this
+      // measurement can afford where a per-frame one would measure the stall.
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, drain);
+    };
+
+    // Warm: the first frames of any path pay compilation and allocation the steady
+    // state does not.
+    run(0);
+    run(1);
+    run(2);
+
+    /** @param {number} mode */
+    const timed = (mode) => {
+      const t0 = performance.now();
+      run(mode);
+      return performance.now() - t0;
+    };
+    // Interleaved and repeated, so a thermal or scheduling drift during the run
+    // lands on both paths rather than on whichever went second.
+    let direct = 0;
+    let viaBlit = 0;
+    let viaFlip = 0;
+    const rounds = 5;
+    for (let r = 0; r < rounds; r++) {
+      direct += timed(0);
+      viaBlit += timed(1);
+      viaFlip += timed(2);
+    }
+    gl.deleteFramebuffer(fbo);
+    gl.deleteRenderbuffer(colour);
+    // Totals as well as per-frame, because a per-frame figure that rounds to zero
+    // cannot be told from a loop that never ran.
+    return {
+      direct: direct / rounds / frames,
+      viaBlit: viaBlit / rounds / frames,
+      viaFlip: viaFlip / rounds / frames,
+      directTotal: direct,
+      viaBlitTotal: viaBlit,
+      viaFlipTotal: viaFlip,
+      frames,
+      rounds,
+    };
+  } catch (e) {
+    return { error: String(/** @type {any} */ (e).message || e).slice(0, 200) };
+  } finally {
+    canvas.remove();
+  }
+}, { W, H, frames: 200 });
+
+if (presentCost.error) {
+  console.log(`     a presentation step would cost  ${presentCost.error}  (reported, never gated)`);
+} else {
+  const direct = /** @type {number} */ (presentCost.direct);
+  const viaBlit = /** @type {number} */ (presentCost.viaBlit);
+  console.log(
+    `     a presentation step would cost (item 20, step 2c), ${W}x${H}, ` +
+      `${presentCost.frames} frames x ${presentCost.rounds} rounds interleaved:`
+  );
+  console.log(
+    `     straight to the canvas ${direct.toFixed(4)} ms a frame; offscreen then copied ` +
+      `${viaBlit.toFixed(4)}; offscreen then copied turned over ${Number(presentCost.viaFlip).toFixed(4)} ` +
+      `— the flip the fix needs costs ${(Number(presentCost.viaFlip) - direct).toFixed(4)} ms a frame  (reported, never gated)`
+  );
+}
+
 // ── A thousand objects, timed on the card (item 31's millisecond half) ─────────
 //
 // Item 31 asks for two things and insists they are not confused: **counters that
