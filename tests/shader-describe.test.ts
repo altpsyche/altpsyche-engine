@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { declaredFrame, geometryFileName } from '../fixtures/shader-describe';
+import { declaredFrame, geometryFileName } from '../declare/declared.js';
 import { buffer, indices, moduleHandle, pipelineHandle, sampler, texture, uniform, vertices } from '../graph/handles.js';
 import { TEXTURE_CONTENT } from '../fixtures/shader-content';
-import type { DeclaredFrame } from '../fixtures/declared-frame';
-import { BLEND_MODE } from '../fixtures/shader-blend';
+import type { DeclaredFrame } from '../declare/declared-frame.js';
+import { BLEND_MODE } from '../declare/blend.js';
 import type {
   ComputePipelineSpec,
   IndexResource,

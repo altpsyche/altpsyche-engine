@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { FrameGraph } from '@altpsyche/engine';
 import { CAPABILITY_FIXTURES } from '../../fixtures/capability-fixtures';
-import { declaredFrame } from '../../fixtures/shader-describe';
+import { declaredFrame } from '../../declare/declared.js';
 import { generatedBytes, publishedFrame } from '../../fixtures/shader-content';
 
 /**

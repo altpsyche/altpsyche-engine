@@ -13,9 +13,9 @@
  * A shader that declares no frame is one pass over the whole frame, and that
  * description is built without any of this.
  */
-import { WGSL_DOCUMENT } from '@altpsyche/engine';
-import { uniformBindingOf } from '@altpsyche/engine';
-import { namesReachedBy } from '@altpsyche/engine';
+import { WGSL_DOCUMENT } from '../toy/frame.js';
+import { uniformBindingOf } from '../wgsl-binding.js';
+import { namesReachedBy } from '../wgsl-references.js';
 import { buffer, indices, moduleHandle, pipelineHandle, sampler, texture, uniform, vertices } from '../graph/handles.js';
 import type { ResourceHandle, TextureHandle } from '../graph/handles.js';
 import {
@@ -27,9 +27,9 @@ import {
   storageTexturesOf,
   uniformBlocksOf,
   vertexInputsOf,
-} from './wgsl-pipelines';
-import { GEOMETRY_PRIMITIVE } from '@altpsyche/engine';
-import { BLEND_MODE } from './shader-blend';
+} from '../wgsl-pipelines.js';
+import { GEOMETRY_PRIMITIVE } from '../shader-geometry.js';
+import { BLEND_MODE } from './blend.js';
 import type {
   BindingSpec,
   FrameGraph,
@@ -38,8 +38,8 @@ import type {
   RenderPassSpec,
   RenderPipelineSpec,
   ResourceSpec,
-} from '@altpsyche/engine';
-import type { DeclaredFrame } from './declared-frame';
+} from '../graph/types.js';
+import type { DeclaredFrame } from './declared-frame.js';
 
 /** What one pipeline draws its colours into and how each one is mixed, which is
  * read off the attachments its pass writes rather than declared beside it. */

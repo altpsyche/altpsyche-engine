@@ -8,8 +8,10 @@
  * surface. A shader a reader can reach declaring a frame of its own is what would
  * move it.
  */
-import type { GeometryPrimitive, StencilMode, TransientSize } from '@altpsyche/engine';
-import type { BlendMode } from './shader-blend';
+import type { GeometryPrimitive } from '../shader-geometry.js';
+import type { StencilMode } from '../graph/types.js';
+import type { TransientSize } from '../graph/refs.js';
+import type { BlendMode } from './blend.js';
 
 /**
  * What a shader's entry says about its frame that its own source cannot.

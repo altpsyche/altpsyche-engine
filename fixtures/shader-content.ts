@@ -18,8 +18,8 @@ import { mat4 } from '@altpsyche/engine';
 import { drawList } from '@altpsyche/engine';
 import { batchOnePipeline } from '@altpsyche/engine';
 import { DRAW_LIST_SCENE, MATERIAL_SCENE, MATERIALS } from './capability-fixtures';
-import { geometryFileName } from './shader-describe';
-import type { DeclaredFrame } from './declared-frame';
+import { geometryFileName } from '../declare/declared.js';
+import type { DeclaredFrame } from '../declare/declared-frame.js';
 
 /** Which picture a texture's contents are. A shader's entry names one of these
  * and the build turns it into bytes. */

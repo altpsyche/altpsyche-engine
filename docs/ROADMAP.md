@@ -247,8 +247,9 @@ be withdrawn. This section says what a cut would carry, not that one may be take
 `FrameGraph` by hand: allocate every handle in the order the arrays are built, repeat every binding
 number its own WGSL already declares, and get no complaint from this package when the two disagree.
 The reader that does that work and checks it exists, and it is not on the door. It is
-`declaredFrame` in `fixtures/shader-describe.ts`, 787 lines, with its declaration type beside it in
-`fixtures/declared-frame.ts`, 205 lines. **That file's own header names its trigger**, which is a
+`declaredFrame` in `declare/declared.ts`, with its declaration type beside it in
+`declare/declared-frame.ts` — 787 and 205 lines in `fixtures/` when this was written, moved into the
+package by step 2 and unexported. **That file's own header names its trigger**, which is a
 shader outside the corpus declaring a frame of its own, and one now does.
 
 **What the reader does that hand-writing does not.** It reads the source for every compute entry
@@ -282,10 +283,12 @@ The reader's dependencies are mostly published. `WGSL_DOCUMENT`, `uniformBinding
 Four things are not, and each one is a decision rather than a move.
 
 - **The reader and its type**, `declaredFrame` and `DeclaredFrame`, which are what the item is for.
-- **The source readers**, `fixtures/wgsl-pipelines.ts`, 305 lines, which is what turns a WGSL file
+- **The source readers**, `wgsl-pipelines.ts`, 305 lines — in `fixtures/` when this was written,
+  moved to the package root beside the other `wgsl-*` readers by step 2 — which is what turns a WGSL file
   into the entry points and bindings the check is run against. A consumer may want them and the item
   does not assume it, so they move into the package and stay unexported until something asks.
-- **`BlendMode`**, `fixtures/shader-blend.ts`, 21 lines and one value, `'over'`. A declaration that
+- **`BlendMode`**, `declare/blend.ts`, 21 lines and one value, `'over'` — under `fixtures/` when
+  this was written, moved by step 2 because the reader imports it. A declaration that
   names a blend publishes the name.
 - **The two content unions**, `fixtures/shader-content.ts`, 256 lines. `TextureContent` is
   `'value-noise'` and `BufferContent` is `'copy-tints' | 'draw-list-models' | 'material-objects' |
@@ -408,6 +411,60 @@ green — verified, not assumed: the mutation was run and passed. That is the in
 spelling in one place leaves only the sets of names to disagree about, and it is the browser gates
 that hold the spelling by fetching what a description names. Also unchanged: `gate:browser` is the
 software renderer, and `gate:card` was not run for this step, which touches no backend.
+
+### Landed on 2026-09-11, step 2, and the destination the step assumed was refused by a rule
+
+**The move happened and the door did not change**, which is what the step asked to be shown. What it
+could not foresee is where: the step says "into the package" and the obvious home was `graph/`, and
+`graph/` refuses it. `tests/import-graph.test.ts` holds **§7 rule 1 — `graph/` imports nothing
+outside itself**, because importing nothing is what makes a graph serializable, comparable,
+snapshot-testable and sendable to a worker, which `cost()`, `validate()`, `refusal()` and item 34's
+golden snapshots all rest on. The reader imports `WGSL_DOCUMENT`, `uniformBindingOf`,
+`namesReachedBy` and `GEOMETRY_PRIMITIVE`, so it can never live there. The attempt was made and the
+rule caught it on the first `npm test`:
+
+```
+graph/declared-frame.ts imports shader-geometry.ts, which is outside graph/
+```
+
+**So the reader has a directory of its own**, which is the right answer rather than a consolation:
+it is the layer that reads a source and a declaration and produces a graph, and it sits above
+`graph/` in exactly the way `submit/` and `gpu/` do.
+
+| was, under `fixtures/` | is |
+| --- | --- |
+| shader-describe.ts | `declare/declared.ts`, 745 lines |
+| declared-frame.ts | `declare/declared-frame.ts`, 233 lines |
+| shader-blend.ts | `declare/blend.ts`, 21 lines |
+| wgsl-pipelines.ts | `wgsl-pipelines.ts`, 305 lines, beside the other `wgsl-*` readers |
+
+**shader-blend.ts moved too, which step 2's text does not list.** It is not a fourth decision — the
+reader imports `BLEND_MODE`, so leaving it behind would make a package module import `fixtures/`,
+which is the wrong direction and worse than the move. Step 3 still owns whether `BlendMode` reaches
+the door; this only changed where it lives.
+
+**Measured.**
+
+| | before | after |
+| --- | --- | --- |
+| run-time names on the door | 70 | 70 |
+| files reachable from `index.ts` | 35 | 35 |
+| `npm test` | 933 over 78 files | 933 over 78 files |
+| `npm run type-check` | clean | clean |
+| `npm run gate:pack` | 13 of 13 | 13 of 13 |
+| `npm run gate:browser` | 4 of 4 | 4 of 4 |
+
+Not one of the 35 files the door reaches is under `declare/` or is `wgsl-pipelines.ts`, which is the
+evidence that matters: the move moved and published nothing. The test count is identical either side
+because no test was added or deleted — every one of them was repointed at the new path and they all
+still pass, which is what says the reader behaves the same from its new home.
+
+**What the gates could not see, and it is a real cost.** `tsconfig.build.json` now compiles
+`declare/**` and `wgsl-pipelines.ts`, so the install carries **72,159 bytes it did not carry before,
+against a `dist` of 787,008 — about 9% — reachable from no door.** Nothing checks that, because the
+shipping list is the thing that decides what is published and this step added to it deliberately.
+Step 4 is what earns those bytes by putting the reader on the door; if this item closed here instead,
+they would have to come back out.
 
 ---
 

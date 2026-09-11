@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { declaredFrame, geometryFileName } from '../fixtures/shader-describe';
+import { declaredFrame, geometryFileName } from '../declare/declared.js';
 import { CAPABILITY_FIXTURES } from '../fixtures/capability-fixtures';
 import { generatedBytes, publishedFrame } from '../fixtures/shader-content';
-import type { DeclaredFrame } from '../fixtures/declared-frame';
+import type { DeclaredFrame } from '../declare/declared-frame.js';
 
 /**
  * What a declaration asks to be generated, and whether the bytes and the address

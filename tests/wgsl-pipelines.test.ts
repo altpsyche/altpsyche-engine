@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { storageBuffersOf, vertexInputsOf } from '../fixtures/wgsl-pipelines';
+import { storageBuffersOf, vertexInputsOf } from '../wgsl-pipelines.js';
 
 /**
  * What a vertex stage reads out of a buffer, read off the source so the build can

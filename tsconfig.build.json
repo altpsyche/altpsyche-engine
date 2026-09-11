@@ -26,6 +26,7 @@
   "include": [
     "index.ts",
     "graph/**/*.ts",
+    "declare/**/*.ts",
     "gpu/**/*.ts",
     "resource/**/*.ts",
     "pipeline/**/*.ts",
@@ -35,6 +36,7 @@
     "host/**/*.ts",
     "trace/**/*.ts",
     "shader-geometry.ts",
+    "wgsl-pipelines.ts",
     "wgsl-binding.ts",
     "wgsl-layout.ts",
     "wgsl-references.ts"
