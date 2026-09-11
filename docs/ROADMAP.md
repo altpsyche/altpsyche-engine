@@ -846,6 +846,36 @@ and would read the 11 a re-take gives it as a regression.
 re-take 11, 36 or 18 — the commit and `docs/DEVICES.md` are the only sources, and the step says so
 rather than implying a fresh reading.
 
+### Landed on 2026-09-11, with the re-measurement the entry above said it could not have
+
+**The sentence above was true when written and stopped being true the same day.** `gate:card` was
+re-taken with Siva present, and it reproduced the three numbers exactly: `core-scene` 11,
+`core-draw-list` 36, `core-material` 18 of 1,440,000, all at worst channel 1, over two runs. So the
+correction rests on a fresh measurement as well as on `git show 3324f56`, and the comment says so
+and points at [DEVICES.md](DEVICES.md) for the reading.
+
+**`gates/translate.mjs`'s licence paragraph now quotes the three numbers the landed change earned**,
+and says separately that removing the *readback flip* is the alternative that converged to a literal
+0 of 1,440,000, and that it was rejected anyway — handing rows back top-first is correct for every
+source language, `tests/renderer-webgl2.test.ts` pins it against a bottom-up driver frame, and
+removing it would have fixed translated shaders by breaking hand-authored GLSL.
+
+**Two things were added beyond the step's text, both because the re-take made them worth saying.**
+That worst channel 1 is two hardware compilers folding the same arithmetic apart rather than a
+residual mirror, so a reader does not go looking for one. And that a session seeing 11, 36 and 18 on
+a re-take has found nothing wrong — which is the exact harm the wrong number did, since it would
+have had an honest re-take read as a regression.
+
+**No other file attributed the zero to the strip**, checked by grepping every `.md`, `.mjs` and
+`.ts` in the tree for `0 of 1,440,000`. The other occurrences are this entry's own text,
+`docs/DEVICES.md`'s two *gradient* readings, and the new baseline line at the top of this file,
+which is also the gradient. `CHANGELOG.md:117` was already right: "the difference across the two
+backends fell from 344,146 channels to 11."
+
+**Measurements.** `npm test` at 880 over 75 files and `npm run type-check` clean, both unchanged —
+this edits one comment in a gate script and no test reads it. **The number that matters is the card's
+and it is above**, taken twice on `nvidia / blackwell` on 2026-09-11.
+
 ---
 
 ## Item 9 — does the library choose the backend, or does the caller? Three files state two answers and a reading now depends on which

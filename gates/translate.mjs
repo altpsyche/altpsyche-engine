@@ -206,12 +206,35 @@ const naga = (profile, name, input, output) => {
  * turns it twice — so a scene rendered on WebGL 2 came back mirrored top-to-bottom
  * against the same scene on WebGPU.
  *
- * **Measured on an RTX 5080 before and after.** With the negation: `core-scene`
- * differed from its WebGPU frame on 344,146 of 1,440,000 channels, worst channel
- * 244, with the hard-jump counts *matching* on both sides — the signature of a
- * mirror, since mirroring preserves adjacency. Without it: **0 of 1,440,000
- * channels differ**, on all three scene presets. That convergence is what licenses
- * this, and it is why the strip happens here rather than in `readPixels`: the
+ * **Measured on an RTX 5080 before and after (item 107, `git show 3324f56`).** With
+ * the negation: `core-scene` differed from its WebGPU frame on 344,146 of 1,440,000
+ * channels, worst channel 244, with the hard-jump counts *matching* on both sides —
+ * the signature of a mirror, since mirroring preserves adjacency. Without it, on the
+ * three scene presets:
+ *
+ *   core-scene       worst 1, 11 of 1,440,000 channels differ
+ *   core-draw-list   worst 1, 36 of 1,440,000 channels differ
+ *   core-material    worst 1, 18 of 1,440,000 channels differ
+ *
+ * **Re-measured on 2026-09-11 on the same card and reproduced exactly**, two runs,
+ * recorded in `docs/DEVICES.md`. So 11, 36 and 18 are what a re-take gives and a
+ * session seeing them has found nothing wrong.
+ *
+ * **Worst channel 1 is not a residual mirror**: it is two hardware compilers folding
+ * the same arithmetic apart, which is what this gate's tolerance exists for.
+ *
+ * **The zero this paragraph used to quote belongs to something else, and the
+ * correction is roadmap item 8.** Removing the *readback flip* instead of the Y
+ * negation was tried and it converged to a literal 0 of 1,440,000 — and it was
+ * rejected anyway. Handing rows back top-first is correct for every source language,
+ * `tests/renderer-webgl2.test.ts` pins it against a bottom-up driver frame, and
+ * removing it would have fixed translated shaders by breaking hand-authored GLSL.
+ * **So the zero was never this change's to claim**, and quoting it here made the
+ * licence read as a convergence the landed change never reached — which would have a
+ * session read an honest re-take of 11 as a regression.
+ *
+ * What licenses the strip is the fall from 344,146 to 11 and the reason above it,
+ * not a zero. And the strip happens here rather than in `readPixels` because the
  * readback flip is correct for every source language and is unit-tested as such.
  *
  * @param {string} glsl
