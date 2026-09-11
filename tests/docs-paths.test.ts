@@ -23,11 +23,13 @@ import path from 'node:path';
  * backticks are code, not paths — and the Mermaid fences are then read on their
  * own, so a node label is checked while a `ts` fence's example code is not.
  *
- * A short allowlist carries the paths that legitimately do not resolve — files a
- * later roadmap item will create, and the website paths [RoadToPureEngine.md]'s
- * debt table names precisely because they are gone. Each entry is asserted still
- * absent, so an allowlist row that a real file grows under is flagged for removal
- * rather than left hiding a fresh stale path behind it.
+ * A short allowlist carries the paths that legitimately do not resolve — a file a
+ * later roadmap item will create, or one a document names in order to say it is not
+ * here. It is empty today, because item 5 found all five of its rows dead. Two
+ * checks keep a row honest and both are at the bottom of this file: the path must
+ * still be absent, so a row a real file grows under is flagged for removal rather
+ * than left hiding a fresh stale path behind it; and some document other than the
+ * queue must still name it, so a row cannot outlive the sentence it was added for.
  */
 
 const repoRoot = path.join(import.meta.dirname, '..');
@@ -39,24 +41,34 @@ const endsInSourceExt = new RegExp(`\\.(${SOURCE_EXT.join('|')})$`);
 /**
  * Paths that do not resolve on purpose, each with why. A file a roadmap item is
  * yet to create, or a website path named here only to say it is absent.
+ *
+ * **It is empty, and item 5 emptied it.** It carried five rows and every one of them
+ * was dead: a file the walkthrough in `docs/EXAMPLES.md` used to tell a reader to
+ * create, before that walkthrough was rewritten to create a TypeScript one; a path
+ * credited to a roadmap item that belonged to the queue deleted at 0.3.0; and two
+ * website paths credited to a document deleted at the same time. Each row was
+ * asserted still absent and never asserted still cited, so each outlived the sentence
+ * that named it, and an escape hatch that only grows is the half of a gate that
+ * cannot fail.
+ *
+ * An empty list is not a target to be kept at zero. A row here is legitimate — a
+ * document may need to name a path that is deliberately not in this repository — and
+ * the two checks at the bottom of this file are what keep one honest: it must still
+ * be absent, and some document other than the queue must still name it.
  */
 /** The one document this gate does not read, and why is above where it is skipped:
  * a register of dated rows is a record rather than a signpost, so a path it names is
  * a claim about the past. */
 const EXCLUDED_HISTORY = 'JOURNAL.md';
 
-const ALLOWED_ABSENT: Record<string, string> = {
-  // A file in the *reader's* own project rather than in this repository.
-  // `docs/EXAMPLES.md` walks through building a page from nothing, so it names the
-  // files a reader creates. This gate exists to catch a reference to one of ours
-  // that has gone, which this is not — and it stays on the list rather than being
-  // un-backticked, so that a future stale `main.js` of ours is still caught.
-  'main.js': "a file the reader creates in docs/EXAMPLES.md's walkthrough, never one of ours",
-  'docs/TESTING.md': "the consuming site's file, cited by ROADMAP item 1's phone row",
-  'host/loop.ts': 'the host loop, a folder RoadToPureEngine §7 and ROADMAP item 39 will build',
-  'components/ui/WgslRefusal.tsx': 'a website path RoadToPureEngine §3 row 12 names as one that does not exist here',
-  'public/shaders/build/manifest.json': 'a website path RoadToPureEngine §3 row 12 names as one that does not exist here',
-};
+/** The one document that does not count as *citing* a path, though it is still read
+ * for stale ones like every other. `docs/ROADMAP.md` is a queue: an entry saying a
+ * path is dead names it in order to say so, and letting that count as a citation
+ * would let the allowlist-citation check below pass on the strength of the entry
+ * that filed the complaint (item 5). */
+const EXCLUDED_QUEUE = 'ROADMAP.md';
+
+const ALLOWED_ABSENT: Record<string, string> = {};
 
 /** Every file in the repository, minus the trees nothing here would cite. */
 function repoFiles(): { rel: Set<string>; base: Set<string> } {
@@ -290,5 +302,52 @@ it('points every section link at a heading that is there', () => {
       nowPresent,
       `these allowlist entries now resolve to a file and should be removed:\n${nowPresent.join('\n')}`,
     ).toEqual([]);
+  });
+
+  /**
+   * The other half of keeping it honest, and the half that was missing (item 5).
+   *
+   * A row was asserted still *absent* and never asserted still *cited*, so a row
+   * outlived the sentence that named it — indefinitely, because the list is this
+   * gate's only escape hatch, it grows by one whenever a document needs it, and
+   * nothing ever shrank it. All five rows it carried had fallen through that hole:
+   * the walkthrough they credited had been rewritten, the roadmap item they cited
+   * belonged to a queue deleted at 0.3.0, and two of them credited a document deleted
+   * at the same time. Five dead rows is five paths that could have gone stale for real
+   * without this gate saying a word.
+   *
+   * **The queue does not count as a citation**, for the reason JOURNAL.md is skipped
+   * above: a document recording that a path is dead is not one teaching a reader where
+   * it lives, and counting it would let this check pass on the strength of the entry
+   * that filed the complaint. It is excluded here alone — the roadmap is still walked
+   * for stale paths like every other document, which is the whole of why item 5's own
+   * entry names those five paths without backticks.
+   */
+  it('keeps the allowlist honest the other way: every named absence is still cited', () => {
+    const cited = new Set(
+      pathRefs()
+        .filter((one) => one.doc !== EXCLUDED_QUEUE)
+        .map((one) => bare(one.ref))
+    );
+    const uncited = Object.keys(ALLOWED_ABSENT).filter((p) => !cited.has(p));
+    expect(
+      uncited,
+      `these allowlist entries are cited by no document this gate reads, so nothing needs them:\n${uncited.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('goes red for an allowlist row nothing cites, so the check above is not vacuous', () => {
+    // The negative half, and the one the `Done when` asks for by name: a row added to
+    // the list with no document naming it must be caught. Built over the same refs the
+    // check above reads rather than by editing the list, so this stays true of the
+    // real list rather than of a copy of it.
+    const cited = new Set(
+      pathRefs()
+        .filter((one) => one.doc !== EXCLUDED_QUEUE)
+        .map((one) => bare(one.ref))
+    );
+    expect(cited.has('lib/gone/never-cited.ts')).toBe(false);
+    // And a path a document really does name is found, so the set is not simply empty.
+    expect(cited.has('gpu/webgpu.ts')).toBe(true);
   });
 });

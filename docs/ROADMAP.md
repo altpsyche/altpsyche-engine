@@ -984,17 +984,23 @@ hiding a fresh stale path behind it."
 **The other half is unguarded, and every row has now fallen through it.** A row is asserted absent
 and never asserted *cited*, so a row survives after the sentence that named it is deleted. Of the
 five rows at `tests/docs-paths.test.ts:56-60`, **no scanned document cites any of them**, checked by
-grepping every markdown file the gate reads:
+grepping every markdown file the gate reads.
 
-- `main.js` — the row says it is "a file the reader creates in `docs/EXAMPLES.md`'s walkthrough".
+**The five are written below without backticks, deliberately.** This entry names them in order to say
+they are dead, and a backtick is how this repository's documents name a file a reader should go and
+look at. `tests/docs-paths.test.ts` reads a backticked path as a reference and would flag all five
+the moment the allowlist stopped carrying them — which is exactly what it did when step 1 emptied the
+list. A queue recording a death is not a signpost.
+
+- main.js — the row says it is "a file the reader creates in `docs/EXAMPLES.md`'s walkthrough".
   That walkthrough now writes `main.ts`, at `docs/EXAMPLES.md:14`, `:58` and `:63`.
-- `docs/TESTING.md` — the row says it is "cited by ROADMAP item 1's phone row". This file's item 1 is
+- docs/TESTING.md — the row says it is "cited by ROADMAP item 1's phone row". This file's item 1 is
   the frame declaration reader and has no phone row; the words "phone" and "mobile" do not appear in
   it.
-- `host/loop.ts` — the row credits "RoadToPureEngine §7 and ROADMAP item 39". Neither reference
+- host/loop.ts — the row credits "RoadToPureEngine §7 and ROADMAP item 39". Neither reference
   resolves: the first document was deleted at 0.3.0, and the item number belongs to the queue that
   was deleted with it rather than to this file, whose items run 1 to 18.
-- `components/ui/WgslRefusal.tsx` and `public/shaders/build/manifest.json` — both rows say they are
+- components/ui/WgslRefusal.tsx and public/shaders/build/manifest.json — both rows say they are
   website paths "RoadToPureEngine §3 row 12 names", and that document was deleted at 0.3.0.
 
 **Why it stands on this package's own merits.** A gate that cannot fail for the thing it exists to
@@ -1005,7 +1011,8 @@ saying so.
 
 ### Steps
 
-1. **Assert every allowlist row is still cited by a document the gate reads**, beside the assertion
+1. **Landed on 2026-09-11, together with step 2** — see below for why they could not be separated.
+   Assert every allowlist row is still cited by a document the gate reads, beside the assertion
    that it is still absent, so a row outlives its sentence by one commit rather than indefinitely.
    **The measurement**: the new assertion red on all five rows as they stand, and the count of rows
    after.
@@ -1016,8 +1023,9 @@ saying so.
    dead is not a document teaching a reader where it lives, which is the same reason
    `tests/docs-paths.test.ts:46` already excludes the deleted register — or the rows have to be named
    here without backticks. Whichever, the step's first act is to make the check red.
-2. **Delete the five rows and whatever of them the assertion still wants**, with `main.js` either
-   removed or corrected to `main.ts` on the reading that `docs/EXAMPLES.md` no longer names it.
+2. **Landed on 2026-09-11 in the same commit as step 1.** Delete the five rows and whatever of them
+   the assertion still wants, with main.js either removed or corrected to `main.ts` on the reading
+   that `docs/EXAMPLES.md` no longer names it.
    **The measurement**: `npm test` at its new count with `tests/docs-paths.test.ts` green, and the
    allowlist's length before and after.
 
@@ -1027,6 +1035,54 @@ saying so.
   watching it go red.
 - `ALLOWED_ABSENT` holds only rows a scanned document still names.
 - `npm test` and `npm run type-check` are green.
+
+### Landed on 2026-09-11, both steps in one commit, and the wrinkle this entry predicted came true
+
+**The two steps could not be separated, and that is a correction to the plan rather than a shortcut.**
+Step 1 adds an assertion that goes red on all five rows; step 2 deletes them. Landing step 1 alone
+would put a red `npm test` in the history, which `CLAUDE.md` forbids at every step. So they are one
+commit, and the measurement each step named is taken and recorded here separately.
+
+**Step 1's measurement, the assertion red on all five as they stood**, naming each:
+
+```
+these allowlist entries are cited by no document this gate reads, so nothing needs them:
+main.js
+docs/TESTING.md
+host/loop.ts
+components/ui/WgslRefusal.tsx
+public/shaders/build/manifest.json
+```
+
+**Step 2's measurement: `ALLOWED_ABSENT` went from five rows to none**, and `npm test` from 923 to
+**925** passing — the two new tests being the citation check and its negative half. `type-check`
+green. No gate that draws was run and none was needed.
+
+**The `Done when`'s first line, proved by doing it.** A row nothing cites — lib/gone/vanished.ts,
+written bare here for the reason the five above are — added to the list, and the gate goes red
+naming it:
+
+```
+FAIL tests/docs-paths.test.ts > keeps the allowlist honest the other way: every named absence is still cited
+these allowlist entries are cited by no document this gate reads, so nothing needs them:
+lib/gone/vanished.ts
+```
+
+**The wrinkle this entry predicted happened exactly.** Emptying the list turned this file's own five
+backticked paths into five stale references and the path check went red on `ROADMAP.md` itself, five
+rows, no other document. They are written without backticks now, with a sentence above them saying
+why: a backtick is how this repository names a file a reader should go and look at, and a queue
+recording a death is not a signpost. The citation check excludes this file for the same reason, and
+only from *citing* — the roadmap is still walked for stale paths like every other document.
+
+**An empty allowlist is not a target.** A row is legitimate where a document must name a path
+deliberately not in this repository; what was missing was the second check, and both are now at the
+bottom of the file: still absent, and still cited by something other than the queue.
+
+**What this could not check.** The citation check reads the paths this gate already extracts, so a
+document naming a path in a shape the extractor does not read — inside a fenced code block, say —
+counts as not citing it. That is the same blind spot the path check has always had and this does not
+widen it, but a future row justified by a citation in a fence would read as dead.
 
 ---
 
