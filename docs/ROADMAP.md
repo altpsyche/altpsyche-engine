@@ -2837,14 +2837,42 @@ picture whose geometry moves, which is a different claim from the one that comme
    sixty frames, taken by `npm test` on this machine, **with the wall-clock cost of a recompile named
    as unmeasured and needing a card.** If the compile count is already one, the item closes here as
    refused with that count recorded.
-2. **Decide what the key carries for a resource whose bytes change per frame, and write the decision,
-   its reversal and its trigger at `frameKey`.** The candidates: a resource's `source` where it has
-   one and its bytes only where it does not; a content identity the frame carries rather than the
-   bytes; or the resident slice leaving the key entirely, which is what `frameKey`'s own comment
-   already says items 13 and 15 would have done. **Whatever lands has to answer the header's own
-   claim** — that a false *hit* is what `frameKey` exists to make impossible — by saying why two
-   frames sharing a key are the same program. **The measurement**: step 1's three counts re-taken
-   after.
+2. **Rewritten on 2026-09-11 after step 1, and the fork is wider than this step had it. It is a
+   call for Siva and a session should not take it.** Decide what the key carries for a resource
+   whose bytes change per frame, and write the decision, its reversal and its trigger at `frameKey`.
+   **The measurement**: step 1's counts re-taken after —
+   `tests/program-cache-moving-geometry.test.ts` is written to go red on all three.
+
+   **Why the fork is architectural rather than a choice of key.** The bytes are in the key *because
+   the program owns the upload*: `gpu/webgpu.ts:673-676` writes `resource.data` inside
+   `program(frame)`, and its own comment says "a page changes a buffer by re-submitting the graph
+   rather than mutating a held program". So a frame with different bytes genuinely is a different
+   program *as programs are defined today*, and the key is not wrong — the definition is what costs.
+   The two real answers are therefore:
+
+   - **(i) The program keeps the upload, and the key carries a cheap identity for the bytes**
+     instead of the bytes. Small, local to `frameKey`, and it does not touch either backend — but it
+     still recompiles every frame for a moving figure, because a different identity is still a
+     different program. **It fixes the 31,335-character serialisation and not the sixty compiles.**
+   - **(ii) The upload moves out of program-build**, so a byte change is a buffer write rather than
+     a new program, and the geometry leaves the key because it is no longer something a program
+     bakes in. **This is the one that fixes the compiles**, and it changes what a program owns, in
+     both backends, against the three lifetimes in `docs/ARCHITECTURE.md`.
+
+   **The candidate this step used to name first is now known not to cover the case.** "A resource's
+   `source` where it has one and its bytes only where it does not" — `source` is a *build-time
+   address*, written by `fixtures/shader-content.ts:318,329` as a filename and resolved to baked
+   bytes. **A figure whose geometry is computed per frame has no address**, so that candidate fixes
+   the baked case and does nothing for the measured one.
+
+   **A numbering collision to know about before reading `frameKey`'s header.** It says "when items 13
+   and 15 move resource and pipeline ownership out of `createProgram` … this composite key goes with
+   them". Those are the *old queue's* items 13 and 15, deleted at 0.3.0. This file's items 13 and 15
+   are the `createFrameRenderer` throw and the `probe()` canvases and have nothing to do with it.
+   Whatever lands at step 2 should reword that sentence so the next reader does not chase it.
+
+   **Whatever lands has to answer the header's own claim** — that a false *hit* is what `frameKey`
+   exists to make impossible — by saying why two frames sharing a key are the same program.
 3. **A test per field `frameKey` reads, so two frames differing in any one of them still get two
    programs.** This is the check that the fix did not buy its hits by losing the distinction the key
    exists for, and `CONTRIBUTING.md`'s rule applies: a test rewritten alongside the code it checks
