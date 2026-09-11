@@ -485,15 +485,127 @@ export type DrawSpec =
  * three operations and two masks for each face of a triangle. Nothing on the card
  * checks that a combination of those means anything, so a name is what can be
  * held to meaning something: `mark` leaves the reference behind everywhere it
- * draws, and `inside` draws only where the reference is already there and leaves
- * the mask as it found it.
+ * draws, `inside` draws only where the reference is already there and leaves the
+ * mask as it found it, `count` adds one for every front face and takes one back
+ * for every back face, and `nonzero` draws where that count did not come back to
+ * zero.
  *
- * The reference value belongs to the modes rather than being declared beside
- * them, so nothing can carry a number that disagrees with the mode it sits next
- * to, and a mask has no front and back a picture could tell apart, so both faces
- * are given the same operations.
+ * `mark` and `inside` are a boolean mask and the pair `count` and `nonzero` are a
+ * counter, which is the distinction `GPUDepthStencilState` carries
+ * `stencilFront` and `stencilBack` separately in order to express: the only way
+ * the specification offers to tell a front-facing fragment from a back-facing one
+ * is to give the two faces different operations. A filled path with a hole, or one
+ * that crosses itself, has its interior decided by a winding number, and a winding
+ * number is counted by letting the faces of the path's triangles cancel. A
+ * renderer built to the core specification either expresses that or does not claim
+ * it.
+ *
+ * What each mode is, in the specification's own fields, is `STENCIL_STATES` below.
  */
-export type StencilMode = 'mark' | 'inside';
+export type StencilMode = 'mark' | 'inside' | 'count' | 'nonzero';
+
+/** Every bit of the mask, which is what a comparison reads and what marking and
+ * counting write. A mask of several layers would need its own bits and its own
+ * reference, and nothing here draws one. */
+const STENCIL_BITS = 0xff;
+
+/**
+ * What each `StencilMode` is, in the fields `GPUDepthStencilState` names.
+ *
+ * **One table rather than one per backend, decided on 2026-09-11 by item 2's
+ * first step.** The audit that opened the question found the meaning of a mode
+ * written once in each backend — a `GPUStencilFaceState` pair in `gpu/webgpu.ts`
+ * and a `stencilOp` triple in `gpu/webgl2.ts` — each with a comment asserting the
+ * other agreed with it, and the assertion was false: the reference was declared
+ * three times with two values, `0xff` in both backends' tables and `1` in
+ * `submit/execute.ts`, so WebGPU wrote and compared `1` where WebGL 2 wrote and
+ * compared `0xff`. Each backend was self-consistent, so both drew the same picture
+ * and no gate could see it.
+ *
+ * Two tables for two APIs was the defensible reading while a mode's meaning was
+ * only a comparison and an operation, because a `GPUStencilFaceState` and a
+ * `stencilOp` triple are not the same values. The counting pair ends that: the
+ * reference is now part of what a mode *means* — `nonzero` compares against zero
+ * and `inside` against every bit — so a number shared between two tables by
+ * assertion cannot hold, and the two faces differ, which doubles what each table
+ * would have to keep in step. A gate holding two tables to one another would prove
+ * only what it thought to check; one table cannot disagree with itself.
+ *
+ * The vocabulary is the specification's because this file already speaks it —
+ * `depth.compare` is a `GPUCompareFunction` and `depth.format` a
+ * `GPUTextureFormat`. The WebGPU backend spends these fields as they stand and the
+ * WebGL 2 backend translates each name to the card's own enum, which is the
+ * direction every other name in this file already travels.
+ *
+ * **To reverse it**, move each mode's row back into the backend that spends it and
+ * give the reference a gate holding the two to one another. **What would change the
+ * answer** is a third backend whose stencil stage is not shaped like this pair's —
+ * a face state, a reference and two masks — at which point the neutral row is a
+ * translation layer rather than the thing itself.
+ */
+export const STENCIL_STATES: Record<
+  StencilMode,
+  {
+    /** What a front-facing fragment does to the mask. */
+    front: GPUStencilFaceState;
+    /** What a back-facing fragment does, which is the same as the front for the
+     * mask modes and the opposite direction for `count`. */
+    back: GPUStencilFaceState;
+    /** The value a comparison reads against and `replace` leaves behind. It
+     * belongs to the mode rather than being declared beside it, so nothing can
+     * carry a number that disagrees with the mode it sits next to. */
+    reference: number;
+    /** The bits a comparison reads, of the mask and of the reference alike. */
+    readMask: number;
+    /** The bits a pass may write, which is none for a mode that only tests: a
+     * pass drawn inside the mask leaves it exactly as it found it, so a third
+     * pass could be cut by the same shape. */
+    writeMask: number;
+  }
+> = {
+  // Replaces the reference everywhere it draws, which is what leaves a boolean
+  // mask behind. Both faces alike: a mask has no front and back a picture could
+  // tell apart.
+  mark: {
+    front: { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'replace' },
+    back: { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'replace' },
+    reference: STENCIL_BITS,
+    readMask: STENCIL_BITS,
+    writeMask: STENCIL_BITS,
+  },
+  // Draws only where the mark is already, and writes nothing.
+  inside: {
+    front: { compare: 'equal', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' },
+    back: { compare: 'equal', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' },
+    reference: STENCIL_BITS,
+    readMask: STENCIL_BITS,
+    writeMask: 0,
+  },
+  // The winding number itself: one on for every front face, one off for every
+  // back face, so the two cancel where a path doubles back over itself. Both wrap
+  // rather than clamp, because a clamp at zero would lose a back face arriving
+  // before the front face it cancels and the order faces arrive in is not the
+  // order they were wound. The comparison is `always` because a counting pass
+  // counts every fragment it reaches rather than testing one.
+  count: {
+    front: { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'increment-wrap' },
+    back: { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'decrement-wrap' },
+    reference: 0,
+    readMask: STENCIL_BITS,
+    writeMask: STENCIL_BITS,
+  },
+  // Where the count did not come back to zero, which is the interior of a wound
+  // path. The reference is zero and the comparison is `not-equal`, so what is
+  // tested is the counter against nothing rather than against a mark — which is
+  // why the reference belongs to the mode and not to the file.
+  nonzero: {
+    front: { compare: 'not-equal', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' },
+    back: { compare: 'not-equal', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' },
+    reference: 0,
+    readMask: STENCIL_BITS,
+    writeMask: 0,
+  },
+};
 
 /** One run of work inside a frame, drawing into the frame's own colour target. */
 export interface RenderPassSpec {

@@ -364,16 +364,27 @@ it.**
 
 ### Steps
 
-1. `StencilMode` grows the counting pair, as `'count'` and `'nonzero'` beside `'mark'` and
-   `'inside'`, with `count` incrementing on front faces and decrementing on back faces, both
-   wrapping, and `nonzero` covering where the counter is not zero. **Measures:** the two backends
-   agreeing on a fixture that a mask cannot draw, to the single channel the corpus already holds them
-   to.
+1. **Landed on 2026-09-11**, reading below. `StencilMode` grows the counting pair, as `'count'` and
+   `'nonzero'` beside `'mark'` and `'inside'`, with `count` incrementing on front faces and
+   decrementing on back faces, both wrapping, and `nonzero` covering where the counter is not zero.
+   **Measures:** the two backends agreeing on a fixture that a mask cannot draw, to the single
+   channel the corpus already holds them to.
 2. A fixture that separates them: a path wound so that a mask fills a hole a counter leaves empty.
-   **Measures:** the two pictures differing by a named number of pixels under `mark`, and by none
-   under `count`.
+   `core-count` is that path already — step 1 landed it — so what is left is drawing it a second
+   time under `mark` and `inside` and recording the difference. **Measures:** the two pictures
+   differing by a named number of pixels under `mark`, and by none under `count`.
 3. `refusal` answers for a device that cannot do per-face stencil, if any reachable one cannot.
    **Measures:** the capability read off both backends on the machines the gates run.
+4. **`core-stencil` gets a vertex stage for its filling pass, so the mask modes can be compared
+   across the two backends at all.** Found by step 1 and not part of it. That pipeline names no
+   vertex stage, so it bakes no GLSL vertex and `gates/corpus.mjs` skips the whole preset on WebGL 2
+   — which is half of why the two backends could disagree about the stencil reference unseen: there
+   was no comparison to see it in. `core-count` was written with a vertex stage on both pipelines for
+   that reason, and the same change to `core-stencil` puts it on `gates/card.mjs`'s cross-backend
+   list beside it. `core-texture`, `core-target` and `core-mips` are skipped there for the same cause
+   and are not this item's, but the count is worth knowing: four of the ten WebGL 2 skips are this
+   one shape. **Measures:** the WebGL 2 skip count falling by one, and `core-stencil`'s two backends
+   compared channel for channel.
 
 ### Done when
 
@@ -386,7 +397,11 @@ it.**
 
 **What would change the answer.** If WebGL 2 cannot reach `glStencilOpSeparate` through the path this
 package builds pipelines on, the counting modes are a WebGPU capability and `refusal` names them,
-which is the arrangement this package already uses everywhere the two backends differ.
+which is the arrangement this package already uses everywhere the two backends differ. **It can, and
+step 1 measured it**: `stencilOpSeparate`, `stencilFuncSeparate`, `INCR_WRAP` and `DECR_WRAP` are core
+WebGL 2, the backend now spends all four, and the two backends agree on `core-count` to zero channels
+of 1,440,000 on a real card. So the counting modes are not a capability and step 3 has nothing to
+refuse unless a reachable device turns one up.
 
 **Two things landed on this item on 2026-09-11 without changing what it is for.** **First, reading 6
 of the campaign above puts a constraint on step 1**: depth is in the frame description already, so a
@@ -396,6 +411,57 @@ question below about whether the stencil table becomes data or stays two tables 
 answer**, which that section already says and which is repeated here because step 1 is where it
 binds. Neither changes the argument, which is the specification's: `GPUDepthStencilState` carries
 `stencilFront` and `stencilBack` separately because the two differ.
+
+### Landed on 2026-09-11, step 1, with the reading and the blind spot it could not close
+
+**`StencilMode` is `'mark' | 'inside' | 'count' | 'nonzero'`**, the counting pair moves the two faces
+in opposite directions, and both backends read one table for what a mode means.
+
+**The card gate on nvidia / blackwell, the only gate that reads a real driver:**
+
+```
+core-count on both backends  hard jumps 2102 against 2102, worst 0,
+                             0 of 1,440,000 channels differ
+```
+
+A literal zero, channel for channel, which is better than the three scene presets at 11, 36 and 18 —
+they differ because two hardware compilers fold a projection apart and `core-count` has no
+projection, deliberately, for the reason `core-blend` has none. The card drew the whole corpus, 20 of
+20 presets, and the four browser gates are green with 18 of 18 presets agreeing call for call in the
+trace contract.
+
+**What the reading was, before the work.** The reading in the question below said the *width* was
+shared between two tables by assertion. The tree was worse than that: the reference was declared
+three times with two values — `STENCIL_BITS = 0xff` in `gpu/webgpu.ts`, `STENCIL_REF = 0xff` in
+`gpu/webgl2.ts` and `STENCIL_REFERENCE = 1` in `submit/execute.ts` — so **WebGPU wrote and compared
+`1` where WebGL 2 wrote and compared `0xff`**. Each backend was self-consistent, so both drew the
+same picture and there was nothing wrong to look at. What let it live is that no stencil preset was
+on `gates/card.mjs`'s cross-backend list, and `core-stencil` cannot be: it is skipped on WebGL 2. It
+is now one number in the one table, read by both backends and by the executor.
+
+**The blind spot, measured rather than asserted.** A cross-backend comparison proves agreement and
+not correctness: two backends collapsing the two faces the same way agree perfectly and are both
+wrong. With `count`'s back face changed to increment — the collapse the mask modes are — the card
+gate stays **green** and the channel difference stays at **0 of 1,440,000**, and only the preset's own
+edge count moves, from 2102 to **2700**, as the hole fills in. What does catch it is `npm test`, by
+name and in both backends: *counts by moving the two faces in opposite directions* and *counts with
+the front face adding and the back face taking away* both go red. So the description is gated and the
+**picture is not**, until step 2 draws the same path under `mark` and records the difference. That is
+what step 2 is for and it is the reason it is a step rather than a nicety.
+
+**What the gates could not see, beyond that.** `gate:browser` is a software renderer throughout.
+`gate:card` is one machine, one driver, one vendor. And `core-count` is drawn at one moment of its own
+clock, so a backend applying a counting mode to the first frame alone would pass every gate here —
+which is why the hole breathes rather than sitting still, and why that is written at the constant.
+
+**Found on the way and not part of this step**, now step 4: `core-stencil`'s filling pipeline names no
+vertex stage, so it bakes no GLSL vertex and the whole preset is skipped on WebGL 2. `core-count` was
+written with a vertex stage on both pipelines for exactly that reason — a preset skipped on one
+backend compares nothing, which is the trap `core-blend` was written to avoid.
+
+**Also moved:** `trace/trace.ts` recorded `stencilFront` alone and called it `stencil`, which was the
+whole story while every mode gave both faces one object. It now records both faces and the read mask,
+because a recorder reading one face cannot see a backend that collapsed them.
 
 ---
 
@@ -1930,6 +1996,28 @@ translates, or do the two tables stay and gain a gate that holds them to one ano
 
 **Done when** item 2's step 1 names which, with the reason at the point of the decision, and the
 reference width has one home.
+
+### Answered on 2026-09-11 by item 2's step 1: the meaning is data in `graph/`
+
+**One table, `STENCIL_STATES` in `graph/types.ts`**, carrying each mode's two face states, its
+reference and its masks in the fields `GPUDepthStencilState` names. The WebGPU backend spends them as
+they stand and the WebGL 2 backend translates each name to the card's own enum, which is the direction
+every other name in that file already travels — `depth.compare` is a `GPUCompareFunction` and
+`depth.format` a `GPUTextureFormat`, so the neutral vocabulary here *is* the specification's.
+
+**Why not two tables and a gate.** Two tables was the defensible reading while a mode's meaning was
+only a comparison and an operation. The counting pair ends it on two counts. The reference is now part
+of what a mode *means* — `nonzero` compares against zero and `inside` against every bit — so a number
+shared by assertion cannot hold; and the two faces differ, which doubles what each table would have to
+keep in step. A gate holding two tables to one another proves only what it thought to check, and one
+table cannot disagree with itself.
+
+**The reading was worse than the question said.** It named the width; the tree had the reference
+declared three times with two values and the two backends disagreeing about it unseen. The landed
+entry above carries that. **To reverse it**, move each mode's row back into the backend that spends it
+and give the reference a gate. **What would change the answer** is a third backend whose stencil stage
+is not shaped like this pair's, at which point the neutral row is a translation layer rather than the
+thing itself.
 
 ---
 

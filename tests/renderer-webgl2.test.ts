@@ -1566,6 +1566,17 @@ function stencilFrame(): FrameGraph {
   };
 }
 
+/** The same frame under the counting pair, which is how `stencilOpSeparate` is
+ * read off the two passes the mask pair already uses (item 2). */
+function countingFrame(): FrameGraph {
+  const frame = stencilFrame();
+  const pipelines = (frame.pipelines as RenderPipelineSpec[]).map((spec, at) => ({
+    ...spec,
+    depth: { format: 'stencil8' as const, stencil: at === 0 ? ('count' as const) : ('nonzero' as const) },
+  }));
+  return { ...frame, pipelines };
+}
+
 describe('a pass that tests depth (item 48)', () => {
   const DEPTH_COMPONENT24 = 0x81a6;
   const DEPTH_ATTACHMENT = 0x8d00;
@@ -1648,6 +1659,11 @@ describe('a pass that masks with a stencil (item 48)', () => {
   const EQUAL = 0x0202;
   const KEEP = 0x1e00;
   const REPLACE = 0x1e01;
+  const FRONT = 0x0404;
+  const BACK = 0x0405;
+  const NOTEQUAL = 0x0205;
+  const INCR_WRAP = 0x8507;
+  const DECR_WRAP = 0x8508;
 
   it('no longer refuses a stencil now that it keeps one', () => {
     const { backend } = backendOver();
@@ -1672,15 +1688,46 @@ describe('a pass that masks with a stencil (item 48)', () => {
     // The mark pass replaces the reference everywhere it draws (compare always, the
     // whole mask writable); the fill pass draws only where the reference already is
     // and keeps the mask as it found it (compare equal, nothing writable). These are
-    // the two modes' `stencilFunc`/`stencilOp`/`stencilMask` in the card's own fields.
-    const funcs = gl.of('stencilFunc');
-    expect(funcs).toContainEqual(expect.objectContaining({ func: ALWAYS, ref: 0xff, mask: 0xff }));
-    expect(funcs).toContainEqual(expect.objectContaining({ func: EQUAL, ref: 0xff, mask: 0xff }));
-    expect(gl.of('stencilOp')).toContainEqual(expect.objectContaining({ fail: KEEP, zfail: KEEP, zpass: REPLACE }));
-    expect(gl.of('stencilOp')).toContainEqual(expect.objectContaining({ fail: KEEP, zfail: KEEP, zpass: KEEP }));
+    // the two modes' `stencilFuncSeparate`/`stencilOpSeparate`/`stencilMask` in the
+    // card's own fields — per face since item 2, because the counting modes give the
+    // front and the back opposite operations and the single-face calls cannot.
+    const funcs = gl.of('stencilFuncSeparate');
+    expect(funcs).toContainEqual(expect.objectContaining({ face: FRONT, func: ALWAYS, ref: 0xff, mask: 0xff }));
+    expect(funcs).toContainEqual(expect.objectContaining({ face: BACK, func: ALWAYS, ref: 0xff, mask: 0xff }));
+    expect(funcs).toContainEqual(expect.objectContaining({ face: FRONT, func: EQUAL, ref: 0xff, mask: 0xff }));
+    expect(funcs).toContainEqual(expect.objectContaining({ face: BACK, func: EQUAL, ref: 0xff, mask: 0xff }));
+    const ops = gl.of('stencilOpSeparate');
+    expect(ops).toContainEqual(expect.objectContaining({ face: FRONT, fail: KEEP, zfail: KEEP, zpass: REPLACE }));
+    expect(ops).toContainEqual(expect.objectContaining({ face: BACK, fail: KEEP, zfail: KEEP, zpass: REPLACE }));
+    expect(ops).toContainEqual(expect.objectContaining({ face: FRONT, fail: KEEP, zfail: KEEP, zpass: KEEP }));
     const writeMasks = gl.of('stencilMask').map((entry) => entry.mask);
     expect(writeMasks).toContain(0xff);
     expect(writeMasks).toContain(0);
+  });
+
+  it('counts with the front face adding and the back face taking away (item 2)', () => {
+    const { gl, backend } = backendOver();
+    backend.program(countingFrame()).draw();
+
+    // The separate calls are the whole reason this backend can express a counting
+    // mode at all: `stencilOp` sets both faces at once, so a counter written
+    // through it moves the same way for a front face and a back face and never
+    // cancels. `INCR_WRAP` and `DECR_WRAP` are core WebGL 2, which is why the
+    // counting modes are not a WebGPU-only capability.
+    const ops = gl.of('stencilOpSeparate');
+    expect(ops).toContainEqual(expect.objectContaining({ face: FRONT, zpass: INCR_WRAP }));
+    expect(ops).toContainEqual(expect.objectContaining({ face: BACK, zpass: DECR_WRAP }));
+  });
+
+  it('tests the counter against zero, not against every bit', () => {
+    const { gl, backend } = backendOver();
+    backend.program(countingFrame()).draw();
+
+    // A reference of `0xff` here would draw where the counter happened to reach
+    // 255 and nowhere else, which is why the reference travels with the mode.
+    const funcs = gl.of('stencilFuncSeparate');
+    expect(funcs).toContainEqual(expect.objectContaining({ face: FRONT, func: NOTEQUAL, ref: 0, mask: 0xff }));
+    expect(funcs).toContainEqual(expect.objectContaining({ face: BACK, func: NOTEQUAL, ref: 0, mask: 0xff }));
   });
 
   it('empties the mask where the marking pass clears it', () => {

@@ -32,6 +32,7 @@ import type {
   VertexResource,
 } from '../graph/types.js';
 import {
+  STENCIL_STATES,
   groupsIndirectly,
   drawsCorners,
   drawsIndirectly,
@@ -117,26 +118,6 @@ const ROW_ALIGNMENT = 256;
 /** A uniform block is written in whole 16 byte lumps whatever its members
  * measure, so the buffer is rounded up to one. */
 const BLOCK_ALIGNMENT = 16;
-
-/** Every bit of the mask, which is what both modes read and what marking writes.
- * A mask of several layers would need its own bits and its own reference, and
- * nothing here draws one. */
-const STENCIL_BITS = 0xff;
-
-/** What each mode does to the mask, in the card's own fields. Both faces of a
- * triangle get the same operations, since a mask has no front and back a picture
- * could tell apart, and only marking writes: a pass drawn inside the mask leaves
- * it exactly as it found it, so a third pass could be cut by the same shape. */
-const STENCIL_MODES: Record<StencilMode, { face: GPUStencilFaceState; writes: number }> = {
-  mark: {
-    face: { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'replace' },
-    writes: STENCIL_BITS,
-  },
-  inside: {
-    face: { compare: 'equal', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' },
-    writes: 0,
-  },
-};
 
 /** The optional part of the API a timed pass needs. A device without it draws the
  * pass and leaves its buffer alone, since a picture that arrives untimed is still
@@ -1112,7 +1093,10 @@ export function createWebGPUBackend(
                 // resolved from the pipeline once here rather than found again in
                 // the loop (item 27). Absent where the pipeline binds no slice.
                 perDrawBand: render ? perDrawBinding(spec)?.group : undefined,
-                stencil: isRenderPass(pass) && spec.kind === 'render' && spec.depth?.stencil !== undefined,
+                // Which mode the pass draws under, not merely whether it draws
+                // under one: the reference belongs to the mode (item 2), so the
+                // executor needs the name to know what to set.
+                stencil: isRenderPass(pass) && spec.kind === 'render' ? spec.depth?.stencil : undefined,
               };
             });
             // Fold the consecutive passes a group names into one render pass. The
@@ -1591,12 +1575,17 @@ function buildPipelines(
                   ...(spec.depth.compare !== undefined
                     ? { depthCompare: spec.depth.compare, depthWriteEnabled: spec.depth.write ?? false }
                     : {}),
+                  // The stencil half, read off the one table in `graph/types.ts`
+                  // that says what a mode means (item 2). The two faces are
+                  // spent separately because the specification carries them
+                  // separately: `count` gives them opposite operations, which is
+                  // the whole of how a winding number is counted.
                   ...(spec.depth.stencil
                     ? {
-                        stencilFront: STENCIL_MODES[spec.depth.stencil].face,
-                        stencilBack: STENCIL_MODES[spec.depth.stencil].face,
-                        stencilReadMask: STENCIL_BITS,
-                        stencilWriteMask: STENCIL_MODES[spec.depth.stencil].writes,
+                        stencilFront: STENCIL_STATES[spec.depth.stencil].front,
+                        stencilBack: STENCIL_STATES[spec.depth.stencil].back,
+                        stencilReadMask: STENCIL_STATES[spec.depth.stencil].readMask,
+                        stencilWriteMask: STENCIL_STATES[spec.depth.stencil].writeMask,
                       }
                     : {}),
                 },

@@ -234,6 +234,23 @@ const EXPECTED: Record<string, FrameCost> = {
     // 800*600*4 + 800*600*1.
     transientBytes: 2400000,
   },
+  'core-count': {
+    passes: 2,
+    draws: 2,
+    dispatches: 0,
+    pipelineSwitches: 2,
+    bindSwitches: 1,
+    // Second pass loads picture and the counter: two.
+    attachmentLoads: 2,
+    // First pass stores picture and mask for the second; second stores the
+    // presented picture. mask discards after the second: 2 + 1 = 3.
+    attachmentStores: 3,
+    // picture (frame-sized rgba8) + mask (frame-sized stencil8, one byte):
+    // 800*600*4 + 800*600*1. The counter costs exactly what a mask costs — a
+    // counting mode is the same attachment read differently, which is why item 2
+    // needed no new resource kind.
+    transientBytes: 2400000,
+  },
   'core-scene': {
     passes: 1,
     draws: 1,

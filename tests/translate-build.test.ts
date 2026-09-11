@@ -97,8 +97,14 @@ describe('the build-time translation path bakes GLSL and ships no translator', (
     // recorded so the number carries its own history. Item 75 measured 34 across 15
     // presets; item 85 added `core-perdraw-uniform`'s two, making 36; item 11 added
     // `core-blend`'s four — two vertex stages and two fragment stages, the pair of
-    // sheets and the pair of colours — making 40.
-    expect(entryTotal).toBe(40);
+    // sheets and the pair of colours — making 40. Item 2 added `core-count`'s four
+    // — the shaping and the covering vertex stages, and the counting and the filling
+    // fragment stages — making 44. It carries two vertex stages rather than drawing
+    // the backend's own corners because a pipeline naming no vertex stage bakes no
+    // GLSL vertex and `gates/corpus.mjs` skips such a preset on WebGL 2 entirely,
+    // which is the one thing a preset written to be compared across the two backends
+    // must not be.
+    expect(entryTotal).toBe(44);
   });
 
   it('overlays a hand-authored GLSL bake where naga has no storage-buffer syntax (item 105)', () => {

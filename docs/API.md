@@ -181,6 +181,26 @@ The first four are type guards, so reading a graph narrows a type instead of cas
 `UniformResource`, `VertexResource`, `IndexResource`, `UniformSlot`, `UniformValue`, `Groups`,
 `StencilMode`, `ShaderTarget`, `Backend`, `BackendName`, `TransientSize`.
 
+`StencilMode` is what a pipeline does to the mask a stencil keeps, named rather than spelled
+as the card's own comparison, three operations and two masks per face. There are four and they
+are two pairs. **`mark`** passes always and leaves the reference behind everywhere it draws,
+writing every bit, and **`inside`** draws only where the reference is already there and writes
+nothing — a boolean mask, one pass cutting the shape and the next drawn through it, and because
+the second writes nothing a third pass can be cut by the same shape. **`count`** passes always
+and moves the mask like a counter, one on for every front-facing fragment and one off for every
+back-facing one, both wrapping rather than clamping, and **`nonzero`** draws where that counter
+did not come back to zero and writes nothing. The counting pair is the one that needs the two
+faces to differ, which is what `GPUDepthStencilState` carries `stencilFront` and `stencilBack`
+separately to express: a filled path with a hole, or one that crosses itself, has its interior
+decided by a winding number, and a winding number is counted by letting the faces of the path's
+triangles cancel. A mask cannot — it marks the hole as solidly as the ring.
+
+The value the mask is written with and compared against belongs to the mode rather than being
+declared beside it, so nothing can carry a number that disagrees with the mode it sits next to:
+the mask pair works against every bit and the counting pair against zero. Both backends read one
+table for all of this, and `core-count` is the corpus preset the two are compared over channel
+for channel.
+
 ## Asking questions without touching a device
 
 ```ts

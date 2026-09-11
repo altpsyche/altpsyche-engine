@@ -26,7 +26,15 @@ import type {
   TextureResource,
   UniformValue,
 } from '../graph/types.js';
-import { componentsOf, drawsCorners, drawsIndirectly, isRenderPass, perDrawBinding, resourceOf } from '../graph/types.js';
+import {
+  STENCIL_STATES,
+  componentsOf,
+  drawsCorners,
+  drawsIndirectly,
+  isRenderPass,
+  perDrawBinding,
+  resourceOf,
+} from '../graph/types.js';
 import type { ResourceHandle, TextureHandle, VertexHandle } from '../graph/handles.js';
 import { indexOf } from '../graph/handles.js';
 
@@ -293,19 +301,34 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
     always: gl.ALWAYS,
   };
 
-  // Every bit of the mask, the reference both modes read and marking writes — the
-  // same `STENCIL_BITS` the WebGPU backend uses, so the two agree on what a mark
-  // leaves behind. What each mode does to the mask, in the card's own fields: `mark`
-  // replaces the reference everywhere it draws (compare always, write every bit),
-  // and `inside` draws only where the reference already is and keeps the mask as it
-  // found it (compare equal, write nothing). Both faces get the same operations,
-  // since a mask has no front and back a picture could tell apart, so one `stencilOp`
-  // and one `stencilFunc` — which set both faces — is the whole of it.
-  const STENCIL_REF = 0xff;
-  const STENCIL_GL = {
-    mark: { func: gl.ALWAYS, fail: gl.KEEP, zfail: gl.KEEP, zpass: gl.REPLACE, writeMask: 0xff },
-    inside: { func: gl.EQUAL, fail: gl.KEEP, zfail: gl.KEEP, zpass: gl.KEEP, writeMask: 0 },
-  } as const;
+  // What a stencil mode does to the mask, in the card's own enums, translated
+  // from the one table in `graph/types.ts` that says what a mode means (item 2).
+  // This backend kept its own copy of that meaning until then, with a comment
+  // asserting the WebGPU backend's table agreed with it; the assertion was false
+  // — the reference was `0xff` here and `1` there — and each backend being
+  // self-consistent is why both drew the same picture and no gate could see it.
+  // Only the enums are this file's business now, and `graph/` owns the meaning.
+  const STENCIL_OP: Record<GPUStencilOperation, number> = {
+    keep: gl.KEEP,
+    zero: gl.ZERO,
+    replace: gl.REPLACE,
+    invert: gl.INVERT,
+    'increment-clamp': gl.INCR,
+    'decrement-clamp': gl.DECR,
+    'increment-wrap': gl.INCR_WRAP,
+    'decrement-wrap': gl.DECR_WRAP,
+  };
+
+  /** One face's state in the card's own enums. The two faces are translated
+   * separately and spent through `stencilFuncSeparate` and `stencilOpSeparate`,
+   * because `count` gives the front and the back opposite operations and the
+   * single-face `stencilFunc` and `stencilOp` set both at once. */
+  const stencilFace = (face: GPUStencilFaceState): { func: number; fail: number; zfail: number; zpass: number } => ({
+    func: COMPARE[face.compare ?? 'always'] as number,
+    fail: STENCIL_OP[face.failOp ?? 'keep'] as number,
+    zfail: STENCIL_OP[face.depthFailOp ?? 'keep'] as number,
+    zpass: STENCIL_OP[face.passOp ?? 'keep'] as number,
+  });
 
   /**
    * `GPUBlendState` in the card's own fields (item 11).
@@ -1499,11 +1522,19 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
                 gl.depthMask(false);
               }
               if (plan.depth?.stencil !== undefined) {
-                const mode = STENCIL_GL[plan.depth.stencil];
+                // Per face, since the specification's two face states are the
+                // point of the counting modes (item 2): one `stencilFunc` and
+                // one `stencilOp` set both faces at once and cannot express a
+                // front that adds and a back that takes away.
+                const state = STENCIL_STATES[plan.depth.stencil];
+                const front = stencilFace(state.front);
+                const back = stencilFace(state.back);
                 gl.enable(gl.STENCIL_TEST);
-                gl.stencilFunc(mode.func, STENCIL_REF, 0xff);
-                gl.stencilOp(mode.fail, mode.zfail, mode.zpass);
-                gl.stencilMask(mode.writeMask);
+                gl.stencilFuncSeparate(gl.FRONT, front.func, state.reference, state.readMask);
+                gl.stencilFuncSeparate(gl.BACK, back.func, state.reference, state.readMask);
+                gl.stencilOpSeparate(gl.FRONT, front.fail, front.zfail, front.zpass);
+                gl.stencilOpSeparate(gl.BACK, back.fail, back.zfail, back.zpass);
+                gl.stencilMask(state.writeMask);
               } else {
                 gl.disable(gl.STENCIL_TEST);
               }

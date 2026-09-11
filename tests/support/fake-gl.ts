@@ -125,10 +125,22 @@ const CONSTANTS = {
   NOTEQUAL: 0x0205,
   GEQUAL: 0x0206,
   ALWAYS: 0x0207,
-  // The stencil operations `mark` and `inside` are built from: keep what is there,
-  // or replace it with the reference.
+  // The stencil operations the modes are built from, the specification's own
+  // numbers: keep what is there, replace it with the reference, or move the
+  // counter a step in either direction (item 2). `INVERT` is here, and `ZERO`
+  // already above, because `STENCIL_OP` translates every operation the
+  // specification names rather than only the ones a mode happens to use today.
   KEEP: 0x1e00,
   REPLACE: 0x1e01,
+  INCR: 0x1e02,
+  DECR: 0x1e03,
+  INVERT: 0x150a,
+  INCR_WRAP: 0x8507,
+  DECR_WRAP: 0x8508,
+  // Which face of a triangle a separate stencil call is about, which is what
+  // makes a counting mode expressible here at all.
+  FRONT: 0x0404,
+  BACK: 0x0405,
 };
 
 /** The ceilings the report asks this context for, by the names the specification
@@ -463,6 +475,14 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     depthMask: (flag: boolean) => record('depthMask', { flag }),
     stencilFunc: (func: number, ref: number, mask: number) => record('stencilFunc', { func, ref, mask }),
     stencilOp: (fail: number, zfail: number, zpass: number) => record('stencilOp', { fail, zfail, zpass }),
+    // The per-face pair (item 2). The backend spends only these now, since the
+    // single-face calls above set both faces at once and a counting mode gives
+    // the two faces opposite operations. The face is recorded with the rest, so
+    // a test can say which face it is asserting about.
+    stencilFuncSeparate: (face: number, func: number, ref: number, mask: number) =>
+      record('stencilFuncSeparate', { face, func, ref, mask }),
+    stencilOpSeparate: (face: number, fail: number, zfail: number, zpass: number) =>
+      record('stencilOpSeparate', { face, fail, zfail, zpass }),
     stencilMask: (mask: number) => record('stencilMask', { mask }),
     blendEquationSeparate: (colour: number, alpha: number) => record('blendEquationSeparate', { colour, alpha }),
     blendFuncSeparate: (srcRGB: number, dstRGB: number, srcAlpha: number, dstAlpha: number) =>

@@ -673,7 +673,18 @@ export function wrapDevice(device: GPUDevice, trace: TraceEntry[], lifetimes?: L
               // What this pipeline does to the mask, read as the card's own
               // fields rather than as the name the description used, since a name
               // turned into the wrong operations is exactly what a trace is for.
-              stencil: flat(descriptor.depthStencil.stencilFront),
+              //
+              // **Both faces, since item 2.** This recorder read `stencilFront`
+              // alone and called it `stencil`, which was true of every mode there
+              // was: a mask has no front and back a picture can tell apart, so the
+              // backend gave the two faces one object and one of them was the
+              // whole story. A counting mode's faces move the counter in opposite
+              // directions, so a recorder reading one face cannot see a backend
+              // that collapsed them — which is the defect the counting modes exist
+              // to make expressible.
+              stencilFront: flat(descriptor.depthStencil.stencilFront),
+              stencilBack: flat(descriptor.depthStencil.stencilBack),
+              stencilReads: descriptor.depthStencil.stencilReadMask,
               stencilWrites: descriptor.depthStencil.stencilWriteMask,
             }
           : undefined,

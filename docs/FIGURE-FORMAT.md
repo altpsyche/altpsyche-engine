@@ -23,11 +23,15 @@ It queues nothing. [`ROADMAP.md`](ROADMAP.md) is the queue.
 never learns, and no part of the format reaches it.
 
 One item is queued here and it is queued on this package's own merits rather than because a consumer
-asked. It is **item 2, a stencil that counts**, in [`ROADMAP.md`](ROADMAP.md). The short version is
-that `StencilMode` is `'mark' | 'inside'`, both of them set `stencilFront` and `stencilBack` to one
-state, and a boolean mask cannot count a winding number. `GPUDepthStencilState` separates the two
-faces because they differ, so collapsing them is the one place a pipeline built here cannot express a
-pipeline the core specification describes. That item stands whatever happens to the format.
+asked. It is **item 2, a stencil that counts**, in [`ROADMAP.md`](ROADMAP.md). The short version was
+that `StencilMode` was `'mark' | 'inside'`, both of them setting `stencilFront` and `stencilBack` to
+one state, and a boolean mask cannot count a winding number. `GPUDepthStencilState` separates the two
+faces because they differ, so collapsing them was the one place a pipeline built here could not
+express a pipeline the core specification describes. That item stood whatever happened to the format,
+and **its first step has landed**: `StencilMode` is `'mark' | 'inside' | 'count' | 'nonzero'`, the
+counting pair moves the two faces in opposite directions, and both backends read one table for what a
+mode means. What is left of the item is the fixture separating the two pairs by a recorded pixel
+difference and the refusal for a device that cannot do per-face stencil, if any reachable one cannot.
 
 ## What this package must not do
 

@@ -726,6 +726,55 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
     },
   },
   {
+    id: 'core-count',
+    language: 'wgsl',
+    source: 'core-count.wgsl',
+    uniforms: [
+      { name: 'u_time', type: 'float', value: 0 },
+      { name: 'u_resolution', type: 'vec2', value: [800, 600] },
+    ],
+    frame: {
+      // Two quads across and one down, which is one square for the ring and one
+      // for the hole. The vertex stage decides which is which and reverses the
+      // second one's winding, since a generated primitive is wound one way by
+      // construction — `shader-geometry.ts` says so at the index writer, so that a
+      // pipeline dropping back faces drops the whole grid or none of it.
+      geometry: [{ name: 'squares', primitive: 'quad-grid', size: [2, 1] }],
+      attachments: [
+        { name: 'picture', size: { scale: 1 }, format: 'rgba8unorm' },
+        { name: 'mask', size: { scale: 1 }, format: 'stencil8' },
+      ],
+      passes: [
+        // The two squares in one pass, counting: the counter goes up for a front
+        // face and down for a back one, so it comes back to zero where the inner
+        // square covers the outer. Its own colour is what a reader sees through the
+        // hole the pass after it does not reach.
+        {
+          pipeline: 'counting',
+          vertex: 'shape',
+          geometry: 'squares',
+          colour: [{ resource: 'picture', clear: [0.02, 0.03, 0.06, 1] }],
+          depth: { resource: 'mask', stencilClear: 0, stencil: 'count' },
+        },
+        // The field second, over the same two quads laid edge to edge so they cover
+        // the frame, drawn only where the count did not come back to zero — the ring
+        // — and keeping the counter as it found it. It draws its own corners rather
+        // than the backend's because a pipeline naming no vertex stage bakes no GLSL
+        // vertex, and `gates/corpus.mjs` skips such a preset on WebGL 2 entirely: a
+        // preset that exists to be compared across the two backends has to be
+        // drawable by both. `core-stencil` is skipped there for that reason.
+        {
+          pipeline: 'filling',
+          vertex: 'cover',
+          geometry: 'squares',
+          colour: [{ resource: 'picture' }],
+          depth: { resource: 'mask', stencil: 'nonzero' },
+        },
+      ],
+      present: 'picture',
+    },
+  },
+  {
     id: 'core-scene',
     language: 'wgsl',
     source: 'core-scene.wgsl',

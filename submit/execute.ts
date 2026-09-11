@@ -21,8 +21,8 @@
  * `composite` receives is the finished target texture, and what it does with it is
  * the backend's business.
  */
-import type { DrawSpec } from '../graph/types.js';
-import { drawsCorners, drawsIndirectly } from '../graph/types.js';
+import type { DrawSpec, StencilMode } from '../graph/types.js';
+import { STENCIL_STATES, drawsCorners, drawsIndirectly } from '../graph/types.js';
 
 /** One colour attachment of a pass, resolved to the textures it writes and
  * averages into. `texture` is already turned for the frame's swap, so the loop
@@ -112,9 +112,12 @@ export interface ResolvedRun {
    * thousand draws read a thousand records from one buffer; every other group is
    * set once. */
   perDrawBand: number | undefined;
-  /** Whether the pass sets a stencil reference before its draws, which a bundle
-   * cannot hold. */
-  stencil: boolean;
+  /** The stencil mode the pass draws under, whose reference is set before its
+   * draws because a bundle cannot hold it. `undefined` where the pass masks
+   * nothing. It is the mode rather than a flag because the reference belongs to
+   * the mode (item 2): `nonzero` tests a counter against zero where `inside`
+   * tests a mark against every bit. */
+  stencil: StencilMode | undefined;
 }
 
 /** Everything one frame needs to become commands: the passes already resolved, the
@@ -278,8 +281,10 @@ export function runFrame(exec: FrameExecution): void {
     // pass because that is where the card takes it: it is not compiled
     // into the pipeline, so a pass that never sets it masks against
     // whatever the last pass left. It is pass state a bundle cannot hold,
-    // so it is set here before the recorded draws replay against it.
-    if (run.stencil) run_pass.setStencilReference(STENCIL_REFERENCE);
+    // so it is set here before the recorded draws replay against it. Which
+    // value it is comes off the mode (item 2), since the mask modes test
+    // against every bit and the counting modes against zero.
+    if (run.stencil !== undefined) run_pass.setStencilReference(STENCIL_STATES[run.stencil].reference);
     // One or several bundles into one render pass: a lone pass replays its own,
     // and a merged group replays every member's in order, which is the two
     // passes over one attachment drawn as one (item 1).
@@ -382,10 +387,3 @@ export function issueDraws(
     }
   });
 }
-
-/** The value a mask is marked with and tested against, the same one the pipeline
- * was built to compare. It is one number rather than a choice, because the mode a
- * pipeline names is what decides whether it is written or compared. Kept beside
- * the loop that sets it for the same reason it is one number: a second value
- * nothing reads differently would be a thing two places could disagree about. */
-const STENCIL_REFERENCE = 1;

@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { createWebGPUBackend } from '../gpu/webgpu';
 import { createFakeGPU } from './support/fake-gpu';
 import { moduleHandle, pipelineHandle, texture, uniform } from '../graph/handles.js';
-import type { RenderPassSpec, RenderPipelineSpec, FrameGraph, TextureResource } from '@altpsyche/engine';
+import type {
+  RenderPassSpec,
+  RenderPipelineSpec,
+  FrameGraph,
+  StencilMode,
+  TextureResource,
+} from '@altpsyche/engine';
 
 /**
  * A mask one surface leaves behind for another to be cut by.
@@ -99,6 +105,17 @@ function refuses(over: Partial<WgslFrameGraph>, said: string) {
   expect(() => backend.program(masked(over)).draw()).toThrow(said);
 }
 
+/** The same frame with the two pipelines' modes replaced, which is how the
+ * counting pair is read off the same two passes as the mask pair. */
+const under = (first: StencilMode, second: StencilMode): Partial<WgslFrameGraph> => {
+  const base = masked() as WgslFrameGraph;
+  const pipelines = (base.pipelines as RenderPipelineSpec[]).map((spec, at) => ({
+    ...spec,
+    depth: { format: 'stencil8' as const, stencil: at === 0 ? first : second },
+  }));
+  return { pipelines };
+};
+
 describe('what each mode becomes on the card', () => {
   it('marks by passing always and leaving the value behind, writing every bit', () => {
     const { gpu, backend } = backendOver();
@@ -106,7 +123,8 @@ describe('what each mode becomes on the card', () => {
 
     expect(gpu.calls('createRenderPipeline')[0]?.depth).toMatchObject({
       format: 'stencil8',
-      stencil: { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'replace' },
+      stencilFront: { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'replace' },
+      stencilBack: { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'replace' },
       stencilWrites: 0xff,
     });
   });
@@ -118,9 +136,62 @@ describe('what each mode becomes on the card', () => {
     // Writing nothing is what lets a third pass be cut by the same shape, and a
     // mode that wrote here would leave the mask holding wherever this pass drew.
     expect(gpu.calls('createRenderPipeline')[1]?.depth).toMatchObject({
-      stencil: { compare: 'equal', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' },
+      stencilFront: { compare: 'equal', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' },
+      stencilBack: { compare: 'equal', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' },
       stencilWrites: 0,
     });
+  });
+
+  it('counts by moving the two faces in opposite directions, which is the whole point of two', () => {
+    const { gpu, backend } = backendOver();
+    backend.program(masked(under('count', 'nonzero')));
+
+    // A winding number is counted by letting the faces of a path's triangles
+    // cancel, so a backend giving both faces one operation counts nothing and
+    // draws a filled hole. This is the one place a pipeline this package builds
+    // could not express a pipeline the specification describes.
+    const depth = gpu.calls('createRenderPipeline')[0]?.depth as {
+      stencilFront: { passOp?: string };
+      stencilBack: { passOp?: string };
+    };
+    expect(depth.stencilFront.passOp).toBe('increment-wrap');
+    expect(depth.stencilBack.passOp).toBe('decrement-wrap');
+    expect(depth.stencilFront.passOp).not.toBe(depth.stencilBack.passOp);
+  });
+
+  it('wraps rather than clamps, since a back face can arrive before the front it cancels', () => {
+    const { gpu, backend } = backendOver();
+    backend.program(masked(under('count', 'nonzero')));
+
+    // A clamp at zero would lose a back face that arrived first, and the order
+    // faces arrive in is not the order they were wound.
+    const depth = gpu.calls('createRenderPipeline')[0]?.depth as {
+      stencilFront: { passOp?: string };
+      stencilBack: { passOp?: string };
+    };
+    expect(depth.stencilFront.passOp).not.toBe('increment-clamp');
+    expect(depth.stencilBack.passOp).not.toBe('decrement-clamp');
+  });
+
+  it('draws where the count did not come back to zero, and writes nothing doing it', () => {
+    const { gpu, backend } = backendOver();
+    backend.program(masked(under('count', 'nonzero')));
+
+    expect(gpu.calls('createRenderPipeline')[1]?.depth).toMatchObject({
+      stencilFront: { compare: 'not-equal', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' },
+      stencilBack: { compare: 'not-equal', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' },
+      stencilWrites: 0,
+    });
+  });
+
+  it('tests the counter against zero, where the mask modes test against every bit', () => {
+    const { gpu, backend } = backendOver();
+    backend.program(masked(under('count', 'nonzero'))).draw();
+
+    // The reference is what makes `nonzero` mean anything: compared against
+    // every bit it would draw where the counter happened to reach 255, which is
+    // why the reference belongs to the mode rather than to the file.
+    expect(gpu.calls('setStencilReference').map((call) => call.reference)).toEqual([0, 0]);
   });
 
   it('leaves the depth half out for a format that keeps none', () => {
@@ -138,8 +209,10 @@ describe('what each mode becomes on the card', () => {
 
     // A pass that never sets it masks against whatever the pass before it left,
     // and it is not compiled into the pipeline, so this is the only place it can
-    // come from.
-    expect(gpu.calls('setStencilReference').map((call) => call.reference)).toEqual([1, 1]);
+    // come from. It is the mask modes' reference — every bit — and it used to be
+    // `1` here against `0xff` in the WebGL 2 backend, which item 2 collapsed into
+    // the one table both backends now read.
+    expect(gpu.calls('setStencilReference').map((call) => call.reference)).toEqual([0xff, 0xff]);
   });
 
   it('leaves a pass whose pipeline says nothing about a mask without one', () => {

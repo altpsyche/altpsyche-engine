@@ -370,7 +370,25 @@ if (glslJoin.error || !glslJoin.offer) {
 // written with one colour target and no depth: a second target naming a different
 // blend needs `per-target-blend`, which WebGL 2 has not got, and the preset would
 // be skipped there and compare nothing.
-const SCENE_TIER = ['core-scene', 'core-draw-list', 'core-material', 'core-blend'];
+//
+// **`core-count` is here for the same reason** (item 2). The audit that opened the
+// counting modes found `StencilMode`'s meaning written once per backend with each
+// copy asserting the other agreed — and the assertion was false: the reference was
+// `0xff` in both backends' tables and `1` in `submit/execute.ts`, so WebGPU wrote
+// and compared `1` where WebGL 2 wrote and compared `0xff`. Each backend was
+// self-consistent, so both drew the same picture and nothing was wrong to look at;
+// what let it live is that no stencil preset was on this list. `core-count` closes
+// that, and it is the preset a mask cannot draw at all, so it reads the counting
+// modes as well as the reference.
+//
+// **`core-stencil` is not here and cannot be**, which is a gap this list should
+// say out loud rather than leave to be rediscovered. Its filling pipeline names no
+// vertex stage, so it bakes no GLSL vertex and `gates/corpus.mjs` skips the whole
+// preset on WebGL 2 — a preset skipped on one backend compares nothing, which is
+// the trap `core-blend` was written to avoid. `core-count` gives both its pipelines
+// a vertex stage for that reason. Giving `core-stencil` one would put the mask
+// modes on this list too, and item 2 records it as its own step.
+const SCENE_TIER = ['core-scene', 'core-draw-list', 'core-material', 'core-blend', 'core-count'];
 console.log('');
 for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
   // Bytes do not survive `page.evaluate`, so they cross as arrays keyed by the
