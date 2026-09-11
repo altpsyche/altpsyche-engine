@@ -822,6 +822,19 @@ documented backstop is not a second home. `spansFrame` in `gpu/webgpu.ts:731` is
   `core-blend` at item 11 and `core-count` at item 2 — and the commit says the card gate was not
   re-taken.
 
+**Verified on 2026-09-11, line by line, with what satisfies each.**
+
+| line | what satisfies it |
+| --- | --- |
+| none of the rules appears in either backend, and `graph/validate.ts` states each once | `shapes(graph)` at the end of `validate` holds six; a grep for each sentence over both backends returns nothing. Throw sites fell 22 to 16 in `gpu/webgpu.ts` and 43 to 36 in `gpu/webgl2.ts`. Two refusals stayed in WebGL 2 on the item's own escape clause — a multisampled depth and a depth-format texture being a renderbuffer — because both are that backend's capability answers and not rules about a description |
+| a texture with a `source` and no `data` gets one answer, the same on both backends | `data \|\| source`, settled at step 1: a description is refused for what it says, not for how far its fetch has got. Two WebGPU tests were red on the tree as it stood and the two matching WebGL 2 tests were green the moment they were written |
+| `npm test`, `type-check` and `gate:browser` green, the recording contract at 18 of 18, and the commit says the card gate was not re-taken | 923 tests passing against 894 at the start of the day; type-check green; `4 of 4 browser gates`, `18 of 18 agree`, `28 of 28 draws`. **The card gate was not re-taken and this item did not need it** |
+
+**What the gates could not see.** `gate:browser` draws frames that *pass*, so it cannot tell a rule
+that now fires on both paths from one that fires on neither — step 3's per-rule probe is what closes
+that, and it closes it for the six moved rules and nothing else. And the probe is a reading on this
+tree: it says each rule has an independent test today, not that the next rule added will.
+
 ### Landed on 2026-09-11, step 1: a description is refused for what it says, not for how far its fetch has got
 
 **The divergence, measured off a test rather than read off the source, which is what the step asked
