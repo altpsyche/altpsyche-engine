@@ -45,6 +45,27 @@ const WARP_DEPTH = 0.14;
 const DEEP = vec3<f32>(0.03, 0.05, 0.14);
 const BRIGHT = vec3<f32>(0.98, 0.78, 0.42);
 
+// A cover for the frame, drawn from the grid's own corners rather than from the
+// backend's three. A pipeline naming no vertex stage bakes no GLSL vertex, and
+// `gates/corpus.mjs` skips such a preset on WebGL 2 entirely — so a preset whose
+// whole purpose is to be drawn by both backends and compared was being drawn by
+// one and compared with nothing. `core-count` was written this way from the start
+// and `core-stencil` was changed to it; this is the same change (item 19).
+//
+// The convenience it gives up is still there for a caller: a one-pass fullscreen
+// WGSL frame can be authored with no vertex stage and `toy/frame.ts` supplies the
+// corners. What a *corpus preset* may not do is use it.
+@vertex
+fn cover(@location(0) corner: vec2<f32>, @location(1) place: vec2<f32>) -> @builtin(position) vec4<f32> {
+    // `place` is the corner's position in the grid, 0 to 1 across and down, so
+    // spending it straight into clip space covers the frame exactly. No aspect
+    // correction here: this covers the frame rather than being a shape on it, and
+    // the fragment below does its own correction against `u_resolution` for the
+    // lookup. The position the fragment reads is `@builtin(position)`, which the
+    // card fills from this, so the picture is unchanged by construction.
+    return vec4<f32>(place * 2.0 - 1.0, 0.5, 1.0);
+}
+
 @fragment
 fn fragMain(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     // Screen position as a fraction: the pixel counted from a corner divided by

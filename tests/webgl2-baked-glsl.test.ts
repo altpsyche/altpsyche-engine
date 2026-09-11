@@ -180,15 +180,26 @@ describe('the WebGL 2 corpus column draws baked GLSL off the source that carries
   });
 
   it('reports no baked GLSL for a fullscreen WGSL preset rather than inventing a vertex', () => {
-    // core-texture is a fullscreen fragment: WGSL supplies the corners, so naga
-    // bakes only a fragment and there is no vertex for WebGL 2 to link. The gate
-    // skips it by outcome — a reported reason — rather than drawing it.
-    expect(glslFrameOf(bakedWgslFrame('core-texture'))).toBeNull();
+    // A fullscreen fragment: WGSL supplies the corners, so naga bakes only a
+    // fragment and there is no vertex for WebGL 2 to link. The gate skips it by
+    // outcome — a reported reason — rather than drawing it.
+    //
+    // **This named `core-texture` until item 19 gave it a vertex stage**, so that
+    // it would stop being skipped on WebGL 2 and start being compared. It now
+    // names `core-target`, which is the next of the three and is item 19's step 2 —
+    // **so this test has to move again, and when the last of the three changes
+    // there will be no fullscreen preset left to name.** That is the correct end
+    // state and not a problem: a corpus preset exists to be drawn by both backends
+    // and compared, and the convenience this checks belongs to the library rather
+    // than to the corpus. `tests/corpus-webgl2-outcome.test.ts` has already been
+    // moved onto a frame it builds itself for the same reason, and this one goes
+    // the same way at step 3.
+    expect(glslFrameOf(bakedWgslFrame('core-target'))).toBeNull();
     // …and a fragment-only bake is not a translation: a WebGPU-less device is
     // refused for a missing translation rather than routed to a backend that then
     // cannot build the frame (item 105 tightened `translated` to full-bake).
-    expect(bakedWgslFrame('core-texture').translated).toBe(false);
-    const outcome = selectBackend(bakedWgslFrame('core-texture'), { webgpu: false, webgl2: true });
+    expect(bakedWgslFrame('core-target').translated).toBe(false);
+    const outcome = selectBackend(bakedWgslFrame('core-target'), { webgpu: false, webgl2: true });
     expect('refusal' in outcome && outcome.refusal).toContain('translation');
   });
 });

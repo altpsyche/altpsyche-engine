@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classifyWebgl2 } from '../gates/corpus-outcome.mjs';
-import { frameOf, glslFrameOf } from '../toy/frame';
+import { frameOf, glslFrameOf, wgslFrame } from '../toy/frame';
 import type { WgslFrameGraph } from '@altpsyche/engine';
 
 /**
@@ -64,21 +64,25 @@ describe('the WebGL 2 corpus column tells a build throw apart from a capability 
     expect(built.threw).toContain('with no bytes');
     expect(classifyWebgl2(built).outcome).toBe('FAIL');
 
-    // A fullscreen preset bakes no vertex, so `glslFrameOf` returns null and the page
+    // A fullscreen frame bakes no vertex, so `glslFrameOf` returns null and the page
     // returns the skip tag — a capability WGSL-fullscreen cannot give WebGL 2, told
     // apart from the build throw above and correctly a SKIP.
-    const fullscreen = corpus.find((one) => one.id === 'core-texture');
-    expect(fullscreen, 'the corpus dropped core-texture').toBeTruthy();
-    const wgsl = frameOf(
-      fullscreen!.id,
-      fullscreen!.description,
-      { wgsl: fullscreen!.code },
-      undefined,
-      undefined,
-      fullscreen!.bytes
+    //
+    // **The frame is built here rather than taken from the corpus, and that is the
+    // point.** This used to reach for `core-texture`, which was fullscreen until
+    // item 19 gave it a vertex stage so it would stop being skipped on WebGL 2 and
+    // start being compared. Item 19 does the same to the other two, so after it
+    // there is no fullscreen preset left to borrow — and there should not be: a
+    // corpus preset exists to be drawn by both backends and compared. The
+    // *convenience* is still the library's and still works, which is what this
+    // classification is about, so the frame to check it with is one written here.
+    const fullscreen = wgslFrame(
+      'fullscreen-no-vertex',
+      '@fragment fn fragMain() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }',
+      [{ name: 'u_time', offset: 0, size: 4 }]
     );
-    const frame = glslFrameOf(wgsl as WgslFrameGraph);
-    expect(frame, 'core-texture is fullscreen and should carry no baked GLSL').toBeNull();
+    const frame = glslFrameOf(fullscreen as WgslFrameGraph);
+    expect(frame, 'a fullscreen WGSL frame names no vertex stage, so it bakes no GLSL').toBeNull();
     const skip = frame ? { lit: 1, total: 1 } : { skip: 'the source carried no baked GLSL to draw' };
     expect(classifyWebgl2(skip).outcome).toBe('SKIP');
   });

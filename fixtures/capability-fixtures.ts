@@ -287,7 +287,15 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       // because the source tiles the picture three times across and the value
       // noise is generated to join up with itself.
       samplers: [{ name: 'grainSampler', filter: 'linear', wrap: 'repeat' }],
-      passes: [{ pipeline: 'fragMain' }],
+      // One quad covering the frame, so the fullscreen pass draws the shader's
+      // own corners rather than the backend's (item 19). A pipeline naming no
+      // vertex stage bakes no GLSL vertex and `gates/corpus.mjs` skips the preset
+      // on WebGL 2, which leaves a preset that exists to be compared drawn on one
+      // backend and compared with nothing. Two presets have already hidden a real
+      // defect that way — `core-depth`'s blend, found by item 11, and
+      // `core-stencil`'s reference, found by item 2.
+      geometry: [{ name: 'cover', primitive: 'quad-grid', size: [1, 1] }],
+      passes: [{ pipeline: 'fragMain', vertex: 'cover', geometry: 'cover' }],
     },
   },
   {

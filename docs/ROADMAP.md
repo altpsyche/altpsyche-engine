@@ -3096,11 +3096,40 @@ thing whose whole purpose is to be drawn by both backends and compared — may n
 
 ### Steps
 
-1. `core-texture` gains a vertex stage for its fullscreen pass. **Measures:** the corpus gate's WebGL
-   2 skip count falling by one, and the preset's WebGPU pixel reading unchanged across the change,
-   which is what says the new stage draws the same picture.
-2. The same for `core-target`. **Measures:** the same two numbers.
-3. The same for `core-mips`. **Measures:** the same two numbers.
+1. ~~`core-texture` gains a vertex stage for its fullscreen pass.~~ **Landed on 2026-09-11.** One
+   quad covering the frame, a `cover` vertex stage spending the grid's own corners straight into
+   clip space, and the pass naming both. `npm run translate` re-baked the corpus —
+   `vertex:cover 522 bytes of GLSL ES 3.00`.
+
+   **Measured.** The corpus gate: **9 WebGL 2 skips before, 8 after**, and **30 draws before, 31
+   after** — `core-texture` is off the skip list and drawing on both backends. Its card reading is
+   **480,000 of 480,000 pixels lit, exactly as before**, so the convenience was replaced and not the
+   picture. `npm test` 980 over 84 files unchanged, `npm run type-check` clean, `gate:browser` 4 of
+   4, `gate:card` 31 of 31.
+
+   **Four tests had to move, and three of them were pinning the old shape rather than breaking.**
+   `tests/renderer-texture.test.ts` hand-wrote `new Map([[1, bytes]])` and reached for
+   `loadPictureFixture`, which insists a fixture generates exactly one thing — this frame now
+   generates three. It builds the index map off each resource's own `source` now, which is what it
+   should always have done; the picture is still resource 1. Its "one render pass over three
+   corners" assertion is now "over the quad it declares", `drawIndexed` of 6 rather than `draw` of 3.
+   `tests/translate-build.test.ts`'s entry-point total went 48 to 49.
+
+   **The fourth is a structural finding steps 2 and 3 inherit.** Two tests used `core-texture` as
+   their example of a *fullscreen preset that bakes no vertex* — the very property this item
+   removes. **After step 3 there will be no such preset left to borrow**, which is the correct end
+   state rather than a problem: a corpus preset exists to be drawn by both backends and compared,
+   and the convenience these check belongs to the library. `tests/corpus-webgl2-outcome.test.ts` has
+   been moved onto a fullscreen frame it builds itself with `wgslFrame`, which is the permanent
+   answer. `tests/webgl2-baked-glsl.test.ts` was pointed at `core-target` as a stop-gap and **says
+   in its own comment that it must move the same way at step 3** — step 3 is not done until it has.
+2. The same for `core-target`. **Measures:** the same two numbers. **Carries one thing step 1
+   found**: `tests/webgl2-baked-glsl.test.ts` points at `core-target` as its fullscreen example and
+   has to move to another preset here, before moving off the corpus entirely at step 3.
+3. The same for `core-mips`. **Measures:** the same two numbers. **And it is not done until
+   `tests/webgl2-baked-glsl.test.ts` builds its own fullscreen frame** the way
+   `tests/corpus-webgl2-outcome.test.ts` now does, because after this step no corpus preset has the
+   property that test is checking.
 4. Whichever of the three are worth comparing channel for channel go on `gates/card.mjs`'s
    cross-backend list. **Measures:** each one's two backends compared on a real card, with the
    channels differing recorded per preset.
