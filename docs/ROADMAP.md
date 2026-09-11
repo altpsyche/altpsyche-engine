@@ -3371,6 +3371,14 @@ this same 0 and was rejected because dropping the readback flip would break hand
 objection was right — which is why the flip is **conditioned on the frame** rather than removed. A
 user's own `glslFrame` still gets the flip it always had.
 
+**The winding and the readback are held by tests, not only by a card.**
+`tests/webgl2-framebuffer-origin.test.ts`, 4 tests, one per reader per kind of frame: a translated
+frame draws with the winding inverted and is read back untouched; a hand-authored one draws with
+OpenGL's own winding and is still turned over on the way out. **The winding had been asserted by
+nothing but `core-count`**, which cuts a stencil hole by winding and would break loudly on a card —
+a real check, but not one CI can run. Forcing either reader back to its old answer turns exactly the
+translated cases red and leaves the hand-authored ones green. `npm test` 984 over 85 files.
+
 ### Steps, remaining
 
 2d. **`core-mips`'s ladder**, which is the one defect left and is unrelated to the coordinate. It

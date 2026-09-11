@@ -26,6 +26,10 @@ const CONSTANTS = {
   UNIFORM_OFFSET: 0x8a3b,
   UNIFORM_BLOCK_INDEX: 0x8a3a,
   UNIFORM_BLOCK_DATA_SIZE: 0x8a40,
+  // Which winding counts as a front face. The backend inverts this for a frame
+  // whose vertex stages negated y (item 20).
+  CW: 0x0900,
+  CCW: 0x0901,
   ARRAY_BUFFER: 0x8892,
   ELEMENT_ARRAY_BUFFER: 0x8893,
   UNIFORM_BUFFER: 0x8a11,
