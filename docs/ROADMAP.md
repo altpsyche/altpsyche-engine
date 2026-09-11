@@ -377,8 +377,9 @@ it.**
 3. **Closed on 2026-09-11 with no capability**, reading below. `refusal` answers for a device that
    cannot do per-face stencil, if any reachable one cannot. **Measures:** the capability read off
    both backends on the machines the gates run.
-4. **`core-stencil` gets a vertex stage for its filling pass, so the mask modes can be compared
-   across the two backends at all.** Found by step 1 and not part of it. That pipeline names no
+4. **Landed on 2026-09-11**, reading below. `core-stencil` gets a vertex stage for its filling pass,
+   so the mask modes can be compared across the two backends at all. Found by step 1 and not part of
+   it. That pipeline names no
    vertex stage, so it bakes no GLSL vertex and `gates/corpus.mjs` skips the whole preset on WebGL 2
    — which is half of why the two backends could disagree about the stencil reference unseen: there
    was no comparison to see it in. `core-count` was written with a vertex stage on both pipelines for
@@ -534,6 +535,32 @@ faces different operations needs it, and `STENCIL_STATES` already says which mod
 because neither API offers a name to enumerate — the absence of a feature string is the evidence, and
 an absence is weaker than a reading. `gate:card` is one machine, one driver, one vendor, so "no
 reachable device" is a claim about the specifications and about one card, not about a fleet.
+
+### Landed on 2026-09-11, step 4: the mask modes are compared across the two backends at last
+
+**`core-stencil`'s filling pipeline has a vertex stage**, so it bakes a GLSL vertex, is no longer
+skipped on WebGL 2, and is on `gates/card.mjs`'s cross-backend list beside `core-count`.
+
+```
+core-stencil on both backends  hard jumps 2712 against 2712, worst 0,
+                               0 of 1,440,000 channels differ
+```
+
+**The two mask modes agree channel for channel on a real card** — the first time they have been
+compared at all, and the reading that would have caught step 1's defect had it existed: WebGPU wrote
+and compared a reference of `1` where WebGL 2 used `0xff`, unseen for as long as this preset drew on
+one backend only.
+
+**The corpus gate's own counts moved with it**, which is the check that the skip is really gone:
+`28 of 28 draws lit their buffer, with 0 failed and 9 WebGL 2 skips`, up from 27 of 27 with 10 skips.
+And **WebGPU's reading did not move**: `core-stencil` lit 187,489 of 480,000 pixels before the change
+and 187,489 after, on both backends now, so the sheet's grid laid flat draws the frame the backend's
+own three corners drew.
+
+**Three presets are still skipped for this cause** — `core-texture`, `core-target` and `core-mips` —
+and they are not item 2's. Each is a fullscreen WGSL frame whose pipeline names no vertex stage, so
+each draws on one backend and compares nothing. That is three of the nine WebGL 2 skips, and it is
+**item 19** rather than something carried here.
 
 ---
 
@@ -1942,6 +1969,65 @@ hitting because a caller reuses its frame object — **the item closes as refuse
 recorded**, and this file gains a line saying `frameKey` serialises geometry bytes and that it costs a
 serialisation per new frame object rather than a compile. That line is worth having either way,
 because the next reader will find the same replacer and file the same item.
+
+---
+
+## Item 19 — three presets draw on one backend and compare nothing, for one reason each time
+
+**Opened on 2026-09-11 by item 2's step 4**, which fixed a fourth instance of it and measured the
+cost. `gates/corpus.mjs` skips a preset on WebGL 2 where its pipeline names no vertex stage — "a
+fullscreen WGSL frame, which bakes no vertex for WebGL 2 to link" — because the backend's own three
+corners are its program rather than the shader's, so there is nothing for naga to bake and nothing
+for WebGL 2 to link. A preset skipped on one backend is drawn on one backend, and a preset drawn on
+one backend compares nothing.
+
+**That is not hypothetical and this file has two instances of the damage.** `core-depth` blended and
+drew unblended on WebGL 2 for as long as it was in the corpus, found by item 11, and nothing saw it
+because the cross-backend comparison covered three scene presets. `core-stencil` had the two backends
+using different stencil references, found by item 2's step 1, and nothing saw it because that preset
+was skipped here. Both were silent for the same reason: no comparison existed to be red.
+
+**The three that remain**, each a fullscreen WGSL frame whose pipeline names no vertex stage:
+`core-texture`, `core-target` and `core-mips`. They are three of the nine WebGL 2 skips the corpus
+gate reports; the other six are real capability answers — a compute stage, a storage buffer, a
+per-target blend, a buffer no pipeline reads — and are not this item's.
+
+**The fix is the one step 4 took** and it is small: a vertex entry point that spends the frame's own
+grid straight into clip space, the pass naming it and the geometry it reads, and the preset stops
+being skipped. `core-count` was written that way from the start and `core-stencil` was changed to it,
+both on 2026-09-11, so there are two worked examples in the tree.
+
+**What it is not.** It is not an argument for removing the backend's own corners: a caller writing a
+one-pass fullscreen WGSL frame should still be able to draw one without authoring a vertex stage, and
+`toy/frame.ts` is where that convenience lives. What this item says is that a *corpus preset* — a
+thing whose whole purpose is to be drawn by both backends and compared — may not use it.
+
+### Steps
+
+1. `core-texture` gains a vertex stage for its fullscreen pass. **Measures:** the corpus gate's WebGL
+   2 skip count falling by one, and the preset's WebGPU pixel reading unchanged across the change,
+   which is what says the new stage draws the same picture.
+2. The same for `core-target`. **Measures:** the same two numbers.
+3. The same for `core-mips`. **Measures:** the same two numbers.
+4. Whichever of the three are worth comparing channel for channel go on `gates/card.mjs`'s
+   cross-backend list. **Measures:** each one's two backends compared on a real card, with the
+   channels differing recorded per preset.
+
+### Done when
+
+- No preset is skipped on WebGL 2 for want of a baked vertex, and the corpus gate's own skip count
+  says so.
+- Each changed preset's WebGPU reading is the one it had before the change, so the convenience was
+  replaced and not the picture.
+- `npm test`, `npm run type-check` and `gate:browser` are green, and the card gate is re-taken.
+
+**What would change the answer.** If a preset's fullscreen pass cannot be expressed as a vertex stage
+over the geometry it already has — a preset with no geometry at all would need one generated — then
+that preset needs a resource rather than an entry point, and the step for it says so rather than
+quietly adding a primitive to `shader-geometry.ts`.
+
+**What this item does not carry.** Nothing about `core-depth`'s skip, which is a genuine
+per-target-blend capability answer and correct as it stands.
 
 ---
 

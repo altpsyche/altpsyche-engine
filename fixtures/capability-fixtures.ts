@@ -713,11 +713,19 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
           colour: [{ resource: 'picture', clear: [0, 0, 0, 1] }],
           depth: { resource: 'mask', stencilClear: 0, stencil: 'mark' },
         },
-        // The field second, over the backend's own three corners so it covers the
+        // The field second, over the sheet's own grid laid flat so it covers the
         // frame, drawn only where the mark is and keeping the mask as it found it.
         // It keeps the picture as well, so what it does not reach is the sheet.
+        //
+        // It draws its own corners rather than the backend's because a pipeline
+        // naming no vertex stage bakes no GLSL vertex, and `gates/corpus.mjs` skips
+        // such a preset on WebGL 2 entirely (item 2, step 4). This preset therefore
+        // drew on one backend alone for as long as it existed, which is half of why
+        // the two backends could disagree about the stencil reference unseen.
         {
           pipeline: 'filling',
+          vertex: 'cover',
+          geometry: 'sheet',
           colour: [{ resource: 'picture' }],
           depth: { resource: 'mask', stencil: 'inside' },
         },

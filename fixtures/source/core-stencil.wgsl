@@ -67,6 +67,23 @@ fn marking(shaded: Surface) -> @location(0) vec4<f32> {
     return vec4<f32>(vec3<f32>(0.04, 0.05, 0.09) + smoothstep(0.06, 0.0, edge) * 0.18, 1.0);
 }
 
+// **The second pass draws its own corners rather than the backend's** (item 2, step
+// 4). A pipeline naming no vertex stage is the fullscreen frame that bakes no GLSL
+// vertex, and `gates/corpus.mjs` skips such a preset on WebGL 2 entirely — so this
+// preset drew on one backend for as long as it existed and compared nothing across
+// the two. That is half of why the two backends could disagree about the stencil
+// reference unseen, WebGPU writing and comparing `1` where WebGL 2 wrote and compared
+// `0xff`: there was no comparison for it to show up in. The sheet's own grid covers
+// the frame when its corners are spent straight into clip space, so this needs no
+// geometry of its own.
+@vertex
+fn cover(@location(0) corner: vec2<f32>, @location(1) place: vec2<f32>) -> Surface {
+    // No aspect correction and no turn: this covers the frame rather than being a
+    // shape on it, and squeezing it would leave a band down each side of the frame
+    // that the mark could never be tested against.
+    return Surface(vec4<f32>(place * 2.0 - 1.0, 0.5, 1.0), place);
+}
+
 @fragment
 fn filling(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
     // Rings: distance from the middle of the frame in bands, which gives the field
