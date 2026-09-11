@@ -387,6 +387,14 @@ if (glslJoin.error || !glslJoin.offer) {
 // on WebGL 2 — a preset skipped on one backend compares nothing, which is the trap
 // `core-blend` was written to avoid. It has a vertex stage now, so the mask modes
 // are compared here beside the counting ones.
+//
+// **`core-scissor` joined it at item 16 step 3**, and it is on this list for the
+// reason `core-blend` is: a scissor is core render-pass state on both backends whose
+// effect appears in no shader, so nothing but a cross-backend comparison can tell an
+// applied rectangle from an ignored one — or, worse, from one flipped the wrong way
+// round, since WebGPU counts a scissor from the top-left and WebGL 2 from the
+// bottom-left. Its rectangle is off-centre in both axes so that a wrong flip is a
+// different picture rather than the same one.
 const SCENE_TIER = [
   'core-scene',
   'core-draw-list',
@@ -394,6 +402,7 @@ const SCENE_TIER = [
   'core-blend',
   'core-stencil',
   'core-count',
+  'core-scissor',
 ];
 console.log('');
 for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {

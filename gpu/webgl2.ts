@@ -22,6 +22,7 @@ import type {
   PipelineSpec,
   RenderPipelineSpec,
   SamplerResource,
+  ScissorRect,
   StencilMode,
   TextureResource,
   UniformValue,
@@ -857,6 +858,15 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // has the call stream it had.
       const hasBlend = frame.pipelines.some((spec) => blendOf(spec) !== null);
 
+      // The same question for the scissor (item 16), asked of the frame's passes
+      // because a scissor is pass state: a frame where one pass scissors and another
+      // does not must turn the test off for the second, since WebGL 2 keeps one
+      // scissor on the context rather than one per pass. A frame where no pass names
+      // one touches no scissor state at all, so every fixture that drew before item
+      // 16 has the call stream it had — which is the rule item 11 set for blend and
+      // is held by the same executor test.
+      const hasScissor = frame.passes.some((pass) => isRenderPass(pass) && pass.scissor !== undefined);
+
       // The size the textures were last built at, so a resize between build and
       // draw remakes the frame-following ones before a pass reads a target of the
       // wrong size.
@@ -949,6 +959,9 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       interface PassPlan {
         program: WebGLProgram;
         attribute: number;
+        /** The rectangle this pass may write into, from the top-left of its
+         * attachment, or null where it may write the whole of it (item 16). */
+        scissor: ScissorRect | null;
         vertices: number[];
         instances: (number | undefined)[];
         // The colours this pass writes, in the fragment stage's output order:
@@ -1307,6 +1320,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // `per-target-blend`, which this backend has not got, so `refusal` has
           // already turned such a frame away.
           blend: blendOf(spec),
+          // The rectangle this pass may write into, carried in the top-left origin
+          // it is declared in; `drawGL2Frame` owns the flip to this API's
+          // bottom-left one (item 16). It is the pass's own rather than the
+          // pipeline's, so it reads off `pass` and not `spec`.
+          scissor: pass.scissor ?? null,
         });
       }
 
@@ -1550,6 +1568,9 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
               instances: plan.instances,
               width: passWidth,
               height: passHeight,
+              // The rectangle the pass may write into, handed over in the top-left
+              // origin it is declared in; `drawGL2Frame` owns the flip (item 16).
+              ...(hasScissor ? { scissor: plan.scissor } : {}),
               ...(plan.geometry ? { geometry: plan.geometry } : {}),
               ...(plan.perDraw ? { perDraw: plan.perDraw } : {}),
             });

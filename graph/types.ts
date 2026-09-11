@@ -657,8 +657,42 @@ export const STENCIL_STATES: Record<
  * same capability on both is worse than one that is absent from both. **That is the
  * one measurement that can still refuse this**, and it belongs to step 3's fixture.
  */
+/**
+ * The rectangle a pass is allowed to write into, in pixels from the **top-left** of
+ * the attachment it draws to.
+ *
+ * Top-left because that is WebGPU's origin and this graph is authored in WebGPU's
+ * terms; the WebGL 2 backend flips it to that API's bottom-left origin as
+ * `height - y - height_of_rect`, in one place, beside the flip `readPixels` already
+ * needs. The two were measured agreeing to **zero channels** over an off-centre
+ * rectangle before this type existed (item 16 step 3).
+ *
+ * It clips; it does not transform. A scissor changes which pixels a pass may write
+ * and nothing about what a pipeline computes, so a fragment outside it is discarded
+ * after shading rather than never shaded, and `@builtin(position)` is unaffected.
+ * That is the specification's behaviour on both backends and it is the reason a
+ * scissor is not a way to make a pass cheaper.
+ */
+export interface ScissorRect {
+  /** Pixels from the left edge of the attachment. */
+  x: number;
+  /** Pixels from the **top** edge of the attachment. */
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface RenderPassSpec {
   pipeline: PipelineHandle;
+  /** The rectangle this pass may write into, absent for a pass that may write the
+   * whole attachment. Core on both backends — `setScissorRect` and `gl.scissor`
+   * with `gl.enable(gl.SCISSOR_TEST)` — so it is pass state rather than a
+   * capability, and no frame is refused for asking.
+   *
+   * It is on the pass and not on a draw because `setScissorRect` is a call on the
+   * render-pass encoder; a per-draw scissor is a shape neither backend has. See the
+   * decision above this interface for why it is here at all. */
+  scissor?: ScissorRect;
   /** The draws this pass issues, in order, all against the pass's one pipeline
    * until item 33 lifts that restriction. It is a list because one pass carries
    * many draws (item 26) — the one-draw-per-pass shape is gone rather than merely

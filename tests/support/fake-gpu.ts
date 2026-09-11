@@ -261,6 +261,7 @@ export function createFakeGPU({
           drawIndirect() {},
           drawIndexedIndirect() {},
           setStencilReference() {},
+          setScissorRect() {},
           beginOcclusionQuery() {},
           endOcclusionQuery() {},
           executeBundles() {},

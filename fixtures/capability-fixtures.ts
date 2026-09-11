@@ -455,6 +455,53 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
     },
   },
   {
+    id: 'core-scissor',
+    language: 'wgsl',
+    source: 'core-scissor.wgsl',
+    uniforms: [
+      { name: 'u_time', type: 'float', value: 0 },
+      { name: 'u_resolution', type: 'vec2', value: [800, 600] },
+    ],
+    frame: {
+      // The same grid the other geometry presets draw, so what is being compared is
+      // the scissor rather than a primitive nothing else uses. It covers the whole
+      // frame, so every pixel is shaded by both passes and the rectangle is the only
+      // thing deciding which pass keeps it.
+      geometry: [{ name: 'sheet', primitive: 'quad-grid', size: [16, 16] }],
+      attachments: [{ name: 'picture', size: { scale: 1 }, format: 'rgba8unorm' }],
+      passes: [
+        // The ground, over the whole frame and naming no rectangle.
+        {
+          pipeline: 'ground',
+          vertex: 'cover',
+          geometry: 'sheet',
+          colour: [{ resource: 'picture', clear: [0, 0, 0, 1] }],
+        },
+        // The inset, the same sheet in a different colour, clipped to a rectangle.
+        //
+        // **Off-centre in both axes on purpose.** A rectangle centred vertically
+        // looks identical whether the backend counts its `y` from the top or from
+        // the bottom, so it would pass under a flip that is wrong — which is the one
+        // mistake this preset exists to catch, WebGPU counting from the top-left and
+        // WebGL 2 from the bottom-left. 120 down out of 600 is nowhere near the
+        // middle either way.
+        //
+        // The numbers are pixels of the frame the corpus draws at, 800 by 600, and
+        // they are fixed rather than a fraction of it because a scissor is declared
+        // in pixels and a frame that resized under it would be comparing two
+        // rectangles rather than two backends.
+        {
+          pipeline: 'inset',
+          vertex: 'cover',
+          geometry: 'sheet',
+          scissor: { x: 96, y: 120, width: 360, height: 210 },
+          colour: [{ resource: 'picture' }],
+        },
+      ],
+      present: 'picture',
+    },
+  },
+  {
     // The blend, on its own and with nothing else going on (item 11). Every other
     // preset that leans on a blend leans on something else too — `core-depth`
     // blends and tests distances and writes two colours at once — so a blend that

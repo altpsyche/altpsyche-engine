@@ -75,6 +75,19 @@ export interface GL2FrameExecution {
   height: number;
   perDraw?: GL2PerDraw;
   geometry?: GL2Geometry;
+  /** The rectangle this pass may write into, in pixels from the **top-left** of the
+   * attachment, which is the origin `ScissorRect` is declared in and WebGPU's own.
+   *
+   * `null` is a pass of a scissoring frame that names no rectangle of its own, and it
+   * turns the test off — WebGL 2 keeps one scissor on the context, so a pass after a
+   * scissored one would otherwise inherit its rectangle. **Absent** is a frame where
+   * no pass scissors at all, and it touches no scissor state whatever, so every frame
+   * that drew before item 16 has the call stream it had. That is the rule item 11 set
+   * for blend.
+   *
+   * This is the one place the flip to WebGL 2's bottom-left origin happens, beside the
+   * flip `readPixels` needs for the same reason. */
+  scissor?: { x: number; y: number; width: number; height: number } | null;
 }
 
 /** Draws the frame's one pass, exactly as the backend's `draw` did before this
@@ -107,6 +120,33 @@ export function drawGL2Frame(exec: GL2FrameExecution): void {
     gl.vertexAttribPointer(attribute, 3, gl.FLOAT, false, 0, 0);
   }
   gl.viewport(0, 0, width, height);
+  // The rectangle this pass may write into. WebGL 2 counts a scissor from the
+  // bottom-left where `ScissorRect` is declared from the top-left, so `y` becomes
+  // `height - y - height_of_rect`: the distance from the bottom edge to the bottom of
+  // the rectangle. Measured agreeing with WebGPU's `setScissorRect` to zero channels
+  // over an off-centre rectangle, which is what says the flip is right rather than
+  // merely symmetric — a rectangle centred vertically would agree under a wrong flip
+  // too.
+  //
+  // Clamped to the attachment rather than refused, for the reason the WebGPU side is:
+  // `validate` cannot see a frame's pixel size, because a texture may follow the
+  // frame.
+  //
+  // The test is disabled where the pass names none, because scissor state is the
+  // context's rather than the pass's: WebGL 2 keeps one, so a pass that set a
+  // rectangle would otherwise clip every pass after it in the same frame.
+  if (exec.scissor === undefined) {
+    // No pass of this frame scissors: leave the state alone entirely.
+  } else if (exec.scissor === null) {
+    gl.disable(gl.SCISSOR_TEST);
+  } else {
+    const x = Math.min(Math.max(exec.scissor.x, 0), width);
+    const top = Math.min(Math.max(exec.scissor.y, 0), height);
+    const w = Math.min(exec.scissor.width, width - x);
+    const h = Math.min(exec.scissor.height, height - top);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(x, height - top - h, w, h);
+  }
   vertices.forEach((count, at) => {
     if (perDraw) {
       gl.bindBufferRange(gl.UNIFORM_BUFFER, perDraw.binding, perDraw.buffer, perDraw.offsets[at] ?? 0, perDraw.size);

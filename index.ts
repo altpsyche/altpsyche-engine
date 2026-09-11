@@ -137,6 +137,7 @@ export type {
   RenderStage,
   ResourceSpec,
   SamplerResource,
+  ScissorRect,
   FrameGraph,
   ShaderTarget,
   StencilMode,

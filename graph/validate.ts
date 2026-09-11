@@ -253,6 +253,48 @@ export function validate(graph: FrameGraph): void {
   // words — rather than reaching a `setBindGroup` or `bindBufferRange` that names
   // the byte count alone. Which binding a pass's draws slice, and how wide one
   // record is, is the pipeline's; the offset is the draw's.
+  // A scissor rectangle has to be a rectangle, checked here for the half of the rule
+  // this function can see.
+  //
+  // **The half it cannot see is whether the rectangle fits the attachment**, and that
+  // is deliberate rather than missed: a frame's textures may be `{ scale: 1 }`, so a
+  // graph in hand has no pixel size to hold a rectangle against and only gains one
+  // when a frame is resolved at a width and a height. Both backends are given the
+  // resolved size and clamp there. What is checkable without a size is that the
+  // numbers describe a region at all, and every one of these is a rectangle the card
+  // refuses with a message naming neither the pass nor the frame.
+  for (const pass of graph.passes) {
+    if (!isRenderPass(pass) || pass.scissor === undefined) continue;
+    const { x, y, width, height } = pass.scissor;
+    const pipeline = indexOf(pass.pipeline);
+    for (const [name, value] of [
+      ['x', x],
+      ['y', y],
+      ['width', width],
+      ['height', height],
+    ] as const) {
+      if (!Number.isInteger(value)) {
+        throw new Error(
+          `the frame for "${id}" scissors the pass on pipeline ${pipeline} to a ${name} of ${value}, which is no whole number of pixels`
+        );
+      }
+    }
+    if (x < 0 || y < 0) {
+      throw new Error(
+        `the frame for "${id}" scissors the pass on pipeline ${pipeline} to a corner at ${x},${y}, which is outside its own attachment`
+      );
+    }
+    // Zero is refused rather than treated as "draw nothing", because a pass that
+    // writes no pixels is written by leaving the pass out, and an accidental zero —
+    // a width worked out from a size that came back undefined — is otherwise a frame
+    // that draws nothing and reports nothing.
+    if (width <= 0 || height <= 0) {
+      throw new Error(
+        `the frame for "${id}" scissors the pass on pipeline ${pipeline} to ${width}x${height}, and a pass that may write nothing is a pass left out`
+      );
+    }
+  }
+
   for (const pass of graph.passes) {
     if (!isRenderPass(pass)) continue;
     const pipeline = indexOf(pass.pipeline);

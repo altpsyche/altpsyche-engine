@@ -105,8 +105,13 @@ describe('the build-time translation path bakes GLSL and ships no translator', (
     // which is the one thing a preset written to be compared across the two backends
     // must not be. Step 4 of the same item gave `core-stencil`'s filling pipeline a
     // vertex stage for exactly that reason — it was skipped on WebGL 2 and compared
-    // nothing — making 45.
-    expect(entryTotal).toBe(45);
+    // nothing — making 45. Item 16 added `core-scissor`'s three — one vertex stage
+    // covering the frame, drawn by both passes, and the two fragment stages that
+    // colour the ground and the rectangle — making 48. It shares one vertex stage
+    // between its passes where `core-blend` needs two, because the two sheets there
+    // sit in different places and the two here are the same sheet: what differs is
+    // the rectangle one pass is clipped to, which is pass state and not a stage.
+    expect(entryTotal).toBe(48);
   });
 
   it('overlays a hand-authored GLSL bake where naga has no storage-buffer syntax (item 105)', () => {

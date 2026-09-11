@@ -2456,6 +2456,78 @@ answer, both backends, the cross-backend fixture, and the documents.
    of pixels at the frame's clear colour, the two backends agreeing on it to the single channel the
    corpus already holds every preset to, `gate:browser` at 4 of 4 and the recording contract at its
    new count.
+#### Landed on 2026-09-11, step 3, and the fixture found a defect nothing else could have
+
+**The risky measurement was taken first, before any of this was built.** WebGPU's scissor origin is
+the top-left and WebGL 2's the bottom-left, and step 2's decision was written so that a disagreement
+reverses it. Raw APIs, no package code, an off-centre rectangle on a 64×32 target under the same
+SwiftShader Chromium the browser gates use:
+
+```
+expected red pixels: 240      (a 24x10 rectangle)
+WebGL 2 red pixels:  240
+WebGPU  red pixels:  240
+channels differing:  0 of 8192, worst 0
+```
+
+Zero. The flip is `height - y - height_of_rect` and it is written in one place, `submit/gl2.ts`,
+beside the flip `readPixels` already needs.
+
+**Then the fixture caught a real defect, and it is the reason this item insisted on one.**
+`core-scissor` drawn through both backends and compared:
+
+| | before the fix | after |
+| --- | --- | --- |
+| inset pixels, WebGPU | **480,000** — the whole frame | **75,600** |
+| inset pixels, WebGL 2 | 75,600 | 75,600 |
+| channels differing | 1,210,914 of 1,440,000, worst 219 | **9 of 1,440,000, worst 1** |
+| hard jumps | 3,848 against 4,254 | 4,254 against 4,254 |
+
+75,600 is 360 × 210, the rectangle's exact area. **WebGPU was applying no scissor at all**, and the
+cause was not the backend: `graph/attachments.ts`'s `mergeGroups` folded the two passes into one
+`beginRenderPass`, and a merged group replays its members as bundles, which cannot carry a scissor.
+`mergeable` already excluded resolve, query and stencil for exactly that reason and a scissor was
+missing from the list. **The WebGL 2 backend does not merge, which is why only one backend was wrong
+— and why nothing short of a cross-backend fixture would have found it.** A test of either backend
+alone would have passed.
+
+**What was built.** `ScissorRect` and `RenderPassSpec.scissor` in `graph/types.ts`, exported as a
+type; a well-formedness refusal in `validate` (whole numbers, a corner inside the attachment, a
+positive extent) with the honest note that *fitting* the attachment is not checkable there, since a
+texture may follow the frame; the answer at `FrameCost` that a scissor changes **no** figure it
+reports and why; `setScissorRect` on the WebGPU path beside the stencil reference, which is the same
+kind of pass state; `gl.scissor` with the flip on the WebGL 2 path; the merge exclusion above;
+`setScissorRect` on the recording double and on the device double; and the declaration's own
+`scissor`, lowered unchanged because both count from the top-left.
+
+**A frame that names no scissor touches no scissor state at all**, which is the rule item 11 set for
+blend, so every fixture that drew before this has the call stream it had — held by
+`tests/submit-executor.test.ts`, which went red when a `gl.disable` was added unconditionally and is
+why the rule is there.
+
+**Measured.**
+
+| | before | after |
+| --- | --- | --- |
+| `npm test` | 947 over 80 files | **954 over 81 files** |
+| `npm run type-check` | clean | clean |
+| `npm run gate:pack` | 17 of 17 | 17 of 17 |
+| `npm run gate:browser` | 4 of 4 | 4 of 4 |
+| recording contract | 18 of 18 | **19 of 19** |
+| corpus draws | 28, 0 failed, 9 skips | **30, 0 failed, 9 skips** |
+| run-time names on the door | 73 | 73 |
+
+The door is unchanged because `ScissorRect` is a type. `core-scissor` draws on **both** backends —
+it uses geometry rather than a fullscreen fragment frame precisely so that WebGL 2 does not skip it,
+which is the trap `core-blend` was written to avoid and which `core-stencil` fell into.
+
+**What the gates could not see, and one line of it matters more than usual.** Every number above is a
+**software renderer**. `core-scissor` was added to `gates/card.mjs`'s `SCENE_TIER`, which is where the
+cross-backend comparison is taken on real hardware — **and `gate:card` was not run**, so the
+agreement is measured under SwiftShader and asserted on a card only by that list. The nine differing
+channels are a SwiftShader reading and a real card will differ by more; the corpus tolerance is 8 per
+channel and the worst here is 1.
+
 4. **If built: `docs/API.md` and `docs/GUIDE-frame-graph.md` name it.** **The measurement**:
    `gate:pack`, and the door's export count against 69 run-time names.
 

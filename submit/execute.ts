@@ -21,7 +21,7 @@
  * `composite` receives is the finished target texture, and what it does with it is
  * the backend's business.
  */
-import type { DrawSpec, StencilMode } from '../graph/types.js';
+import type { DrawSpec, ScissorRect, StencilMode } from '../graph/types.js';
 import { STENCIL_STATES, drawsCorners, drawsIndirectly } from '../graph/types.js';
 
 /** One colour attachment of a pass, resolved to the textures it writes and
@@ -118,6 +118,11 @@ export interface ResolvedRun {
    * the mode (item 2): `nonzero` tests a counter against zero where `inside`
    * tests a mark against every bit. */
   stencil: StencilMode | undefined;
+  /** The rectangle this pass may write into, in pixels from the top-left of its
+   * attachment, or `undefined` where it may write the whole of it. Pass state set
+   * before the draws for the reason the stencil reference is: a bundle cannot hold
+   * it (item 16). */
+  scissor: ScissorRect | undefined;
 }
 
 /** Everything one frame needs to become commands: the passes already resolved, the
@@ -285,6 +290,23 @@ export function runFrame(exec: FrameExecution): void {
     // value it is comes off the mode (item 2), since the mask modes test
     // against every bit and the counting modes against zero.
     if (run.stencil !== undefined) run_pass.setStencilReference(STENCIL_STATES[run.stencil].reference);
+    // The rectangle this pass may write into, set here for the reason the stencil
+    // reference is set here: it is pass state a bundle cannot carry, so it goes on
+    // before the recorded draws replay against it. WebGPU's origin is the top-left,
+    // which is the origin `ScissorRect` is declared in, so it is passed through
+    // unchanged and the WebGL 2 backend is the one that flips (item 16).
+    //
+    // Clamped to the attachment rather than refused, because `validate` cannot see a
+    // frame's pixel size — a texture may follow the frame — and the card rejects a
+    // rectangle reaching past the target with a message naming neither the pass nor
+    // the frame. A rectangle wholly outside the attachment clamps to zero extent,
+    // which the card refuses, so it is pulled to the edge instead and the pass draws
+    // the sliver that is actually inside.
+    if (run.scissor !== undefined) {
+      const x = Math.min(run.scissor.x, width);
+      const y = Math.min(run.scissor.y, height);
+      run_pass.setScissorRect(x, y, Math.min(run.scissor.width, width - x), Math.min(run.scissor.height, height - y));
+    }
     // One or several bundles into one render pass: a lone pass replays its own,
     // and a merged group replays every member's in order, which is the two
     // passes over one attachment drawn as one (item 1).

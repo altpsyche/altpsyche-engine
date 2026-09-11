@@ -120,6 +120,29 @@ const EXPECTED: Record<string, FrameCost> = {
     // the frame the reader sees rather than a transient of its own.
     transientBytes: 0,
   },
+  'core-scissor': {
+    // Two passes, one draw each: the ground over the whole frame and the same sheet
+    // clipped to a rectangle over it.
+    //
+    // **A scissor costs nothing here and that is the assertion** (item 16). It
+    // changes which pixels a pass may write and none of the figures below — the pass
+    // still runs, its draw is still issued, the same pipeline and resources are
+    // bound, the attachment is still loaded and stored, and no transient changes
+    // size. It does not even reduce shading, because a scissor discards a fragment
+    // after it is shaded. A reading that started charging for one, or that started
+    // treating a scissored pass as cheaper, would show up as this row changing.
+    passes: 2,
+    draws: 2,
+    dispatches: 0,
+    pipelineSwitches: 2,
+    // Both passes bind the one uniform block, so one bind across the two.
+    bindSwitches: 1,
+    // The second pass loads the picture the first left rather than clearing it,
+    // which is what lets the ground show outside the rectangle.
+    attachmentLoads: 1,
+    attachmentStores: 2,
+    transientBytes: 1920000,
+  },
   'core-blend': {
     // Two passes, one draw each: the sheet underneath and the sheet blended over
     // it. A blend costs nothing here — it is pipeline state, not work the counter

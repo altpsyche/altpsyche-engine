@@ -665,6 +665,9 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     // the entry gave, since where an answer lands is the entry's and how many
     // answers there are is the backend's.
     const said = {
+      // Carried through unchanged: the declaration and the graph both count a
+      // scissor from the top-left, so there is nothing to lower (item 16).
+      ...(pass.scissor !== undefined ? { scissor: pass.scissor } : {}),
       ...(pass.timed !== undefined ? { timed: buffer(nameIndex.get(pass.timed)!) } : {}),
       ...(pass.visible !== undefined ? { visible: buffer(nameIndex.get(pass.visible)!) } : {}),
     };

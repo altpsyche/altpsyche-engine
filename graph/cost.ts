@@ -34,7 +34,16 @@ import { sizeAt } from './refs.js';
 
 /** What one frame costs, by its structure alone. Every field is a count except
  * `transientBytes`, and none is ever summed with another: they measure different
- * things a budget (item 31) enforces separately. */
+ * things a budget (item 31) enforces separately.
+ *
+ * **A scissor changes nothing here, and that is the answer rather than an omission**
+ * (item 16 step 3). `RenderPassSpec.scissor` alters which pixels a pass may write and
+ * none of the figures below: the pass still runs, its draws are still issued, the same
+ * pipeline and resources are still bound, the attachment is still loaded and stored,
+ * and no transient changes size. It does not even reduce shading, because a scissor
+ * discards a fragment after it is shaded rather than preventing the shading — which is
+ * both backends' specified behaviour and is why a scissor is a clip and not an
+ * optimisation. A caller looking to pay less draws less; `cost` says so by not moving. */
 export interface FrameCost {
   /** How many passes the frame runs, render and compute alike. */
   passes: number;

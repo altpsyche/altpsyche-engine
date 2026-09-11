@@ -81,6 +81,7 @@ export const COMPARED: Record<string, readonly string[]> = {
   resolveQuerySet: ['set', 'first', 'count', 'into', 'offset'],
   beginOcclusionQuery: ['at'],
   setStencilReference: ['reference'],
+  setScissorRect: ['x', 'y', 'width', 'height'],
   'querySet.destroy': ['label'],
   writeBuffer: ['label', 'offset', 'data'],
   writeTexture: ['label', 'bytes', 'stride', 'size'],
@@ -374,6 +375,14 @@ export function wrapDevice(device: GPUDevice, trace: TraceEntry[], lifetimes?: L
     setStencilReference(reference: number) {
       record({ call: 'setStencilReference', reference });
       pass.setStencilReference(reference);
+    },
+    // The rectangle this pass may write into (item 16). A pass call rather than
+    // pipeline state, like the stencil reference above, so a trace is where a
+    // scissor that was asked for and never applied shows up — which is the defect
+    // the cross-backend fixture caught in the pass merge.
+    setScissorRect(x: number, y: number, width: number, height: number) {
+      record({ call: 'setScissorRect', x, y, width, height });
+      pass.setScissorRect(x, y, width, height);
     },
     // Which slot of the set the samples of the next draw are counted into. There
     // is nothing else to say about it: the answer arrives in a buffer rather than

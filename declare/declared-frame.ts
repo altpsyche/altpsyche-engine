@@ -180,6 +180,12 @@ export interface DeclaredFrame {
        * keeping several, since nothing else can read it. */
       resolve?: string;
     }[];
+    /** The rectangle this pass may write into, in pixels from the top-left of the
+     * attachment it draws to, absent for a pass that may write the whole of it.
+     * Core on both backends, so it is pass state rather than a capability and no
+     * frame is refused for asking. The reason it is on the pass and not on a draw
+     * is at `RenderPassSpec.scissor`, which this lowers to unchanged. */
+    scissor?: { x: number; y: number; width: number; height: number };
     /** The buffer this pass writes the two times it took into: one as it opens
      * and one as it closes, so what lands there is a period rather than a clock
      * reading. It is 16 bytes, since each of the two is a count of 64 bits, and a

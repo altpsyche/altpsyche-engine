@@ -226,3 +226,42 @@ describe('mergeGroups decides which consecutive passes share a render pass', () 
     expect(mergeGroups(f)).toEqual([[0], [1], [2]]);
   });
 });
+
+/**
+ * A scissor stops a pass merging (item 16 step 3).
+ *
+ * Merging folds consecutive passes into one `beginRenderPass` and replays each
+ * member's draws as bundles, and a bundle cannot carry a scissor — so a merged group
+ * holds one rectangle for every member, which is not what any of them asked for.
+ * `mergeable` already excludes resolve, query and stencil for that reason; a scissor
+ * is the same kind of thing and was missing from the list.
+ *
+ * **Found by measurement, not by reading.** `core-scissor` drew its clipped pass over
+ * the whole frame on WebGPU while WebGL 2 clipped it correctly — 480,000 pixels
+ * against 75,600, the rectangle's exact area — because this merge dropped the
+ * rectangle. The WebGL 2 backend does not merge, which is why only one backend was
+ * wrong and why nothing short of a cross-backend fixture would have caught it.
+ */
+describe('a pass naming a scissor does not merge', () => {
+  const two = (scissor?: { x: number; y: number; width: number; height: number }): FrameGraph =>
+    frame({
+      pipelines: [RENDER(), RENDER()],
+      passes: [
+        { pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], colour: [{ resource: texture(0), clear: [0, 0, 0, 1] }] },
+        {
+          pipeline: pipelineHandle(1),
+          draws: [{ vertices: 3 }],
+          colour: [{ resource: texture(0) }],
+          ...(scissor ? { scissor } : {}),
+        },
+      ],
+    });
+
+  it('merges the same two passes when neither scissors, so the rule is the scissor', () => {
+    expect(mergeGroups(two())).toEqual([[0, 1]]);
+  });
+
+  it('leaves them apart when the second names a rectangle', () => {
+    expect(mergeGroups(two({ x: 96, y: 120, width: 360, height: 210 }))).toEqual([[0], [1]]);
+  });
+});

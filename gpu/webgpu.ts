@@ -1069,6 +1069,10 @@ export function createWebGPUBackend(
                 // under one: the reference belongs to the mode (item 2), so the
                 // executor needs the name to know what to set.
                 stencil: isRenderPass(pass) && spec.kind === 'render' ? spec.depth?.stencil : undefined,
+                // The rectangle the pass may write into, carried through as declared
+                // (item 16). It is the pass's own rather than the pipeline's, so it
+                // reads off `pass` and not `spec`.
+                scissor: isRenderPass(pass) ? pass.scissor : undefined,
               };
             });
             // Fold the consecutive passes a group names into one render pass. The

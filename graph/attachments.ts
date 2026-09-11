@@ -178,9 +178,9 @@ export function mergeGroups(frame: FrameGraph): number[][] {
   }
 
   /** Whether a pass can be a group member at all: a render pass drawing its own
-   * colour attachments, with no resolve, query, or stencil, whose every mergeable
-   * neighbour joins it by the pairwise test below. The pipeline is resolved by the
-   * pass's `PipelineHandle`. */
+   * colour attachments, with no resolve, query, stencil or scissor, whose every
+   * mergeable neighbour joins it by the pairwise test below. The pipeline is
+   * resolved by the pass's `PipelineHandle`. */
   const mergeable = (index: number): boolean => {
     const pass = frame.passes[index]!;
     const spec = frame.pipelines[indexOf(pass.pipeline)];
@@ -190,6 +190,24 @@ export function mergeGroups(frame: FrameGraph): number[][] {
       pass.colour.every((a) => a.resolve === undefined) &&
       pass.visible === undefined &&
       pass.timed === undefined &&
+      // A scissor is pass state a merge would lose, exactly as a stencil reference
+      // is (item 16). Merging folds several passes into one `beginRenderPass` and
+      // replays each member's draws as bundles, and a bundle cannot carry a scissor —
+      // so a merged group can hold one rectangle for every member, which is not what
+      // any of them asked for.
+      //
+      // **Found by measurement rather than by reading.** `core-scissor` drew its
+      // clipped pass over the whole frame on WebGPU while WebGL 2 clipped it
+      // correctly — 480,000 pixels against 75,600, the rectangle's exact area — and
+      // the difference was this merge silently dropping the rectangle. The WebGL 2
+      // backend does not merge, which is why only one backend was wrong and why a
+      // cross-backend fixture is what caught it.
+      //
+      // A pair of passes carrying the *same* rectangle could in principle still
+      // merge. That is left undone deliberately: the gain is one `beginRenderPass`
+      // and the rule would be the first in this function that compares a value
+      // rather than asking whether a feature is used at all.
+      pass.scissor === undefined &&
       spec.samples === undefined &&
       spec.depth?.stencil === undefined
     );

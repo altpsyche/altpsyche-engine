@@ -171,6 +171,22 @@
         }
       }
     },
+    "core-scissor": {
+      "entries": {
+        "cover": {
+          "stage": "vertex",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float CELLS = 8.0;\n\nlayout(location = 0) in vec2 _p2vs_location0;\nlayout(location = 1) in vec2 _p2vs_location1;\nsmooth out vec2 _vs2fs_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.1, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    vec2 corner = _p2vs_location0;\n    vec2 place = _p2vs_location1;\n    Surface _tmp_return = Surface(vec4(corner.x, corner.y, 0.0, 1.0), place);\n    gl_Position = _tmp_return.at;\n    _vs2fs_location0 = _tmp_return.place;\n    gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;\n    return;\n}\n\n"
+        },
+        "ground": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float CELLS = 8.0;\n\nsmooth in vec2 _vs2fs_location0;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.1, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded = Surface(gl_FragCoord, _vs2fs_location0);\n    vec3 body = mix(vec3(0.06, 0.13, 0.3), vec3(0.18, 0.42, 0.72), shaded.place.y);\n    float _e17 = lines(shaded.place);\n    _fs2p_location0 = vec4(mix(body, vec3(0.85, 0.92, 1.0), (_e17 * 0.5)), 1.0);\n    return;\n}\n\n"
+        },
+        "inset": {
+          "stage": "fragment",
+          "glsl": "#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct Uniforms {\n    float u_time;\n    vec2 u_resolution;\n};\nstruct Surface {\n    vec4 at;\n    vec2 place;\n};\nconst float CELLS = 8.0;\n\nsmooth in vec2 _vs2fs_location0;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat lines(vec2 place_1) {\n    vec2 cells = (place_1 * CELLS);\n    float toEdge = min(fract(cells.x), fract(cells.y));\n    return (1.0 - smoothstep(0.0, 0.1, min(toEdge, (1.0 - toEdge))));\n}\n\nvoid main() {\n    Surface shaded_1 = Surface(gl_FragCoord, _vs2fs_location0);\n    vec3 body = mix(vec3(0.55, 0.16, 0.05), vec3(0.92, 0.62, 0.16), shaded_1.place.x);\n    float _e17 = lines(shaded_1.place);\n    _fs2p_location0 = vec4(mix(body, vec3(1.0, 0.97, 0.85), (_e17 * 0.5)), 1.0);\n    return;\n}\n\n"
+        }
+      }
+    },
     "core-stencil": {
       "entries": {
         "shape": {
