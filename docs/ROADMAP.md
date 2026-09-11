@@ -3266,19 +3266,56 @@ hypothesis and step 2b is where it gets measured.
 `core-mips`'s residual is its own. `core-texture` can close on the mirror alone, and it is the
 cleaner check that the mirror fix is right, since nothing else is wrong with it.
 
-### Steps, rewritten after step 1
+### Landed on 2026-09-11, step 2: the upload was one mirror, and fixing it showed `core-texture` had two
 
-2. **Fix the mirror where the decision belongs.** Both presets sample a texture uploaded from bytes
-   the build wrote, and `core-target` — which agrees — samples one a pass drew. **The measurement**:
-   `core-texture` on the card inside the tolerance *without* a flip, quoted against its 40-at-worst-1
-   flipped reading, which is the number the fix has to reproduce with no flip in it.
-2b. **Measure what is left of `core-mips` once the mirror is gone**, before fixing anything. **The
-   measurement**: its straight comparison after step 2, against 574,095 at worst 15. If it is inside
-   the tolerance then the mirror was the whole of it and this step closes empty; if not, it names
-   what remains and a step is written for it.
-3. **`core-texture` and `core-mips` join `gates/card.mjs`'s `SCENE_TIER`** and the diagnostic block
+**The fix.** `gpu/webgl2.ts` uploads a texture's `data` top row first. `texImage2D` places the first
+row at `v = 0` and in OpenGL that is the *bottom*; WebGPU's `writeTexture` places it at `v = 0` where
+that is the *top*. The same bytes sampled at the same coordinate therefore read a mirrored picture.
+The rule this settles is the one the package already had for reading — `readPixels` hands back the
+top row first on both backends — so a texture's first row of `data` is its top row on both backends
+too. `UNPACK_FLIP_Y_WEBGL` was deliberately not used: it is a global pixel-store switch that leaks to
+every later upload on the context.
+
+**What the card says, and the two presets answer differently:**
+
+```
+                before fix  (as drawn / flipped)      after fix  (as drawn / flipped)
+core-mips       1,401,861 w128 /   574,095 w15        574,191 w15 / 1,401,846 w128
+core-texture    1,424,706 w235 /        40 w1       1,417,121 w231 / 1,362,348 w242
+```
+
+**`core-mips` swapped exactly.** Its straight reading is now what its flipped reading was, to within
+a hundred channels and at the same worst-15. **The upload was its mirror, entirely**, and what is
+left — 574,191 at worst 15 against a tolerance of 8 — is the second defect step 1 predicted: the two
+backends build a mip ladder by different means, which `gpu/webgl2.ts` says in its own comment
+(`generateMipmap`) against the WebGPU backend drawing "the steps by hand".
+
+**`core-texture` did not swap, and that is the finding.** Its straight reading barely moved
+(1,424,706 to 1,417,121) while its flipped reading went from 40 to 1,362,348. **So it had two mirror
+sources and they were cancelling into a clean picture-level mirror.** Fixing the upload removed one
+and left the other, which no longer composes into anything as tidy. Why it composed at all is
+visible in the preset: its texture is tiled three times across with `repeat` and read twice, the
+second lookup pushed by the first, so a flip of the texture is not a flip of the picture — the clean
+mirror must have come from the *coordinate*, not from the bytes.
+
+**No gated preset moved.** `core-target` 77 at worst 2, and every other cross-backend figure
+identical. The fix is safe and is landed on that basis rather than on the two held-out numbers.
+
+### Steps, rewritten after step 2
+
+2b. **Find `core-texture`'s remaining mirror, which is in the coordinate rather than the bytes.**
+    The reading above narrows it: the preset's lookup is derived from `@builtin(position)`, and naga
+    translating that to `gl_FragCoord` is where a Y flip would be introduced or omitted.
+    **The measurement**: `core-texture` on the card inside the tolerance with no flip, against
+    1,417,121 at worst 231. **The control is `core-target`**, which is position-derived too and
+    agrees, so whatever is found has to explain why that one is fine.
+2c. **`core-mips`'s mip ladder**, once 2b is done. Its residual is 574,191 at worst 15 against a
+    tolerance of 8. **The measurement**: the straight comparison after, and if the two ladders cannot
+    be made to agree, an argued tolerance for this preset with the reason written at the gate rather
+    than a silent widening.
+3. **`core-texture` and `core-mips` join `gates/card.mjs`'s `SCENE_TIER`**, and the diagnostic block
    and the comment holding them out come out with them. **The measurement**: both inside the
-   tolerance on the card, quoted against the numbers above.
+   tolerance on the card.
 
 ### Done when
 

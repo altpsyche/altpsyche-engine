@@ -708,7 +708,51 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // content texture does not follow the frame — refused above where it would —
         // so `buildTexture` runs once for it and the bytes are counted once.
         const contents = record.spec.data ?? null;
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, across, down, 0, gl.RGBA, gl.UNSIGNED_BYTE, contents);
+        // **The rows go up the other way here, and that is a fix rather than a
+        // quirk** (item 20, 2026-09-11). `texImage2D` places the first row of the
+        // bytes at `v = 0`, and in OpenGL `v = 0` is the *bottom* of the texture;
+        // WebGPU's `writeTexture` places the first row at `v = 0` and there that is
+        // the *top*. So the same bytes sampled at the same coordinate read a
+        // vertically mirrored picture, and the two backends drew two different
+        // pictures from one source.
+        //
+        // **This was invisible for as long as it existed.** Every preset that
+        // samples uploaded bytes — `core-texture`, `core-mips` — was skipped on
+        // WebGL 2 for want of a baked vertex, so neither was ever compared across
+        // the backends. Item 19 made them drawable and the first comparison found
+        // it: `core-texture` differed in 1,424,706 of 1,440,000 channels, and the
+        // same comparison with one frame flipped in Y came back at 40, inside the
+        // tolerance of 8 at worst 1.
+        //
+        // **The rule this settles is the one the package already had for reading**:
+        // `readPixels` hands back the top row first on both backends, so a texture's
+        // first row of `data` is its top row on both backends too. Flipping here is
+        // what makes the declaration true rather than half true.
+        //
+        // **To reverse**: drop `topRowFirst` and upload `contents` directly. **What
+        // would change the answer**: a caller who wants bottom-row-first bytes, which
+        // would be a field on the texture rather than a different answer here —
+        // `UNPACK_FLIP_Y_WEBGL` is deliberately not used, because it is a global
+        // pixel-store switch that leaks to every later upload on this context.
+        const topRowFirst = (bytes: Uint8Array<ArrayBuffer>) => {
+          const stride = across * 4;
+          const rows = new Uint8Array(bytes.length);
+          for (let y = 0; y < down; y++) {
+            rows.set(bytes.subarray((down - 1 - y) * stride, (down - y) * stride), y * stride);
+          }
+          return rows;
+        };
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA8,
+          across,
+          down,
+          0,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          contents ? topRowFirst(contents) : null
+        );
         if (contents) arena.wrote(contents.byteLength);
         // A ladder is generated off the level-0 contents (item 50): the card averages
         // every level below the first down to a single pixel, the steps the WebGPU
