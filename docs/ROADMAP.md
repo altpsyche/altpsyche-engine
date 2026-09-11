@@ -2081,6 +2081,46 @@ hardware. A card run is what would close that, and it needs Siva.
 
 **Steps 2 and 3 remain**: a test building a renderer on a canvas a previous renderer disposed, on
 both backends, and the statement in `docs/API.md` and `docs/ARCHITECTURE.md`.
+
+### Landed on 2026-09-11, step 2, and the double could not show the wrong answer until it was fixed
+
+**`tests/dispose-contract.test.ts` asks one pair of questions twice rather than testing two
+backends.** The property is the symmetry, and a test per backend is what let the two drift apart in
+the first place, so both live in one file with the reason at the top: each backend releases what it
+allocated, and neither reaches past that to the canvas it was handed. Five tests — rebuild after
+dispose on each backend, the free each one owes, and the ownership statement.
+
+**Four of the five passed under the old behaviour, which is the finding.** Restoring the
+`loseContext()` call reddened only *works on WebGL 2*. The test that should have been strongest —
+*leaves the canvas usable by something that is not this package at all* — passed either way, because
+**`createFakeGL` counted the `loseContext` call and then answered every question normally**. A lost
+context is not a call that happened; it is a canvas that cannot be drawn on again, and a double that
+records the call and carries on lets a test assert "the canvas is still usable" against something
+that was never unusable.
+
+So the double was fixed first: `getParameter` now answers `null` while `lostContext` is non-zero,
+which is what a browser does and is how a lost context is detected. The test then asks the question a
+caller would actually ask — get a context from the canvas and read a ceiling off it — and **both tests
+go red under the old behaviour**, each for its own reason. Note what the test must *not* assert: that
+`getContext` comes back null. A lost context is still handed back by the canvas, which is the whole
+reason losing one cannot be undone.
+
+**Measured.**
+
+| | before | after |
+| --- | --- | --- |
+| `npm test` | 938 over 78 files | **943 over 79 files** |
+| `npm run type-check` | clean | clean |
+| surface gate | 21 of 21 | 21 of 21 |
+| `npm run gate:browser` | 4 of 4 | 4 of 4 |
+
+**What the gates could not see.** The WebGPU half rests on a double that counts `configure` and
+`unconfigure` and does not model a canvas refusing to be reconfigured, so *works on WebGPU* proves
+the call sequence and not the browser's answer to it. jsdom hands back no real context of either
+kind, so neither arm is measured against a driver. `gate:card` was not re-taken.
+
+**Step 3 remains**: `docs/API.md`'s `dispose` entries and `docs/ARCHITECTURE.md`'s lifetimes saying
+what a caller may do with its canvas afterwards.
 ## Item 15 — `probe()` leaves a canvas on the caller's page for every backend it trials
 
 **Opened on 2026-09-11, out of reading 10 of the campaign above. This is finding C of the spike

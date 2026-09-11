@@ -206,6 +206,15 @@ export interface FakeGL {
   /** What the next `readPixels` fills the buffer with, bottom row first, the way
    * the driver hands a frame over. */
   frame: Uint8Array | null;
+  /** How many times `WEBGL_lose_context.loseContext()` was called on this context,
+   * and — since item 14 — whether the context is actually dead afterwards.
+   *
+   * Counting the call was not enough to hold item 14's property. A lost context is
+   * not a call that happened; it is a canvas that cannot be drawn on again, and a
+   * double that records the call and then answers every question normally lets a
+   * test assert "the canvas is still usable" against something that was never
+   * unusable. `getParameter` now answers null once this is non-zero, which is what a
+   * browser does, so a test can ask the question a caller would ask. */
   lostContext: number;
   /** The names of the ceilings this context answers, which is what the report is
    * held against: a name the backend asks for and this does not carry is absent
@@ -265,6 +274,10 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     ...pnames,
 
     getParameter: (pname: number) => {
+      // A lost context answers null to everything, which is exactly how a lost
+      // context is detected and is what makes losing one unrecoverable for a
+      // caller holding the canvas (item 14).
+      if (state.lostContext > 0) return null;
       const answer = answers.get(pname);
       if (!answer || !state.ceilings.includes(answer[0])) return null;
       return state.limits[answer[0]] ?? answer[1];
