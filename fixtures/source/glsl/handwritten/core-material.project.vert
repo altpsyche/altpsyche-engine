@@ -50,6 +50,17 @@ void main() {
     gl_Position = at;
     _vs2fs_location0 = place;
     _vs2fs_location1 = mine.tint;
-    // Z only, never Y (item 107): the readback already turns the frame over.
-    gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;
+    // Both axes, the same line the translator emits for every other stage
+    // (item 20). These files stand in for translator output where GLSL ES 3.00
+    // has no syntax for a storage buffer, so they must follow its conventions
+    // exactly — a stand-in that clips space differently from the stages beside it
+    // is a frame drawn two ways.
+    //
+    // **This said "Z only, never Y (item 107): the readback already turns the
+    // frame over."** Both halves of that stopped being true. WGSL's
+    // `@builtin(position)` counts rows from the top and GLSL ES 3.00's
+    // `gl_FragCoord` counts from the bottom, and the negation is half of the only
+    // way WebGL 2 has of reconciling them; the readback no longer turns a
+    // translated frame over, because the negation has already left it top-first.
+    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
 }

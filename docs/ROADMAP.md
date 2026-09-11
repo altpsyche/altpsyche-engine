@@ -3429,6 +3429,38 @@ pixel out of the default framebuffer per round, which is a sync amortised over 2
 **What this does not measure** is the memory a second full-size colour target costs, which is one
 frame's worth per surface and is not in any reading here.
 
+### Landed on 2026-09-12, step 2d: the vertex flip, and the whole gated corpus reads zero
+
+**What landed.** `gates/translate.mjs` keeps naga's clip-space y negation instead of stripping it;
+`GlslFrameGraph.framebufferOrigin` says which way up a frame's vertex stages leave the rows and
+`glslFrameOf` sets `top-left`; the backend inverts the winding for such a frame, does not turn its
+readback over, and turns it over on the blit onto the canvas; `submit/gl2.ts` skips the scissor flip
+for it. Two hand-authored vertex stages — `core-draw-list` and `core-material`, which stand in for
+translator output where GLSL ES 3.00 has no storage-buffer syntax — got the same negation.
+
+**The measurement. Every gated cross-backend preset is 0 of 1,440,000 channels, worst channel 0**,
+from 11, 0, 77, 0, 0, 11, 36, 18. `core-texture` is 40 at worst 1, inside the tolerance of 8.
+`gate:card` 34 of 34, `gate:browser` 4 of 4, `gate:pack` 17 of 17, `npm test` 989, type-check clean.
+
+**The step's own open question is answered: they do go to zero.** 11, 36 and 18 were recorded three
+times as compiler noise and then, after the second attempt, as "unexplained — neither exonerated nor
+convicted". They were the coordinate. `gates/translate.mjs` and `docs/DEVICES.md` carry the
+correction.
+
+**And the picture is the right way up.** The canvas against `readPixels` is still 0 of 1,920,000 with
+the screen top at 221,173,121 — unchanged through the flip. The first attempt at this change passed
+33 of 33 with the frame displayed upside down; step 2c made that reading gateable precisely so this
+step could be taken against it, and it held.
+
+**To reverse**: restore the strip in `gates/translate.mjs` and rebake, drop `framebufferOrigin` and
+its four readers, and put "Z only, never Y" back in the two hand-authored stages. **What would change
+the answer**: `layout(origin_upper_left)` reaching GLSL ES.
+
+**What the gates could not see.** One machine and one driver. The winding inversion is exercised on
+the card by `core-count` alone, and by unit tests otherwise. **No hand-authored GLSL frame is in the
+cross-backend corpus**, so the branch a published `glslFrame` takes is held by the node suite and by
+nothing a card has drawn — that is the one path this item leaves measured only by a double.
+
 ### Landed on 2026-09-12, step 2c: the presentation step, and the reading it made gateable
 
 **What landed.** The WebGL 2 backend owns a colour target every frame lands in and blits that onto
@@ -3488,11 +3520,20 @@ measured nowhere.
     always. Every gated preset unchanged at 11, 0, 77, 0, 0, 11, 36, 18; the canvas reading went from
     1,213,200 differing channels to 0 and now gates; `gate:browser` 4 of 4; the step costs 0.0099 ms
     a frame.
-2d. **Then the vertex flip**, with the winding inverted, the readback unconditional again because the
-    offscreen target is always WebGPU-oriented, and the present blit carrying the y flip.
-    **The measurement**: `core-texture` inside the tolerance, the canvas line unchanged, and the eight
-    gated presets no worse than 11, 0, 77, 0, 0, 11, 36, 18 — **and whether they go to zero is a
-    reading, not a prediction**.
+2d. ~~**Then the vertex flip.**~~ **Landed on 2026-09-12** — see the entry above. The eight gated
+    presets went to 0 of 1,440,000 at worst channel 0, `core-texture` to 40 at worst 1, and the canvas
+    reading is unchanged at 0. The open question — whether the residuals go to zero — is answered:
+    they do, so they were the coordinate.
+
+    **This step's text said "the readback unconditional again because the offscreen target is always
+    WebGPU-oriented", and that is wrong** — corrected on 2026-09-12, before the step was built. The
+    surface is WebGPU-oriented only for a frame whose vertex stages were negated, which is a
+    *translated* frame. A hand-authored GLSL frame — `glslFrame` is a published door — carries no
+    negation and lands on the surface GL-native, bottom row first, so its readback still has to be
+    turned over. The condition does not disappear; it gains a second reader. The two are always
+    opposite, which is the whole of the rule: the readback turns a frame over when the surface is
+    bottom-first, and the present blit turns it over when the surface is top-first. Item 8's
+    objection — that dropping the readback flip breaks hand-authored GLSL — stands, and this is why.
 2e. **`core-mips`'s ladder**, unrelated to all of this: 574,095 at worst 15 under a flip.
 3. **`core-texture` and `core-mips` join `SCENE_TIER`** and the diagnostic block comes out.
 

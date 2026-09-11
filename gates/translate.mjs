@@ -190,69 +190,6 @@ const naga = (profile, name, input, output) => {
   }
 };
 
-/**
- * naga's GLSL backend emits one line that adjusts WGSL's clip space to GLSL's, and
- * it adjusts **two** axes at once:
- *
- *   gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
- *
- * The Z half is needed and kept: WebGPU's depth range is [0, 1] and GL's is
- * [-1, 1], so without the remap a depth test compares the wrong numbers.
- *
- * **The Y negation is wrong here and is stripped (item 107).** It exists for a
- * consumer that renders into a top-left-origin framebuffer, and this backend does
- * not: GL's framebuffer origin is bottom-left, its display reads row 0 at the
- * bottom, and `gpu/webgl2.ts`'s `readPixels` already turns the frame over so a
- * caller gets rows top-first whatever the source language. Negating Y *as well*
- * turns it twice — so a scene rendered on WebGL 2 came back mirrored top-to-bottom
- * against the same scene on WebGPU.
- *
- * **Measured on an RTX 5080 before and after (item 107, `git show 3324f56`).** With
- * the negation: `core-scene` differed from its WebGPU frame on 344,146 of 1,440,000
- * channels, worst channel 244, with the hard-jump counts *matching* on both sides —
- * the signature of a mirror, since mirroring preserves adjacency. Without it, on the
- * three scene presets:
- *
- *   core-scene       worst 1, 11 of 1,440,000 channels differ
- *   core-draw-list   worst 1, 36 of 1,440,000 channels differ
- *   core-material    worst 1, 18 of 1,440,000 channels differ
- *
- * **Re-measured on 2026-09-11 on the same card and reproduced exactly**, two runs,
- * recorded in `docs/DEVICES.md`. So 11, 36 and 18 are what a re-take gives and a
- * session seeing them has found nothing wrong.
- *
- * **Worst channel 1 is not a residual mirror**, and what it *is* is open (item 20,
- * 2026-09-12). This paragraph used to finish "it is two hardware compilers folding
- * the same arithmetic apart, which is what this gate's tolerance exists for", and
- * that is a guess rather than a reading. Two attempts have now moved it: restoring
- * the clip-space y negation took 11, 36 and 18 to zero and displayed the frame
- * upside down, and correcting `gl_FragCoord` in the fragment fixed the coordinate
- * for those same presets and left all three exactly where they were. **So the
- * residual is not the coordinate, and something about the first attempt's
- * rasterisation removed it** — plausibly pixel-centre alignment, unmeasured.
- * Neither exonerated nor convicted; see item 20.
- *
- * **The zero this paragraph used to quote belongs to something else, and the
- * correction is roadmap item 8.** Removing the *readback flip* instead of the Y
- * negation was tried and it converged to a literal 0 of 1,440,000 — and it was
- * rejected anyway. Handing rows back top-first is correct for every source language,
- * `tests/renderer-webgl2.test.ts` pins it against a bottom-up driver frame, and
- * removing it would have fixed translated shaders by breaking hand-authored GLSL.
- * **So the zero was never this change's to claim**, and quoting it here made the
- * licence read as a convergence the landed change never reached — which would have a
- * session read an honest re-take of 11 as a regression.
- *
- * What licenses the strip is the fall from 344,146 to 11 and the reason above it,
- * not a zero. And the strip happens here rather than in `readPixels` because the
- * readback flip is correct for every source language and is unit-tested as such.
- *
- * @param {string} glsl
- */
-const withoutClipSpaceYFlip = (glsl) =>
-  glsl.replace(
-    'gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);',
-    'gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;',
-  );
 
 /** Runs the whole build. Kept as a function so a test on a machine with naga can
  * drive it and read the artifact back; the CLI below is the `npm run translate`
@@ -307,7 +244,61 @@ export async function translateCorpus() {
           : naga(WEBGL2_PROFILE, ep.name, join(SOURCE, file), join(out, `${ep.name}.${EXT[ep.stage]}`));
       const decision = classify(ep.stage, es300);
       if (decision.action === 'bake') {
-        const glsl = withoutClipSpaceYFlip(readFileSync(join(out, `${ep.name}.${EXT[ep.stage]}`), 'utf8'));
+        /**
+         * naga's GLSL backend emits one line that adjusts WGSL's clip space to GLSL's, and
+         * it adjusts **two** axes at once:
+         *
+         *   gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
+         *
+         * **Both halves are baked as naga emits them** (item 20, step 2d, 2026-09-12).
+         * The Z remap is needed because WebGPU's depth range is [0, 1] and GL's is
+         * [-1, 1], so without it a depth test compares the wrong numbers. The Y negation
+         * is needed because it is the first half of the only way WebGL 2 has of giving
+         * WGSL its own framebuffer origin. **A `withoutClipSpaceYFlip` used to stand here
+         * and strip the Y half**, and this paragraph is what is left of it: the record of
+         * why it existed and of what it cost to find out it was wrong.
+         *
+         * **Why the strip existed (item 107), and why it was wrong (item 20).** WGSL's
+         * `@builtin(position)` has its origin at the top left with y increasing downward;
+         * GLSL ES 3.00's `gl_FragCoord` has its origin at the bottom left. The declarative
+         * fixes do not exist here — `layout(origin_upper_left)` is desktop GLSL only,
+         * `glClipControl` is explicitly not in OpenGL ES, and a negative viewport height
+         * is Vulkan's. **What is left is what the WebGPU specification's own
+         * coordinate-system discussion names for OpenGL: "flip Y in vertex shader and
+         * invert winding direction."** Item 107 kept the negation *and* the readback flip,
+         * which turns the picture twice, and measured the mirror that produced —
+         * `core-scene` differing on 344,146 of 1,440,000 channels, worst 244, with the
+         * hard-jump counts matching on both sides, which is the signature of a mirror since
+         * mirroring preserves adjacency. It concluded the negation was wrong. **The
+         * negation was right and the pairing was wrong**: the frame it produces is already
+         * stored top-first, so the readback must not turn it over, the winding must be
+         * inverted with it, and the picture must be turned over on its way to the screen.
+         *
+         * **Item 8 recorded the measurement that proves it and did not act on it.**
+         * Removing the readback flip while keeping the negation "converged to a literal 0
+         * of 1,440,000", and it was rejected because the readback flip is correct for
+         * hand-authored GLSL. Both halves of that are true. The answer is that the flip is
+         * correct *for a hand-authored frame* and wrong for a translated one, so it is
+         * conditioned on the frame rather than removed — `GlslFrameGraph.framebufferOrigin`
+         * carries which, and `gpu/webgl2.ts` reads it.
+         *
+         * **Why this package has a condition where wgpu and ANGLE have none.** Each of
+         * those accepts one source language — wgpu takes WGSL and SPIR-V, ANGLE takes GL
+         * ES — so neither has to reconcile two framebuffer conventions through one
+         * backend. This package accepts both, `glslFrame` being a published door, so the
+         * condition is the cost of that choice rather than a wart in this fix.
+         *
+         * **What the residual 11, 36 and 18 were.** This paragraph used to read them as
+         * "two hardware compilers folding the same arithmetic apart, which is what this
+         * gate's tolerance exists for", and that was a guess. Restoring the negation takes
+         * them to zero; correcting `gl_FragCoord` in the fragment instead fixed the
+         * coordinate for those same presets and left all three exactly where they were. So
+         * the residual is not the coordinate and something about this rasterisation removes
+         * it — plausibly pixel-centre alignment, unmeasured. Whether they go to zero under
+         * this step is a reading and is recorded in `docs/DEVICES.md`.
+         *
+         */
+        const glsl = readFileSync(join(out, `${ep.name}.${EXT[ep.stage]}`), 'utf8');
         (presets[id] ??= { entries: {} }).entries[ep.name] = { stage: ep.stage, glsl };
         baked++;
         console.log(`  BAKE ${ep.stage}:${ep.name}  ${glsl.length} bytes of GLSL ES 3.00`);

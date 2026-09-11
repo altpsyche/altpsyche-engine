@@ -38,6 +38,69 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-12, Linux, the vertex flip lands and the whole gated corpus reads zero, with the picture the right way up
+
+**What landed.** Item 20's step 2d, on top of the presentation step in the row below: the build-time
+translation keeps naga's clip-space y negation instead of stripping it, the backend inverts the
+winding for such a frame, the scissor flip is skipped for it, the readback does not turn it over, and
+the blit onto the canvas does. Two hand-authored vertex stages that stand in for translator output
+got the same negation.
+
+**Every gated cross-backend preset is exactly zero**, worst channel 0, on nvidia / blackwell:
+
+```
+                 before          after
+core-scissor     11              0
+core-blend        0              0
+core-target      77 (worst 2)    0
+core-stencil      0              0
+core-count        0              0
+core-scene       11              0
+core-draw-list   36              0
+core-material    18              0
+```
+
+**So 11, 36 and 18 were the coordinate after all, and three earlier readings of this file were
+wrong about them.** They were recorded as "two hardware compilers folding the same arithmetic
+apart", reproduced exactly three times on this card, and read as a session having found nothing
+wrong. The entry below narrowed that to "unexplained: neither exonerated nor convicted", because
+correcting only the fragment coordinate left all three where they were. The full fix takes them to
+zero. **A number reproducible to the channel, three times, on one machine, can still be a defect** —
+which is the reading this row is worth keeping for.
+
+**And the picture is the right way up, which is the thing the last attempt got wrong.**
+
+```
+                      the canvas against readPixels    screen top     screen bottom
+before step 2d        0 of 1,920,000, worst 0          221,173,121    119,142,178
+after step 2d         0 of 1,920,000, worst 0          221,173,121    119,142,178
+```
+
+The first attempt at this change read 33 of 33 with the frame displayed upside down, because every
+check in `gate:card` is a `readPixels` check. That reading gates now — step 2c made it able to — and
+it is unchanged through the flip. This is what the guard was put in for and it is the whole reason
+the two steps went in this order.
+
+**The two presets still held off the gated list, and they have swapped which column is right:**
+
+```
+              as drawn                      WebGL 2 flipped in Y
+core-texture  40 of 1,440,000, worst 1      1,424,706, worst 235
+core-mips     574,095, worst 15             1,401,861, worst 128
+```
+
+`core-texture` is inside the tolerance of 8 and is now only waiting to be moved onto the list. The
+`core-mips` residual is the mip ladder and nothing to do with the origin: WebGL 2 calls
+`generateMipmap` where the WebGPU backend draws the steps by hand.
+
+**What this row cannot say.** One machine and one driver. The winding inversion is exercised on the
+card by `core-count` alone — it cuts a stencil hole by cancelling one square against another by
+winding, so it would break loudly — and by unit tests otherwise. **No hand-authored GLSL frame is in
+the cross-backend corpus**, so the branch that a published `glslFrame` takes is covered by the node
+suite and by nothing a card has drawn.
+
+---
+
 ### 2026-09-12, Linux, the WebGL 2 backend takes a presentation step, and the canvas reading gates at last
 
 **What landed.** Item 20's step 2c: the WebGL 2 backend renders every frame into a colour target it

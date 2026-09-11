@@ -463,6 +463,26 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
   let surface: { texture: WebGLTexture; framebuffer: WebGLFramebuffer; width: number; height: number } | null = null;
 
   /**
+   * Which way up the last draw left the rows on the surface (item 20, step 2d).
+   *
+   * A frame translated from WGSL carries the build-time translation's clip-space y
+   * negation, so it rasterises the same way up as WebGPU does and its rows land
+   * top-first. A hand-authored GLSL frame carries no such negation and lands
+   * GL-native, bottom row first. **Exactly one of the two conversions out of the
+   * surface is a flip, and which one it is is this fact**: the readback turns a
+   * bottom-first surface over to hand rows back top-first, and the blit onto the
+   * canvas turns a top-first surface over because the canvas displays its own row
+   * 0 at the bottom.
+   *
+   * **It is backend state rather than a parameter because `readPixels` takes no
+   * frame.** It reads what is on the surface, and what is on the surface is
+   * whatever last drew — so the draw is the only place that knows, and this is
+   * where it says so. It starts `false`, the GL-native answer, which is what a
+   * readback before any draw should get.
+   */
+  let framebufferTopFirst = false;
+
+  /**
    * The surface at the canvas's current size, built on the first call and
    * respecified where the canvas has changed size since.
    *
@@ -508,7 +528,21 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
   const present = (from: { framebuffer: WebGLFramebuffer; width: number; height: number }) => {
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, from.framebuffer);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-    gl.blitFramebuffer(0, 0, from.width, from.height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    // **The y flip lives here** (item 20, step 2d). The default framebuffer
+    // displays its row 0 at the bottom of the window, so a surface whose row 0 is
+    // the top of the picture — which is what a frame translated from WGSL leaves,
+    // since its vertex stages negate y — has to be turned over on the way to the
+    // screen or the reader sees it upside down. The source y range is reversed
+    // rather than the destination's, which is the same blit either way and reads
+    // as "take the surface from the top".
+    //
+    // A hand-authored GLSL frame is stored GL-native and goes straight across.
+    // This is the reason the presentation step had to land first: a frame drawing
+    // the default framebuffer directly has no blit, so there was nowhere to put
+    // this, which is what the two reverted attempts of 2026-09-12 proved between
+    // them.
+    const [top, bottom] = framebufferTopFirst ? [from.height, 0] : [0, from.height];
+    gl.blitFramebuffer(0, top, from.width, bottom, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
   };
@@ -1595,6 +1629,25 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             built.width = width;
             built.height = height;
           }
+          // Which way up this frame rasterises, and the three things that follow
+          // from it (item 20, step 2d). A frame translated from WGSL carries the
+          // build's clip-space y negation, which is half of the only way WebGL 2
+          // has of giving WGSL its own top-left framebuffer origin — the WebGPU
+          // specification's own coordinate-system discussion names both halves for
+          // OpenGL, "flip Y in vertex shader and invert winding direction", and the
+          // winding is the second.
+          //
+          // **Negating y reverses the order a triangle's corners are traversed
+          // in**, so a shape wound counter-clockwise in clip space arrives
+          // clockwise. Left alone, every front face becomes a back face:
+          // `core-count` cancels one square against another by winding to cut a
+          // hole with the stencil, and it would cut the hole in the wrong square.
+          //
+          // Set every draw rather than once at build, because a context draws more
+          // than one program and the two kinds of frame want opposite answers.
+          const topFirst = 'framebufferOrigin' in frame && frame.framebufferOrigin === 'top-left';
+          gl.frontFace(topFirst ? gl.CW : gl.CCW);
+          framebufferTopFirst = topFirst;
           // The surface every frame lands in, at the canvas's current size (item
           // 20). Taken before the passes run, since a pass naming no colour target
           // draws into it and the blit at the end of this method reads it.
@@ -1731,8 +1784,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
               width: passWidth,
               height: passHeight,
               // The rectangle the pass may write into, handed over in the top-left
-              // origin it is declared in; `drawGL2Frame` owns the flip (item 16).
+              // origin it is declared in; `drawGL2Frame` owns the flip (item 16),
+              // and skips it for a frame whose framebuffer is already top-first
+              // (item 20).
               ...(hasScissor ? { scissor: plan.scissor } : {}),
+              framebufferTopFirst: topFirst,
               ...(plan.geometry ? { geometry: plan.geometry } : {}),
               ...(plan.perDraw ? { perDraw: plan.perDraw } : {}),
             });
@@ -1858,6 +1914,14 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, shownSurface.framebuffer);
       gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, raw);
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+      // A frame whose vertex stages negated y is already stored top-first, so
+      // turning it over here would mirror it (item 20, step 2d). That pairing —
+      // the negation kept and the flip kept — is what item 107 measured as a mirror
+      // at 344,146 of 1,440,000 channels and wrongly blamed on the negation. The
+      // blit onto the canvas takes the opposite branch of the same fact, which is
+      // why neither is a mode: one conversion out of the surface is a flip and the
+      // other is not, whichever kind of frame drew.
+      if (framebufferTopFirst) return raw;
       const rows = new Uint8Array(raw.length);
       const stride = width * 4;
       for (let y = 0; y < height; y++) {

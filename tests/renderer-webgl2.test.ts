@@ -668,6 +668,88 @@ describe('the frame it draws', () => {
   });
 });
 
+/**
+ * The framebuffer origin a frame's vertex stages leave the rows in, and the three
+ * things that read it (item 20, step 2d).
+ *
+ * The reverted first attempt at this named its own blind spot — "no unit test
+ * holds `frontFace` to the frame's origin" — and the double had no `frontFace` and
+ * no `gl.scissor` to hold it with. It has both now, so these are the tests that
+ * blind spot asked for.
+ */
+describe('which way up a frame rasterises (item 20)', () => {
+  const CW = 0x0900;
+  const CCW = 0x0901;
+
+  it('inverts the winding for a frame whose vertex stages negate clip-space y', () => {
+    const { gl, backend } = backendOver();
+    backend.program({ ...graph(), framebufferOrigin: 'top-left' }).draw();
+    // Negating y reverses the order a triangle's corners are traversed in, so what
+    // was counter-clockwise arrives clockwise and the front face is the other one.
+    // `core-count` cuts a stencil hole by cancelling one square against another by
+    // winding, and would cut it in the wrong square if this were left alone.
+    expect(gl.of('frontFace').at(-1)).toMatchObject({ mode: CW });
+  });
+
+  it('leaves the winding alone for a hand-authored GLSL frame, which negates nothing', () => {
+    const { gl, backend } = backendOver();
+    backend.program(graph()).draw();
+    expect(gl.of('frontFace').at(-1)).toMatchObject({ mode: CCW });
+  });
+
+  it('does not turn a top-first frame over on the way out, because it is already the right way up', async () => {
+    const { gl, backend } = backendOver();
+    backend.resize(2, 3);
+    backend.program({ ...graph(), framebufferOrigin: 'top-left' }).draw();
+    gl.frame = bottomUpFrame(2, 3);
+
+    const pixels = await backend.readPixels();
+
+    // The same driver bytes as the test above, and the opposite answer: this
+    // frame's vertex stages already put row 0 at the top, so turning it over here
+    // would mirror it. That pairing — the negation kept and the flip kept — is what
+    // item 107 measured as a mirror over 344,146 of 1,440,000 channels.
+    expect(pixels[0]).toBe(3);
+    expect(pixels[pixels.length - 1]).toBe(1);
+  });
+
+  it('turns a top-first frame over on the way to the canvas, since the canvas shows row 0 at the bottom', () => {
+    const { gl, backend } = backendOver();
+    backend.resize(2, 3);
+    backend.program({ ...graph(), framebufferOrigin: 'top-left' }).draw();
+    // The source y range is reversed and the destination's is not, which is what
+    // reads as "take the surface from the top". Exactly one of the two conversions
+    // out of the surface is a flip, and for this frame it is this one.
+    expect(gl.of('blitFramebuffer').at(-1)).toMatchObject({ sy1: 0, dy1: 3 });
+  });
+
+  it('blits a bottom-first frame straight across, the other branch of the same fact', () => {
+    const { gl, backend } = backendOver();
+    backend.resize(2, 3);
+    backend.program(graph()).draw();
+    expect(gl.of('blitFramebuffer').at(-1)).toMatchObject({ sy1: 3, dy1: 3 });
+  });
+
+  it('skips the scissor flip for a top-first frame, the rectangle already counting rows that way', () => {
+    const { gl, backend } = backendOver();
+    backend.resize(100, 100);
+    const scissor = { x: 10, y: 20, width: 30, height: 40 };
+    backend.program({ ...graph(), framebufferOrigin: 'top-left', passes: [{ ...graph().passes[0], scissor }] }).draw();
+    // `ScissorRect` is declared in a top-left origin, and this frame's framebuffer
+    // counts rows from the top too, so the rectangle goes across unchanged. A
+    // bottom-first frame gets `height - y - height_of_rect` = 100 - 20 - 40 = 40.
+    expect(gl.of('scissor').at(-1)).toMatchObject({ x: 10, y: 20, width: 30, height: 40 });
+  });
+
+  it('flips the scissor for a bottom-first frame, which is what it always did', () => {
+    const { gl, backend } = backendOver();
+    backend.resize(100, 100);
+    const scissor = { x: 10, y: 20, width: 30, height: 40 };
+    backend.program({ ...graph(), passes: [{ ...graph().passes[0], scissor }] }).draw();
+    expect(gl.of('scissor').at(-1)).toMatchObject({ x: 10, y: 40, width: 30, height: 40 });
+  });
+});
+
 describe('a graph of more than one pass (item 46)', () => {
   const FRAMEBUFFER = 0x8d40;
   const READ_FRAMEBUFFER = 0x8ca8;
