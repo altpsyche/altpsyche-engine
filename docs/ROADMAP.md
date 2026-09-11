@@ -3266,65 +3266,78 @@ hypothesis and step 2b is where it gets measured.
 `core-mips`'s residual is its own. `core-texture` can close on the mirror alone, and it is the
 cleaner check that the mirror fix is right, since nothing else is wrong with it.
 
-### Landed on 2026-09-11, step 2: the upload was one mirror, and fixing it showed `core-texture` had two
+### Landed on 2026-09-11, step 2b: the cause is `@builtin(position)`, and step 2's fix was wrong and is reverted
 
-**The fix.** `gpu/webgl2.ts` uploads a texture's `data` top row first. `texImage2D` places the first
-row at `v = 0` and in OpenGL that is the *bottom*; WebGPU's `writeTexture` places it at `v = 0` where
-that is the *top*. The same bytes sampled at the same coordinate therefore read a mirrored picture.
-The rule this settles is the one the package already had for reading — `readPixels` hands back the
-top row first on both backends — so a texture's first row of `data` is its top row on both backends
-too. `UNPACK_FLIP_Y_WEBGL` was deliberately not used: it is a global pixel-store switch that leaks to
-every later upload on the context.
+**The cause, read off the baked GLSL.** `core-texture`'s fragment begins
+`vec4 pixel = gl_FragCoord;`. WGSL's `@builtin(position)` has its origin at the **top** left with y
+increasing downward; GLSL's `gl_FragCoord` has its origin at the **bottom** left. **Naga emits one as
+the other with no correction, and neither baked vertex stage negates y** — `core-count`'s `cover` and
+`core-texture`'s `cover` are the same two lines of GLSL. So on WebGL 2 `@builtin(position).y` is
+mirrored, in every preset, and has been all along.
 
-**What the card says, and the two presets answer differently:**
+**Why the corpus never said so, which is the part worth keeping.** Twenty-three baked entries read
+`gl_FragCoord` and all but two agree. They agree because of what they *do* with it:
+
+- **`core-count`'s `filling`** takes `length(middle)` — a radial distance from the centre.
+  **Y-symmetric**, so a mirror is invisible.
+- **`core-target`'s `grade`** does index a texture by position — but it samples `scene`, **a texture
+  the pass before it drew**. That texture is rasterised upside down on WebGL 2 too, so the two
+  mirrors cancel and the read is correct. Its vignette is radial on top of that.
+- **`core-texture` and `core-mips`** are the only presets that index an **uploaded** texture by
+  position. Nothing cancels, and the mirror is the whole of `core-texture`'s disagreement.
+
+**So `core-target` is not a control that clears the coordinate — it is a preset that cannot see the
+defect.** Step 2b's plan named it as the control and that was wrong.
+
+**Step 2's fix is reverted.** It made `gpu/webgl2.ts` upload a texture's `data` bottom row first,
+and the argument for it — that this matched the package's top-row-first readback contract — **was
+wrong and is withdrawn**. `readPixels`'s flip and the scissor flip are *framebuffer* origin
+corrections, which `submit/gl2.ts` says in as many words: "the one place the flip to WebGL 2's
+bottom-left origin happens, beside the flip `readPixels` needs for the same reason". **Texture
+storage is a different axis.** `texImage2D`'s first row is `t = 0` and WebGPU's first row is `v = 0`,
+so the upload already agreed and the flip made it disagree.
+
+**What it actually was is a compensating hack**, and the measurements say so plainly. Flipping the
+stored texture cancelled the mirrored coordinate for a *straight* lookup, which is why `core-mips`
+swapped exactly. It did not cancel for `core-texture`, whose second lookup is offset by the result of
+the first, so two flips do not compose. **A fix that only works when the shader does not use the
+value twice is not a fix.**
+
+**The tree is back to the true state**, re-measured on the card after the revert:
 
 ```
-                before fix  (as drawn / flipped)      after fix  (as drawn / flipped)
-core-mips       1,401,861 w128 /   574,095 w15        574,191 w15 / 1,401,846 w128
-core-texture    1,424,706 w235 /        40 w1       1,417,121 w231 / 1,362,348 w242
+core-texture   as drawn: worst 235, 1,424,706 differ  |  flipped: worst  1,      40 differ
+core-mips      as drawn: worst 128, 1,401,861 differ  |  flipped: worst 15, 574,095 differ
 ```
 
-**`core-mips` swapped exactly.** Its straight reading is now what its flipped reading was, to within
-a hundred channels and at the same worst-15. **The upload was its mirror, entirely**, and what is
-left — 574,191 at worst 15 against a tolerance of 8 — is the second defect step 1 predicted: the two
-backends build a mip ladder by different means, which `gpu/webgl2.ts` says in its own comment
-(`generateMipmap`) against the WebGPU backend drawing "the steps by hand".
+`core-texture`'s flipped reading of **40 at worst 1** is the proof that the disagreement is a whole
+picture mirror and nothing else — with the upload left alone.
 
-**`core-texture` did not swap, and that is the finding.** Its straight reading barely moved
-(1,424,706 to 1,417,121) while its flipped reading went from 40 to 1,362,348. **So it had two mirror
-sources and they were cancelling into a clean picture-level mirror.** Fixing the upload removed one
-and left the other, which no longer composes into anything as tidy. Why it composed at all is
-visible in the preset: its texture is tiled three times across with `repeat` and read twice, the
-second lookup pushed by the first, so a flip of the texture is not a flip of the picture — the clean
-mirror must have come from the *coordinate*, not from the bytes.
+### Steps, rewritten after step 2b — and step 2c is Siva's call
 
-**No gated preset moved.** `core-target` 77 at worst 2, and every other cross-backend figure
-identical. The fix is safe and is landed on that basis rather than on the two held-out numbers.
+2c. **Decide how `@builtin(position)` is made to mean one thing on both backends.** This is an
+    architectural call and a session should not take it. The options, with what each costs:
 
-**The fix is no longer held by a card reading alone.**
-`tests/webgl2-texture-upload-order.test.ts` uploads a picture whose every pixel carries its row
-number and asserts the rows reach `texImage2D` the other way up. `gate:card` needs a display and a
-person and never runs unattended, so without this an edit could undo the fix and nothing in CI would
-say so. A byte *count* cannot tell a flipped upload from an unflipped one, which is why
-`tests/support/fake-gl.ts` had to learn to record the first and last rows. **Removing the flip turns
-the test red**, and a second case holds that an empty attachment — null pixels — stays null rather
-than becoming a zero-filled image. `npm test` 982 over 85 files.
+    - **Negate y in the baked vertex stage**, so the picture rasterises the same way up as WebGPU's
+      and `gl_FragCoord` then agrees. Coherent, and it would let the `readPixels` and scissor flips
+      be deleted rather than kept — but it **reverses triangle winding**, which reaches face culling
+      and `core-count`'s whole reason for existing, since that preset cancels one square against
+      another by winding.
+    - **Correct the coordinate in the baked fragment**, replacing `gl_FragCoord` with
+      `vec4(gl_FragCoord.x, <height> - gl_FragCoord.y, …)`. Local and reverses nothing, but it means
+      rewriting naga's output and needs the frame height in the shader, which is a uniform the
+      package does not oblige a caller to declare.
+    - **Declare the mirror and refuse the frames that would show it.** Cheapest and honest, and it
+      makes a real capability difference visible instead of silent — but it narrows what WebGL 2
+      draws, and `@builtin(position)` is not an exotic thing to read.
 
-### Steps, rewritten after step 2
-
-2b. **Find `core-texture`'s remaining mirror, which is in the coordinate rather than the bytes.**
-    The reading above narrows it: the preset's lookup is derived from `@builtin(position)`, and naga
-    translating that to `gl_FragCoord` is where a Y flip would be introduced or omitted.
-    **The measurement**: `core-texture` on the card inside the tolerance with no flip, against
-    1,417,121 at worst 231. **The control is `core-target`**, which is position-derived too and
-    agrees, so whatever is found has to explain why that one is fine.
-2c. **`core-mips`'s mip ladder**, once 2b is done. Its residual is 574,191 at worst 15 against a
-    tolerance of 8. **The measurement**: the straight comparison after, and if the two ladders cannot
-    be made to agree, an argued tolerance for this preset with the reason written at the gate rather
-    than a silent widening.
+    **The measurement, whichever lands**: `core-texture` inside the tolerance on the card with no
+    flip, against 1,424,706 at worst 231.
+2d. **`core-mips`'s ladder residual**, which is a separate defect and is only visible once 2c lands.
+    Under the flip it reads 574,095 at worst 15 against a tolerance of 8 — WebGL 2 calls
+    `generateMipmap` where the WebGPU backend draws the steps by hand.
 3. **`core-texture` and `core-mips` join `gates/card.mjs`'s `SCENE_TIER`**, and the diagnostic block
-   and the comment holding them out come out with them. **The measurement**: both inside the
-   tolerance on the card.
+   and the comment holding them out come out with them.
 
 ### Done when
 

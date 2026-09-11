@@ -66,20 +66,21 @@ core-mips       worst 128, 1,401,861 differ      worst 15, 574,095 differ
 one-channel residual every agreeing preset has. `core-mips` was a mirror with a second defect under
 it.
 
-**After the upload fix** — `gpu/webgl2.ts` now uploads a texture's `data` top row first, because
-`texImage2D` puts the first row at OpenGL's *bottom* where WebGPU's `writeTexture` puts it at the
-*top*:
+**A texture-upload flip was tried the same day and reverted**, and both readings are kept because
+the pair is what shows it was the wrong fix:
 
 ```
-core-mips       as drawn worst 15,   574,191 differ   (was 1,401,861 at worst 128)
-core-texture    as drawn worst 231, 1,417,121 differ  (was 1,424,706 at worst 235)
+                with the upload flipped            reverted (the tree as it stands)
+core-mips       as drawn worst  15,   574,191      as drawn worst 128, 1,401,861
+core-texture    as drawn worst 231, 1,417,121      as drawn worst 235, 1,424,706
 ```
 
-**`core-mips` swapped exactly** — its straight reading became what its flipped reading had been, so
-the upload was its whole mirror. **`core-texture` did not**, so it had two mirror sources cancelling
-into a clean one; the remaining one is in the coordinate rather than the bytes, and item 20's step 2b
-hunts it. **Every gated cross-backend figure was unchanged by the fix**, `core-target` still 77 at
-worst 2.
+**`core-mips` swapped exactly under the flip and `core-texture` did not**, and that asymmetry is the
+evidence: flipping the stored texture cancels a mirrored *coordinate* for a straight lookup, and
+`core-texture`'s second lookup is offset by the result of its first, so two flips do not compose.
+The cause is `@builtin(position)` — WGSL's origin is top-left and GLSL's `gl_FragCoord` is
+bottom-left, and naga emits one as the other. Item 20 carries it. **Every gated cross-backend figure
+was unchanged throughout**, `core-target` still 77 at worst 2.
 
 **The gate's timing line across four runs of this machine on one day**: p50 1.10–1.30 ms, p95
 1.60–4.00 ms, p99 115.00–196.10 ms, a thousand objects at 800x600, draw plus a full readback. That
