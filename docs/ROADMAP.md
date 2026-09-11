@@ -2597,14 +2597,20 @@ half that is right is this item**, which is recorded here rather than quietly na
 `FrameRenderer.frame(shader, uniforms, into?)` returns `Promise<Uint8Array>` — RGBA, top row first,
 with the row-stride repack owned in the library (§17 decision 7, item 29) — and `createFrameRenderer`
 is exported, so **a one-shot caller reads a frame back through the published door today**.
-`gpu/webgpu.ts:1283-1313` and `gpu/webgl2.ts:1474-1492` are the two implementations.
+**Re-read on 2026-09-11 by step 1, and the implementation claim was wrong**: `frame` has one
+implementation, `gpu/renderer.ts:264-267`, and it delegates to `Backend.readPixels` — declared at
+`graph/types.ts:1024` and implemented at `gpu/webgpu.ts:1243` and `gpu/webgl2.ts:1649`. The two
+line ranges this paragraph used to name are the two backends' `readPixels`, moved, and they are one
+level below the door rather than two implementations of it. It matters to step 2: a readback that
+already has a single home needs no second one, and that is what step 2's `Done when` asks for.
 
 **What is right, re-verified on 2026-09-11, is that the live path has none.** `Surface` at
 `host/surface.ts:39-66` carries `start`, `stop`, `setGraph`, `resize`, `dispose`, `running` and
 `backend`. No member gives back pixels. **And the canvas cannot substitute.**
-`gpu/webgpu.ts:363-368` configures the canvas context
+`gpu/webgpu.ts:344-352` configures the canvas context
 `RENDER_ATTACHMENT | COPY_DST` and copies the frame onto the current drawable; the texture that
-carries `COPY_SRC` is the backend's own target at `:344`, and that is the one `readPixels` reads. The
+carries `COPY_SRC` is the backend's own target at `:325`, and that is the one `readPixels` reads —
+both line numbers re-read on 2026-09-11, the ones this paragraph carried having moved. The
 consumer's reading, on a card on 2026-09-09 and not re-takeable here: `drawImage` of the drawn canvas
 into a 2D context gave `(0,0,0,0)` at every one of 120,000 pixels, while a screenshot of that same
 canvas read `(240, 92, 51)` inside the triangle.
@@ -2623,8 +2629,9 @@ it.
    grows a `read()` that draws and reads on the next tick, or `Surface` exposes the `FrameRenderer`
    it holds and the readback stays the one that already exists. **The second adds no name and hands
    out the renderer's whole lifetime**, which is the cost to weigh against the first's one new name.
-   **The measurement**: the door's export count before and after against 69 run-time names, and
-   `gate:pack`.
+   **The measurement**: the door's export count before and after against **73 run-time names**, and
+   `gate:pack`. **This step used to say 69, and 69 was three releases stale** — item 16 step 4
+   measured 73 on the same day, and step 1 re-measured 73.
 2. **Whichever lands, one path reads pixels back and the row-stride repack is not written a second
    time.** **The measurement**: a test reading a known frame back through the live path on the
    WebGL 2 double, `npm test` at its new count, and the surface gate at 21 of 21.
@@ -2650,6 +2657,43 @@ it.
 surface to stop its own loop and re-enter it — which would make `read()` a control operation wearing
 a reading's name — then the readback is the `FrameRenderer`'s and `Surface` exposes it, and the
 reason goes on `Surface` rather than on the new name that was not added.
+
+### Landed on 2026-09-11, step 1: the accessor is refused on a sharper ground than the step had
+
+**`Surface` is to grow `read(): Promise<Uint8Array>`.** The decision is written above the `Surface`
+interface in `host/surface.ts` with its reversal and its trigger, and the member itself is step 2's —
+which is why this step changes no run-time name.
+
+**The step named the accessor's cost as "hands out the renderer's whole lifetime". The real cost is
+narrower and worse.** The renderer a surface holds is a `let` that three paths below move:
+`onLost` disposes it and nulls it, `onRestored` builds a second one and assigns that, and `dispose`
+nulls it. So an accessor hands out a reference this file invalidates on its own schedule — a caller
+holding it across a `webglcontextlost` holds a disposed object, and one holding it across the
+restore holds the renderer that is no longer drawing this canvas, with nothing on either to say so.
+The saving was one name on the door; the cost is a silently wrong object in the one case
+`host/surface.ts` exists to survive. A method reading the renderer at call time has no window to be
+stale in.
+
+**The trigger in "What would change the answer" did not fire**, and it was checked rather than
+assumed: `frame` draws and reads against the backend's own target in one step, so `read()` draws one
+extra frame at the current clock and the next tick redraws over it. No stopping the loop, no
+re-entering it. The WebGPU canvas context is the thing to watch — `RENDER_ATTACHMENT | COPY_DST` at
+`gpu/webgpu.ts:344-352`, with `COPY_SRC` only on the backend's own target at `:325` — and that is
+written at the decision.
+
+**Three of the item's readings had moved and are corrected above**: `frame` has one implementation
+at `gpu/renderer.ts:264-267` rather than two in the backends, the two `webgpu.ts` line ranges are
+re-read, and the step's "69 run-time names" was three releases stale.
+
+**Measured.** Run-time names on the first door **73 before and 73 after**, counted off `index.ts`
+rather than remembered. `npm run gate:pack` 17 of 17, `npm test` 954 over 81 files, `npm run
+type-check` clean.
+
+**What the gates could not see.** Nothing executable changed, so a green run proves only that a
+comment compiles: there is no `read()` to test until step 2. `gate:browser` was not run for a
+comment, and **`gate:card` was not re-taken** — the 5.0 ms against 1.9 to 2.5 ms reading this
+decision quotes is the dated one already carried on `FrameRenderer.frame`, re-quoted and not
+re-measured.
 
 ---
 

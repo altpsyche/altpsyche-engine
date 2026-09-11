@@ -36,6 +36,54 @@ export interface SurfaceOptions extends RendererOptions {
   onDeviceLost?: (reason: string) => void;
 }
 
+/**
+ * **A live surface is to grow `read(): Promise<Uint8Array>`, and the decision is
+ * here rather than on the member because the member is not built yet** (item 17
+ * step 1, 2026-09-11). RGBA, top row first, the same bytes and the same order
+ * `FrameRenderer.frame` hands back, because that is what it will call.
+ *
+ * **The alternative was to add no name at all**: expose the `FrameRenderer` this
+ * surface holds and let a caller reach `frame` on it, which is a readback that
+ * already exists and costs one accessor. **Refused, and not on the general
+ * ground that it hands out a lifetime.** It hands out a reference this file
+ * invalidates on its own schedule. The renderer is a `let`, and three paths
+ * below move it: `onLost` disposes it and sets it to null, `onRestored` builds a
+ * second one and assigns that, and `dispose` nulls it. A caller that took the
+ * renderer and held it across a `webglcontextlost` is holding a disposed object,
+ * and one that held it across the restore is holding the renderer that is no
+ * longer drawing this canvas — with nothing on either to say so, since neither
+ * knows it was handed out. The accessor's saving is one name on the door; its
+ * cost is a silently wrong object in the one case this file exists to survive.
+ * A method that reads the renderer at call time cannot be stale, because there
+ * is no window between reading it and using it.
+ *
+ * **It writes no readback of its own.** The row-stride arithmetic has one home
+ * and keeps it: `Backend.readPixels`, declared at `graph/types.ts` and
+ * implemented once per backend, which `FrameRenderer.frame` at
+ * [gpu/renderer.ts](../gpu/renderer.ts) is already the only caller of. `read()`
+ * is a fourth caller of that same path and not a second copy of it.
+ *
+ * **How to reverse it.** Delete the member and its implementation. A caller
+ * wanting pixels goes back to what it does today, which is to build a second
+ * renderer over a second canvas and draw the frame twice — and on WebGL 2 it
+ * cannot reuse the first canvas to do it, for the reason item 14 is about.
+ * Nothing else in this package reads it.
+ *
+ * **What would change the answer.** If reading back ever requires stopping the
+ * loop and re-entering it, `read()` is a control operation wearing a reading's
+ * name and the readback belongs on the renderer after all. It does not today:
+ * `frame` draws and reads against the backend's own target in one step, so
+ * `read()` draws one extra frame at the current clock and the next tick redraws
+ * over it. A backend that could only read the composited drawable would change
+ * that, and the WebGPU path is the one to watch — its canvas context is
+ * configured `RENDER_ATTACHMENT | COPY_DST` and only the backend's own target
+ * carries `COPY_SRC`.
+ *
+ * **What it costs, and the number is quoted rather than re-taken.** Drawing then
+ * reading measured 5.0 ms a frame against 1.9 to 2.5 drawing, on one fullscreen
+ * shader at 1200x750. That reading is carried on `FrameRenderer.frame` and is
+ * dated; no unattended session can take it again.
+ */
 export interface Surface {
   start(): void;
   stop(): void;
