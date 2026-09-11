@@ -2973,6 +2973,32 @@ gate can say.
    measurement**: each red on a pair differing only in that field, and `gate:browser` at 4 of 4
    with the recording contract at its count.
 
+**Landed on 2026-09-11, step 5.** `tests/program-key-fields.test.ts`, 11 tests. Eight name a field
+the key reads — `id`, `modules`, `pipelines`, `resources`, `passes`, `present`, `swap`, and a
+resource's byte length — and each asserts that two frames differing only in that field are two
+programs. **Written against the fields rather than against the new key**, so a later change that
+drops one from the key goes red and names it.
+
+**Three cover the case step 4 put at risk.** Two frames differing only in geometry bytes share a key
+deliberately, which is only correct if the cached program draws the second frame's bytes. The
+assertion is the **order**: the refill lands before the draw that reads it, read off the double's
+call log, and the bytes that landed are the second frame's. A third asserts that refilling twice with
+the same array writes once, which is what keeps a static page from paying for the fix.
+
+**A mutation proved both guards are live.** Removing `cached.refill(shader)` from `programFor` turns
+exactly two tests red — this file's ordering test and
+`tests/program-cache-moving-geometry.test.ts`'s sixty-frame test — and nothing else. So the
+mechanism is guarded by something that fails when it is absent, not by tests that pass either way.
+The renderer was restored.
+
+**Measured.** `npm test` **980 over 84 files, 969 over 83 before**. `npm run type-check` clean,
+`gate:browser` **4 of 4 with the surface gate at 21 of 21**.
+
+**What the gates could not see.** Every assertion here is against a double. The ordering test shows
+the backend issued the upload before the draw; it cannot show the driver honoured that order, or that
+the draw sampled the refilled buffer rather than a stale one the fake never distinguishes. That is
+step 6 and it is the last thing in this item.
+
 6. **The card reads it, because a double cannot.** A `gates/card.mjs` check drawing a figure whose
    geometry moves across frames and asserting the picture changes after the cache hit. **This is
    the only check that can catch a refill that writes a buffer the draw does not read** — a
