@@ -2582,8 +2582,12 @@ clean, run-time names 73 before and after. Documents only.
 - **`gate:browser` 4 of 4 and the recording contract at its new count.** 4 of 4 and 19 of 19.
 - **`docs/API.md` and `docs/GUIDE-frame-graph.md` name it.** Both do.
 
-**What is left of item 16 is one reading Siva can take**: `npm run gate:card`, which compares
-`core-scissor` across the two backends on real hardware. Everything else in the item has landed.
+**Item 16 is closed. The reading was taken on 2026-09-11**, `npm run gate:card` on this machine
+with Siva present: **`core-scissor` on both backends, hard jumps 4254 against 4254, worst 1, 11 of
+1,440,000 channels differ**, and `core-scissor` on the card 480,000 of 480,000 pixels lit. Under the
+software renderer the same preset read 9 of 1,440,000, worst 1, against a tolerance of 8 — the same
+order, a different count, both far inside tolerance. The gate was 29 of 29 with 0 FAIL over 19
+corpus presets. `docs/DEVICES.md` carries the row. **Nothing in item 16 is outstanding.**
 
 ### Done when
 

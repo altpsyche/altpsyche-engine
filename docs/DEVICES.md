@@ -38,6 +38,61 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-11, Linux, the scissor's first reading on a card, taken after item 17 landed
+
+**Why this row exists.** Item 16 built a scissor and could not finish: its cross-backend agreement
+was asserted only under the software renderer, and its own `Done when` said the card reading was
+left for a person. This run takes it. The row below is the whole gate, so the comparison against the
+earlier reading the same day is also here.
+
+```
+adapter         nvidia / blackwell, 18 adapter features, 0.3 GiB buffer ceiling
+WebGL 2         ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL 4.5.0)
+gradient        hard jumps 0 against 0, worst 0, 0 of 1,440,000 channels differ
+corpus          19 presets drew through WebGPU on the card
+selection       a GLSL frame selected WebGL 2 where WebGPU was offered, 480,000 of 480,000 lit
+gate            29 of 29 PASS, 0 FAIL
+```
+
+**The reading item 16 was waiting for.**
+
+```
+core-scissor     hard jumps 4254 against 4254, worst 1, 11 of 1,440,000 channels differ
+```
+
+**Under the software renderer the same preset read 9 of 1,440,000, worst 1, against a tolerance of
+8.** On the card it is 11, worst 1 — the same order, a different count, and both far inside the
+tolerance. That is what a scissor should look like: the rectangle is the same rectangle on both
+backends and the disagreement is two hardware compilers folding the same arithmetic differently,
+which is the identical story `core-scene`, `core-draw-list` and `core-material` already tell.
+**`core-scissor` on the card is 480,000 of 480,000 pixels lit**, the frame's own area, the scissored
+inset being a colour rather than a hole.
+
+**The other four cross-backend presets are unchanged from the earlier reading**, and three of them
+are the third independent measurement of the Y-negation numbers:
+
+```
+core-blend       hard jumps 4006 against 4006, worst 0, 0 of 1,440,000 channels differ
+core-stencil     hard jumps 2712 against 2712, worst 0, 0 of 1,440,000 channels differ
+core-count       hard jumps 2102 against 2102, worst 0, 0 of 1,440,000 channels differ
+core-scene       hard jumps 8234 against 8234, worst 1, 11 of 1,440,000 channels differ
+core-draw-list   hard jumps 7895 against 7895, worst 1, 36 of 1,440,000 channels differ
+core-material    hard jumps 7527 against 7527, worst 1, 18 of 1,440,000 channels differ
+```
+
+**Every pixel count is again identical to 2026-08-26's**, preset for preset — `core-depth` 245,496,
+`core-scene` 91,571, `core-stencil` 188,356, `core-mips` 479,952. Items 14, 16 and 17 landed between
+that reading and this one, and they moved no pixel on real hardware. Item 14 changed what `dispose`
+does to a canvas and item 17 added a readback; neither should show here, and neither does.
+
+**The timing line the gate prints and never gates**: a thousand objects at 800x600, 120 frames after
+a warm one, **p50 1.30 ms, p95 1.80 ms, p99 196.10 ms** — draw plus a full readback, against
+1.20 / 3.20 / 198.50 earlier the same day. The p99 is a readback stall and not a frame time. **This
+is not a reading of `Surface.read()`**: it is the gate's own draw-and-read loop over a scene, and
+nothing here goes through the live path.
+
+---
+
 ### 2026-09-11, Linux, the same card re-read after a batch of work, and nothing moved
 
 **Why this row exists.** The 2026-08-26 reading below was the only card reading this package
