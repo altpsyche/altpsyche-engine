@@ -426,6 +426,18 @@ export function createFakeGL({ context = true } = {}): FakeGL {
         // resident image uploaded (item 78); undefined for a scratch attachment
         // built empty with null pixels.
         byteLength: (pixels as ArrayBufferView | null | undefined)?.byteLength,
+        // The first byte of the first row and of the last row as they reached the
+        // card, so a test can see which way up the image went (item 20). The
+        // backend flips the rows on the way in, because `texImage2D` puts the first
+        // row at the *bottom* in OpenGL where WebGPU's `writeTexture` puts it at the
+        // top — and a count of bytes cannot tell a flipped upload from an unflipped
+        // one, which is why that fix was held by a card reading alone until this
+        // was added.
+        firstRow: pixels instanceof Uint8Array ? pixels[0] : undefined,
+        lastRow:
+          pixels instanceof Uint8Array && width > 0 && height > 0
+            ? pixels[(height - 1) * width * 4]
+            : undefined,
       }),
     texParameteri: (target: number, pname: number, param: number) =>
       record('texParameteri', { target, pname, param }),

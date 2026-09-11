@@ -3301,6 +3301,15 @@ mirror must have come from the *coordinate*, not from the bytes.
 **No gated preset moved.** `core-target` 77 at worst 2, and every other cross-backend figure
 identical. The fix is safe and is landed on that basis rather than on the two held-out numbers.
 
+**The fix is no longer held by a card reading alone.**
+`tests/webgl2-texture-upload-order.test.ts` uploads a picture whose every pixel carries its row
+number and asserts the rows reach `texImage2D` the other way up. `gate:card` needs a display and a
+person and never runs unattended, so without this an edit could undo the fix and nothing in CI would
+say so. A byte *count* cannot tell a flipped upload from an unflipped one, which is why
+`tests/support/fake-gl.ts` had to learn to record the first and last rows. **Removing the flip turns
+the test red**, and a second case holds that an empty attachment — null pixels — stays null rather
+than becoming a zero-filled image. `npm test` 982 over 85 files.
+
 ### Steps, rewritten after step 2
 
 2b. **Find `core-texture`'s remaining mirror, which is in the coordinate rather than the bytes.**
