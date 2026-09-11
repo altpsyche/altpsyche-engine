@@ -704,81 +704,29 @@ export function createWebGPUBackend(
         });
         const shown = frame.present;
         const shownIndex = shown === undefined ? undefined : indexOf(shown);
-        if (shownIndex !== undefined && !declared.some((one) => one.index === shownIndex)) {
-          throw new Error(`the frame for "${frame.id}" shows resource ${shownIndex} it does not declare`);
-        }
 
         const textures = new Map<number, GPUTexture>();
         const spansFrame = (resource: TextureResource) => followsFrame(resource.size);
         const made = { width: 0, height: 0 };
 
-        // Contents and the frame's own size are a contradiction, because a texture
-        // that follows the frame is thrown away and remade on every resize while
-        // its contents arrived once. Refused here rather than left to upload bytes
-        // of one size into a texture of another, which the card reports as a copy
-        // out of range and no reader would trace back to the description.
-        // A ladder over a texture a pass writes would be the levels of whatever was
-        // in it when it was built, and every frame after the first would read a
-        // ladder of a picture that is gone. The levels are drawn once because the
-        // contents they average arrive once, so this is refused rather than left as
-        // a picture that is right for one frame.
-        const redrawn = declared.find(
-          (one) => one.resource.mips && (one.resource.use.includes('storage') || one.resource.use.includes('attachment'))
-        );
-        if (redrawn) {
-          throw new Error(`the frame for "${frame.id}" gives resource ${redrawn.index} a ladder and writes it every frame`);
-        }
+        // **What a declared texture may and may not be is `graph/validate.ts`'s**
+        // (item 4). Five rules stood here — a ladder over a texture a pass writes,
+        // contents against several samples a pixel, and a multisample texture bound to
+        // a shader or shown, and contents against the frame's own size — each of them
+        // also written out in `gpu/webgl2.ts`, and two of the pairs had already
+        // drifted over what *contents* means. A sixth, a ladder over a texture with
+        // nothing in it to average, was in that backend alone and missing here
+        // entirely, so this backend built the levels of an empty texture and said
+        // nothing. All six are one wording there now, reached from this path through
+        // `submit/plan.ts`'s `validate(frame)` before anything here is built. A
+        // seventh refusal here, that the shown resource is one the frame declares, was
+        // deleted rather than moved: the handle safety net at the top of `validate`
+        // had been refusing it all along, in its own words.
         //
-        // **Contents means `data` or `source`, settled by item 4's step 1.** A
-        // `TextureResource` carries `source`, the address its first contents come
-        // from, and `data`, the bytes that came back from it, and `graph/types.ts`
-        // says the build writes the first and the runtime fills the second — so a
-        // description in hand before its fetch carries `source` and no `data`.
-        // Reading `data` alone made this refusal, and the samples one below, wait
-        // for the fetch: **the same description was refused after its bytes arrived
-        // and drawn before**, and the WebGL 2 backend had always read both, so one
-        // description was refused on one card and drawn on the other. A description
-        // is refused for what it says. The contradiction — contents that arrive once
-        // against a texture thrown away and remade on every resize — is in the words
-        // and not in the bytes, and the distinguishing claim of this package is that
-        // a frame is refused before a driver sees it, which a refusal that waits for
-        // a fetch is not. **To reverse it**, read `data` alone in both backends and
-        // accept that a description's answer depends on when it is asked. **What
-        // would change the answer** is a `source` that could resolve to nothing at
-        // all, which would make it a request rather than a declaration; today a
-        // resource carrying one declares that its contents exist.
-        const sourced = declared.find((one) => (one.resource.data || one.resource.source) && spansFrame(one.resource));
-        if (sourced) {
-          throw new Error(
-            `the frame for "${frame.id}" gives resource ${sourced.index} contents and the frame's own size, which is thrown away on a resize`
-          );
-        }
-
-        // A texture keeping several samples of a pixel is the narrowest kind there
-        // is, and each of these is a call the card refuses over a usage flag or a
-        // copy size rather than over the name the description gave it. Nothing can
-        // write bytes into one from outside, nothing can copy out of one, and a
-        // shader reads one only through a binding declared as multisampled, which no
-        // source here has. A ladder over one needs no rule of its own, since the
-        // check above already refuses a ladder over anything a pass writes.
-        const multisampled = declared.filter((one) => one.resource.samples !== undefined);
-        // Contents here is `data` or `source` for the reason written at the size
-        // refusal above (item 4, step 1): nothing may write into a multisample
-        // texture from outside whether its bytes have arrived yet or not.
-        const upload = multisampled.find((one) => one.resource.data || one.resource.source);
-        if (upload) {
-          throw new Error(`the frame for "${frame.id}" gives resource ${upload.index} contents and several samples a pixel`);
-        }
-        const sampled = multisampled.find(
-          (one) => one.resource.use.includes('sample') || one.resource.use.includes('storage')
-        );
-        if (sampled) {
-          throw new Error(`the frame for "${frame.id}" binds resource ${sampled.index}, which keeps several samples a pixel`);
-        }
-        const presented = multisampled.find((one) => one.index === shownIndex);
-        if (presented) {
-          throw new Error(`the frame for "${frame.id}" shows resource ${presented.index}, which keeps several samples a pixel`);
-        }
+        // Where the two predicates differed, the broader one moved: this backend
+        // counted a storage texture among the textures a pass writes and WebGL 2
+        // counted only an attachment, and a storage texture is written every frame,
+        // so a ladder over one is as stale as a ladder over an attachment.
 
         const build = (which: (resource: TextureResource) => boolean) => {
           for (const { index, resource } of declared) {

@@ -799,9 +799,10 @@ documented backstop is not a second home. `spansFrame` in `gpu/webgpu.ts:731` is
    deciding whether a texture carrying a `source` and no `data` yet is refused for its samples and
    its size. Write the answer where the rule lands. **The measurement**: the refusal each backend
    gives that description today, read off a test rather than off the source, and one wording after.
-2. **Move the seven into `graph/validate.ts`** — six, plus the ladder-with-no-contents rule step 1
-   found single-homed in WebGL 2 and absent from WebGPU — with both backends losing their copies and
-   the frame refused before either is built. **The measurement**: `npm test` and `npm run type-check` green,
+2. **Landed on 2026-09-11**, reading below. Move the six into `graph/validate.ts` — five, plus the
+   ladder-with-no-contents rule step 1 found single-homed in WebGL 2 and absent from WebGPU — with
+   both backends losing their copies and the frame refused before either is built. A seventh turned
+   out to be in `validate` already and its two backend copies were deleted rather than moved. **The measurement**: `npm test` and `npm run type-check` green,
    the count of `throw` sites in each backend before and after, and `gate:browser` at 4 of 4 with the
    recording contract at 16 of 16, which is what says the calls did not move.
 3. **A test per moved rule that fails for the rule and not for the wording**, since a rule moved with
@@ -867,6 +868,54 @@ move. **The card gate was not re-taken.**
 **What would change the answer** for the pair settled here is a `source` that could resolve to
 nothing, which would make it a request rather than a declaration. Today a resource carrying one
 declares that its contents exist.
+
+### Landed on 2026-09-11, step 2: six rules have one home, and a seventh already had it
+
+**`graph/validate.ts` states each once**, in a `shapes(graph)` pass at the end of `validate`, and both
+backends lost their copies. A rule there fires before either builds anything: the WebGL 2 path calls
+`validate` directly and the WebGPU path reaches the same function through `submit/plan.ts:56`.
+
+**The throw-site count, which is the measurement the step named:**
+
+| backend | before | after |
+| --- | --- | --- |
+| `gpu/webgpu.ts` | 22 | **16** |
+| `gpu/webgl2.ts` | 43 | **36** |
+
+Six gone from WebGPU and seven from WebGL 2 — the difference being the shown-resource duplicate,
+which that backend held and WebGPU held in different words.
+
+**`gate:browser` at 4 of 4, with the recording contract at 18 of 18 and the corpus at 28 of 28
+draws**, which is what says the calls did not move: every preset's call stream is the one it had, the
+double against the device, after seven refusals left each backend. `npm test` 906 passing,
+`type-check` green. **The card gate was not re-taken**, and the item's `Done when` says it need not
+be.
+
+**It moved six and not seven, and finding out why is the finding.** *A shown resource the frame does
+not declare* is in the item's table as appearing in both backends, "same". It does — and it was also
+already in `validate`, in the handle safety net at the top: `wantsResource(graph.present, 'texture',
+'presents')` has been refusing it as *presents resource N, which it does not declare*, covering both
+the undeclared index and the declared-but-not-a-texture case. **So that rule had three homes in three
+wordings**, and the right one was already there. The two backend copies are deleted rather than
+moved, and one test that asserted a backend's wording now asserts the surviving one.
+
+**Where two predicates differed, the broader one moved, because each was a narrowing of one rule.** A
+ladder is refused over a texture a pass writes: WebGPU counted a storage texture among those and
+WebGL 2 counted only an attachment. A storage texture is written every frame, so a ladder over one is
+as stale as a ladder over an attachment — and WebGL 2's narrower form was unreachable there rather
+than deliberate, since that backend refuses a storage texture outright for want of compute. The
+multisample-bound rule is the same pair for the same reason.
+
+**Two refusals stayed in WebGL 2 deliberately**, which is the item's own escape clause used. A
+**multisampled depth** says "this backend keeps one" and means it: WebGPU draws one, so that is a
+capability answer belonging to the backend that lacks the power. A texture in a depth format being a
+renderbuffer rather than a colour texture is the same shape of thing. Neither is a rule two backends
+could disagree about.
+
+**What this could not check.** No gate reads whether a refusal is *reachable* from both backends —
+`gate:browser` draws frames that pass, so a rule that now fires on neither path would look exactly
+like a rule that fires on both. Step 3's independent tests are what close that, and they are the
+reason step 3 exists.
 
 **What would change the answer.** If one of the six turns out to be genuinely backend-specific — a
 rule about what a renderbuffer can do rather than about what a description says — it stays in that

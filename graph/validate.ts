@@ -18,10 +18,11 @@
  * make (a texture the source never samples, a binding no resource backs) stay in
  * the build, because a graph carries no source to check them against.
  */
-import type { FrameGraph, ResourceSpec } from './types.js';
+import type { FrameGraph, ResourceSpec, TextureResource } from './types.js';
 import { isRenderPass, perDrawBinding, resourceOf, drawsCorners, drawsIndirectly, groupsIndirectly } from './types.js';
 import type { BufferHandle, ModuleHandle, PipelineHandle, ResourceHandle } from './handles.js';
 import { indexOf } from './handles.js';
+import { followsFrame } from './refs.js';
 
 /** A dynamic offset into a uniform buffer is taken at this alignment on both
  * backends — WebGPU's default `minUniformBufferOffsetAlignment` and WebGL 2's
@@ -283,6 +284,112 @@ export function validate(graph: FrameGraph): void {
           `the pass on pipeline ${pipeline} reads ${slice.perDraw!.size} bytes of per-draw slice at offset ${draw.perDraw} from resource ${indexOf(slice.resource)}, which holds ${resource.bytes}`
         );
       }
+    }
+  }
+
+  shapes(graph);
+}
+
+/**
+ * What a declared texture may and may not be, in one wording (item 4).
+ *
+ * **These six were written once in each backend and two of them had already
+ * drifted.** Five appeared in both, in near enough the same sentence that the drift
+ * was unreadable rather than obvious; the sixth — a ladder over a texture with no
+ * contents to build it from — was in WebGL 2 alone, so a WebGPU frame asking for one
+ * was built rather than refused. A seventh, that the shown resource is a texture the
+ * frame declares, turned out to be here already and is discussed below. The two that had drifted both
+ * turned on what *contents* means, settled at this item's step 1: `data` or
+ * `source`, because a description is refused for what it says and not for how far
+ * its fetch has got. `graph/types.ts` says the build writes `source`, the address
+ * the first contents come from, and the runtime fills `data`, the bytes that came
+ * back, so a description in hand before its fetch carries the first alone — and
+ * reading `data` alone made the same description refused after its fetch and drawn
+ * before it.
+ *
+ * **Where a predicate differed, the broader one is here**, because each of the two
+ * was a narrowing of the same rule rather than a different rule. A ladder is refused
+ * over a texture a pass writes, and WebGPU counted a storage texture among those
+ * where WebGL 2 counted only an attachment: a storage texture is written every
+ * frame, so a ladder over one is as stale as a ladder over an attachment, and WebGL
+ * 2's narrower form was unreachable there rather than deliberate — that backend
+ * refuses a storage texture outright for want of compute. A multisample texture is
+ * refused to a shader, and the same pair applies for the same reason.
+ *
+ * **What did not move, and why each stayed.** WebGL 2's refusal of a *multisampled
+ * depth* says "this backend keeps one" in its own words and means it: WebGPU draws a
+ * multisampled depth attachment, so that is a capability answer belonging to the
+ * backend that lacks it rather than a rule about a description. A texture declared
+ * in a depth format being a renderbuffer rather than a colour texture is the same
+ * shape of thing. Neither is a rule two backends could disagree about, which is what
+ * this file is for.
+ *
+ * A rule here fires before either backend builds anything: the WebGL 2 path calls
+ * `validate` directly and the WebGPU path reaches it through `submit/plan.ts`, so
+ * one wording refuses one description on both cards.
+ */
+function shapes(graph: FrameGraph): void {
+  const id = graph.id;
+  const textures: { index: number; texture: TextureResource }[] = [];
+  graph.resources.forEach((resource, index) => {
+    if (resource.kind === 'texture') textures.push({ index, texture: resource });
+  });
+
+  // **That the shown resource is a texture the frame declares is not checked here**,
+  // and finding out why changed what this item moved. Both backends refused it in
+  // their own words — "shows a resource N it does not declare" in one and "shows
+  // resource N it does not declare" in the other — and the handle safety net at the
+  // top of `validate` had been refusing it all along as `presents resource N, which
+  // it does not declare`, covering the undeclared index and the declared-but-not-a-
+  // texture case in one sentence. So that rule had three homes and one of them was
+  // already the right one: the two backend copies are deleted rather than moved, and
+  // this item moves six rules and not seven.
+  const shownIndex = graph.present === undefined ? undefined : indexOf(graph.present);
+
+  for (const { index, texture } of textures) {
+    // A ladder is generated off resident contents (item 50): the card averages every
+    // level below the first through `generateMipmap` or its WebGPU equivalent. A
+    // ladder over a texture a pass writes would be the levels of whatever was in it
+    // when it was built, so every frame after the first would read a ladder of a
+    // picture that is gone — right for one frame and wrong thereafter, which is
+    // worse than refused.
+    if (texture.mips && (texture.use.includes('storage') || texture.use.includes('attachment'))) {
+      throw new Error(`the frame for "${id}" gives resource ${index} a ladder and writes it every frame`);
+    }
+    // And a ladder over a texture with no contents at all has nothing to average.
+    // This was WebGL 2's alone until item 4 moved it, so WebGPU built the levels of
+    // an empty texture and reported nothing.
+    if (texture.mips && !texture.data && !texture.source) {
+      throw new Error(`the frame for "${id}" gives resource ${index} a ladder and no contents to build it from`);
+    }
+
+    // A texture keeping several samples of a pixel is a multisample colour
+    // attachment (item 80) and the narrowest kind there is, so everything else is
+    // closed to it: nothing writes bytes into one from outside, nothing copies out of
+    // one, and a shader reads one only through a binding declared as multisampled,
+    // which no source here has. Each of these is a call a card refuses over a usage
+    // flag or a copy size rather than over the name the description gave it.
+    if (texture.samples !== undefined) {
+      if (texture.data || texture.source) {
+        throw new Error(`the frame for "${id}" gives resource ${index} contents and several samples a pixel`);
+      }
+      if (texture.use.includes('sample') || texture.use.includes('storage')) {
+        throw new Error(`the frame for "${id}" binds resource ${index}, which keeps several samples a pixel`);
+      }
+      if (index === shownIndex) {
+        throw new Error(`the frame for "${id}" shows resource ${index}, which keeps several samples a pixel`);
+      }
+    }
+
+    // Contents and the frame's own size are a contradiction: the contents are a
+    // fixed-size image that arrives once, and a texture following the frame is thrown
+    // away and remade on every resize. Left alone it uploads bytes of one size into a
+    // texture of another, which a card reports as a copy out of range and no reader
+    // would trace back to the description.
+    if ((texture.data || texture.source) && followsFrame(texture.size)) {
+      throw new Error(
+        `the frame for "${id}" gives resource ${index} contents and the frame's own size, which is thrown away on a resize`
+      );
     }
   }
 }

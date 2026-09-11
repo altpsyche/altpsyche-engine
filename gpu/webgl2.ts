@@ -552,70 +552,29 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             `the frame for "${frame.id}" writes resource ${index} as a storage texture, and this backend has no compute to fill one`
           );
         }
-        // A ladder is generated off resident contents (item 50): the card averages
-        // every level below the first through `generateMipmap`. A ladder over a
-        // texture a pass writes would be the levels of whatever was in it when it was
-        // built, and every frame after the first would read a ladder of a picture that
-        // is gone — so a ladder over an attachment is refused, the same reason and the
-        // same words the WebGPU backend refuses it. A ladder over a texture with no
-        // contents at all has nothing to average, and is refused too.
-        if (resource.mips && resource.use.includes('attachment')) {
-          throw new Error(`the frame for "${frame.id}" gives resource ${index} a ladder and writes it every frame`);
+        // A multisampled *depth* is this backend's own refusal and stays here (item
+        // 80): item 4 moved the rules about what a description says into
+        // `graph/validate.ts`, and this is not one of them. WebGPU draws a
+        // multisampled depth attachment; this backend keeps one sample of the depth,
+        // so the sentence says "this backend" and means it. It is a capability answer
+        // belonging to the backend that lacks the power, which is where this
+        // codebase puts those.
+        if (resource.samples !== undefined && depthStencilOf(resource.format) !== null) {
+          throw new Error(`the frame for "${frame.id}" keeps several samples of the depth in resource ${index}, and this backend keeps one`);
         }
-        if (resource.mips && !resource.data && !resource.source) {
-          throw new Error(`the frame for "${frame.id}" gives resource ${index} a ladder and no contents to build it from`);
-        }
-        // A texture keeping several samples of a pixel is a multisample colour
-        // attachment (item 80): built as a multisample renderbuffer below, drawn
-        // into, and averaged into a single-sample resolve target through a blit.
-        // It is the narrowest kind there is, so everything else is closed to it,
-        // the same reasons and words the WebGPU backend uses: nothing uploads
-        // into one, nothing samples one, and a multisampled *depth* is a later
-        // refinement this backend still refuses (colour attachments alone).
-        if (resource.samples) {
-          if (depthStencilOf(resource.format) !== null) {
-            throw new Error(`the frame for "${frame.id}" keeps several samples of the depth in resource ${index}, and this backend keeps one`);
-          }
-          if (resource.data || resource.source) {
-            throw new Error(`the frame for "${frame.id}" gives resource ${index} contents and several samples a pixel`);
-          }
-          if (resource.use.includes('sample')) {
-            throw new Error(`the frame for "${frame.id}" binds resource ${index}, which keeps several samples a pixel`);
-          }
-        }
-        // A texture arriving with contents is uploaded now (item 78) — but the
-        // contents are a fixed-size image, so a content texture the frame's own
-        // size would be thrown away and re-uploaded on every resize. That is
-        // refused by name rather than silently re-run, the same refusal the WebGPU
-        // backend makes for the same reason.
-        //
-        // **`data || source` is the settled reading, and it was this backend's**
-        // (item 4, step 1). The WebGPU backend read `data` alone here and at its
-        // samples refusal, so one description was refused on one card and drawn on
-        // the other, and the answer depended on whether a fetch had come back. The
-        // reasoning is written out where it changed, at `gpu/webgpu.ts`'s size
-        // refusal; both rules move into `graph/validate.ts` at this item's step 2
-        // and it moves with them.
-        if ((resource.data || resource.source) && followsFrame(resource.size)) {
-          throw new Error(
-            `the frame for "${frame.id}" gives resource ${index} contents and the frame's own size, which is thrown away on a resize`
-          );
-        }
+        // **Everything else a declared texture may and may not be is
+        // `graph/validate.ts`'s** (item 4). Six rules stood here and are one wording
+        // there now — a ladder over a texture a pass writes, a ladder with no contents
+        // to build it from, contents against several samples a pixel, a multisample
+        // texture bound to a shader or shown, and contents against the frame's own
+        // size — refused before either backend builds anything: `validate(frame)` runs
+        // above and the WebGPU path reaches the same function through
+        // `submit/plan.ts`. A seventh, that a shown resource is a texture the frame
+        // declares, was deleted rather than moved: `validate`'s handle safety net had
+        // been refusing it all along and this was a second wording of it.
       }
       const shown = frame.present;
       const shownSpec = shown === undefined ? undefined : resourceOf(frame, shown);
-      if (shown !== undefined && (!shownSpec || shownSpec.kind !== 'texture')) {
-        throw new Error(`the frame for "${frame.id}" shows a resource ${indexOf(shown)} it does not declare`);
-      }
-      // The picture the reader sees is a single-sample texture the backend blits
-      // onto the canvas; a multisample attachment is a renderbuffer nothing copies
-      // out of, so showing one is refused by name, the same words the WebGPU
-      // backend uses. Its samples reach the canvas through the single-sample
-      // resolve target instead.
-      const shownMultisample = shownSpec?.kind === 'texture' && shownSpec.samples;
-      if (shownMultisample) {
-        throw new Error(`the frame for "${frame.id}" shows resource ${indexOf(shown as TextureHandle)}, which keeps several samples a pixel`);
-      }
       // A texture declared in a depth or stencil format is a renderbuffer this
       // backend tests against rather than a colour texture it draws into or samples
       // (item 48), so the two are built through different arenas. A colour texture

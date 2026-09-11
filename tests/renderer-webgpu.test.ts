@@ -699,10 +699,15 @@ describe('the compute pass it runs', () => {
 });
 
 describe('a compute description it refuses', () => {
-  it('refuses one that shows a resource it never declares', () => {
+  it('refuses one that shows a resource it never declares, in the one wording (item 4)', () => {
     const { backend } = backendOver();
+    // This read "shows resource 2 it does not declare" — this backend's own copy of a
+    // rule `validate`'s handle safety net had been refusing all along, in these words,
+    // and which the WebGL 2 backend held a third wording of. Item 4 deleted both
+    // copies rather than moving them, so what a caller sees now is one sentence
+    // whichever backend they hold.
     expect(() => backend.program(computeFrame({ present: texture(2) }))).toThrow(
-      'the frame for "fixture-compute" shows resource 2 it does not declare'
+      'the frame for "fixture-compute" presents resource 2, which it does not declare'
     );
   });
 
