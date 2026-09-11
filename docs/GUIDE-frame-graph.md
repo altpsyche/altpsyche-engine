@@ -303,3 +303,39 @@ declares `sampled: { format, source }` and a buffer filled before the frame runs
 Generated geometry is the exception and names a `GeometryPrimitive`, because
 `GEOMETRY_PRIMITIVE` is on the door: a generator you can already reach is one a declaration may
 name. [API.md](API.md) lists the fields.
+
+## Clipping a pass to a rectangle
+
+A pass may name the rectangle it is allowed to write into, which is `RenderPassSpec.scissor` on a
+graph you build and `scissor` on a pass you declare. It is in pixels from the **top-left** of the
+attachment, which is WebGPU's origin; the WebGL 2 backend flips to that API's bottom-left one for
+you, so you write it once and both backends draw the same picture.
+
+```ts
+import { pipelineHandle, texture } from '@altpsyche/engine';
+import type { RenderPassSpec } from '@altpsyche/engine';
+
+const clipped: RenderPassSpec = {
+  pipeline: pipelineHandle(1),
+  draws: [{ instances: 1 }],
+  colour: [{ resource: texture(0) }],
+  scissor: { x: 96, y: 120, width: 360, height: 210 },
+};
+```
+
+**It clips, it does not transform, and it does not make the pass cheaper.** A fragment outside the
+rectangle is discarded after it is shaded, which is both backends' specified behaviour, so
+`@builtin(position)` is whatever it would have been and the shading is paid for either way. `cost`
+reports the same figures for a scissored pass as for an unscissored one, on purpose. A caller
+looking to pay less draws less.
+
+**Two passes over one attachment with different scissors are two passes.** This package merges
+consecutive passes over the same attachments into one `beginRenderPass` where it can prove that is
+safe, and a merged group replays its members as bundles, which cannot carry a scissor. So a pass
+naming one is never merged — the same reason a pass carrying a stencil reference or an occlusion
+query is not.
+
+**Whole numbers, a corner inside the attachment, and an extent above zero**, or the frame is
+refused by name before a backend is built. Zero is refused rather than read as "draw nothing",
+because a pass that may write nothing is a pass you leave out, and an accidental zero is otherwise
+a frame that draws nothing and reports nothing.

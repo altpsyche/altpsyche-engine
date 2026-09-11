@@ -2531,6 +2531,40 @@ channel and the worst here is 1.
 4. **If built: `docs/API.md` and `docs/GUIDE-frame-graph.md` name it.** **The measurement**:
    `gate:pack`, and the door's export count against 69 run-time names.
 
+#### Landed on 2026-09-11, step 4, and the export count it names is three releases stale
+
+`docs/API.md` gains the scissor under *Describing a frame* and `docs/GUIDE-frame-graph.md` gains a
+section of its own. Both say the three things a caller gets wrong otherwise: it is counted from the
+**top-left** on both backends, it **clips after shading** so it makes nothing cheaper and `cost`
+says so by not moving, and **two passes with different scissors are two passes**, because a merge
+replays members as bundles and a bundle cannot carry one — which is the defect step 3 found.
+
+**The measurement this step names is against "69 run-time names" and that number is stale.** The
+door was at 69 when this item was written and is at **73** now, item 1 having landed
+`declaredFrame`, `BLEND_MODE` and `groupsToCover` earlier the same day. The figure that matters is
+that it is **73 either side of this step**: `ScissorRect` is a type and a type is not a run-time
+name, so a whole capability reached the documents without the door's run-time surface moving.
+
+**Measured.** `npm run gate:pack` 17 of 17, `npm test` 954 over 81 files, `npm run type-check`
+clean, run-time names 73 before and after. Documents only.
+
+### Done when, verified
+
+- **A pass may name a scissor and both backends apply it.** `RenderPassSpec.scissor`, applied by
+  `setScissorRect` and by `gl.scissor` with the flip; `core-scissor` puts the inset colour in
+  exactly 75,600 pixels on each, the rectangle's own area.
+- **`validate` refuses one that is not a rectangle.** `tests/graph-scissor.test.ts`, five cases.
+- **`cost` says whether a scissor changes a cost.** It says no, asserted as `core-scissor`'s row in
+  `tests/cost-corpus.test.ts` and written at `FrameCost`.
+- **The two backends agree to the channel the corpus holds every preset to.** 9 of 1,440,000
+  channels, worst 1, against a tolerance of 8 — **under the software renderer**. On a card this is
+  asserted only by `core-scissor`'s place in `gates/card.mjs`'s `SCENE_TIER`, which has not been run.
+- **`gate:browser` 4 of 4 and the recording contract at its new count.** 4 of 4 and 19 of 19.
+- **`docs/API.md` and `docs/GUIDE-frame-graph.md` name it.** Both do.
+
+**What is left of item 16 is one reading Siva can take**: `npm run gate:card`, which compares
+`core-scissor` across the two backends on real hardware. Everything else in the item has landed.
+
 ### Done when
 
 - Finding D names `scissor` alone, says a viewport exists on the draw path and is declared in no

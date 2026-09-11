@@ -170,6 +170,28 @@ wrong leaves the edge of a picture unwritten with nothing to say so. Both
 whole frame is `groupsToCover(sizeAt({ scale: 1 }, frame), …)`; covering a texture of your own
 is that texture's size.
 
+**Clipping a pass to a rectangle:**
+
+```ts
+RenderPassSpec.scissor?: ScissorRect      // { x, y, width, height }
+```
+
+A pass names the rectangle it may write into, in pixels **from the top-left** of its attachment.
+Core on both backends — `setScissorRect` and `gl.scissor` — so it is pass state rather than a
+capability and no frame is refused for asking; the WebGL 2 backend flips to that API's
+bottom-left origin for you. It goes on the pass and not on a draw because `setScissorRect` is a
+call on the render-pass encoder.
+
+It clips, it does not transform. A fragment outside the rectangle is discarded **after** it is
+shaded, so `@builtin(position)` is unaffected and a scissor makes nothing cheaper — `cost`
+reports the same figures with one as without, deliberately. Draw less to pay less.
+
+`validate` refuses a rectangle that is not one: a fractional edge, a corner outside the
+attachment, or an extent of zero, that last because a pass that may write nothing is a pass left
+out. Whether the rectangle *fits* is not checkable from a graph — a texture may follow the frame,
+so there is no pixel size until one is resolved — and both backends clamp to the attachment they
+are given. Type: `ScissorRect`.
+
 **Filling a description in**, which is what a loader does:
 
 ```ts
