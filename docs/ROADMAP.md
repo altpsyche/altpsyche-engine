@@ -2216,6 +2216,57 @@ two composited rectangles over the top-left corner of the page is not a reading.
 
 - `probe()` adds nothing to `document.body` that it does not remove, including where a trial throws,
   shown by a test counting children before and after.
+
+### Landed on 2026-09-11, step 1, and step 3's measurement turns out not to exist
+
+**Both trials remove their own canvas in a `finally`.** The reading was exact — `onScreenCanvas` at
+`host/probe.ts:344-355`, called at `:304` and `:326`, removed nowhere — and the shapes were as
+described.
+
+**The WebGPU trial needed restructuring, not just a line.** Its `canvas` was declared inside the
+`if (adapter)` block inside the `try`, where a `finally` cannot reach it, so it is now a
+`let trialCanvas` outside the `try` assigned inside. That is the whole point of the step's insistence
+on `finally` over "after the last statement": the `catch` swallows everything this trial throws — a
+machine that reports WebGPU and then fails midway is a `null` answer and not an exception for the
+caller — so a removal anywhere else leaks on exactly the path the `catch` exists for. The WebGL 2
+trial had no `try` at all and now has one, with the removal in its `finally` and no `catch`, because
+a WebGL 2 context that throws is still the caller's problem.
+
+**Two tests, both proved red.** They live in `tests/probe-document.test.ts` rather than beside the
+other probe tests, because `tests/renderer-probe.test.ts` runs in the node environment and this
+subject needs a document. One counts `document.body.children` across `browserProbeHost().gather()`;
+the other stubs `HTMLCanvasElement.prototype.getContext` to throw and counts again. Replacing
+`canvas.remove()` with a no-op reds both.
+
+**Step 3 cannot be measured the way it is written, and this is the finding of the step.** It says to
+read "`gate:browser`'s device report naming both backends and carrying the same `survivedCompositing`
+for each, at 4 of 4". **`gate:browser` has no device report.** `gates/all.mjs` runs `browser-pin`,
+`corpus`, `trace-contract` and `surface`, none of which calls `probe()`, and the string
+`survivedCompositing` appears nowhere under `gates/`. The thing the step was thinking of is
+`gates/device-report.mjs`, which **is not a gate** — its own header says it "asserts nothing and fails
+nothing" — and which launches *headed* with the card flags because a headless launch reaches the
+software renderer. So it is `gate:card`'s kind of run: it needs a display and a person.
+
+So step 3 needs either a different measurement or Siva running `npm run device-report` either side.
+**It is not landed and is not silently dropped.**
+
+**Measured.**
+
+| | before | after |
+| --- | --- | --- |
+| `npm test` | 943 over 79 files | **945 over 80 files** |
+| `npm run type-check` | clean | clean |
+| `npm run gate:browser` | 4 of 4 | 4 of 4 |
+
+**What the gates could not see.** jsdom has no `navigator.gpu` and answers `getContext('webgl2')`
+with null, so **the WebGPU arm's `finally` is not executed by any test** — it is held by reading and
+by being the same shape as the arm that is tested. Nothing unattended can reach it, which is the same
+wall step 3 hit. `gate:card` was not re-taken.
+
+**A second defect was found and is not fixed here**, per the one-step-one-finding rule: the WebGPU
+trial calls `adapter.requestDevice(...)` and **never calls `device.destroy()`** — `.destroy()` appears
+nowhere in `host/probe.ts`. It is the same family as this item, a reading holding onto something it
+asked the machine for, and it wants an item of its own rather than a line in this one.
 - `probe()` answers the same for both backends as it did, read off `gate:browser`'s device report.
 - `npm test` and `npm run type-check` are green; `gate:browser` at 4 of 4.
 - The commit says whether step 2 was settled or left standing, and that a software renderer cannot

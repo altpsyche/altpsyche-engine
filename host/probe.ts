@@ -295,6 +295,13 @@ async function gatherFromBrowser(): Promise<ProbeFacts> {
 
   let webgpu: BackendFacts | null = null;
   if (webgpuReported) {
+    // Held outside the `try` so the `finally` can reach it (item 15). The `catch`
+    // below swallows everything this trial throws, which is what it is for — a
+    // machine that reports WebGPU and then fails somewhere in the middle of being
+    // asked is a `null` answer and not an exception for the caller. A removal
+    // written after the last statement would therefore leak on exactly the path the
+    // `catch` exists to handle.
+    let trialCanvas: HTMLCanvasElement | null = null;
     try {
       const adapter = await navigator.gpu!.requestAdapter();
       if (adapter) {
@@ -302,6 +309,7 @@ async function gatherFromBrowser(): Promise<ProbeFacts> {
           requiredFeatures: [...adapter.features] as GPUFeatureName[],
         });
         const canvas = onScreenCanvas();
+        trialCanvas = canvas;
         const context = canvas.getContext('webgpu');
         const info = adapter.info ?? ({} as GPUAdapterInfo);
         let survived = false;
@@ -319,17 +327,27 @@ async function gatherFromBrowser(): Promise<ProbeFacts> {
       }
     } catch {
       webgpu = null;
+    } finally {
+      trialCanvas?.remove();
     }
   }
 
   let webgl2: BackendFacts | null = null;
+  // The same shape for the same reason. This trial has no `catch` of its own — a
+  // WebGL 2 context that throws is a caller's problem rather than a `null` answer —
+  // so the `finally` here runs on the way out of a throw rather than beside a
+  // swallowed one, and the canvas goes either way.
   const canvas = onScreenCanvas();
-  const gl = canvas.getContext('webgl2', { antialias: false, alpha: false }) as WebGL2RenderingContext | null;
-  if (gl) {
-    const debug = gl.getExtension('WEBGL_debug_renderer_info');
-    const renderer = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : 'not reported';
-    const survived = await survivesCompositing(() => compositeGL(gl), never());
-    webgl2 = { renderer, architecture: 'unknown', report: reportOfGL(gl), survivedCompositing: survived };
+  try {
+    const gl = canvas.getContext('webgl2', { antialias: false, alpha: false }) as WebGL2RenderingContext | null;
+    if (gl) {
+      const debug = gl.getExtension('WEBGL_debug_renderer_info');
+      const renderer = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : 'not reported';
+      const survived = await survivesCompositing(() => compositeGL(gl), never());
+      webgl2 = { renderer, architecture: 'unknown', report: reportOfGL(gl), survivedCompositing: survived };
+    }
+  } finally {
+    canvas.remove();
   }
 
   return { webgpuReported, webgpu, webgl2, tier: 'toy' };
@@ -341,12 +359,24 @@ function never(): Promise<never> {
   return new Promise<never>(() => {});
 }
 
+/**
+ * The canvas one trial runs on, on the document because the trial needs it there.
+ *
+ * On-screen and composited, because the device loss the trial exists to catch only
+ * happens for a canvas the browser is compositing, not one off the document.
+ *
+ * **Every caller of this owes it a `remove()` in a `finally`** (item 15). `probe()`
+ * is a reading — a pure question about the machine, answered as data — and until
+ * 2026-09-11 it left one of these on the caller's page per backend it trialled,
+ * `position: fixed` at the top-left corner, cleared to `(0.1, 0.2, 0.3)`. A consumer
+ * measured it on 2026-09-09: after one `probe()` on a machine offering both backends,
+ * the first picture drawn afterwards had its top-left corner covered and read back as
+ * `(25, 51, 76)`. A reading that changes the caller's document is not a reading.
+ */
 function onScreenCanvas(): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = 200;
   canvas.height = 100;
-  // On-screen and composited, because the device loss the trial exists to catch
-  // only happens for a canvas the browser is compositing, not one off the document.
   canvas.style.position = 'fixed';
   canvas.style.left = '0';
   canvas.style.top = '0';
