@@ -381,11 +381,6 @@ export function glslFrameOf(frame: WgslFrameGraph): GlslFrameGraph | null {
   return {
     ...(frame.id !== undefined ? { id: frame.id } : {}),
     authored: 'glsl',
-    // Every baked vertex stage carries the build-time translation's clip-space y negation, so this frame
-    // rasterises the same way up as the WGSL one it was translated from (item 20).
-    // The backend reads this to invert the winding and to skip the readback flip;
-    // a hand-authored GLSL frame carries nothing here and is left alone.
-    framebufferOrigin: 'top-left' as const,
     // A GLSL frame's uniform resource carries no block positions: the linked program
     // is asked where its members sit, so the WebGPU-computed layout drops here. The
     // resources carry through at the same indices, so every handle a binding or pass

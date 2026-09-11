@@ -3313,81 +3313,91 @@ core-mips      as drawn: worst 128, 1,401,861 differ  |  flipped: worst 15, 574,
 `core-texture`'s flipped reading of **40 at worst 1** is the proof that the disagreement is a whole
 picture mirror and nothing else — with the upload left alone.
 
-### Landed on 2026-09-12, step 2c: the corpus agrees to zero, and the residual nobody could fix was the defect
+### Reverted on 2026-09-12: step 2c drew the whole corpus to zero and put the picture on the screen upside down
 
-**Chosen by Siva after the research.** The WebGPU specification's own coordinate-system discussion
-names the approach for OpenGL in one line — *"flip Y in vertex shader and invert winding
-direction"* — and the levers that would avoid it do not exist here: `layout(origin_upper_left)` is
-desktop GLSL only, `glClipControl` is explicitly not in OpenGL ES, and a negative viewport height is
-Vulkan's. ANGLE, meeting the same problem from the other side, flips whole render passes rather than
-the builtin.
+**What it reached, and it was not nothing.** With the clip-space y negation kept, the winding
+inverted, and the readback and scissor flips conditioned on the frame, every gated cross-backend
+preset read **0 of 1,440,000** — `core-scissor`, `core-scene`, `core-draw-list` and `core-material`
+falling from 11, 11, 36 and 18 — and `core-texture` fell from 1,424,706 to 40 at worst 1.
 
-**What landed, in four places that must agree:**
-
-1. `gates/translate.mjs` **stops stripping** the clip-space y negation. Item 107 removed it; the
-   negation was right and the pairing was wrong.
-2. `GlslFrameGraph.framebufferOrigin` says which way up a frame's vertex stages leave the rows.
-   `glslFrameOf` sets `top-left`; a hand-authored frame carries nothing and is untouched.
-3. `gpu/webgl2.ts` inverts the **winding** for such a frame — `gl.frontFace(gl.CW)` — and
-   `readPixels` **does not turn it over**, because it is already stored top-first.
-4. `submit/gl2.ts` skips the **scissor** flip for the same frames, which is the second of the two
-   places this package reconciles the origin.
-
-**The result, on the card:**
+**And it broke the one thing no gate here was watching.** Every check in `gates/card.mjs` reads
+pixels through `readPixels`, and step 2c taught `readPixels` not to turn a translated frame over. So
+the bytes were right and **the canvas was upside down**, measured by reading the same drawn frame off
+a 2D context instead:
 
 ```
-                 before        after
-core-scissor     11            0
-core-blend        0            0
-core-target      77 (worst 2)  0
-core-stencil      0            0
-core-count        0            0
-core-scene       11            0
-core-draw-list   36            0
-core-material    18            0
-core-texture  1,424,706 (w235) 40 at worst 1  — inside the tolerance, and now gated
-core-mips     1,401,861 (w128) 574,095 at worst 15 — the ladder, still held out
+                screen top          screen bottom
+reverted        221,173,121   ==    0,0,0            (top matches readPixels' top)
+under step 2c   0,0,0               221,173,121      (bottom matches readPixels' top)
 ```
 
-**Every gated cross-backend preset is 0 of 1,440,000.** `core-texture` joins `SCENE_TIER`.
+The picture moved end to end. **`gate:card` 33 of 33 and a corpus at zero, with the frame displayed
+mirrored.** That is the sharpest form of this file's standing warning about what a green gate cannot
+see, and it is worth keeping: *every* cross-backend number in this repository is a `readPixels`
+number.
 
-**The finding that matters most is not `core-texture`.** It is that **11, 36 and 18 were never
-compiler noise.** `gates/translate.mjs` said so in as many words — "two hardware compilers folding
-the same arithmetic apart, which is what this gate's tolerance exists for" — and
-`docs/DEVICES.md` carried them as re-takeable constants a session seeing them "has found nothing
-wrong". They were the last trace of the coordinate mismatch, and the correct fix takes them to
-zero. **A tolerance is for what cannot be fixed; a residual that survives every attempt so far is
-not evidence that it is one.** That sentence is now in the file that made the claim.
+**Why the approach does not fit, which the research could not have told me.** The WebGPU
+specification names "flip Y in vertex shader and invert winding direction" for OpenGL, and wgpu and
+ANGLE both do a version of it — but each of them **owns the presentation step**, rendering into a
+texture it controls and flipping when it presents. This package draws into the caller's canvas, and
+a WebGL canvas displays its default framebuffer bottom-first with no step in between to flip. There
+is nowhere to put the compensating flip: the `present` blit could carry one, but a frame whose last
+pass draws the canvas directly has no blit at all.
 
-**Two things the plan did not foresee.** The scissor needed conditioning too — `submit/gl2.ts`'s own
-comment had named it as one of exactly two places, and only one had been done. And
-`core-draw-list` and `core-material` failed at 96,494 and 101,491 until their **hand-authored**
-vertex stages were given the same negation: those two files stand in for translator output where
-GLSL ES 3.00 has no storage-buffer syntax, so they must follow its conventions, and they still
-carried "Z only, never Y (item 107)".
+**So the minimal fix is the right one after all**, and it is the one this file argued for before the
+research and then talked itself out of: **correct the coordinate in the baked fragment**, leaving the
+geometry, the winding, the readback and the scissor exactly as they are. Only `@builtin(position)` is
+wrong; only it should change.
 
-**Item 8's rejected alternative is vindicated in substance and its objection stands.** It measured
-this same 0 and was rejected because dropping the readback flip would break hand-authored GLSL. That
-objection was right — which is why the flip is **conditioned on the frame** rather than removed. A
-user's own `glslFrame` still gets the flip it always had.
+**What is kept from the attempt.** A reported-never-gated line in `gates/card.mjs` comparing the
+canvas against `readPixels`, which is the only reading here that sees what a reader sees. It does not
+gate: the two disagree whole-frame even on an untouched tree — 1,213,200 of 1,920,000, the canvas
+bottom reading black where `readPixels` reads content — and why has not been isolated. **Asserting it
+would be a red gate standing in for an unfinished reading.** What it does say is which end of the
+screen the picture starts at, which is exactly what step 2c got wrong.
 
-**The winding and the readback are held by tests, not only by a card.**
-`tests/webgl2-framebuffer-origin.test.ts`, 4 tests, one per reader per kind of frame: a translated
-frame draws with the winding inverted and is read back untouched; a hand-authored one draws with
-OpenGL's own winding and is still turned over on the way out. **The winding had been asserted by
-nothing but `core-count`**, which cuts a stencil hole by winding and would break loudly on a card —
-a real check, but not one CI can run. Forcing either reader back to its old answer turns exactly the
-translated cases red and leaves the hand-authored ones green. `npm test` 984 over 85 files.
+### Steps, rewritten after the revert
 
-### Steps, remaining
+2c. **Correct `@builtin(position)` in the baked fragment and nothing else.** Replace `gl_FragCoord`
+    with `vec4(gl_FragCoord.x, <height> - gl_FragCoord.y, gl_FragCoord.z, gl_FragCoord.w)`. Only y
+    is wrong: z is already [0, 1] on both after the existing remap, and w is 1/w_clip on both. **The
+    height has to reach the shader**, which is the real cost — `gpu/webgl2.ts` already resolves and
+    sets loose uniforms by location, so the backend can supply an injected one per resize, and the
+    substitution is on the baked text rather than on the translator's input. **The measurement**:
+    `core-texture` inside the tolerance on the card against 1,424,706 at worst 231, the canvas line
+    still starting at the top, and the eight gated presets no worse than 11, 0, 77, 0, 0, 11, 36, 18.
+2d. **Whether the eight gated presets also go to zero.** Step 2c's attempt took them there, so their
+    residuals are the coordinate too and not compiler noise — **but that is now an untested claim
+    again**, since the tree that proved it is reverted. It is the same measurement as 2c and is
+    recorded separately so a zero is not assumed.
+2e. **`core-mips`'s ladder**, unrelated to the coordinate: 574,095 at worst 15 under a flip.
+3. **`core-texture` and `core-mips` join `SCENE_TIER`** and the diagnostic block comes out.
 
-2d. **`core-mips`'s ladder**, which is the one defect left and is unrelated to the coordinate. It
-    reads 574,095 at worst 15 against a tolerance of 8. WebGL 2 calls `generateMipmap` where the
-    WebGPU backend draws the steps by hand, so the two ladders are two implementations. **The
-    measurement**: its straight comparison after, and if the two cannot be made to agree, an argued
-    tolerance for this preset written at the gate rather than a silent widening.
-3. **`core-mips` joins `SCENE_TIER`** and the diagnostic block comes out with it. `core-texture`
-   joined at step 2c.
+### Steps, rewritten after step 2b — and step 2c is Siva's call
+
+2c. **Decide how `@builtin(position)` is made to mean one thing on both backends.** This is an
+    architectural call and a session should not take it. The options, with what each costs:
+
+    - **Negate y in the baked vertex stage**, so the picture rasterises the same way up as WebGPU's
+      and `gl_FragCoord` then agrees. Coherent, and it would let the `readPixels` and scissor flips
+      be deleted rather than kept — but it **reverses triangle winding**, which reaches face culling
+      and `core-count`'s whole reason for existing, since that preset cancels one square against
+      another by winding.
+    - **Correct the coordinate in the baked fragment**, replacing `gl_FragCoord` with
+      `vec4(gl_FragCoord.x, <height> - gl_FragCoord.y, …)`. Local and reverses nothing, but it means
+      rewriting naga's output and needs the frame height in the shader, which is a uniform the
+      package does not oblige a caller to declare.
+    - **Declare the mirror and refuse the frames that would show it.** Cheapest and honest, and it
+      makes a real capability difference visible instead of silent — but it narrows what WebGL 2
+      draws, and `@builtin(position)` is not an exotic thing to read.
+
+    **The measurement, whichever lands**: `core-texture` inside the tolerance on the card with no
+    flip, against 1,424,706 at worst 231.
+2d. **`core-mips`'s ladder residual**, which is a separate defect and is only visible once 2c lands.
+    Under the flip it reads 574,095 at worst 15 against a tolerance of 8 — WebGL 2 calls
+    `generateMipmap` where the WebGPU backend draws the steps by hand.
+3. **`core-texture` and `core-mips` join `gates/card.mjs`'s `SCENE_TIER`**, and the diagnostic block
+   and the comment holding them out come out with them.
 
 ### Done when
 

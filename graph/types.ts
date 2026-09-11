@@ -839,39 +839,6 @@ export interface WgslFrameGraph extends FrameGraphCommon {
 export interface GlslFrameGraph extends FrameGraphCommon {
   authored: 'glsl';
   modules: GlslModule[];
-  /**
-   * Which corner of the framebuffer this frame's vertex stages put clip-space
-   * `y = +1` in, and therefore which way up the drawn rows sit in memory
-   * (item 20, 2026-09-11).
-   *
-   * **Absent means `bottom-left`, which is OpenGL's own**, and it is what a
-   * hand-authored GLSL frame gets: its author wrote GL and expects GL, so nothing
-   * is done to it. `readPixels` turns such a frame over on the way out, because
-   * this package hands rows back top-first whatever the source language.
-   *
-   * **`top-left` is what a frame translated from WGSL gets**, and it is set by
-   * `glslFrameOf` rather than by a caller. WGSL's `@builtin(position)` has its
-   * origin at the top left with y increasing downward, and GLSL ES 3.00's
-   * `gl_FragCoord` has its origin at the bottom left — `layout(origin_upper_left)`
-   * would say otherwise but exists only in desktop GLSL, and `glClipControl` is
-   * not in OpenGL ES either. So the only lever WebGL 2 leaves is the one the
-   * WebGPU specification's own coordinate-system discussion names for exactly this
-   * case: **flip y in the vertex stage and invert the winding direction.** The
-   * build-time translation emits that flip and the frame carries this field to say
-   * it is there.
-   *
-   * **Three things read it and they must agree or the picture is wrong twice.**
-   * The winding, because negating y reverses the order a triangle's corners are
-   * traversed in. The readback, because a frame already stored top-first must not
-   * be turned over again. And nothing else: it is a fact about one frame's
-   * vertex stages, not a mode the backend is put into.
-   *
-   * **To reverse**: stop setting it in `glslFrameOf` and restore the strip in
-   * `gates/translate.mjs`. **What would change the answer**: `origin_upper_left`
-   * reaching GLSL ES, which would make the fragment say what it means and leave
-   * the vertex stage and the winding alone.
-   */
-  framebufferOrigin?: 'top-left' | 'bottom-left';
 }
 
 export type FrameGraph = WgslFrameGraph | GlslFrameGraph;

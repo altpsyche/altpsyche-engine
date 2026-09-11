@@ -26,10 +26,6 @@ const CONSTANTS = {
   UNIFORM_OFFSET: 0x8a3b,
   UNIFORM_BLOCK_INDEX: 0x8a3a,
   UNIFORM_BLOCK_DATA_SIZE: 0x8a40,
-  // Which winding counts as a front face. The backend inverts this for a frame
-  // whose vertex stages negated y (item 20).
-  CW: 0x0900,
-  CCW: 0x0901,
   ARRAY_BUFFER: 0x8892,
   ELEMENT_ARRAY_BUFFER: 0x8893,
   UNIFORM_BUFFER: 0x8a11,
@@ -291,12 +287,6 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     createBuffer: () => ({ buffer: true }),
     deleteBuffer: () => record('deleteBuffer'),
     bindBuffer: (target: number) => record('bindBuffer', { target }),
-    /** Which winding counts as a front face (item 20). A frame translated from
-     * WGSL carries naga's clip-space y negation, which reverses the order a
-     * triangle's corners are traversed in, so the backend inverts this to match —
-     * and a preset that cuts a hole by winding, as `core-count` does with the
-     * stencil, cuts it in the wrong square if this is left alone. */
-    frontFace: (mode: number) => record('frontFace', { mode }),
     /** A write into a buffer that already exists, which is what a refill is
      * (item 18). Kept apart from `bufferData` on purpose: the distinction the
      * backend is making is exactly that it does *not* respecify the store, and a

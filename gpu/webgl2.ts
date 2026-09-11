@@ -414,21 +414,6 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
     };
   };
 
-  /**
-   * Which way up the last draw left the rows in the framebuffer (item 20).
-   *
-   * A frame translated from WGSL carries the build-time translation's clip-space y negation, so it
-   * rasterises the same way up as WebGPU does and its rows are already stored
-   * top-first. A hand-authored GLSL frame carries no such negation and is stored
-   * GL-native, bottom-first. `readPixels` turns over only the second kind.
-   *
-   * **It is backend state rather than a parameter because `readPixels` takes no
-   * frame.** It reads whatever is in the framebuffer, and what is in the
-   * framebuffer is whatever last drew — so the draw is the only place that knows,
-   * and this is where it says so. It starts `false`, which is the GL-native answer
-   * and what a readback before any draw should get.
-   */
-  let framebufferTopFirst = false;
   let width = canvas.width;
   let height = canvas.height;
 
@@ -1477,24 +1462,6 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           if (into !== undefined) {
             throw new Error('WebGL 2 was handed a WebGPU texture to draw into, which it cannot land a frame in');
           }
-          // Which way up this frame rasterises, and the two things that follow from
-          // it (item 20). A frame translated from WGSL carries the build's clip-space y
-          // negation, which is half of the only way WebGL 2 has of giving WGSL its
-          // own top-left framebuffer origin — the WebGPU specification's own
-          // coordinate-system discussion names both halves for OpenGL, "flip Y in
-          // vertex shader and invert winding direction", and this is the second.
-          //
-          // **Negating y reverses the order a triangle's corners are traversed in**,
-          // so a shape wound counter-clockwise in clip space arrives clockwise. Left
-          // alone, every front face becomes a back face: `core-count` cancels one
-          // square against another by winding to cut a hole with the stencil, and it
-          // would cut the hole in the wrong square.
-          //
-          // Set every draw rather than once at build, because a context draws more
-          // than one program and the two kinds of frame want opposite answers.
-          const topFirst = 'framebufferOrigin' in frame && frame.framebufferOrigin === 'top-left';
-          gl.frontFace(topFirst ? gl.CW : gl.CCW);
-          framebufferTopFirst = topFirst;
           // A size change since the last build remakes every frame-following
           // texture and its framebuffer at the new size, since what was in one is
           // gone when it is rebuilt and a later pass would otherwise sample a
@@ -1652,11 +1619,8 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
               width: passWidth,
               height: passHeight,
               // The rectangle the pass may write into, handed over in the top-left
-              // origin it is declared in; `drawGL2Frame` owns the flip (item 16),
-              // and skips it for a frame whose framebuffer is already top-first
-              // (item 20).
+              // origin it is declared in; `drawGL2Frame` owns the flip (item 16).
               ...(hasScissor ? { scissor: plan.scissor } : {}),
-              framebufferTopFirst: topFirst,
               ...(plan.geometry ? { geometry: plan.geometry } : {}),
               ...(plan.perDraw ? { perDraw: plan.perDraw } : {}),
             });
@@ -1741,11 +1705,6 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       }
       const raw = new Uint8Array(width * height * 4);
       gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, raw);
-      // A frame whose vertex stages negated y is already stored top-first, so
-      // turning it over here would mirror it (item 20). That pairing — the
-      // negation kept and the flip kept — is what item 107 measured as a mirror at
-      // 344,146 of 1,440,000 channels and wrongly blamed on the negation.
-      if (framebufferTopFirst) return raw;
       const rows = new Uint8Array(raw.length);
       const stride = width * 4;
       for (let y = 0; y < height; y++) {

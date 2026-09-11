@@ -88,17 +88,6 @@ export interface GL2FrameExecution {
    * This is the one place the flip to WebGL 2's bottom-left origin happens, beside the
    * flip `readPixels` needs for the same reason. */
   scissor?: { x: number; y: number; width: number; height: number } | null;
-  /**
-   * Whether this frame's vertex stages left the rows top-first in the framebuffer
-   * (item 20), which decides whether the scissor's `y` is turned over below.
-   *
-   * A frame translated from WGSL carries a clip-space y negation — half of the
-   * only way WebGL 2 has of giving WGSL its own top-left framebuffer origin — so
-   * its framebuffer already counts rows the way `ScissorRect` declares them and
-   * the flip would move the rectangle to the wrong end. A hand-authored GLSL
-   * frame is stored GL-native and still needs it.
-   */
-  framebufferTopFirst?: boolean;
 }
 
 /** Draws the frame's one pass, exactly as the backend's `draw` did before this
@@ -156,11 +145,7 @@ export function drawGL2Frame(exec: GL2FrameExecution): void {
     const w = Math.min(exec.scissor.width, width - x);
     const h = Math.min(exec.scissor.height, height - top);
     gl.enable(gl.SCISSOR_TEST);
-    // A frame already stored top-first counts rows the way `ScissorRect` does, so
-    // the flip above would put the rectangle at the wrong end of the frame
-    // (item 20). This is the second of the two places the framebuffer origin is
-    // reconciled; the other is `readPixels`, and both read the same fact.
-    gl.scissor(x, exec.framebufferTopFirst ? top : height - top - h, w, h);
+    gl.scissor(x, height - top - h, w, h);
   }
   vertices.forEach((count, at) => {
     if (perDraw) {

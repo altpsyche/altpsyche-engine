@@ -297,6 +297,137 @@ for (const { id, frame, values, entry } of corpus) {
   }
 }
 
+// ── What reaches the screen, not what reaches readPixels (item 20) ────────────
+//
+// **Every other check in this file reads pixels through `readPixels`**, and
+// item 20 made that call turn a translated frame over or not depending on which
+// way up its vertex stages left it. So `readPixels` agreeing proves the *bytes*
+// are right and says nothing about the *canvas* — and the canvas is what a page
+// shows. A frame rasterised upside down in the framebuffer would read back
+// correctly and display wrong, and nothing else here would notice.
+//
+// This draws one preset through WebGL 2 and reads the same frame two ways: off
+// the canvas with a 2D context, which is what a reader sees, and through
+// `readPixels`, which every other check uses. `core-scissor` is the preset
+// because its rectangle is off-centre in both axes on purpose, so a flip is a
+// different picture rather than the same one.
+//
+// **Reported, never gated, and the reason is honest rather than cautious.** The
+// two do not agree whole-frame even on a tree nobody has touched — 1,213,200 of
+// 1,920,000 channels, with the canvas bottom reading black where `readPixels`
+// reads content. Why has not been isolated; the likely cause is that this preset
+// does not paint the default framebuffer everywhere the offscreen target is
+// painted. **So whole-frame equality is not yet an invariant and asserting it
+// would be a red gate standing in for an unfinished reading.**
+//
+// **What it does say is which end of the screen the picture starts at**, and that
+// is what it was written for. On this tree the canvas top matches `readPixels`'
+// top. Under item 20's reverted step 2c — the clip-space y negation restored —
+// the canvas *bottom* matched `readPixels`' top instead: the frame was rasterised
+// upside down, read back correctly by a `readPixels` that had been taught not to
+// turn it over, and displayed mirrored. **Every other check in this file was
+// blind to that, because every other check reads through `readPixels`.** That is
+// the blind spot this line exists to keep visible until it can be gated.
+console.log('');
+const scissorPreset = corpus.find((preset) => preset.id === 'core-scissor');
+if (!scissorPreset) {
+  say(false, 'the canvas shows what readPixels reads  the corpus dropped core-scissor');
+} else {
+  const bytesArrays = Object.fromEntries([...scissorPreset.bytes].map(([index, made]) => [index, [...made]]));
+  const onScreen = await page.evaluate(
+    async ({ id, description, code, block, bytesArrays, values, W, H }) => {
+      const generated = new Map();
+      description.resources.forEach((/** @type {any} */ r, /** @type {number} */ i) => {
+        const source = 'source' in r ? r.source : undefined;
+        if (source && bytesArrays[i]) generated.set(i, new Uint8Array(bytesArrays[i]));
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      document.body.appendChild(canvas);
+      try {
+        const wgsl = window.frameOf(id, description, { wgsl: code }, block, undefined, generated);
+        const glsl = window.glslFrameOf(/** @type {any} */ (wgsl));
+        if (!glsl) return { error: 'core-scissor baked no vertex to link' };
+        const backend = window.createWebGL2Backend(canvas);
+        if (!backend) return { error: 'no webgl2 context' };
+        backend.resize(W, H);
+        const program = backend.program(glsl);
+        program.setUniforms(values);
+        program.draw();
+
+        // The canvas as the page shows it, read **before** anything awaits. This
+        // backend leaves the browser free to throw a finished frame away — it asks
+        // for no `preserveDrawingBuffer` — so a `drawImage` after an await reads a
+        // cleared buffer and measures nothing. A WebGL 2 canvas can be drawn into a
+        // 2D context at all, unlike a WebGPU one, which is item 17's finding and is
+        // why this check exists for this backend only.
+        const flat = document.createElement('canvas');
+        flat.width = W;
+        flat.height = H;
+        const ctx = flat.getContext('2d');
+        if (!ctx) return { error: 'no 2d context' };
+        ctx.drawImage(canvas, 0, 0);
+        const shown = ctx.getImageData(0, 0, W, H).data;
+        const read = await backend.readPixels();
+
+        let differing = 0;
+        let worst = 0;
+        let mirrored = 0;
+        const stride = W * 4;
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < stride; x++) {
+            const off = Math.abs(shown[y * stride + x] - read[y * stride + x]);
+            if (off > worst) worst = off;
+            if (off > 8) differing++;
+            // The same comparison against the canvas turned over, so a failure says
+            // whether the screen is mirrored or merely different.
+            if (Math.abs(shown[(H - 1 - y) * stride + x] - read[y * stride + x]) > 8) mirrored++;
+          }
+        }
+        /** @param {Uint8Array|Uint8ClampedArray} buf @param {number} fy */
+        const at = (buf, fy) => {
+          const y = Math.floor(H * fy);
+          const i = y * stride + (W >> 1) * 4;
+          return [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]].join(',');
+        };
+        const samples = {
+          shownTop: at(shown, 0.25),
+          shownBottom: at(shown, 0.75),
+          readTop: at(read, 0.25),
+          readBottom: at(read, 0.75),
+        };
+        program.dispose();
+        backend.dispose();
+        return { differing, worst, mirrored, channels: W * H * 4, samples };
+      } catch (e) {
+        return { error: String(/** @type {any} */ (e).message || e).slice(0, 200) };
+      } finally {
+        canvas.remove();
+      }
+    },
+    { id: scissorPreset.id, description: scissorPreset.description, code: scissorPreset.code, block: scissorPreset.block, bytesArrays, values: scissorPreset.values, W, H }
+  );
+
+  if (onScreen.error) {
+    console.log(`     the canvas against readPixels  ${onScreen.error}  (reported, never gated)`);
+  } else {
+    const differing = /** @type {number} */ (onScreen.differing);
+    const mirrored = /** @type {number} */ (onScreen.mirrored);
+    const channels = /** @type {number} */ (onScreen.channels);
+    console.log(
+      `     the canvas against readPixels  ${differing.toLocaleString('en-US')} of ` +
+        `${channels.toLocaleString('en-US')} channels differ, worst ${onScreen.worst}; ` +
+        `turned over, ${mirrored.toLocaleString('en-US')} differ  (reported, never gated)`
+    );
+    const samples = /** @type {any} */ (onScreen).samples;
+    console.log(
+      `     on screen  top ${samples.shownTop}  bottom ${samples.shownBottom}` +
+        `   |   through readPixels  top ${samples.readTop}  bottom ${samples.readBottom}`
+    );
+  }
+}
+
 // ── A figure whose geometry moves, on a real driver (item 18, step 6) ─────────
 //
 // Item 18 took a resource's bulk bytes out of the program cache key so that a
@@ -705,7 +836,6 @@ const SCENE_TIER = [
   'core-count',
   'core-scissor',
   'core-target',
-  'core-texture',
 ];
 /**
  * One preset drawn through both backends on this card and compared two ways: as
@@ -839,7 +969,7 @@ for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
 // question, not an invariant. A gate that is expected to be red stops being read,
 // and these two are expected to be red until item 20's step 2 lands. **Step 3
 // deletes this block** when the two presets join `SCENE_TIER` above.
-const HELD_OUT = ['core-mips'];
+const HELD_OUT = ['core-texture', 'core-mips'];
 console.log('');
 console.log('     item 20, held off the list above — reported, never gated:');
 for (const one of corpus.filter((preset) => HELD_OUT.includes(preset.id))) {
