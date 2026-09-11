@@ -113,6 +113,25 @@ export interface RendererOptions {
 /**
  * One backend, named by the caller rather than worked out here.
  *
+ * **This is the primitive, not the door a page should reach for first** (decided
+ * 2026-09-11). Naming the backend is the caller's *here* because this is the
+ * function that builds one, and building a backend needs the answer already in
+ * hand. Which backend a frame should get is a different question, it is answered
+ * by a reading over data, and it is the library's — [gpu/select.ts](./select.ts)
+ * holds that decision with its reversal and its trigger. The two headers read as a
+ * contradiction until they are scoped, and scoping them is the whole of it: this
+ * is the primitive, and the door that chooses is built over it rather than
+ * replacing it.
+ *
+ * **The default below is why that door is queued.** A caller passing neither
+ * `backend` nor `device` falls to the `else` arm and gets WebGL 2 — on every
+ * machine, including one whose adapter would have come back. That is the worse
+ * backend chosen by silence rather than by a reading. It is left standing rather
+ * than fixed here, because fixing it would mean this function asking the browser
+ * for a card, and not asking is what makes it a primitive: a caller that already
+ * knows which backend it wants must be able to build that one without a round
+ * trip it did not need.
+ *
  * Which one a reader gets is answered before this, because the answer decides
  * which target gets fetched and a reader is sent one of the two. The questions
  * that answer it are whether the browser has WebGPU, whether asking it for a

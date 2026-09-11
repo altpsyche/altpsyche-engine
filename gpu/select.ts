@@ -18,6 +18,41 @@
  * where WebGPU exists (§17 decision 6): the language it is written in is the
  * capability it forfeits, and every one it forfeits is one GLSL ES 3.0 has no
  * syntax for.
+ *
+ * **Decided on 2026-09-11: the library answers the questions and the caller owns
+ * the things.** Which backend draws a frame is a reading over data, so it is this
+ * library's to answer, the same way `cost`, `refusal` and `validate` are. A
+ * `GPUDevice` is a resource with a lifetime, so it is the caller's to own, the
+ * same way the canvas, the frame and the loop already are. The two halves read as
+ * one tangled question only because the sole door onto a renderer is
+ * `createFrameRenderer`, which is a primitive that takes a named backend rather
+ * than working one out — so a caller wanting the answer this module computes had
+ * to take four steps of its own: gather the offering, call `selectBackend`, call
+ * `requestWebGPUDevice`, and translate the frame where the chosen backend needs
+ * it. **The fourth is the one that shows the shape of the defect**: it goes
+ * through `glslFrameOf`, nothing at the door says it exists, and it can come back
+ * null.
+ *
+ * **What that decides, and what it does not.** It does not make this module
+ * impure. The selection still touches no device and the offering still arrives as
+ * data, which is the property the whole file is built on. What it decides is that
+ * the door gathering that offering from a browser belongs in `host/`, the layer
+ * allowed a DOM, and that it takes a `GPUDevice` as an optional parameter rather
+ * than holding one — so a page with more than one canvas asks for a device once
+ * and hands the same one to each, and no module here holds a device or an
+ * adapter. `readingOf` in [host/probe.ts](../host/probe.ts) already does the
+ * gathering half for the device report, building a `DeviceOffer` from facts and
+ * calling `selectBackend` on it, **which is what says the missing door is assembly
+ * rather than new judgement**.
+ *
+ * **How to reverse it.** Delete that door; the four steps become the caller's
+ * again and nothing in this file changes, because the pure selection is what both
+ * answers are built out of. **What would change the answer** is a caller that must
+ * choose a backend for a reason this module cannot read — a measurement comparing
+ * the two, or a fault switched off in one commit — which is why
+ * `RendererOptions.backend` exists and stays whichever way this went. What the
+ * decision fixes is the default a caller gets when they name nothing, which today
+ * is WebGL 2, silently, on a machine whose adapter would have come back.
  */
 import type { BackendName, FrameGraph, ResourceSpec, ShaderTarget } from '../graph/types.js';
 import type { Capability } from '../graph/capability.js';

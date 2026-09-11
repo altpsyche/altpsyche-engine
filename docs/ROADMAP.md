@@ -883,6 +883,13 @@ tested. What is absent is the join, and whether the join should exist at all is 
    output. **The measurement**: item 12's text edited to the branch taken, and the other branch
    struck rather than left standing.
 
+**All three landed on 2026-09-11**, in the commit this paragraph is part of. `npm test` at 866 over
+73 files and `npm run type-check` clean; `gate:browser` was not run, and the reason is that this
+change adds no export, alters no call and draws no picture — it is four doc comments and two
+document passages, and the gates that read documents are inside `npm test`. `gate:pack` was not run
+for the same reason: the export surface did not move, which the unchanged count of 69 names in the
+previous commit's reading is the baseline for.
+
 ### Done when
 
 - `gpu/select.ts` and `gpu/renderer.ts` state one answer, each with its reversal and its trigger at
@@ -898,6 +905,48 @@ line saying the library offers a selection a caller may run rather than running 
 is that the library chooses, item 12 is a door addition and `gpu/renderer.ts`'s header is the wrong
 one. **Correcting the guide alone would settle it by default**, which is why this is an item and not
 a line in item 7.
+
+### Answered on 2026-09-11, and the item landed with the answer
+
+**The library answers the questions and the caller owns the things.** Which backend draws a frame is
+a reading over data, so it is this package's to answer, the same way `cost`, `refusal` and `validate`
+are. A `GPUDevice` is a resource with a lifetime, so it is the caller's to own, the same way the
+canvas, the frame and the loop already are. The decision is written in `gpu/select.ts`'s header with
+its reversal and its trigger, and `gpu/renderer.ts`'s is scoped to say what it actually governs.
+
+**Neither header was wrong, which is why both were written.** They describe two layers and each was
+phrased as though it were the whole door. `createFrameRenderer` is the primitive: it builds a
+backend, and building one needs the answer already in hand, so naming it there is correct *there*.
+`gpu/select.ts` describes the package's posture, which is that readings are the library's. Scoping
+the two is the whole of the correction, and it means the missing door is **added over** the primitive
+rather than replacing it — which is what keeps a caller that already knows which backend it wants
+able to build that one without a round trip.
+
+**What decided it was the default, not the ergonomics.** A caller passing neither `backend` nor
+`device` falls to `gpu/renderer.ts:134`'s `else` arm and gets WebGL 2 on every machine, including one
+whose adapter would have come back. **That is the worse backend chosen by silence rather than by a
+reading**, and no one would choose it as a default; it is what falls out of a primitive being the
+only door.
+
+**The device is the half that nearly went the other way, and the tree decided it.**
+`requestWebGPUDevice`'s own header refuses to cache — "an adapter is spent by the device it makes, so
+this asks for a fresh one every time rather than holding one" — so a door that requested a device
+internally would hand a page with six shader canvases six devices, and the alternative is a
+module-level device, which this file already records as a property this package does not have: "No
+module holds a device or an adapter, since capability lives in the data." **So the door takes a
+`GPUDevice` as an optional parameter and requests one only where it is not given.** One canvas is one
+call; six canvases ask once and pass the same device to each.
+
+**Two placement constraints fall out of it and belong to item 12.** The door reaches `navigator`, so
+it belongs in `host/` and not in `gpu/` — `graph/` imports nothing and `gpu/select.ts` stays pure. And
+it must reach a backend through `createFrameRenderer` rather than importing one, so the dynamic-import
+split survives and the standing obligation holds: a consumer drawing one fullscreen shader still does
+not download the WebGPU backend.
+
+**What the gathering half already is.** `readingOf` at `host/probe.ts:145-151` builds a `DeviceOffer`
+from gathered facts and calls `selectBackend` on it, for the device report. So the join exists inside
+this package and hands back a backend *name*, having dropped the `GPUDevice` it made getting there.
+**Item 12 is assembly rather than new judgement**, which is the reading that makes it a small item.
 
 ---
 
@@ -1059,9 +1108,12 @@ less; what it may not do is land having implemented a blend that is silently app
 the state it is fixing.
 ## Item 12 — a selected backend refuses the frame object it was selected for, and nothing on the door joins the two
 
-**Opened on 2026-09-11, out of readings 2 and 7 of the campaign above. Blocked on item 9**, which
-decides whether this item is a door addition or a refusal and two corrections. Both branches are
-written below and step 1 of item 9 strikes one of them.
+**Opened on 2026-09-11, out of readings 2 and 7 of the campaign above. Unblocked on 2026-09-11**,
+when item 9 answered that the library chooses. **This is therefore a door addition**, and the
+caller-chooses branch that stood here has been struck rather than left standing. The door goes in
+`host/`, takes an optional `GPUDevice` and requests one only where it is not given, and reaches a
+backend through `createFrameRenderer` — the three constraints item 9's answer carries, with the
+reasons recorded there.
 
 **The reading, re-verified on 2026-09-11.** `gpu/select.ts:60-61` lists the candidates —
 `glsl: ['webgl2']`, `wgsl: ['webgpu', 'webgl2']` — and `:126` returns a backend where
@@ -1083,7 +1135,7 @@ tell from the answer. And `resolve` is this package's headline pure reading — 
 it "selection and refusal as one reading" — so a `resolve` a caller cannot act on without a step
 nobody named is the claim holding halfway.
 
-### Steps, if item 9 answers that the library chooses
+### Steps
 
 1. **One door function gathers the offering, selects, requests the device where the selection wants
    one, translates where the selected backend needs it, and returns the renderer or a refusal naming
@@ -1103,24 +1155,15 @@ nobody named is the claim holding halfway.
    `tests/api-signatures.test.ts` and `tests/docs-code.test.ts` green, `gate:pack`, and
    `gate:browser` at 4 of 4.
 
-### Steps, if item 9 answers that the caller chooses
-
-1. **`selectBackend` says what it is answering about.** A `wgsl` frame selecting `webgl2` returns an
-   answer that names the translation as required — the field, or the shape of the answer, is the
-   step's to decide and its reason goes at `gpu/select.ts:126`. **The measurement**: the answer's
-   shape before and after, the door's export count against 69, and `gate:pack`.
-2. **`docs/GUIDE-backends.md` and `docs/API.md` carry the four steps a caller takes, with
-   `glslFrameOf`'s null cases named.** **The measurement**: `tests/docs-code.test.ts` compiling the
-   worked example, which is what says the four steps are writable as published.
-
 ### Done when
 
 - A caller that has a canvas, a frame and a browser reaches either a drawing renderer or a refusal
   naming the reason, without reading this package's source to learn that a translation step exists.
 - No `FrameGraph` that `selectBackend` or `resolve` answers a backend for reaches that backend and
   throws; where one cannot be drawn, the refusal names why before a backend is built.
-- `docs/GUIDE-backends.md` and `docs/API.md` agree with the code and with each other, and only one
-  of the two branches above survives in this entry.
+- `docs/GUIDE-backends.md` and `docs/API.md` agree with the code and with each other, and
+  `docs/GUIDE-backends.md`'s note that it describes a four-step tree pending this item is gone,
+  replaced by the call.
 - `npm test`, `npm run type-check` and `gate:pack` are green; `gate:browser` at 4 of 4.
 
 **What would change the answer.** If the join cannot be written without this package deciding for the
@@ -1538,7 +1581,11 @@ without a bound the first one that arrives sets the precedent by accident. It do
 which is an authoring path for the frame graph rather than a candidate, and which passes all three
 of the candidate bounds as they stand.
 
-### Does the library choose the backend, or does the caller? — **settled as a question, promoted to item 9 on 2026-09-11**
+### Does the library choose the backend, or does the caller? — **answered on 2026-09-11 by item 9**
+
+**The answer is that the library chooses, and the caller owns the device.** It is written in
+`gpu/select.ts`'s header with its reversal and its trigger, and item 9 above records how it was
+reached and what fell out of it. This section is kept as the reading that raised the question.
 
 **This stopped being a question that could wait on 2026-09-11**, when reading 2 of the campaign above
 found a second consequence of the same ambiguity — a backend `selectBackend` answers for a frame the

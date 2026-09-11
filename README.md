@@ -109,7 +109,11 @@ page downloads a WGSL translator either, because translation happens in the buil
    `createSurface` and `createFrameRenderer` return promises.
 2. **A renderer uses WebGL 2 unless you give it a WebGPU device.** You call
    `requestWebGPUDevice()` and pass `{ backend: 'webgpu', device }`, so a page that never
-   wants WebGPU never downloads that backend.
+   wants WebGPU never downloads that backend. **That is `createFrameRenderer`'s contract as
+   a primitive, and not this package's answer to which backend should draw** — that answer
+   is `selectBackend`'s, a reading over the frame and the device's offering. A door joining
+   the two is queued; until it lands, a caller that names nothing gets WebGL 2 even on a
+   machine whose adapter would have come back.
 3. **Do not call `getContext('webgl2')` on the canvas you are going to draw into.** A canvas
    keeps the first context type it is given and refuses every other one for as long as it
    lives, so that call as a capability check breaks WebGPU on the machines that have it. Ask

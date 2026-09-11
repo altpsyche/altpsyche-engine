@@ -1,8 +1,21 @@
 # The two backends, and how to ask which one you get
 
 This package draws through **WebGPU** where a browser returns an adapter and **WebGL 2**
-where it does not. You never name a backend. You hand in a graph and two facts settle it:
-the language the graph is authored in, and what the device offers.
+where it does not, and which one is a reading over two facts: the language the graph is
+authored in, and what the device offers. `selectBackend` is that reading, and it is the
+next section.
+
+**Today you still name the backend when you build a renderer.** The only door onto one is
+`createFrameRenderer`, which is a primitive: it takes the answer rather than working it out,
+so running the reading and acting on it is yours. That means four steps — gather the
+offering, select, ask for a device where the selection wants one, and translate the frame
+where the chosen backend needs it — and this page walks them.
+
+**That was decided against on 2026-09-11.** The library answers the question and the caller
+owns the device, and the door joining the two is queued as item 12 in
+[ROADMAP.md](ROADMAP.md). **This page describes the tree as it stands and will be rewritten
+when that lands**, rather than describing a call you cannot make yet. An earlier version of
+this sentence said "You never name a backend", which was the intent and not the tree.
 
 ## Selection comes before refusal
 
