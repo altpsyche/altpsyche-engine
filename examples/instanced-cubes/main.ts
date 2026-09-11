@@ -94,6 +94,22 @@ fn cube(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @built
     // it along -z.
     let view = vec4<f32>(world.x, world.y, world.z - 40.0, 1.0);
 
+    // The projection, written out here rather than fed in as a matrix, because this
+    // example is about one draw call putting a thousand cubes on the screen and a
+    // uniform block carrying a camera would be a second subject.
+    //
+    // **fov, near and far are this example's own and nothing shares them** (item 6).
+    // What is shared is the *convention*: the depth this writes runs zero at the near
+    // plane to one at the far, which is the range scene/maths.ts states at
+    // mat4.perspective and the only range anything in this package assumes. The clip
+    // z below is that function's far/range and near*far/range entries multiplied out,
+    // with range being near - far; swap them for the minus-one-to-one form and this
+    // example draws a depth buffer nothing else here would agree with.
+    //
+    // So it is exempt from the assertion tests/scene-projection.test.ts holds the
+    // capability fixtures to, and exempt for a stated reason rather than by omission:
+    // there is no shared number to tie, only a shared convention, and the convention
+    // is named once here with a pointer rather than re-explained.
     let fov = 0.9;
     let near = 1.0;
     let far = 200.0;

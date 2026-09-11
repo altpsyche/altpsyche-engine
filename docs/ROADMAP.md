@@ -1120,12 +1120,14 @@ this package publishes.
 
 ### Steps
 
-1. **One test asserting the fixture literal equals `mat4.pack(mat4.perspective(Math.PI / 3, 1, 0.5,
-   5))`**, keeping the literal so the check stays independent and naming the projection's arguments
-   where it is stated. **The measurement**: the test red when either side is changed alone, green on
+1. **Landed on 2026-09-11**, reading below, and against `mat4.perspective` rather than
+   `mat4.pack(mat4.perspective(...))` — the step named the wrong side of a float32 boundary and the
+   reading says why. One test asserting the fixture literal equals the projection's output, keeping
+   the literal so the check stays independent and naming the projection's arguments where it is
+   stated. **The measurement**: the test red when either side is changed alone, green on
    the tree as it stands, and `npm test` at its new count.
-2. **The same for the inline WGSL in `examples/instanced-cubes`**, or the reason it is exempt written
-   above it — its `fov`, `near` and `far` are its own and only the convention is shared. **The
+2. **Landed on 2026-09-11 as the exemption**, reading below. The same for the inline WGSL in
+   `examples/instanced-cubes`, or the reason it is exempt written above it — its `fov`, `near` and `far` are its own and only the convention is shared. **The
    measurement**: whichever lands, the depth convention stated once in that file with a pointer to
    `scene/maths.ts` rather than restated.
 
@@ -1135,7 +1137,8 @@ this package publishes.
 - The four literals are one constant or four with one assertion over them, rather than four
   unrelated arrays.
 - `npm test` and `npm run type-check` are green, and `gate:browser` is green at 4 of 4 with the
-  recording contract at 16 of 16, which is what says the four presets still draw the same picture.
+  recording contract at **18 of 18** — it read 16 of 16 when this item was written and two presets
+  have arrived since — which is what says the four presets still draw the same picture.
 
 **What the audit found about depth, and it is the good news.** Every place in this tree that states
 or assumes a clip depth range agrees with `scene/maths.ts`. The four fixture literals carry
@@ -1146,6 +1149,49 @@ zero-to-one form and its comment says so. `docs/API.md:377` and `README.md:136` 
 in it, while the two hand-authored vertex stages under `fixtures/source/glsl/handwritten/` carry the
 z-only line and `tests/translate-build.test.ts:98` holds them to the artifact. **Nothing in this tree
 assumes a range this package does not write.**
+
+### Landed on 2026-09-11, and the step named the wrong side of a float32 boundary
+
+**One constant, `AIMED_PROJECTION` in `fixtures/capability-fixtures.ts`**, shared by the four presets
+that were carrying a copy each, and `tests/scene-projection.test.ts` holds it to `mat4.perspective`.
+Six tests, importing no backend and no device. `npm test` 925 to **931** passing, `type-check` green,
+`gate:browser` 4 of 4 with **18 of 18** agreeing call for call and `28 of 28 draws` — the four
+presets draw what they drew, which they must, since the constant holds the same sixteen numbers they
+each held.
+
+**Red when either side moves alone, which is the measurement step 1 named.** Proved by moving each:
+
+| what was changed, alone | tests red |
+| --- | --- |
+| the fixture literal's depth pair flipped to the minus-one-to-one form | **3** |
+| `mat4.perspective` changed to write minus one to one | **2** |
+
+**Step 1 said to compare against `mat4.pack(mat4.perspective(...))` and that is wrong by one digit.**
+`pack` returns a `Float32Array` — the view the card reads — so `far / (near - far)`, which is
+`-1.1111111` in the arithmetic rounded to seven decimals, comes back as **`-1.1111112`** through
+float32. The literal is the arithmetic's, which is the right choice: it is what `scene/maths.ts`
+publishes and what a reader comparing the two would compute. Had the step been followed as written,
+the check would have been red on a tree where nothing was wrong. The buffer's own view is not
+ignored — a second test holds `pack`'s output to the literal within a float32's precision, and
+asserts the one entry that differs, so the boundary is recorded rather than stepped around.
+
+**The four presets are not the four a reader would guess**, and the item named them by line number
+only. They are `core-depth`, `core-multisample`, `core-report` and `core-stencil`. `core-geometry`
+draws the same grid `core-depth` does and is aimed by no projection at all; `core-report`, which
+reads a count back, is aimed by this one. The names are asserted, so a preset gaining or losing the
+projection is a red gate naming which. `core-blend` and `core-count` are deliberately absent: both
+were written without a projection so that this item's four copies did not become five or six.
+
+**Step 2 closed as the exemption, stated rather than omitted.** The inline WGSL in
+`examples/instanced-cubes/main.ts` has its own `fov`, `near` and `far` and shares no number with
+anything, so there is nothing to tie. What it shares is the convention, and that is now named once
+above the arithmetic with a pointer to `scene/maths.ts` and a sentence saying which two entries of
+`mat4.perspective` the clip z is a multiplied-out form of.
+
+**What this could not check.** The assertion covers the constant and the four presets that import it;
+a fifth preset pasting the sixteen numbers again would leave it green, which is why the preset names
+and the count are asserted beside it. And nothing here ties the *example's* projection to anything —
+that is the exemption, and it rests on a comment rather than on a gate.
 
 ---
 

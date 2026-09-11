@@ -54,6 +54,31 @@ export const SCENE_OBJECT = 'panel';
 
 // Sixteen column-major numbers each, which is what a mat4x4 uniform holds, so the
 // two matrices the scene produces go into the block as their own bytes.
+/**
+ * The projection four presets are aimed with: sixty degrees of vertical view over a
+ * square frame, from half a unit in front of the camera to five, written column by
+ * column because that is the order the card reads a matrix out of memory.
+ *
+ * **These sixteen numbers are `mat4.perspective(Math.PI / 3, 1, 0.5, 5)`'s output,
+ * written out rather than called, and that is deliberate** (item 6). A fixture that
+ * called the function would move whenever the function moved, and
+ * `CONTRIBUTING.md` says a check rewritten alongside the code it checks cannot catch
+ * a mistake in that code. So the numbers stay literal and
+ * `tests/scene-projection.test.ts` holds the two together, failing if either side
+ * moves alone.
+ *
+ * **The defect it guards against is not hypothetical.** It is the one that opened
+ * item 3: two perspective projections in two packages writing clip depth into
+ * different ranges, with nothing catching it. The depth here runs zero at the near
+ * plane to one at the far, which `scene/maths.ts` states at `perspective` and which
+ * `-1.1111111` and `-0.5555556` are the two entries of. Were that function changed to
+ * write minus one to one, its own tests would be rewritten with it and these numbers
+ * would not — and the test named above is what turns that silence into a red gate.
+ *
+ * It was four copies of these numbers until item 6 made it one.
+ */
+export const AIMED_PROJECTION = [1.7320508, 0, 0, 0, 0, 1.7320508, 0, 0, 0, 0, -1.1111111, -1, 0, 0, -0.5555556, 0];
+
 const SCENE_VIEW = Array.from(mat4.pack(viewProjection(SCENE_CAMERA)));
 const SCENE_MODEL = Array.from(mat4.pack(worldMatrix(SCENE, SCENE_OBJECT)));
 
@@ -382,7 +407,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       {
         name: 'u_place',
         type: 'mat4',
-        value: [1.7320508, 0, 0, 0, 0, 1.7320508, 0, 0, 0, 0, -1.1111111, -1, 0, 0, -0.5555556, 0],
+        value: AIMED_PROJECTION,
       },
     ],
     frame: {
@@ -544,7 +569,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       {
         name: 'u_place',
         type: 'mat4',
-        value: [1.7320508, 0, 0, 0, 0, 1.7320508, 0, 0, 0, 0, -1.1111111, -1, 0, 0, -0.5555556, 0],
+        value: AIMED_PROJECTION,
       },
     ],
     frame: {
@@ -624,7 +649,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       {
         name: 'u_place',
         type: 'mat4',
-        value: [1.7320508, 0, 0, 0, 0, 1.7320508, 0, 0, 0, 0, -1.1111111, -1, 0, 0, -0.5555556, 0],
+        value: AIMED_PROJECTION,
       },
       // Centred over the sheet behind it to begin with, so the count starts low
       // and climbs as this is fed down towards nothing.
@@ -688,7 +713,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
       {
         name: 'u_place',
         type: 'mat4',
-        value: [1.7320508, 0, 0, 0, 0, 1.7320508, 0, 0, 0, 0, -1.1111111, -1, 0, 0, -0.5555556, 0],
+        value: AIMED_PROJECTION,
       },
     ],
     frame: {
