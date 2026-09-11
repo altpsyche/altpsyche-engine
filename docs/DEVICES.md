@@ -38,6 +38,31 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-12, Linux, `core-mips` joins the zeros, and what was read as a ladder defect was a sampler default
+
+**One line.** `gpu/webgpu.ts` never set `mipmapFilter`, which WebGPU defaults to `nearest`, so that
+backend snapped between levels where the WebGL 2 backend mixed them — `LINEAR_MIPMAP_LINEAR` being
+what a laddered smooth sampler gets there. `core-mips` reads a fractional level that climbs across
+the frame, so one backend drew it banded and the other smooth.
+
+```
+core-mips   574,095 of 1,440,000 at worst 15  ->  0 of 1,440,000 at worst 0
+```
+
+**The reading it was written on was wrong, and it had stood for a day.** This file and
+`docs/ROADMAP.md` both said the disagreement was that WebGL 2 calls `generateMipmap` where the WebGPU
+backend draws the steps by hand. That is true and is not why they differed: both are 2x2 box averages
+of the level above. Only the read between levels differed.
+
+Every other preset is unchanged at 0, and `core-mips`'s own lit-pixel count moved from 479,952 to
+479,958 — the picture itself is slightly different, which is the banding going away.
+
+**What this row cannot say.** One card, and the corpus has exactly one laddered preset. "A texture
+with one level is unaffected" is an argument from the API plus seven presets reading zero, not a
+measurement of a second ladder.
+
+---
+
 ### 2026-09-12, Linux, the vertex flip lands and the whole gated corpus reads zero, with the picture the right way up
 
 **What landed.** Item 20's step 2d, on top of the presentation step in the row below: the build-time

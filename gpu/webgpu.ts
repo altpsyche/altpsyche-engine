@@ -818,6 +818,29 @@ export function createWebGPUBackend(
                 label: `sampler${index}`,
                 magFilter: spec.filter,
                 minFilter: spec.filter,
+                // How the card reads *between levels* of a ladder, which WebGPU
+                // defaults to `nearest` and which this left at that default until
+                // item 20's step 2e (2026-09-12).
+                //
+                // **It is the same answer as the filter between pixels, because
+                // that is what the WebGL 2 backend does**: a laddered texture read
+                // through a smooth sampler gets `LINEAR_MIPMAP_LINEAR` there, the
+                // trilinear read that mixes the two levels either side of the size
+                // wanted. Left at `nearest`, this backend snapped to one level and
+                // the same picture came out banded where the other came out smooth
+                // — measured as `core-mips` differing from its WebGL 2 frame on
+                // 574,095 of 1,440,000 channels at worst 15, which was read for a
+                // day as a disagreement between the two ladders and was not one.
+                // Both ladders are 2x2 box averages of the level above and always
+                // were; only the read between them differed.
+                //
+                // A texture with one level has nothing between, so this changes
+                // nothing for the rest of the corpus — which is what its numbers
+                // say. **To reverse**: drop this line. **What would change the
+                // answer**: a description that wants to name the two filters apart,
+                // at which point `SamplerResource.filter` becomes two fields and
+                // both backends read the second.
+                mipmapFilter: spec.filter,
                 addressModeU: WRAPS[spec.wrap],
                 addressModeV: WRAPS[spec.wrap],
               })

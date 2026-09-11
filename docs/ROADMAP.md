@@ -3429,6 +3429,39 @@ pixel out of the default framebuffer per round, which is a sync amortised over 2
 **What this does not measure** is the memory a second full-size colour target costs, which is one
 frame's worth per surface and is not in any reading here.
 
+### Landed on 2026-09-12, step 2e: the ladder was never the defect, and the reading this step was written on was wrong
+
+**The step said**: "`core-mips`'s ladder, unrelated to all of this: 574,095 at worst 15 under a flip",
+and elsewhere that "WebGL 2 calls `generateMipmap` where the WebGPU backend draws the steps by hand".
+**The second half is true and is not why the two disagreed.** Both ladders are 2x2 box averages of
+the level above: `gl.generateMipmap` takes one, and `gpu/webgpu.ts`'s `DOWNSAMPLE` samples the level
+above at the corner between each pair of texels with a linear sampler, which is the same average.
+
+**What differed is the read *between* levels.** `gpu/webgpu.ts` never set `mipmapFilter`, and WebGPU
+defaults it to `nearest` — so that backend snapped to one level where the WebGL 2 backend, which sets
+`LINEAR_MIPMAP_LINEAR` for a laddered smooth sampler, mixed the two either side. `core-mips` reads a
+*fractional* level that climbs across the frame, and its own header says what it wants: "whole
+numbers land exactly on a copy and the values between them are a mix of the two either side, which is
+what makes the change across the frame smooth rather than banded". One backend was banded.
+
+**The fix is one line** — `mipmapFilter: spec.filter`, the same answer as the filter between pixels,
+which is what the other backend already did.
+
+```
+core-mips   574,095 of 1,440,000 at worst 15  ->  0 of 1,440,000 at worst 0
+```
+
+Every other preset is unchanged at 0, which is what a texture with one level should give: there is
+nothing between for this to change. `gate:card` 34 of 34, `npm test` 989, type-check clean.
+
+**To reverse**: drop the line. **What would change the answer**: a description that wants to name the
+two filters apart, at which point `SamplerResource.filter` becomes two fields and both backends read
+the second.
+
+**What this could not see.** One card. And the corpus has exactly one laddered preset, so "a texture
+with one level is unaffected" is an argument from the API plus seven presets reading zero, not a
+measurement of a second ladder.
+
 ### Landed on 2026-09-12, step 2d: the vertex flip, and the whole gated corpus reads zero
 
 **What landed.** `gates/translate.mjs` keeps naga's clip-space y negation instead of stripping it;
@@ -3534,7 +3567,10 @@ measured nowhere.
     opposite, which is the whole of the rule: the readback turns a frame over when the surface is
     bottom-first, and the present blit turns it over when the surface is top-first. Item 8's
     objection — that dropping the readback flip breaks hand-authored GLSL — stands, and this is why.
-2e. **`core-mips`'s ladder**, unrelated to all of this: 574,095 at worst 15 under a flip.
+2e. ~~**`core-mips`'s ladder**, unrelated to all of this: 574,095 at worst 15 under a flip.~~
+    **Landed on 2026-09-12, and the reading was wrong** — see the entry above. The ladders agree and
+    always did; the WebGPU backend read *between* levels with `nearest` because it never set
+    `mipmapFilter`. 574,095 at worst 15 to 0 at worst 0, in one line.
 3. **`core-texture` and `core-mips` join `SCENE_TIER`** and the diagnostic block comes out.
 
 **What would change the answer.** If `layout(origin_upper_left)` ever reaches GLSL ES, the fragment
