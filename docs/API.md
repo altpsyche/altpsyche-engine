@@ -65,9 +65,30 @@ building the backend it is told to build — for a caller that already knows whi
 do the same sum. `PROGRAM_CACHE_LIMIT` is how many built programs a renderer keeps before
 evicting the stalest.
 
-Both factories return `null` where no backend would give the canvas a context. Neither
-throws. All three are **asynchronous** because each backend loads by dynamic import; see
+Both factories return `null` where no backend would give the canvas a context — a fact about
+the machine, which is all `null` ever means here. **They do throw for an argument that is not a
+canvas**: something with no `getContext` is a bug in the calling code rather than a device that
+cannot draw, and folding it into the `null` would have this package report a capability absence
+that is not true. A TypeScript caller cannot reach that throw; it is written for the JavaScript
+one. All three are **asynchronous** because each backend loads by dynamic import; see
 [ARCHITECTURE.md](ARCHITECTURE.md#declared-entry-points) for what that buys.
+
+**`dispose` releases what the renderer allocated and leaves your canvas alone.** That is true on
+both backends and it is the same sentence for both, which it was not until 2026-09-11: WebGL 2's
+`dispose` used to call `WEBGL_lose_context.loseContext()`, and a lost context cannot be undone —
+a canvas hands back the same context for as long as it exists, so the next `getContext('webgl2')`
+returns the dead one and accepts draw calls while the picture stops moving. WebGPU's called the
+reversible `context.unconfigure()`. **So you may build a second renderer or surface over a canvas
+you disposed one on**, on either backend.
+
+The canvas is yours throughout. It is handed in as a parameter and is not one of the three
+lifetimes a renderer owns — [ARCHITECTURE.md](ARCHITECTURE.md) has those — so nothing here
+destroys it, and if you do want the context gone that is one line on an object you already hold:
+`canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext()`.
+
+`Surface.setGraph` is still the way to change a shader on a running page, now for the plain
+reason that tearing a surface down and building another rebuilds the backend, recompiles every
+program and drops the frame loop. It is no longer a workaround for a destroyed context.
 
 **`createFrameRenderer` draws through WebGL 2 unless you hand it a WebGPU device**, which is
 `RendererOptions.backend` and `RendererOptions.device` together. That is the primitive's

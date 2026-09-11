@@ -96,6 +96,22 @@ one owner.
 
 `resource/` never compiles a pipeline. That is why the boundary holds.
 
+**A fourth kind of thing is on this page and is not one of the three: the canvas.** It is the
+caller's, handed in as a parameter to `createSurface` and `createFrameRenderer`, and it outlives
+every renderer built over it. **So `dispose` frees the three above and does not touch it**, on
+both backends, and a caller may build a second renderer or surface over a canvas it disposed one
+on. [API.md](API.md) says it where a caller reads.
+
+That is a rule this codebase learned by breaking it. WebGL 2's `dispose` called
+`WEBGL_lose_context.loseContext()` until 2026-09-11, which destroyed the caller's context
+unrecoverably — a canvas hands back the same context for as long as it exists, so the next
+`getContext('webgl2')` returned the dead one and accepted draw calls while the picture stopped
+moving — where the WebGPU backend called the reversible `context.unconfigure()`. One name on one
+interface meant two different things, and the one a caller could not recover from was the
+unannounced one. **The test for it is written as one pair of questions asked of both backends**
+rather than as two backends' tests, because the property is the symmetry and a test per backend
+is what let them drift.
+
 ## Handles, not names
 
 Every resource in a graph is a kind-branded integer, its index in the graph's own resource

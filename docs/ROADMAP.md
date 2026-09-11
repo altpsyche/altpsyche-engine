@@ -2121,6 +2121,56 @@ kind, so neither arm is measured against a driver. `gate:card` was not re-taken.
 
 **Step 3 remains**: `docs/API.md`'s `dispose` entries and `docs/ARCHITECTURE.md`'s lifetimes saying
 what a caller may do with its canvas afterwards.
+
+### Landed on 2026-09-11, step 3, and it found a sentence in `API.md` that item 13 had already falsified
+
+**The rule went where the rule belongs.** `docs/ARCHITECTURE.md`'s three lifetimes now name a fourth
+kind of thing that is *not* one of them — the canvas, which is the caller's, handed in as a parameter
+and outliving every renderer built over it — and say that `dispose` frees the three and does not
+touch it, on both backends. `docs/API.md` says the same where a caller reads, with the one line that
+gets the context gone for a caller who wants it. `host/surface.ts`'s `setGraph` paragraph now points
+at both rather than being the only home of the fact, which is what step 3 asked: **a fact about every
+renderer stated only on one method's workaround is a fact nobody finds.**
+
+**`API.md` said "Neither throws" and that had to go.** It sat under the two factories, and it was
+already false before this campaign — both threw a `TypeError` on a non-canvas — and item 13 made the
+throw deliberate without the document following. It now says both return `null` for a fact about the
+machine and both throw for an argument that is not a canvas, with the reason the two are different
+answers. **Item 13's `Done when` did not ask for a document and so did not catch this**; step 3
+caught it only because it was reading the same paragraph.
+
+**Measured.**
+
+| | before | after |
+| --- | --- | --- |
+| `npm test` | 943 over 79 files | 943 over 79 files |
+| `npm run type-check` | clean | clean |
+| `npm run gate:pack` | 17 of 17 | 17 of 17 |
+| `npm run gate:browser` | 4 of 4 | 4 of 4 |
+| surface gate | 21 of 21 | 21 of 21 |
+
+Documents only, so the counts do not move; `tests/api-signatures.test.ts` is green, which is what step
+3 named.
+
+### Done when, verified
+
+- **A test builds a renderer on a canvas a previous renderer disposed, and the outcome is the written
+  one on both backends.** `tests/dispose-contract.test.ts`, two of whose five go red under the old
+  behaviour.
+- **`FrameRenderer.dispose` and `Surface.dispose` say in `docs/API.md` what happens to the canvas, and
+  say the same thing for both backends.** They do — one sentence covering both, which is the
+  symmetry this item was about.
+- **`gates/surface.mjs`'s lost-card check still fails for a real loss.** It reads `1 lost` and `1
+  restored` and never depended on `dispose`: it loses the context itself through
+  `WEBGL_lose_context`.
+- **`npm test` and `npm run type-check` green; `gate:browser` 4 of 4 with the surface gate at 21 of
+  21.** 943 over 79 files, clean, 4 of 4, 21 of 21.
+- **The commit says the card gate was not re-taken.** All three step commits say so.
+
+**What the gates could not see, for the item as a whole.** No step of item 14 was measured on a real
+driver. The claim that a real card frees the same memory without the context loss rests on every
+allocation having an explicit `gl.delete*` beside it, read off the source. `gate:card` is what would
+close that and it needs Siva.
 ## Item 15 — `probe()` leaves a canvas on the caller's page for every backend it trials
 
 **Opened on 2026-09-11, out of reading 10 of the campaign above. This is finding C of the spike

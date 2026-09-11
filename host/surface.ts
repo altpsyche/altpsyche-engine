@@ -54,6 +54,12 @@ export interface Surface {
    * drops the frame loop, where this swaps the graph and keeps all three. What it
    * is not any more is a workaround for a destroyed context.
    *
+   * **What `dispose` does to a canvas is not written here any more.** It is in
+   * `docs/ARCHITECTURE.md`'s three lifetimes, which is where the rule belongs —
+   * the canvas is the caller's and is not one of the three — and in
+   * `docs/API.md` where a caller reads. A fact about every renderer stated only on
+   * one method's workaround is a fact nobody finds.
+   *
    * A source that will not compile leaves the last one that did still drawing
    * and its message is returned, because a reader editing a shader wants the
    * error and the picture rather than a blank rectangle. Null means the swap
