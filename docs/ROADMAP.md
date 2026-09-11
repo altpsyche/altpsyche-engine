@@ -3356,6 +3356,67 @@ bottom reading black where `readPixels` reads content — and why has not been i
 would be a red gate standing in for an unfinished reading.** What it does say is which end of the
 screen the picture starts at, which is exactly what step 2c got wrong.
 
+### Measured on 2026-09-12: the second attempt is reverted too, and between them the two say what the fix has to be
+
+**Correcting only the fragment coordinate was built and measured.** The bake rewrote every
+`gl_FragCoord` in a translated fragment to `vec4(x, height - y, z, w)` off an injected
+`_engine_frame_height` uniform the pass fills from its own target height. It did exactly what it
+promised and broke something else:
+
+```
+core-texture   1,424,706 (worst 235)  ->  40 at worst 1     — fixed, and the screen stayed right
+core-target            77 (worst 2)   ->  797,699 at worst 222  — broken
+```
+
+**Why `core-target` broke, and it is the fact that decides the whole item.** It draws into a texture
+and samples it back. **In OpenGL those two conventions already agree with each other**: an FBO
+texture's row 0 is its bottom, and `gl_FragCoord` counts from the bottom. In WebGPU they also agree —
+row 0 is the top and `@builtin(position)` counts from the top. **Correcting only the coordinate
+breaks the pairing**, leaving a top-down lookup reading a bottom-up texture.
+
+**So neither half works alone, and the two failures are complementary:**
+
+| attempt | `@builtin(position)` | render-to-texture | the canvas |
+| --- | --- | --- | --- |
+| flip in the vertex stage | fixed | fixed | **upside down** |
+| correct the fragment coordinate | fixed | **mirrored** | right |
+| today | **mirrored** | right | right |
+
+**The complete fix is the vertex flip plus owning the presentation step**, which is what wgpu and
+ANGLE do and what this package does not do yet. Everything downstream of the flip — the FBO
+textures, the coordinate, the winding — lands in WebGPU's orientation and agrees; the one thing that
+then disagrees is the canvas, and the answer is to stop drawing into it directly. **Render every
+frame into an offscreen target and blit to the canvas with the y flip at present.** The `present`
+path already blits; what is missing is that a frame whose last pass draws the canvas directly has no
+offscreen target and no blit.
+
+**One claim from the first attempt is withdrawn.** It reported that 11, 36 and 18 "were never
+compiler noise" because the vertex flip took them to zero. **The fragment correction fixed the
+coordinate for those same presets and left them at 11, 36 and 18.** So the coordinate is not what
+they are, and the zero the first attempt reached was something else about that rasterisation —
+plausibly pixel-centre alignment. **They are unexplained, not exonerated and not convicted**, and
+`docs/DEVICES.md` and `gates/translate.mjs` both say so now rather than carrying the stronger claim.
+
+### Steps, rewritten after the second revert
+
+2c. **Give the backend a presentation step it owns.** Every frame renders into an offscreen colour
+    target; the canvas receives a blit. **This is the prerequisite and it is worth landing on its own
+    merits** — it is also what would let `readPixels` stop depending on which way a frame was drawn.
+    **The measurement**: every gated preset unchanged, the canvas line still starting at the top, and
+    `gate:browser` at 4 of 4.
+2d. **Then the vertex flip**, with the winding inverted, the readback unconditional again because the
+    offscreen target is always WebGPU-oriented, and the present blit carrying the y flip.
+    **The measurement**: `core-texture` inside the tolerance, the canvas line unchanged, and the eight
+    gated presets no worse than 11, 0, 77, 0, 0, 11, 36, 18 — **and whether they go to zero is a
+    reading, not a prediction**.
+2e. **`core-mips`'s ladder**, unrelated to all of this: 574,095 at worst 15 under a flip.
+3. **`core-texture` and `core-mips` join `SCENE_TIER`** and the diagnostic block comes out.
+
+**What would change the answer.** If `layout(origin_upper_left)` ever reaches GLSL ES, the fragment
+says what it means and none of this is needed. If the offscreen target turns out to cost a measurable
+copy per frame on a real card, that cost is weighed against a mirrored builtin rather than assumed
+away — and it is measurable here, `gate:card` prints a frame time.
+
 ### Steps, rewritten after the revert
 
 2c. **Correct `@builtin(position)` in the baked fragment and nothing else.** Replace `gl_FragCoord`

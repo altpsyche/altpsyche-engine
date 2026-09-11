@@ -73,11 +73,12 @@ under the change  0,0,0            221,173,121    (bottom matches readPixels' to
 is a `readPixels` number, and that is worth knowing before trusting any of them about what a reader
 sees.
 
-**The zeros are kept because they say something that survives the revert**: the residuals this file
-records three times as 11, 36 and 18 — and once called "two hardware compilers folding the same
-arithmetic apart" — are a real defect and not compiler noise, because a change reached zero. **But
-they are an untested claim again**, the tree that produced them having been reverted, and item 20
-re-measures rather than assumes them.
+**The zeros are kept, and what they mean is now narrower than this row first claimed.** It read them
+as proof that the residuals this file records three times as 11, 36 and 18 are a real defect rather
+than compiler noise. **A second attempt the same day corrected the coordinate for those same presets
+and left them at 11, 36 and 18**, so the coordinate is not what they are, and the zero this change
+reached was something else about its rasterisation — plausibly pixel-centre alignment. **They are
+unexplained: neither exonerated as compiler noise nor convicted as a defect.**
 
 ---
 

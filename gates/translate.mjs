@@ -221,8 +221,16 @@ const naga = (profile, name, input, output) => {
  * recorded in `docs/DEVICES.md`. So 11, 36 and 18 are what a re-take gives and a
  * session seeing them has found nothing wrong.
  *
- * **Worst channel 1 is not a residual mirror**: it is two hardware compilers folding
- * the same arithmetic apart, which is what this gate's tolerance exists for.
+ * **Worst channel 1 is not a residual mirror**, and what it *is* is open (item 20,
+ * 2026-09-12). This paragraph used to finish "it is two hardware compilers folding
+ * the same arithmetic apart, which is what this gate's tolerance exists for", and
+ * that is a guess rather than a reading. Two attempts have now moved it: restoring
+ * the clip-space y negation took 11, 36 and 18 to zero and displayed the frame
+ * upside down, and correcting `gl_FragCoord` in the fragment fixed the coordinate
+ * for those same presets and left all three exactly where they were. **So the
+ * residual is not the coordinate, and something about the first attempt's
+ * rasterisation removed it** — plausibly pixel-centre alignment, unmeasured.
+ * Neither exonerated nor convicted; see item 20.
  *
  * **The zero this paragraph used to quote belongs to something else, and the
  * correction is roadmap item 8.** Removing the *readback flip* instead of the Y
