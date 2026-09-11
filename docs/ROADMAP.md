@@ -1191,6 +1191,55 @@ does not claim them.
 - The commit says the card gate was not re-taken, and that the `0,0,255,128` reading belongs to
   another repository's session.
 
+### Landed on 2026-09-11, and it found a corpus preset drawing the wrong picture
+
+**The WebGL 2 backend applies the blend a pipeline's `targets` name.** The mapping is direct —
+`blendEquationSeparate` for the operations, `blendFuncSeparate` for the factors, `blendColor` for a
+constant — with WebGPU's own component defaults (`add`, `one`, `zero`) written out rather than left
+to GL's, which are not the same numbers. A frame whose pipelines name no blend touches no blend
+state at all, so every fixture that drew before this has the call stream it had, and a test asserts
+that.
+
+**Two capabilities name what does not reach**, both read off the pipeline rather than declared, the
+way the write arm of `storage-buffer` is: `dual-source-blend` for the `src1` factors, optional on
+WebGPU and absent from WebGL 2; and `per-target-blend` for a pass whose targets draw under different
+blends, core on WebGPU and absent from WebGL 2.
+
+**The finding, and it is worth more than the feature.** `core-depth`'s second pass writes two
+colours and blends only the first — `{ resource: 'picture', blend: 'over' }` beside
+`{ resource: 'distance' }`. WebGL 2 has one blend state for every draw buffer at once, so there is
+no call stream that blends one and not the other. **That preset has been drawing the wrong picture
+on WebGL 2 for as long as it has been in the corpus**, and it drew rather than being refused because
+this backend applied no blend at all. **Nothing caught it**, and the reason is exactly the gap the
+gates have: the cross-backend comparison covers the three scene presets, so `core-depth`'s two
+pictures were never compared to each other. It is refused by name now, on both the capability path
+and the backend's own backstop, and the corpus skips it in the WebGL 2 column with the reason
+printed.
+
+**The reading that found it was nearly missed.** A first pass at `impliedCapabilities` filtered the
+targets naming no blend out before comparing, which would have called `core-depth` drawable. A
+target written straight in is a *different* blend state, not the absence of one. A test holds that
+reading specifically, because it is the one an obvious simplification would undo.
+
+**Measurements.** `npm test` at **892 over 76 files**, against 880 over 75 — ten checks in
+`tests/blend-capability.test.ts` and two in `tests/renderer-webgl2.test.ts`. `npm run type-check`
+clean. `gate:pack` green with the door at **70 run-time names**, unchanged: two `Capability` members
+widen a published union without adding a name. **`gate:browser` at 4 of 4**, with the corpus now at
+**23 of 23 draws, 0 failed and 10 WebGL 2 skips**, against 24 of 24 with 9 — the moved preset is
+`core-depth` and that difference is the finding, not a regression. Recording contract 16 of 16,
+surface 21 of 21.
+
+**`gate:card` re-taken after the change: 22 of 22 PASS, 0 FAIL.** `core-depth` still lights 245,496
+pixels through WebGPU and the three cross-backend readings are unchanged at 11, 36 and 18 of
+1,440,000, which is what says this moved nothing on the backend that was already right.
+
+**What no gate could see.** There is still no fixture whose *two backends are compared* under a
+blend, which is what step 3 of this item asked for and what would have caught `core-depth` years
+earlier. The preset that names a blend is now the one WebGL 2 refuses, so the comparison cannot be
+built from the corpus as it stands: it needs a new fixture with **one** blended target, and that is
+left standing as this item's unfinished half rather than claimed. **Until it exists, the blend this
+item implemented is covered by recorded calls against a double and by no picture.**
+
 **What would change the answer.** If step 2 finds that a blend cannot be reset per pass without
 re-reading state the backend does not keep — this backend records its plans once and replays them,
 and a blend left enabled leaks into the next pass — then the blend is set and cleared around every

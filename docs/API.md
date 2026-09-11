@@ -184,9 +184,9 @@ The first four are type guards, so reading a graph narrows a type instead of cas
 ## Asking questions without touching a device
 
 ```ts
-resolve(frame: Pick<FrameGraph, "id" | "authored" | "requires" | "translated"> & { resources?: readonly ResourceSpec[]; }, device: DeviceProfile): BackendSelection
+resolve(frame: Pick<FrameGraph, "id" | "authored" | "requires" | "translated"> & { resources?: readonly ResourceSpec[]; pipelines?: readonly PipelineSpec[]; }, device: DeviceProfile): BackendSelection
 selectBackend(frame: Pick<FrameGraph, "authored" | "translated">, offer: DeviceOffer): BackendSelection
-refusal(graph: Pick<FrameGraph, "id" | "requires"> & { resources?: readonly ResourceSpec[]; }, device: DeviceCapabilities): string | null
+refusal(graph: Pick<FrameGraph, "id" | "requires"> & { resources?: readonly ResourceSpec[]; pipelines?: readonly PipelineSpec[]; }, device: DeviceCapabilities): string | null
 cost(graph: FrameGraph, size: { width: number; height: number; }): FrameCost
 webgpuCapabilities(features: Iterable<string>): ReadonlySet<Capability>
 webgl2Capabilities(extensions: Iterable<string>): ReadonlySet<Capability>
@@ -204,10 +204,27 @@ functions turn what a device reported into the capability set both readings take
 `transientBytes` is what the frame's own scratch targets allocate; uploaded bytes are
 `Arena.traffic()`'s to report.
 
-`Capability` is eleven names: `compute`, `storage-buffer`, `storage-buffer-readwrite`,
+`Capability` is thirteen names: `compute`, `storage-buffer`, `storage-buffer-readwrite`,
 `storage-texture`, `indirect`, `timestamp`, `occlusion`, `msaa`, `float-blend`, `depth-clamp`,
-`bgra-storage`. A graph declares which it needs; a device reports which it has. See
-[GUIDE-backends.md](GUIDE-backends.md), which shows all of this in use.
+`bgra-storage`, `dual-source-blend`, `per-target-blend`. A graph declares which it needs; a
+device reports which it has. See [GUIDE-backends.md](GUIDE-backends.md), which shows all of this
+in use.
+
+**Two of them are read off the graph rather than declared**, so a caller cannot forget to ask.
+`storage-buffer-readwrite` comes from a buffer's own `access: 'read-write'`. The two blend names
+come from a render pipeline's `targets`:
+
+- **`dual-source-blend`** — some factor is one of `src1`, `one-minus-src1`, `src1-alpha`,
+  `one-minus-src1-alpha`, which blend against a fragment stage's second output. Optional on
+  WebGPU (`dual-source-blending`) and absent from WebGL 2.
+- **`per-target-blend`** — the pass's targets do not all draw under the **same** blend. A target
+  naming no blend counts as a state of its own, since a colour written straight in is not the
+  same as one mixed with what was there. Core on WebGPU, absent from WebGL 2, which has one blend
+  state for every draw buffer at once.
+
+**An ordinary blend needs neither.** One target naming a blend, or several naming the same one,
+draws on both backends: the WebGL 2 backend applies it through `blendFuncSeparate`,
+`blendEquationSeparate` and `blendColor`.
 
 **Reading a device, for a row and not for a decision:**
 

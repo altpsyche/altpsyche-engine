@@ -19,6 +19,7 @@ import type {
   FrameTraffic,
   FrameGraph,
   GlslRenderSource,
+  PipelineSpec,
   RenderPipelineSpec,
   SamplerResource,
   StencilMode,
@@ -28,6 +29,16 @@ import type {
 import { componentsOf, drawsCorners, drawsIndirectly, isRenderPass, perDrawBinding, resourceOf } from '../graph/types.js';
 import type { ResourceHandle, TextureHandle, VertexHandle } from '../graph/handles.js';
 import { indexOf } from '../graph/handles.js';
+
+/** The blend one pass draws under, in the card's own fields (item 11). One state
+ * for the whole pass rather than one per target: WebGL 2 has a single blend state
+ * for every draw buffer at once, and a pass whose targets name different blends
+ * needs the `per-target-blend` capability this backend has not got. */
+interface PassPlanBlend {
+  colour: { op: number; src: number; dst: number };
+  alpha: { op: number; src: number; dst: number };
+  constant?: [number, number, number, number];
+}
 import { Arena } from '../resource/arena.js';
 import type { Handle, Range } from '../resource/arena.js';
 import type { GL2Geometry, GL2PerDraw } from '../submit/gl2.js';
@@ -295,6 +306,88 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
     mark: { func: gl.ALWAYS, fail: gl.KEEP, zfail: gl.KEEP, zpass: gl.REPLACE, writeMask: 0xff },
     inside: { func: gl.EQUAL, fail: gl.KEEP, zfail: gl.KEEP, zpass: gl.KEEP, writeMask: 0 },
   } as const;
+
+  /**
+   * `GPUBlendState` in the card's own fields (item 11).
+   *
+   * **This backend applied no blend at all until item 11**, and could always have
+   * done so: `blendFuncSeparate`, `blendEquationSeparate` and `blendColor` are core
+   * WebGL 2. The word `blend` appeared nowhere in this file, so a pipeline naming
+   * `targets[].blend` drew it on WebGPU and drew it unblended here, with nothing in
+   * the data saying the two differed and `refusal` returning null for both.
+   *
+   * The mapping is direct for every factor but the `src1` family, which reads a
+   * fragment stage's second output and which GLSL ES 3.00 has none of. Those four
+   * are the `dual-source-blend` capability instead, refused by name before a
+   * pipeline is built, so nothing here has to have an answer for them.
+   *
+   * The two `undefined` arms are WebGPU's own defaults for a `GPUBlendComponent`:
+   * `add` for the operation, `one` for the source factor and `zero` for the
+   * destination. They are written out rather than left to the card, because a
+   * component that names only its operation must still blend the way WebGPU says
+   * and GL's own defaults are not the same numbers.
+   */
+  const BLEND_OP: Record<string, number> = {
+    add: gl.FUNC_ADD,
+    subtract: gl.FUNC_SUBTRACT,
+    'reverse-subtract': gl.FUNC_REVERSE_SUBTRACT,
+    min: gl.MIN,
+    max: gl.MAX,
+  };
+  const BLEND_FACTOR: Record<string, number> = {
+    zero: gl.ZERO,
+    one: gl.ONE,
+    src: gl.SRC_COLOR,
+    'one-minus-src': gl.ONE_MINUS_SRC_COLOR,
+    'src-alpha': gl.SRC_ALPHA,
+    'one-minus-src-alpha': gl.ONE_MINUS_SRC_ALPHA,
+    dst: gl.DST_COLOR,
+    'one-minus-dst': gl.ONE_MINUS_DST_COLOR,
+    'dst-alpha': gl.DST_ALPHA,
+    'one-minus-dst-alpha': gl.ONE_MINUS_DST_ALPHA,
+    'src-alpha-saturated': gl.SRC_ALPHA_SATURATE,
+    constant: gl.CONSTANT_COLOR,
+    'one-minus-constant': gl.ONE_MINUS_CONSTANT_COLOR,
+  };
+  /** One `GPUBlendComponent` as the three numbers a card takes, with WebGPU's own
+   * defaults filled in for whatever the component left out. */
+  const blendPart = (part: GPUBlendComponent | undefined) => ({
+    op: BLEND_OP[part?.operation ?? 'add'] as number,
+    src: BLEND_FACTOR[part?.srcFactor ?? 'one'] as number,
+    dst: BLEND_FACTOR[part?.dstFactor ?? 'zero'] as number,
+  });
+
+  /** The blend one render pipeline draws under, or null where it names none. The
+   * first target's, since a pass whose targets disagree needs `per-target-blend`
+   * and is refused before it reaches here. A `constant` colour is carried only
+   * where some factor actually reads one, so a card is not told a colour nothing
+   * uses. */
+  const blendOf = (spec: PipelineSpec): PassPlanBlend | null => {
+    if (spec.kind !== 'render') return null;
+    // A pass whose targets do not all draw under the same blend cannot be drawn
+    // here, and this is the backstop rather than the load-bearing refusal: the
+    // capability is `per-target-blend`, `refusal()` names it before any backend is
+    // built, and `impliedCapabilities` reads it off the pipeline so a caller never
+    // has to declare it. **A target naming no blend counts**, because a colour
+    // written straight in is a different state from one mixed with what was there,
+    // and `gl.enable(BLEND)` covers every draw buffer at once. Reached only by a
+    // caller that took this backend directly and skipped `resolve`.
+    const states = new Set((spec.targets ?? []).map((target) => JSON.stringify(target.blend ?? null)));
+    if (states.size > 1) {
+      throw new Error(
+        `a pass draws its ${spec.targets!.length} colours under different blends, and WebGL 2 has one blend state for all of them`
+      );
+    }
+    const blend = spec.targets?.find((target) => target.blend !== undefined)?.blend;
+    if (!blend) return null;
+    const reads = [blend.color?.srcFactor, blend.color?.dstFactor, blend.alpha?.srcFactor, blend.alpha?.dstFactor];
+    const usesConstant = reads.some((factor) => factor === 'constant' || factor === 'one-minus-constant');
+    return {
+      colour: blendPart(blend.color),
+      alpha: blendPart(blend.alpha),
+      ...(usesConstant ? { constant: [0, 0, 0, 0] as [number, number, number, number] } : {}),
+    };
+  };
 
   let width = canvas.width;
   let height = canvas.height;
@@ -767,6 +860,12 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // every fullscreen toy the backend drew before item 48 — sets no depth/stencil
       // state at all and its call stream is exactly what it was.
       const hasDepthStencil = depthTargets.size > 0;
+      // The same question for blend (item 11), asked of the frame's pipelines rather
+      // than of its plans because a frame where one pass blends and another does not
+      // must turn it off for the second. A frame where no pipeline names a blend
+      // touches no blend state at all, so every fixture that drew before item 11
+      // has the call stream it had.
+      const hasBlend = frame.pipelines.some((spec) => blendOf(spec) !== null);
 
       // The size the textures were last built at, so a resize between build and
       // draw remakes the frame-following ones before a pass reads a target of the
@@ -907,6 +1006,15 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // of the array by `gl_InstanceID`. Empty for a pass reading no storage
         // buffer, which is every fullscreen toy.
         storage: { buffer: WebGLBuffer; point: number }[];
+        // The blend this pass draws under (item 11), already in the card's own
+        // fields; null for a pipeline naming none, which draws its fragments
+        // straight in. One state for the whole pass rather than one per target,
+        // because WebGL 2 has one blend state for every draw buffer at once — a
+        // pass whose targets name *different* blends needs `per-target-blend`,
+        // which this backend does not have and `refusal` names before a build.
+        // `constant` is the colour the `constant` factors read, absent where no
+        // factor reads one.
+        blend: PassPlanBlend | null;
       }
 
       // The per-draw uniform buffers, each allocated through the backend's buffer
@@ -1204,6 +1312,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           depth: depthPlan,
           perDraw: perDrawPlan,
           storage: storagePlan,
+          // The blend the pipeline's first target names. Every target of one pass
+          // carries the same blend here by construction: two that differ imply
+          // `per-target-blend`, which this backend has not got, so `refusal` has
+          // already turned such a frame away.
+          blend: blendOf(spec),
         });
       }
 
@@ -1393,6 +1506,27 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
                 gl.stencilMask(mode.writeMask);
               } else {
                 gl.disable(gl.STENCIL_TEST);
+              }
+            }
+            // The blend this pass draws under (item 11), set every pass for the
+            // same reason the depth and stencil state above it is: a real context
+            // leaks blend state between passes, so a pass that names none must turn
+            // it off rather than inherit whatever the last one left on. A frame
+            // where no pipeline names a blend sets none of this and its call stream
+            // is what it was before item 11.
+            if (hasBlend) {
+              if (plan.blend) {
+                gl.enable(gl.BLEND);
+                gl.blendEquationSeparate(plan.blend.colour.op, plan.blend.alpha.op);
+                gl.blendFuncSeparate(
+                  plan.blend.colour.src,
+                  plan.blend.colour.dst,
+                  plan.blend.alpha.src,
+                  plan.blend.alpha.dst
+                );
+                if (plan.blend.constant) gl.blendColor(...plan.blend.constant);
+              } else {
+                gl.disable(gl.BLEND);
               }
             }
             gl.useProgram(plan.program);

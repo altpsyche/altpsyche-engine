@@ -89,6 +89,29 @@ const CONSTANTS = {
   DEPTH_STENCIL_ATTACHMENT: 0x821a,
   DEPTH_TEST: 0x0b71,
   STENCIL_TEST: 0x0b90,
+  // Blend (item 11): the enable bit, the five equations, and the factors a
+  // `GPUBlendState` maps onto. The specification's own numbers, so a test reading
+  // a recorded call against `gl.SRC_ALPHA` is reading the value a card would have
+  // been given rather than one this file invented.
+  BLEND: 0x0be2,
+  FUNC_ADD: 0x8006,
+  FUNC_SUBTRACT: 0x800a,
+  FUNC_REVERSE_SUBTRACT: 0x800b,
+  MIN: 0x8007,
+  MAX: 0x8008,
+  ZERO: 0,
+  ONE: 1,
+  SRC_COLOR: 0x0300,
+  ONE_MINUS_SRC_COLOR: 0x0301,
+  SRC_ALPHA: 0x0302,
+  ONE_MINUS_SRC_ALPHA: 0x0303,
+  DST_ALPHA: 0x0304,
+  ONE_MINUS_DST_ALPHA: 0x0305,
+  DST_COLOR: 0x0306,
+  ONE_MINUS_DST_COLOR: 0x0307,
+  SRC_ALPHA_SATURATE: 0x0308,
+  CONSTANT_COLOR: 0x8001,
+  ONE_MINUS_CONSTANT_COLOR: 0x8002,
   DEPTH: 0x1801,
   STENCIL: 0x1802,
   DEPTH_STENCIL: 0x84f9,
@@ -441,6 +464,11 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     stencilFunc: (func: number, ref: number, mask: number) => record('stencilFunc', { func, ref, mask }),
     stencilOp: (fail: number, zfail: number, zpass: number) => record('stencilOp', { fail, zfail, zpass }),
     stencilMask: (mask: number) => record('stencilMask', { mask }),
+    blendEquationSeparate: (colour: number, alpha: number) => record('blendEquationSeparate', { colour, alpha }),
+    blendFuncSeparate: (srcRGB: number, dstRGB: number, srcAlpha: number, dstAlpha: number) =>
+      record('blendFuncSeparate', { srcRGB, dstRGB, srcAlpha, dstAlpha }),
+    blendColor: (red: number, green: number, blue: number, alpha: number) =>
+      record('blendColor', { red, green, blue, alpha }),
 
     getExtension: (name: string) =>
       name === 'WEBGL_lose_context'

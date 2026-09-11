@@ -71,6 +71,18 @@ function webgl2SkipReason(id, description) {
     // not one, with the gate still exiting 0. `kind` is the discriminant the
     // description actually carries, so it cannot drift out from under this again.
     if (pipeline.kind !== 'render') return 'a compute stage, which has no place on WebGL 2';
+    // A pass whose colour targets do not all draw under the same blend (item 11).
+    // WebGL 2 has one blend state for every draw buffer at once, so there is no
+    // call stream that blends one target and not another. A target naming no blend
+    // counts as a state of its own, because a colour written straight in is not the
+    // same as one mixed with what was there. **core-depth is the preset this skips**
+    // and it drew here before item 11 — unblended on both its targets, because this
+    // backend applied no blend at all, and nothing compared its two pictures because
+    // the cross-backend comparison covers the three scene presets.
+    const states = new Set((pipeline.targets ?? []).map((/** @type {any} */ t) => JSON.stringify(t.blend ?? null)));
+    if (states.size > 1) {
+      return 'a pass whose colours draw under different blends, which WebGL 2 has one state for';
+    }
     // The entry points and the fullscreen marker ride the pipeline now (item 103):
     // a pipeline naming no vertex stage is the fullscreen frame that bakes none.
     if (!pipeline.vertex)

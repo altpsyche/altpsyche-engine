@@ -54,7 +54,7 @@
  * decision fixes is the default a caller gets when they name nothing, which today
  * is WebGL 2, silently, on a machine whose adapter would have come back.
  */
-import type { BackendName, FrameGraph, ResourceSpec, ShaderTarget } from '../graph/types.js';
+import type { BackendName, FrameGraph, PipelineSpec, ResourceSpec, ShaderTarget } from '../graph/types.js';
 import type { Capability } from '../graph/capability.js';
 import { refusal } from '../graph/refusal.js';
 
@@ -196,6 +196,12 @@ const WEBGPU_CORE: readonly Capability[] = [
   'indirect',
   'occlusion',
   'msaa',
+  // One `GPUBlendState` per entry of `targets`, which the core specification
+  // carries and every WebGPU device therefore has (item 11). WebGL 2 has one blend
+  // state for every draw buffer at once — `blendFunci` is a GL 4.0 call ES 3.0 does
+  // not have — so a pass whose targets name *different* blends is refused there by
+  // this name. A pass whose targets agree needs none of it and draws on both.
+  'per-target-blend',
 ];
 
 /** The optional WebGPU capabilities and the `GPUFeatureName` that grants each, so
@@ -206,6 +212,11 @@ const WEBGPU_OPTIONAL: readonly [Capability, string][] = [
   ['float-blend', 'float32-blendable'],
   ['depth-clamp', 'depth-clip-control'],
   ['bgra-storage', 'bgra8unorm-storage'],
+  // The `src1` family of blend factors, which blend against a fragment stage's
+  // second output. WebGPU gates them behind this feature and WebGL 2 has no form
+  // for them at all (item 11), so a device without it refuses such a pipeline by
+  // name rather than drawing it with the wrong factor.
+  ['dual-source-blend', 'dual-source-blending'],
 ];
 
 /**
@@ -278,7 +289,10 @@ export function webgl2Capabilities(extensions: Iterable<string>): ReadonlySet<Ca
  * reading over two records, which is the whole of §17 decision 2.
  */
 export function resolve(
-  frame: Pick<FrameGraph, 'id' | 'authored' | 'requires' | 'translated'> & { resources?: readonly ResourceSpec[] },
+  frame: Pick<FrameGraph, 'id' | 'authored' | 'requires' | 'translated'> & {
+    resources?: readonly ResourceSpec[];
+    pipelines?: readonly PipelineSpec[];
+  },
   device: DeviceProfile
 ): BackendSelection {
   const offer: DeviceOffer = { webgpu: device.webgpu !== null, webgl2: device.webgl2 !== null };

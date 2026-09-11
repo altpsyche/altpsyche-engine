@@ -290,6 +290,72 @@ describe('a description above the subset', () => {
     ...over,
   });
 
+  /** A one-pass frame drawing into a texture it presents, whose single target
+   * carries the blend handed in. One target, so `per-target-blend` never comes into
+   * it and what is measured is the blend calls alone. */
+  const blended = (blend?: GPUBlendState): FrameGraph =>
+    ({
+      id: 'blended',
+      authored: 'glsl',
+      resources: [{ kind: 'uniform' }, { kind: 'texture', size: { scale: 1 }, format: 'rgba8unorm', use: ['attachment'] }],
+      modules: [],
+      pipelines: [
+        {
+          kind: 'render',
+          source: { glsl: { vertex: VERTEX, fragment: FRAGMENT } },
+          vertex: { document: 'vertex', entry: 'main' },
+          fragment: { document: 'fragment', entry: 'main' },
+          targets: [{ format: 'rgba8unorm', ...(blend ? { blend } : {}) }],
+          bindings: [],
+        },
+      ],
+      passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }], colour: [{ resource: texture(1), clear: [0, 0, 0, 0] }] }],
+      present: texture(1),
+    }) as FrameGraph;
+
+  it('applies the blend a pipeline names, which it called nothing for before item 11', () => {
+    // The word `blend` appeared nowhere in gpu/webgl2.ts, though blendFuncSeparate
+    // and blendEquationSeparate are core WebGL 2. So a pipeline naming a blend drew
+    // blended on WebGPU and unblended here, with `refusal` returning null for both
+    // — a different picture on the two backends and nothing in the data saying so.
+    const { gl, backend } = backendOver();
+    backend.program(
+      blended({
+        color: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+        alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+      })
+    ).draw();
+
+    // The card's own numbers, written here rather than read off the double, so this
+    // fails if the mapping changes rather than agreeing with whatever it became.
+    const BLEND = 0x0be2;
+    const FUNC_ADD = 0x8006;
+    const SRC_ALPHA = 0x0302;
+    const ONE_MINUS_SRC_ALPHA = 0x0303;
+    expect(gl.of('enable')).toContainEqual(expect.objectContaining({ cap: BLEND }));
+    expect(gl.of('blendEquationSeparate')).toContainEqual(
+      expect.objectContaining({ colour: FUNC_ADD, alpha: FUNC_ADD })
+    );
+    expect(gl.of('blendFuncSeparate')).toContainEqual(
+      expect.objectContaining({
+        srcRGB: SRC_ALPHA,
+        dstRGB: ONE_MINUS_SRC_ALPHA,
+        srcAlpha: 1,
+        dstAlpha: ONE_MINUS_SRC_ALPHA,
+      })
+    );
+  });
+
+  it('touches no blend state for a frame whose pipelines name none', () => {
+    // What says this bought a capability rather than a cost: every fixture that
+    // drew before item 11 has the call stream it had.
+    const { gl, backend } = backendOver();
+    backend.program(blended()).draw();
+    expect(gl.of('blendEquationSeparate')).toHaveLength(0);
+    expect(gl.of('blendFuncSeparate')).toHaveLength(0);
+    expect(gl.of('enable')).not.toContainEqual(expect.objectContaining({ cap: 0x0be2 }));
+  });
+
   it('keeps a multisample attachment in a multisample renderbuffer and resolves it through a blit (item 80)', () => {
     const { gl, backend } = backendOver();
     const program = backend.program(multisample());

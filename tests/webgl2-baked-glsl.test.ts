@@ -125,15 +125,32 @@ describe('the WebGL 2 corpus column draws baked GLSL off the source that carries
     expect(gl.of('drawElementsInstanced')).toHaveLength(1);
   });
 
-  it('turns core-depth, which draws the sheet through the backend it once refused', () => {
+  it('turns core-depth, and the backend now refuses it for the blend rather than drawing it wrong', () => {
     // A second preset, and a two-pass depth-tested one (item 48), to show the
-    // transform is not shaped around the one geometry preset it must draw.
+    // transform is not shaped around the one geometry preset it must draw. The
+    // translation still happens and still bakes both stages, which is what this
+    // file is about.
     const frame = glslFrameOf(bakedWgslFrame('core-depth'));
     expect(frame, 'core-depth bakes a vertex and a fragment').not.toBeNull();
     const gl = createFakeGL();
     const backend = createWebGL2Backend(gl.canvas);
     backend!.resize(800, 600);
-    expect(() => backend!.program(frame!).draw()).not.toThrow();
+
+    // **This check asserted the frame drew here until item 11, and it drew the wrong
+    // picture.** core-depth's second pass writes two colours and blends only the
+    // first — `{ resource: 'picture', blend: 'over' }` beside `{ resource:
+    // 'distance' }` — and WebGL 2 has one blend state for every draw buffer at
+    // once. So there is no call stream that blends one and not the other, and the
+    // backend drew both unblended because it applied no blend at all. Nothing caught
+    // it: the cross-backend comparison covers the three scene presets, so this
+    // preset's two pictures were never compared.
+    //
+    // The capability is `per-target-blend` and `refusal()` names it before a build;
+    // this is that backend's backstop, reached because this check drives the backend
+    // directly rather than through `resolve`.
+    expect(() => backend!.program(frame!).draw()).toThrow(
+      'draws its 2 colours under different blends, and WebGL 2 has one blend state for all of them'
+    );
   });
 
   it('turns core-perdraw-uniform, and the backend binds one range a draw (item 85)', () => {

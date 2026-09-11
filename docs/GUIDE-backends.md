@@ -119,6 +119,19 @@ The eleven capabilities:
 | `float-blend` | optional | via `EXT_float_blend` | |
 | `depth-clamp` | optional | **no** | |
 | `bgra-storage` | optional | **no** | |
+| `dual-source-blend` | optional | **no** | the `src1` factors blend against a second fragment output, which ES 3.00 has none of |
+| `per-target-blend` | core | **no** | WebGL 2 has one blend state for every draw buffer at once |
+
+**An ordinary blend is on neither row and needs no capability.** A pipeline whose `targets` name
+a blend draws it on both backends — WebGL 2 applies it through `blendFuncSeparate`,
+`blendEquationSeparate` and `blendColor`. The two rows above are the corners that do not reach:
+a factor reading a second fragment output, and a pass whose targets draw under *different*
+blends. **A target naming no blend counts as a state of its own** there, because a colour written
+straight in is not the same as one mixed with what was there.
+
+**Both are read off the pipeline rather than declared**, like the write arm of `storage-buffer`,
+so a caller never has to remember to put them in `requires`. Forgetting would have meant a wrong
+picture rather than a refusal, which is what the capability model exists to prevent.
 
 The table is a summary. `webgpuCapabilities` and `webgl2Capabilities` are the authority, so
 read them in code when it matters.

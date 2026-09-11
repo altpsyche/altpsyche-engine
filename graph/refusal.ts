@@ -22,7 +22,7 @@
  * `compute` is answered by not asking for compute, where the backend's name is
  * answered by nothing.
  */
-import type { BackendName, FrameGraph, ResourceSpec } from './types.js';
+import type { BackendName, FrameGraph, PipelineSpec, ResourceSpec } from './types.js';
 import type { Capability } from './capability.js';
 
 /** What a device is, for the one question this answers: which backend it is and
@@ -45,12 +45,46 @@ export interface DeviceCapabilities {
  * the write arm — WebGL 2 — before a backend build is ever asked for. The read
  * arm is left to `requires`, because a read-only storage buffer WebGL 2 draws and
  * declaring it is the producer's own graceful-degradation choice (§10). */
-function impliedCapabilities(resources: readonly ResourceSpec[]): Capability[] {
+function impliedCapabilities(
+  resources: readonly ResourceSpec[],
+  pipelines: readonly PipelineSpec[]
+): Capability[] {
   const implied: Capability[] = [];
   for (const resource of resources) {
     if (resource.kind === 'buffer' && resource.access === 'read-write') implied.push('storage-buffer-readwrite');
   }
+  // The two blend capabilities, read the same way and for the same reason (item
+  // 11). A pipeline naming a `src1` factor blends against a fragment stage's
+  // second output, which WebGPU gates behind a feature and WebGL 2 has no form
+  // for; a pipeline whose `targets` name *different* blends needs one blend state
+  // per draw buffer, which WebGPU has and WebGL 2 has not. Both are facts about
+  // the pipeline rather than declarations, so neither is left to `requires`: a
+  // caller who forgot to declare one would get a wrong picture instead of a
+  // refusal, which is the whole of what this file exists to prevent.
+  for (const spec of pipelines) {
+    if (spec.kind !== 'render' || !spec.targets) continue;
+    if (spec.targets.some((target) => target.blend !== undefined && namesDualSource(target.blend))) {
+      implied.push('dual-source-blend');
+    }
+    // Every target is compared, **including the ones naming no blend**, because a
+    // target written straight in is a different blend state from one mixed with
+    // what was there — not the absence of a state. WebGL 2's one `enable(BLEND)`
+    // covers every draw buffer at once, so a pass whose targets disagree cannot be
+    // drawn there however few of them name a blend. Compared as canonical JSON
+    // rather than by identity, because two targets carrying equal blends written as
+    // two object literals are one state to a card and must not be refused as two.
+    const states = spec.targets.map((target) => JSON.stringify(target.blend ?? null));
+    if (new Set(states).size > 1) implied.push('per-target-blend');
+  }
   return implied;
+}
+
+/** The blend factors that read a fragment stage's second output. Read off the
+ * state's four factor fields rather than off a list of every field, because an
+ * operation or a constant colour says nothing about dual-source. */
+function namesDualSource(blend: GPUBlendState): boolean {
+  const factors = [blend.color?.srcFactor, blend.color?.dstFactor, blend.alpha?.srcFactor, blend.alpha?.dstFactor];
+  return factors.some((factor) => factor !== undefined && factor.startsWith('src1'));
 }
 
 /** Join capability names the way a sentence reads them: one alone, two with
@@ -89,11 +123,14 @@ function lacks(backend: BackendName, count: number): string {
  * both ways is missing once, not twice.
  */
 export function refusal(
-  graph: Pick<FrameGraph, 'id' | 'requires'> & { resources?: readonly ResourceSpec[] },
+  graph: Pick<FrameGraph, 'id' | 'requires'> & {
+    resources?: readonly ResourceSpec[];
+    pipelines?: readonly PipelineSpec[];
+  },
   device: DeviceCapabilities
 ): string | null {
   const declared = graph.requires ?? [];
-  const implied = impliedCapabilities(graph.resources ?? []);
+  const implied = impliedCapabilities(graph.resources ?? [], graph.pipelines ?? []);
   const required = [...new Set<Capability>([...declared, ...implied])];
   const missing = required.filter((capability) => !device.capabilities.has(capability));
   if (missing.length === 0) return null;
