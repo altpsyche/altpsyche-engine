@@ -374,8 +374,9 @@ it.**
    so what is left is drawing it a second time under `mark` and `inside` and recording the
    difference. **Measures:** the two pictures differing by a named number of pixels under `mark`,
    and by none under `count`.
-3. `refusal` answers for a device that cannot do per-face stencil, if any reachable one cannot.
-   **Measures:** the capability read off both backends on the machines the gates run.
+3. **Closed on 2026-09-11 with no capability**, reading below. `refusal` answers for a device that
+   cannot do per-face stencil, if any reachable one cannot. **Measures:** the capability read off
+   both backends on the machines the gates run.
 4. **`core-stencil` gets a vertex stage for its filling pass, so the mask modes can be compared
    across the two backends at all.** Found by step 1 and not part of it. That pipeline names no
    vertex stage, so it bakes no GLSL vertex and `gates/corpus.mjs` skips the whole preset on WebGL 2
@@ -506,6 +507,33 @@ not a mask. The card gate's `core-count` row says WebGL 2 draws what WebGPU draw
 *right* place — only that there is one, that it is the size a mask fills in, and that both backends
 agree about it. And `gate:browser` is a software renderer throughout: the separation was re-read on
 the card with the counting picture, not with the masked one.
+
+### Closed on 2026-09-11, step 3: there is no capability to name
+
+**`refusal` names nothing new, and the reason is categorical rather than a survey.** The argument and
+what would overturn it are written at the point of the decision, in `graph/capability.ts`'s own
+header beside the names that do exist. In short: `GPUStencilFaceState` is a member of core
+`GPUDepthStencilState` behind no WebGPU feature, `stencil8` is a core texture format — only
+`depth32float-stencil8` is feature-gated — and `stencilOpSeparate`, `stencilFuncSeparate`,
+`INCR_WRAP` and `DECR_WRAP` are core WebGL rather than extensions, so they sit on
+`WebGL2RenderingContext` itself. A context either exists or it does not, and one that exists has
+them. **A `Capability` naming per-face stencil would be a name nothing could ever be missing**, which
+is the opposite of what that type is for.
+
+Checked against a driver rather than left as an argument: `core-count` counts a winding number on
+both backends and the card gate reads them at 0 differing channels of 1,440,000 on nvidia /
+blackwell.
+
+**What would change the answer** is a reachable device offering a WebGL 2 context whose separate
+stencil calls are absent or wrong — a driver bug, which is what [`DEVICES.md`](DEVICES.md) collects,
+rather than an optional feature, which is what `Capability` names. If one turns up, the name is
+`per-face-stencil`, read off the data the way the blend pair is: a pipeline whose mode gives the two
+faces different operations needs it, and `STENCIL_STATES` already says which modes those are.
+
+**What this step could not measure.** No gate here enumerates a device's stencil support by name,
+because neither API offers a name to enumerate — the absence of a feature string is the evidence, and
+an absence is weaker than a reading. `gate:card` is one machine, one driver, one vendor, so "no
+reachable device" is a claim about the specifications and about one card, not about a fleet.
 
 ---
 

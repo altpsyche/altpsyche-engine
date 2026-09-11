@@ -43,6 +43,31 @@
  * who has to remember to declare a capability is one who will forget, and what comes
  * back then is a wrong picture rather than a refusal.
  *
+ * **There is no name here for a per-face stencil, and item 2's third step is why.**
+ * The counting modes `count` and `nonzero` give the two faces of a triangle opposite
+ * operations, which is the one thing the mask modes could not express, so the
+ * question the step asked is the one this file exists to answer: is that a capability
+ * some reachable device has not got? It is not, and the reason is categorical rather
+ * than a survey. `GPUStencilFaceState` is a member of core `GPUDepthStencilState`,
+ * gated behind no WebGPU feature, and `stencil8` is a core texture format — only
+ * `depth32float-stencil8` is feature-gated. On the other side `stencilOpSeparate`,
+ * `stencilFuncSeparate`, `INCR_WRAP` and `DECR_WRAP` are core WebGL, present since
+ * WebGL 1 and not extensions, so they are on `WebGL2RenderingContext` itself: a
+ * context either exists or it does not, and one that exists has them. There is
+ * therefore no device that reports either backend and lacks per-face stencil, and a
+ * `Capability` naming it would be a name nothing could ever be missing.
+ *
+ * That is a specification argument, and it was checked against a driver rather than
+ * left as one: `core-count` counts a winding number on both backends and the card
+ * gate reads them at 0 differing channels of 1,440,000 on nvidia / blackwell. **What
+ * would change the answer** is a reachable device that offers a WebGL 2 context whose
+ * separate stencil calls are absent or wrong — a driver bug rather than an optional
+ * feature, which is the shape of thing `docs/DEVICES.md` collects rather than the
+ * shape this type names. If one turns up, the name it takes is `per-face-stencil`
+ * read off the data the way the blend pair is: a pipeline whose mode gives the two
+ * faces different operations needs it, and `STENCIL_STATES` in `graph/types.ts` is
+ * where that is already written down per mode.
+ *
  * `storage-buffer` splits into a read arm and a write arm because WebGL 2 has one
  * and not the other, and a single name could not tell selection which it was
  * (item 97). `storage-buffer` alone is the **read** arm: a read-only per-instance
