@@ -2852,6 +2852,41 @@ picture whose geometry moves, which is a different claim from the one that comme
    measurement**: each red on a pair differing only in that field, and `gate:browser` at 4 of 4 with
    the recording contract at its count.
 
+### Landed on 2026-09-11, step 1: the defect is measured, it is not refused, and the key is four times the geometry
+
+`tests/program-cache-moving-geometry.test.ts`, 3 tests, on the WebGL 2 double through
+`createFrameRenderer` and `submit`.
+
+**Sixty ticks of one 16x16 quad grid whose geometry moves link sixty programs.** The cache exists to
+link one. **The step's escape hatch did not open**: it said the item closes as refused if the compile
+count is already one, and it is sixty.
+
+**A control separates the two caches, which the item's reading had joined.** Sixty ticks of a *fresh
+frame object* carrying bytes that never change link **one** program. So the `WeakMap` misses all
+sixty times in both runs — a live loop's frame is a fresh object every tick — and `frameKey` runs all
+sixty times in both, but only the moving figure misses the `programs` map. **The recompile is caused
+by the bytes being in the key, not by the frame being a new object**, and the two costs are now
+separable: the serialisation is paid by every live frame, and the compile only by a moving one.
+
+**The key is 31,335 characters over 7,696 bytes of geometry, and the four-times expansion was counted
+rather than guessed.** `canonical` writes each byte as a latin1 character and `JSON.stringify`
+escapes anything below `0x20` to `\uXXXX` — six characters for one byte. Of the 7,696 bytes, 4,497
+are below `0x20`, 9 are a quote or backslash, 3,190 pass through: 4,497x6 + 9x2 + 3,190 = 30,190
+characters from the geometry, the remaining 1,145 being the rest of the frame. **Float32 geometry is
+mostly zero bytes, so the expansion is worst for exactly the data a figure carries most of.** That is
+new — the item's reading knew the bytes were in the key and did not know the key was four times their
+size.
+
+**Measured.** `npm test` **963 over 82 files, 960 over 81 before**. `npm run type-check` clean. The
+three figures are pinned as assertions so a fix cannot move them silently.
+
+**What the gates could not see, and it is the thing step 2 must not paper over.** **What a recompile
+costs in milliseconds is still unmeasured on any machine.** These are counts from a double: the fake
+`linkProgram` returns immediately and compiles nothing, so this file proves the cache misses and says
+nothing about what the miss costs. A real figure is also larger than this one — the consumer counted
+106,632 bytes serialised per frame, in their session and not this one. `gate:browser` and `gate:card`
+were not run for a node test.
+
 ### Done when
 
 - A frame whose `VertexResource.data` changes every tick compiles its program once over sixty
