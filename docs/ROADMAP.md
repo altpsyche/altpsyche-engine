@@ -3429,15 +3429,65 @@ pixel out of the default framebuffer per round, which is a sync amortised over 2
 **What this does not measure** is the memory a second full-size colour target costs, which is one
 frame's worth per surface and is not in any reading here.
 
+### Landed on 2026-09-12, step 2c: the presentation step, and the reading it made gateable
+
+**What landed.** The WebGL 2 backend owns a colour target every frame lands in and blits that onto
+the canvas. A pass naming no colour target used to bind the default framebuffer and now binds the
+surface; a frame that presents a texture blits it onto the surface rather than onto the canvas; and
+`readPixels` binds the surface instead of reading whatever framebuffer the frame happened to leave
+bound. Always, for every frame, as the measurement above settled. Nothing is turned over — the flip
+is step 2d.
+
+**The measurement the step promised.** Every gated cross-backend preset is where it was, to the
+channel: 11, 0, 77, 0, 0, 11, 36, 18. `gate:browser` 4 of 4. `npm test` 982 and `type-check` clean.
+The cost re-read on the card: 0.0023 ms a frame straight to the canvas, 0.0122 offscreen and copied,
+so **the step costs 0.0099 ms a frame**, about 0.8% of this gate's own 1.20 ms p50 for a thousand
+objects.
+
+**The reading it was not taken for.** The canvas against `readPixels` — kept from the first attempt
+as reported-never-gated, because the two disagreed whole-frame even on an untouched tree and why had
+not been isolated — **went from 1,213,200 differing channels of 1,920,000 to 0, worst channel 0**.
+The frame used to reach the screen by a pass drawing the default framebuffer, whose contents a
+compositor may treat as it likes; it now reaches the screen as a blit of a target this backend owns.
+**That reading gates now**, which is the point: it is the only check here that sees what a reader
+sees, step 2c's first attempt passed 33 of 33 with the picture upside down, and step 2d is the change
+that can do that again.
+
+**One defect the step caused and that reading caught.** A `blitFramebuffer` is clipped by the scissor
+test, and `core-scissor`'s last pass leaves a rectangle enabled, so the first build took that preset
+from 11 differing channels to 1,213,207. The backend disables the scissor test before presenting,
+which also ends every frame in the state the next frame should start from — `submit/gl2.ts` leaves
+the state alone for a frame where no pass names a scissor, so a frame that scissors used to clip the
+next frame that does not.
+
+**To reverse**: bind `null` for a pass with no targets, point the present blit at `null` again, drop
+the blit at the end of `draw`, and ungate the canvas reading. **What would change the answer**:
+`layout(origin_upper_left)` reaching GLSL ES.
+
+**Two things this could not see.** `gate:browser` is a software renderer, and the card reading is one
+machine at 800x600 — the copy scales with pixels, so a 4K frame is about 17 times the area and that
+is arithmetic rather than a reading. And the memory a second full-size colour target costs is
+measured nowhere.
+
+**Two follow-ups this step opened, neither taken here.**
+
+- **A depth pass drawing the frame directly is still refused, and the reason changed.** It was that a
+  depth buffer cannot attach to the default framebuffer. The frame's target is now a framebuffer this
+  backend owns and could take a depth attachment, so what stands in the way is only that none is
+  attached to it. WebGPU draws a depth attachment alongside the canvas texture, so the two backends
+  differ here until it is taken. The refusal and its new reason are written at
+  `gpu/webgl2.ts`'s depth plan.
+- **The multisample resolve blit is clipped by the scissor test too**, and that is older than this
+  step: item 80's resolve runs inside the pass loop, immediately after the pass that may have enabled
+  a rectangle. No preset combines the two, so nothing has read it.
+
 ### Steps, rewritten after the second revert
 
-2c. **Give the backend a presentation step it owns.** Every frame renders into an offscreen colour
-    target; the canvas receives a blit. **Always, not only for translated frames** — decided on the
-    measurement above, 0.0128 ms a frame being too little to buy a second mode with. It is the
-    prerequisite for the rest, it is worth landing on its own merits, and it is what lets
-    `readPixels` stop depending on which way a frame was drawn. **The measurement**: every gated
-    preset unchanged, the canvas line still starting at the top, `gate:browser` at 4 of 4, and the
-    frame-time line re-read so the cost that was predicted is the cost that landed.
+2c. ~~**Give the backend a presentation step it owns.**~~ **Landed on 2026-09-12** — see the entry
+    above. Every frame renders into an offscreen colour target and the canvas receives a blit,
+    always. Every gated preset unchanged at 11, 0, 77, 0, 0, 11, 36, 18; the canvas reading went from
+    1,213,200 differing channels to 0 and now gates; `gate:browser` 4 of 4; the step costs 0.0099 ms
+    a frame.
 2d. **Then the vertex flip**, with the winding inverted, the readback unconditional again because the
     offscreen target is always WebGPU-oriented, and the present blit carrying the y flip.
     **The measurement**: `core-texture` inside the tolerance, the canvas line unchanged, and the eight

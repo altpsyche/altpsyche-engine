@@ -409,16 +409,32 @@ if (!scissorPreset) {
     { id: scissorPreset.id, description: scissorPreset.description, code: scissorPreset.code, block: scissorPreset.block, bytesArrays, values: scissorPreset.values, W, H }
   );
 
+  // **This gates now, and item 20's step 2c is what made it able to** (2026-09-12).
+  // It was reported and never gated because the two disagreed whole-frame on an
+  // untouched tree — 1,213,200 of 1,920,000 channels, the canvas bottom reading
+  // black where `readPixels` read content — and asserting a number nobody had
+  // isolated would have been a red gate standing in for an unfinished reading.
+  // The presentation step isolated it: a frame used to reach the screen by a pass
+  // drawing the default framebuffer, which the compositor is free to treat as it
+  // likes, and it now reaches the screen as a blit of a colour target this backend
+  // owns. The two agree to 0 of 1,920,000, worst channel 0.
+  //
+  // **It is the only reading in this repository that sees what a reader sees.**
+  // Every other cross-backend number here is a `readPixels` number, and step 2c's
+  // first attempt passed 33 of 33 checks with the picture on the screen upside
+  // down. Step 2d negates y in the vertex stage, which is exactly the change that
+  // can do that again, so this is the guard that change is taken against.
   if (onScreen.error) {
-    console.log(`     the canvas against readPixels  ${onScreen.error}  (reported, never gated)`);
+    say(false, `the canvas against readPixels  ${onScreen.error}`);
   } else {
     const differing = /** @type {number} */ (onScreen.differing);
     const mirrored = /** @type {number} */ (onScreen.mirrored);
     const channels = /** @type {number} */ (onScreen.channels);
-    console.log(
-      `     the canvas against readPixels  ${differing.toLocaleString('en-US')} of ` +
+    say(
+      differing === 0,
+      `the canvas shows what readPixels reads  ${differing.toLocaleString('en-US')} of ` +
         `${channels.toLocaleString('en-US')} channels differ, worst ${onScreen.worst}; ` +
-        `turned over, ${mirrored.toLocaleString('en-US')} differ  (reported, never gated)`
+        `turned over, ${mirrored.toLocaleString('en-US')} differ`
     );
     const samples = /** @type {any} */ (onScreen).samples;
     console.log(
@@ -998,9 +1014,15 @@ for (const one of corpus.filter((preset) => HELD_OUT.includes(preset.id))) {
   );
 }
 
-// ── What a presentation step would cost, on the card (item 20, step 2c) ───────
+// ── What the presentation step costs, on the card (item 20, step 2c) ─────────
 //
-// Item 20's remaining fix needs the backend to stop drawing into the caller's
+// **Step 2c landed on 2026-09-12 and this block is kept rather than removed**: it
+// was written to answer whether the step was affordable, and it now re-takes the
+// cost of what the backend actually does on every machine this gate is run on.
+// The `direct` round is what the backend used to do and no longer does, so it is
+// the baseline the copy is charged against rather than a live path.
+//
+// The step needed the backend to stop drawing into the caller's
 // canvas directly and to render into an offscreen target it blits at present —
 // that being the only place a y flip can go once the geometry is flipped, and the
 // reason both earlier attempts were reverted. **The cost of that is a copy per
@@ -1144,18 +1166,19 @@ const presentCost = await page.evaluate(async ({ W, H, frames }) => {
 }, { W, H, frames: 200 });
 
 if (presentCost.error) {
-  console.log(`     a presentation step would cost  ${presentCost.error}  (reported, never gated)`);
+  console.log(`     the presentation step costs  ${presentCost.error}  (reported, never gated)`);
 } else {
   const direct = /** @type {number} */ (presentCost.direct);
   const viaBlit = /** @type {number} */ (presentCost.viaBlit);
   console.log(
-    `     a presentation step would cost (item 20, step 2c), ${W}x${H}, ` +
+    `     the presentation step costs (item 20, step 2c, landed), ${W}x${H}, ` +
       `${presentCost.frames} frames x ${presentCost.rounds} rounds interleaved:`
   );
   console.log(
     `     straight to the canvas ${direct.toFixed(4)} ms a frame; offscreen then copied ` +
       `${viaBlit.toFixed(4)}; offscreen then copied turned over ${Number(presentCost.viaFlip).toFixed(4)} ` +
-      `— the flip the fix needs costs ${(Number(presentCost.viaFlip) - direct).toFixed(4)} ms a frame  (reported, never gated)`
+      `— the copy the landed step costs is ${(viaBlit - direct).toFixed(4)} ms a frame, and the flip step 2d adds ` +
+      `${(Number(presentCost.viaFlip) - viaBlit).toFixed(4)} more  (reported, never gated)`
   );
 }
 

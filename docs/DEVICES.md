@@ -38,6 +38,70 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-12, Linux, the WebGL 2 backend takes a presentation step, and the canvas reading gates at last
+
+**What landed.** Item 20's step 2c: the WebGL 2 backend renders every frame into a colour target it
+owns and blits that onto the canvas, rather than a pass with no colour target drawing the default
+framebuffer directly. Nothing is turned over yet — the y flip is step 2d — so this row is the cost
+and the blast radius of the step alone.
+
+**Every gated cross-backend preset is where it was, to the channel:**
+
+```
+                 before          after
+core-scissor     11              11
+core-blend        0               0
+core-target      77 (worst 2)    77 (worst 2)
+core-stencil      0               0
+core-count        0               0
+core-scene       11              11
+core-draw-list   36              36
+core-material    18              18
+```
+
+**The reading this step was not taken for, and it is the interesting one.** The canvas against
+`readPixels` — the only check in this repository that sees what a reader sees, read off a 2D context
+rather than through `readPixels` — **went from 1,213,200 differing channels of 1,920,000 to 0, worst
+channel 0.**
+
+```
+                      the canvas against readPixels      screen top     screen bottom
+before this step      1,213,200 of 1,920,000, worst 255  221,173,121    0,0,0
+after it                      0 of 1,920,000, worst 0    221,173,121    119,142,178
+```
+
+The frame used to reach the screen by a pass drawing the default framebuffer, whose contents a
+compositor may treat as it likes and which this backend asks no `preserveDrawingBuffer` of; it now
+reaches the screen as a blit of a target this backend owns. That is why the bottom of the canvas read
+black while `readPixels` read content, which the entry above could only record as unisolated. **The
+reading gates now**, and it is the guard step 2d — the vertex flip, the change that put the picture
+upside down once already — will be taken against.
+
+**One defect the step caused and the reading caught.** A `blitFramebuffer` is clipped by the scissor
+test, and `core-scissor`'s last pass leaves a rectangle enabled, so the first build of this step took
+that preset from 11 differing channels to **1,213,207**. Nothing before this step could notice:
+the frame was already on the canvas by the time the pass ended. The backend now disables the scissor
+test before it presents, which also ends a frame in the state the next frame should start from.
+
+**What the step costs, re-measured on the card it was budgeted on:**
+
+```
+straight to the canvas, which is what the backend used to do   0.0023 ms a frame
+offscreen, then copied — what the backend does now             0.0122
+offscreen, then copied turned over — what step 2d will do      0.0146
+```
+
+**0.0099 ms a frame**, against this gate's own p50 of 1.20 ms for a thousand objects: about 0.8% of a
+frame. Step 2d's flip adds 0.0024 more.
+
+**What this row cannot say.** It is one card, an RTX 5080, at 800x600, and the cost is a fullscreen
+copy so it scales with pixels rather than with the scene — a 3840x2160 frame is about 17 times the
+area, which is arithmetic and not a reading. The memory a second full-size colour target costs is
+measured nowhere here. And `core-texture` and `core-mips` are still off the gated list at
+1,424,706 and 1,401,861: this step is the prerequisite for their fix and not the fix.
+
+---
+
 ### 2026-09-12, Linux, a corpus at zero with the picture upside down — a reading that was reverted
 
 **Read this row for what it warns about rather than for its numbers.** The change it measures was

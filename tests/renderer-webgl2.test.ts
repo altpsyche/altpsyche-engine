@@ -367,9 +367,11 @@ describe('a description above the subset', () => {
     expect(multisampled[0]).toMatchObject({ samples: 4, width: 800, height: 600 });
     // The renderbuffer is attached to a framebuffer of its own at colour point 0.
     expect(gl.of('framebufferRenderbuffer').some((call) => call.attachment === 0x8ce0)).toBe(true);
-    // Two blits: the resolve of `edges` into `flat`, then `flat` shown on the
-    // canvas. A single-sample present frame issues one; the resolve is the second.
-    expect(gl.of('blitFramebuffer')).toHaveLength(2);
+    // Three blits: the resolve of `edges` into `flat`, `flat` landed on the
+    // surface, then the surface presented onto the canvas. The third is item 20's
+    // presentation step, which every frame ends with whatever it drew; a
+    // single-sample present frame issues two, and the resolve is the third.
+    expect(gl.of('blitFramebuffer')).toHaveLength(3);
     expect(gl.of('blitFramebuffer').every((call) => call.mask === 0x4000)).toBe(true);
   });
 
@@ -669,6 +671,7 @@ describe('the frame it draws', () => {
 describe('a graph of more than one pass (item 46)', () => {
   const FRAMEBUFFER = 0x8d40;
   const READ_FRAMEBUFFER = 0x8ca8;
+  const DRAW_FRAMEBUFFER = 0x8ca9;
 
   it('draws each pass, the count matching what cost() reads off the structure', () => {
     const { gl, backend } = backendOver();
@@ -691,8 +694,10 @@ describe('a graph of more than one pass (item 46)', () => {
   it('draws the first pass into a texture the second pass then samples', () => {
     const { gl, backend } = backendOver();
     backend.program(twoPass()).draw();
-    // The first pass's target is a texture attached to a framebuffer at build.
-    expect(gl.of('framebufferTexture2D')).toHaveLength(1);
+    // The first pass's target is a texture attached to a framebuffer at build. The
+    // second attach is the backend's own surface (item 20), made when the backend
+    // was built rather than by this frame.
+    expect(gl.of('framebufferTexture2D')).toHaveLength(2);
     // The second pass binds that texture to a unit and points its sampler at it.
     expect(gl.of('bindTexture').length).toBeGreaterThan(0);
     expect(gl.of('activeTexture').at(-1)).toMatchObject({ unit: 0x84c0 });
@@ -700,13 +705,60 @@ describe('a graph of more than one pass (item 46)', () => {
     expect(gl.of('clearColor').at(-1)).toMatchObject({ r: 0, g: 0, b: 0, a: 1 });
   });
 
-  it('shows the picture a frame presents by blitting its texture onto the canvas', () => {
+  it('shows the picture a frame presents by landing its texture on the surface, which is then presented', () => {
     const { gl, backend } = backendOver();
     backend.program(twoPass('present')).draw();
-    // The present texture is read into the canvas: a read-framebuffer bind and a
-    // blit, where a frame drawing the canvas directly issues neither.
+    // The present texture is read onto the surface: a read-framebuffer bind and a
+    // blit. Two blits, not one (item 20): the present onto the surface, then the
+    // surface onto the canvas.
     expect(gl.of('bindFramebuffer').some((entry) => entry.target === READ_FRAMEBUFFER)).toBe(true);
+    expect(gl.of('blitFramebuffer')).toHaveLength(2);
+  });
+
+  it('presents the surface onto the canvas for a frame that drew the frame directly too (item 20)', () => {
+    const { gl, backend } = backendOver();
+    // `twoPass()` names no present, so its second pass draws the frame directly —
+    // which used to be the default framebuffer and is now the backend's surface.
+    // The frame still reaches the screen, through the one blit every frame ends
+    // with rather than through the pass having drawn the canvas itself.
+    backend.program(twoPass()).draw();
     expect(gl.of('blitFramebuffer')).toHaveLength(1);
+    // And the context is left as it was found: both halves of the blit unbound, so
+    // a caller between frames finds the canvas bound and `readPixels` reads what it
+    // binds rather than what the last blit left behind.
+    const last = gl.of('bindFramebuffer').slice(-2);
+    expect(last).toEqual([
+      { call: 'bindFramebuffer', target: READ_FRAMEBUFFER, bound: 'canvas' },
+      { call: 'bindFramebuffer', target: DRAW_FRAMEBUFFER, bound: 'canvas' },
+    ]);
+  });
+
+  it('turns the scissor test off before presenting, since a blit is clipped by it (item 20)', () => {
+    const SCISSOR_TEST = 0x0c11;
+    const { gl, backend } = backendOver();
+    const frame = twoPass();
+    // The second pass draws the frame directly and clips itself to a rectangle, so
+    // the scissor test is still on when the pass loop ends.
+    backend
+      .program({
+        ...frame,
+        passes: [frame.passes[0], { ...frame.passes[1], scissor: { x: 10, y: 20, width: 30, height: 40 } }],
+      })
+      .draw();
+
+    const states = gl.calls
+      .map((entry, at) => ({ entry, at }))
+      .filter(({ entry }) => (entry.call === 'enable' || entry.call === 'disable') && entry.cap === SCISSOR_TEST);
+    // The pass did enable it, so this is measuring the disable rather than a frame
+    // that never touched the state.
+    expect(states.some(({ entry }) => entry.call === 'enable')).toBe(true);
+    // And the last thing the frame says about it is off, before the blit that puts
+    // the surface on the canvas — so the presentation step copies the whole frame
+    // rather than the rectangle the last pass left. Measured on the card at the
+    // cost of a reading: with the test left on, `core-scissor` differed in
+    // 1,213,207 channels of 1,440,000 against 11 before the step.
+    expect(states.at(-1)!.entry.call).toBe('disable');
+    expect(states.at(-1)!.at).toBeLessThan(gl.calls.map((entry) => entry.call).lastIndexOf('blitFramebuffer'));
   });
 
   it('remakes a frame-following target at the new size before the next draw', () => {
@@ -784,12 +836,16 @@ describe('a pass writing several colours at once (item 47)', () => {
     const { gl, backend } = backendOver();
     backend.program(manyTargets(3)).draw();
 
-    // Each attachment texture is attached to a single-attachment framebuffer of
-    // its own at build (item 46, point 0 each), then all three to the pass's own
-    // framebuffer at three successive colour points — so the last three are the
-    // multiple-target attach, and the fragment stage's outputs are named to them by
-    // drawBuffers rather than everything past the first being thrown away.
+    // The backend's surface is attached to its own framebuffer at point 0 when the
+    // backend is built (item 20), which is the first entry here and belongs to no
+    // frame. Then each attachment texture is attached to a single-attachment
+    // framebuffer of its own at build (item 46, point 0 each), then all three to
+    // the pass's own framebuffer at three successive colour points — so the last
+    // three are the multiple-target attach, and the fragment stage's outputs are
+    // named to them by drawBuffers rather than everything past the first being
+    // thrown away.
     expect(gl.of('framebufferTexture2D').map((entry) => entry.attachment)).toEqual([
+      COLOR_ATTACHMENT0,
       COLOR_ATTACHMENT0,
       COLOR_ATTACHMENT0,
       COLOR_ATTACHMENT0,

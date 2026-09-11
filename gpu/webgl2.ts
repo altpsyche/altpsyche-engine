@@ -417,6 +417,104 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
   let width = canvas.width;
   let height = canvas.height;
 
+  /**
+   * The colour target every frame lands in, and the blit that puts it on the
+   * screen — the presentation step this backend owns (item 20, decided 2026-09-12).
+   *
+   * **A pass naming no colour target used to draw the default framebuffer
+   * directly and now draws this**, and the last thing `draw` does is blit this
+   * onto the canvas. Nothing in the frame reaches the canvas any other way: a
+   * frame that presents a texture blits it into here rather than onto the canvas,
+   * so `readPixels` has one source whatever the frame did.
+   *
+   * **Why a backend that draws into the caller's canvas needs one anyway.** The
+   * two backends disagree about `@builtin(position)` — WebGPU counts its y from
+   * the top of the target and `gl_FragCoord` counts from the bottom — and the fix
+   * the specification names for OpenGL is to negate y in the vertex stage and
+   * invert the winding, which lands the whole pipeline in WebGPU's orientation.
+   * Two attempts on 2026-09-12 proved that is the only fix that leaves render-to-
+   * texture and the coordinate agreeing with each other, and that it cannot work
+   * while the canvas is drawn directly: a WebGL canvas displays its default
+   * framebuffer bottom row first and there is no step in between to turn the
+   * picture back over. wgpu and ANGLE both do this flip and both own a
+   * presentation step; this is that step. The flip itself is the step after this
+   * one, which is why nothing here turns anything over yet.
+   *
+   * **Always, not only for a frame that needed translating.** Measured on an RTX
+   * 5080 at 800x600, 200 frames a round over five interleaved rounds: 0.0020 ms a
+   * frame straight to the canvas, 0.0125 offscreen and copied, 0.0148 offscreen
+   * and copied turned over. Against the same gate's 1.10-1.30 ms scene frame that
+   * is about 1% of a frame, which is too little to buy a second mode with — and a
+   * second mode is what made conditioning `readPixels` on how a frame was drawn
+   * uncomfortable in the first attempt. The cost scales with pixels rather than
+   * with the scene, so a 3840x2160 frame is about 17 times the area and near
+   * 0.22 ms, which is arithmetic off one card rather than a reading.
+   *
+   * **Not through an arena**, unlike everything else this file allocates. An arena
+   * catches a handle naming an object that was freed, and this object is named by
+   * no handle: it is reached through this closure alone and lives exactly as long
+   * as the backend. It is deleted in the backend's own `dispose` beside the quad.
+   *
+   * **To reverse**: bind `null` for a pass with no targets, point the present blit
+   * at `null` again, and drop the blit at the end of `draw`. **What would change
+   * the answer**: `layout(origin_upper_left)` reaching GLSL ES, which would make
+   * the fragment say what it means and leave nothing for the flip to fix.
+   */
+  let surface: { texture: WebGLTexture; framebuffer: WebGLFramebuffer; width: number; height: number } | null = null;
+
+  /**
+   * The surface at the canvas's current size, built on the first call and
+   * respecified where the canvas has changed size since.
+   *
+   * **Called once when the backend is built and again from `resize`**, so by the
+   * time a frame draws the surface is already the right size and `draw` issues no
+   * build calls — the first frame costs what every later frame costs. It is called
+   * from `draw` and `readPixels` as well, where it is a size comparison and
+   * nothing more, so neither depends on a resize having happened first. The price
+   * of building it eagerly is one canvas-sized colour texture for a backend that
+   * is built and never drawn — `probe` builds one per backend it trials — which is
+   * 180 KB at a default 300x150 canvas and is freed by that backend's `dispose`.
+   */
+  const surfaceOf = () => {
+    if (surface !== null && surface.width === width && surface.height === height) return surface;
+    if (surface === null) {
+      surface = { texture: gl.createTexture() as WebGLTexture, framebuffer: gl.createFramebuffer() as WebGLFramebuffer, width, height };
+    }
+    surface.width = width;
+    surface.height = height;
+    gl.bindTexture(gl.TEXTURE_2D, surface.texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    // Nothing ever samples between this texture's pixels: it is blitted at its own
+    // size onto a canvas of the same size, so the filter is the plain one and the
+    // wrap never comes up. A texture with no ladder and no filter set is incomplete
+    // on some drivers, so both are set rather than left at their defaults.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, surface.framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, surface.texture, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return surface;
+  };
+
+  /**
+   * Puts the surface on the screen: one blit of the whole frame onto the default
+   * framebuffer, at the end of every draw. Both read and draw bindings are
+   * restored to the canvas afterwards, so a caller finding the context between
+   * frames finds it as it was — and so `readPixels` reads what it binds rather
+   * than whatever the last blit happened to leave bound, which is what it read
+   * before this step.
+   */
+  const present = (from: { framebuffer: WebGLFramebuffer; width: number; height: number }) => {
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, from.framebuffer);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    gl.blitFramebuffer(0, 0, from.width, from.height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+  };
+
+  surfaceOf();
+
   // Held in a variable, not returned as a literal, so it can carry `arena` beyond
   // the `Backend` interface — the §9 readback door a caller reaches directly
   // (item 89) — without growing the public surface. The same shape as the WebGPU
@@ -1269,8 +1367,18 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // card compiles the test into the pipeline (§8, the reason `spec.depth`
         // holds it). The renderbuffer attaches to the framebuffer the pass draws
         // through: a single target's own, or the multiple-target framebuffer above.
-        // A depth pass drawing the frame directly is refused by name, since a depth
-        // buffer cannot attach to the canvas.
+        // A depth pass drawing the frame directly is refused by name.
+        //
+        // **The reason for that refusal changed under item 20 and the refusal did
+        // not.** It was that a depth buffer cannot attach to the default
+        // framebuffer, and a pass with no colour target drew the default
+        // framebuffer. It now draws the surface, which is a framebuffer of this
+        // backend's own and could take a depth attachment — so what stands in the
+        // way is only that no depth renderbuffer is attached to it, which is a
+        // capability this backend could grow and an item of its own rather than a
+        // side effect of a presentation step. WebGPU draws a depth attachment
+        // alongside the canvas texture, so the two backends differ here until it is
+        // taken; `docs/ROADMAP.md` carries it.
         let depthPlan: PassPlan['depth'] = null;
         if (isRenderPass(pass) && pass.depth) {
           const record = depthTargets.get(indexOf(pass.depth.resource));
@@ -1278,7 +1386,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             throw new Error(`the frame for "${frame.id}" tests against resource ${indexOf(pass.depth.resource)}, which is no depth or stencil it declares`);
           }
           if (targets.length === 0) {
-            throw new Error(`the frame for "${frame.id}" tests depth while drawing the frame directly, and a depth buffer cannot attach to the canvas`);
+            throw new Error(`the frame for "${frame.id}" tests depth while drawing the frame directly, and this backend attaches no depth buffer to the target it presents from`);
           }
           // A single-sample depth renderbuffer cannot share a framebuffer with a
           // multisample colour target, and a multisample depth is out of item 80's
@@ -1487,8 +1595,12 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
             built.width = width;
             built.height = height;
           }
+          // The surface every frame lands in, at the canvas's current size (item
+          // 20). Taken before the passes run, since a pass naming no colour target
+          // draws into it and the blit at the end of this method reads it.
+          const onto = surfaceOf();
           // Each pass in turn draws into its target — a texture's framebuffer, the
-          // canvas where it names none, or its own framebuffer carrying several
+          // surface where it names none, or its own framebuffer carrying several
           // colours (item 47) — clearing it first where the pass says so, and
           // sampling any earlier pass's texture bound to a unit. This is the
           // multi-pass loop items 48 to 52 extend (item 46).
@@ -1502,7 +1614,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
               primaryHandle === undefined ? null : primaryMultisample ?? (textures.get(indexOf(primaryHandle)) as TextureRecord);
             const framebuffer =
               plan.targets.length === 0
-                ? null
+                ? onto.framebuffer
                 : plan.targets.length === 1
                   ? framebufferArena.resolve((primary as { fboHandle: Handle }).fboHandle)
                   : framebufferArena.resolve(plan.mrtFbo as Handle);
@@ -1640,18 +1752,43 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
               gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             }
           }
-          // The picture the frame names is shown by blitting its texture onto the
-          // canvas, where the passes drew into textures rather than the canvas
-          // itself. A frame whose last pass drew the canvas directly names no
-          // present and needs no blit.
+          // **A blit is clipped by the scissor test and the passes have just been
+          // setting it**, so it is turned off before the two blits below (item 20).
+          // This cost a reading to find: the presentation step took `core-scissor`
+          // from 11 differing channels of 1,440,000 to 1,213,207, because that
+          // preset's last pass leaves a rectangle enabled and the frame then
+          // reached the canvas through it. Nothing before this step noticed,
+          // because the frame was already on the canvas by the time the pass ended.
+          //
+          // It is left off rather than restored, which is the state a frame should
+          // start from: `submit/gl2.ts` leaves the scissor state alone for a frame
+          // where no pass names one, so a frame that scissors used to clip the next
+          // frame that does not. Ending every frame with the test off closes that
+          // without a second rule.
+          gl.disable(gl.SCISSOR_TEST);
+          // The picture the frame names is landed on the surface by blitting its
+          // texture onto it, where the passes drew into textures rather than the
+          // frame's own target. A frame whose last pass drew the frame directly
+          // names no present and has already written the surface itself.
+          //
+          // **This used to blit onto the canvas and now blits onto the surface**
+          // (item 20), which costs a presenting frame a second full-frame copy —
+          // measured at 0.0125 ms a frame at 800x600 on an RTX 5080 — and buys the
+          // thing the step is for: the frame's picture is in one place whatever the
+          // frame did, so the blit below and `readPixels` each have one source
+          // rather than two. Blitting the present texture at the canvas directly
+          // would save the copy and put the condition back.
           if (shown !== undefined) {
             const record = textures.get(indexOf(shown)) as TextureRecord;
             if (record.fboHandle !== null) {
               gl.bindFramebuffer(gl.READ_FRAMEBUFFER, framebufferArena.resolve(record.fboHandle));
-              gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-              gl.blitFramebuffer(0, 0, record.width, record.height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+              gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, onto.framebuffer);
+              gl.blitFramebuffer(0, 0, record.width, record.height, 0, 0, onto.width, onto.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
             }
           }
+          // The presentation step (item 20): whatever the frame did, the surface
+          // now holds it and this is the one place it reaches the screen.
+          present(onto);
         },
 
         dispose() {
@@ -1694,6 +1831,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       height = h;
       canvas.width = w;
       canvas.height = h;
+      // The surface follows the canvas, so it is respecified here rather than on
+      // the next draw (item 20). Its contents are gone when it is respecified, the
+      // same as every frame-following texture a program holds, and every frame
+      // writes it whole before it is read.
+      surfaceOf();
     },
 
     async readPixels(from?: GPUTexture) {
@@ -1703,8 +1845,19 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       if (from !== undefined) {
         throw new Error('WebGL 2 was handed a WebGPU texture to read back, which it cannot read a frame from');
       }
+      // The frame's picture is on the surface whatever the frame did — a pass with
+      // no colour target drew it and a present blitted it there — so the readback
+      // binds that and reads it (item 20). **It used to read whatever framebuffer
+      // was left bound**, which was the canvas for a frame drawing it directly and
+      // the present texture's own framebuffer for a frame presenting one, since the
+      // present blit left its read binding behind. The two agreed, so nothing was
+      // wrong with the bytes; what was wrong is that the source depended on what the
+      // frame happened to be, which is the condition the presentation step removes.
+      const shownSurface = surfaceOf();
       const raw = new Uint8Array(width * height * 4);
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, shownSurface.framebuffer);
       gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, raw);
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
       const rows = new Uint8Array(raw.length);
       const stride = width * 4;
       for (let y = 0; y < height; y++) {
@@ -1753,6 +1906,17 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
      */
     dispose() {
       arena.free(quadHandle);
+      // The surface and its framebuffer are the backend's own rather than any
+      // program's (item 20), so they are deleted here beside the quad. They are
+      // named by no handle and reached through the closure alone, which is why
+      // there is a `gl.delete*` here and no arena free — and why the paragraph
+      // above still holds: every object this backend allocates has a delete of its
+      // own, so losing the context reclaims nothing extra.
+      if (surface !== null) {
+        gl.deleteFramebuffer(surface.framebuffer);
+        gl.deleteTexture(surface.texture);
+        surface = null;
+      }
     },
   };
   return backend;

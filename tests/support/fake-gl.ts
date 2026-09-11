@@ -88,6 +88,7 @@ const CONSTANTS = {
   STENCIL_ATTACHMENT: 0x8d20,
   DEPTH_STENCIL_ATTACHMENT: 0x821a,
   DEPTH_TEST: 0x0b71,
+  SCISSOR_TEST: 0x0c11,
   STENCIL_TEST: 0x0b90,
   // Blend (item 11): the enable bit, the five equations, and the factors a
   // `GPUBlendState` maps onto. The specification's own numbers, so a test reading
@@ -372,6 +373,11 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     vertexAttribPointer: (index: number, size: number, type: number, normalized: boolean, stride: number, offset: number) =>
       record('vertexAttribPointer', { index, size, type, normalized, stride, offset }),
     viewport: (x: number, y: number, width: number, height: number) => record('viewport', { x, y, width, height }),
+    // The rectangle a pass clips itself to, in the bottom-left origin the card
+    // counts in — `submit/gl2.ts` owns the flip from the top-left origin a pass
+    // declares one in. Recorded rather than acted on, like every other state call
+    // here, so a test reads what the backend asked the card for.
+    scissor: (x: number, y: number, width: number, height: number) => record('scissor', { x, y, width, height }),
     drawArrays: (mode: number, first: number, count: number) => record('drawArrays', { mode, first, count }),
     drawArraysInstanced: (mode: number, first: number, count: number, instances: number) =>
       record('drawArraysInstanced', { mode, first, count, instances }),
