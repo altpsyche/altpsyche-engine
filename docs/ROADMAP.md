@@ -3123,13 +3123,29 @@ thing whose whole purpose is to be drawn by both backends and compared — may n
    been moved onto a fullscreen frame it builds itself with `wgslFrame`, which is the permanent
    answer. `tests/webgl2-baked-glsl.test.ts` was pointed at `core-target` as a stop-gap and **says
    in its own comment that it must move the same way at step 3** — step 3 is not done until it has.
-2. The same for `core-target`. **Measures:** the same two numbers. **Carries one thing step 1
-   found**: `tests/webgl2-baked-glsl.test.ts` points at `core-target` as its fullscreen example and
-   has to move to another preset here, before moving off the corpus entirely at step 3.
-3. The same for `core-mips`. **Measures:** the same two numbers. **And it is not done until
-   `tests/webgl2-baked-glsl.test.ts` builds its own fullscreen frame** the way
-   `tests/corpus-webgl2-outcome.test.ts` now does, because after this step no corpus preset has the
-   property that test is checking.
+2. ~~The same for `core-target`.~~ **Landed on 2026-09-11.** Its grading pass covers with the
+   `sheet` the first pass already draws rather than with a grid of its own: `place` runs 0 to 1
+   across and down whatever the grid's density, so 576 quads cover the frame the same way one does.
+   `core-count` shares its geometry between passes for the same reason.
+
+   **Measured.** The corpus gate: **8 WebGL 2 skips before, 7 after**, and **31 draws before, 32
+   after**. **`core-target on the card` 248,832 of 480,000 pixels lit, identical to its reading
+   before the change** — and unlike step 1's this one is not saturated, so "unchanged" here is a
+   real comparison and not just "nothing went dark". `npm test` 980 over 84 files, `npm run
+   type-check` clean, `gate:browser` 4 of 4, `gate:card` 31 of 31. `npm run translate` baked
+   `vertex:cover 639 bytes`, and `tests/translate-build.test.ts`'s entry total went 49 to 50.
+
+   **Step 3's inherited work was done here instead**, because doing it at step 3 would have meant
+   breaking the same test twice for the right reason. `tests/webgl2-baked-glsl.test.ts` no longer
+   borrows a corpus preset for its fullscreen example — it builds the frame and the fragment-only
+   bake itself, and says why in its own comment. A test that borrows a corpus preset for a property
+   the corpus is being cured of keeps breaking correctly and reading like a defect.
+
+3. The same for `core-mips`, which is the last of the three. **Measures:** the same two numbers,
+   and the skip count reaching **6 — every remaining skip a real capability answer**. ~~And it is
+   not done until `tests/webgl2-baked-glsl.test.ts` builds its own fullscreen frame.~~ **Done at
+   step 2**, along with `tests/corpus-webgl2-outcome.test.ts` at step 1, so no test now depends on a
+   corpus preset baking no vertex.
 4. Whichever of the three are worth comparing channel for channel go on `gates/card.mjs`'s
    cross-backend list. **Measures:** each one's two backends compared on a real card, with the
    channels differing recorded per preset.

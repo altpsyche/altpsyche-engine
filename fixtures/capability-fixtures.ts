@@ -581,10 +581,17 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
           geometry: 'sheet',
           colour: [{ resource: 'scene', clear: [0, 0, 0, 1] }],
         },
-        // Then the frame itself, covered by the backend's three corners, which is
-        // the pass that reads the picture back. It names no attachment, so what it
-        // writes is the frame the reader sees.
-        { pipeline: 'grade' },
+        // Then the frame itself, covered by the `sheet` the first pass drew rather
+        // than by the backend's three corners, which is the pass that reads the
+        // picture back. It names no attachment, so what it writes is the frame the
+        // reader sees.
+        //
+        // It covers with the same geometry rather than one of its own because
+        // `place` runs 0 to 1 across and down whatever the grid's density (item
+        // 19). A pipeline naming no vertex stage bakes no GLSL vertex and
+        // `gates/corpus.mjs` skips such a preset on WebGL 2 entirely, which left
+        // this preset drawn on one backend and compared with nothing.
+        { pipeline: 'grade', vertex: 'cover', geometry: 'sheet' },
       ],
     },
   },

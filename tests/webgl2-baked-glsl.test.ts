@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createWebGL2Backend } from '../gpu/webgl2';
 import { selectBackend } from '../gpu/select';
-import { frameOf, glslFrameOf } from '../toy/frame';
+import { frameOf, glslFrameOf, wgslFrame } from '../toy/frame';
 import { loadFixture } from './support/fixture';
 import { buffer } from '../graph/handles.js';
 import { createFakeGL } from './support/fake-gl';
@@ -53,6 +53,13 @@ function bytesOf(description: FrameGraph, generated: Map<string, Uint8Array<Arra
 /** The WGSL frame a WebGPU-less device selects for a preset, carrying naga's baked
  * GLSL on its `wgsl` document keyed by entry point — the state a corpus loader
  * leaves the source in so the translation travels with it (item 94). */
+/** A one-pass fullscreen WGSL frame and a fragment-only bake for it, which is
+ * what a pipeline naming no vertex stage produces. Written here rather than
+ * borrowed from the corpus — see the test that uses them. */
+const FULLSCREEN = '@fragment fn fragMain() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }';
+const BLOCK = [{ name: 'u_time', offset: 0, size: 4 }];
+const BAKED_FRAGMENT = '#version 300 es\nprecision highp float;\nout vec4 c;\nvoid main(){c=vec4(1.0);}';
+
 function bakedWgslFrame(id: FixtureName): WgslFrameGraph {
   const { description, code, generated } = loadFixture(id);
   const baked = artifact().presets[id]?.entries ?? {};
@@ -184,22 +191,44 @@ describe('the WebGL 2 corpus column draws baked GLSL off the source that carries
     // fragment and there is no vertex for WebGL 2 to link. The gate skips it by
     // outcome — a reported reason — rather than drawing it.
     //
-    // **This named `core-texture` until item 19 gave it a vertex stage**, so that
-    // it would stop being skipped on WebGL 2 and start being compared. It now
-    // names `core-target`, which is the next of the three and is item 19's step 2 —
-    // **so this test has to move again, and when the last of the three changes
-    // there will be no fullscreen preset left to name.** That is the correct end
-    // state and not a problem: a corpus preset exists to be drawn by both backends
-    // and compared, and the convenience this checks belongs to the library rather
-    // than to the corpus. `tests/corpus-webgl2-outcome.test.ts` has already been
-    // moved onto a frame it builds itself for the same reason, and this one goes
-    // the same way at step 3.
-    expect(glslFrameOf(bakedWgslFrame('core-target'))).toBeNull();
+    // **The frame is built here rather than taken from the corpus, and that is
+    // deliberate.** This named `core-texture` until item 19 gave it a vertex stage,
+    // then `core-target` until the same happened to that, and `core-mips` is the
+    // last one — after which no corpus preset has the property this checks. That is
+    // the correct end state: a corpus preset exists to be drawn by both backends and
+    // compared, so one that bakes no vertex is a preset drawn by one backend and
+    // compared with nothing. **The convenience itself is the library's and is not
+    // going anywhere**, which is exactly why the frame to check it with is written
+    // here — a test that borrows a corpus preset for a property the corpus is being
+    // cured of will keep breaking for the right reason and reading like a defect.
+    const fullscreen = frameOf(
+      'fullscreen-no-vertex',
+      {
+        ...(wgslFrame('fullscreen-no-vertex', FULLSCREEN, BLOCK) as WgslFrameGraph),
+        // A fragment bake and no vertex one, which is what naga hands back for a
+        // pipeline that names no vertex stage. `translated` is false for the same
+        // reason `bakedWgslFrame` computes it false: not every pipeline is a render
+        // pipeline naming a vertex stage with both halves baked.
+        pipelines: (wgslFrame('fullscreen-no-vertex', FULLSCREEN, BLOCK) as WgslFrameGraph).pipelines.map((spec) =>
+          spec.kind === 'render'
+            ? { ...spec, source: { ...spec.source, glsl: { fragment: BAKED_FRAGMENT } as { vertex: string; fragment: string } } }
+            : spec
+        ),
+        translated: false,
+      },
+      { wgsl: FULLSCREEN },
+      undefined,
+      undefined,
+      new Map()
+    ) as WgslFrameGraph;
+
+    expect(fullscreen.pipelines[0]!.kind === 'render' && fullscreen.pipelines[0]!.vertex).toBeUndefined();
+    expect(glslFrameOf(fullscreen)).toBeNull();
     // …and a fragment-only bake is not a translation: a WebGPU-less device is
     // refused for a missing translation rather than routed to a backend that then
     // cannot build the frame (item 105 tightened `translated` to full-bake).
-    expect(bakedWgslFrame('core-target').translated).toBe(false);
-    const outcome = selectBackend(bakedWgslFrame('core-target'), { webgpu: false, webgl2: true });
+    expect(fullscreen.translated).toBe(false);
+    const outcome = selectBackend(fullscreen, { webgpu: false, webgl2: true });
     expect('refusal' in outcome && outcome.refusal).toContain('translation');
   });
 });

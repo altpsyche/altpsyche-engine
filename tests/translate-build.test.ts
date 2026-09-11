@@ -113,8 +113,10 @@ describe('the build-time translation path bakes GLSL and ships no translator', (
     // the rectangle one pass is clipped to, which is pass state and not a stage.
     // Item 19 added `core-texture`'s covering vertex stage — the same change, for
     // the same reason, on the first of the three presets that were still skipped on
-    // WebGL 2 for want of a baked vertex — making 49.
-    expect(entryTotal).toBe(49);
+    // WebGL 2 for want of a baked vertex — making 49. Step 2 added `core-target`'s
+    // covering stage for its grading pass, which spends the sheet the first pass
+    // already draws rather than declaring a grid of its own — making 50.
+    expect(entryTotal).toBe(50);
   });
 
   it('overlays a hand-authored GLSL bake where naga has no storage-buffer syntax (item 105)', () => {

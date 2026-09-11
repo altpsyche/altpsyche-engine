@@ -67,6 +67,20 @@ fn paint(shaded: Shaded) -> @location(0) vec4<f32> {
     return vec4<f32>(mix(body, vec3<f32>(0.92, 0.97, 1.0), line * 0.55), 1.0);
 }
 
+// A cover for the frame, so the grading pass draws the shader's own corners
+// rather than the backend's three. A pipeline naming no vertex stage bakes no
+// GLSL vertex, and `gates/corpus.mjs` skips such a preset on WebGL 2 entirely —
+// so this preset was drawn by one backend and compared with nothing (item 19).
+//
+// It spends the `sheet` the first pass already draws, rather than declaring a
+// grid of its own: `place` runs 0 to 1 across and down whatever the grid's
+// density, so one quad or five hundred and seventy-six cover the frame the same
+// way. `core-count` shares its geometry between two passes for the same reason.
+@vertex
+fn cover(@location(0) corner: vec2<f32>, @location(1) place: vec2<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(place * 2.0 - 1.0, 0.5, 1.0);
+}
+
 @fragment
 fn grade(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
     let across = at.xy / uniforms.u_resolution;
