@@ -125,6 +125,32 @@ carried from 2026-09-10.
 
 ---
 
+## What a session needs that is not in an item
+
+**Three things live here because a session would otherwise carry them in its head**, which is the
+failure the deleted handover document used to cause. `/next` (`.claude/skills/next/SKILL.md`) is the
+entry point that reads this file; these are the facts it cannot derive from an item.
+
+**`gate:card` runs on this machine, cleared by Siva on 2026-09-11.** `CLAUDE.md`'s table says never
+in an unattended run and that stands — the gate needs a display and a person. What changed is that a
+session here may ask for it rather than treating every card number as unre-takeable. It is the only
+gate that reads a real driver, and on 2026-09-11 it re-took the three cross-backend channel numbers
+that item 8 had been told could only come from the record. **Any item whose `Done when` names the
+card gate can now close**, item 2 among them.
+
+**`docs/DEVICES.md` has one machine.** Every card number in this tree is `nvidia / blackwell` on one
+Linux box. That is enough to say a frame draws and enough to compare the two backends against each
+other; it is not enough to say a driver-specific fold is general. A second machine's row would be
+worth more here than another fixture, and nobody has taken one.
+
+**Push, tag and publish are asked for in the session, every time.** Siva said on 2026-09-11 that
+push, tag and publish happen for every version, and that is the *process* rather than a standing
+authority to publish unasked — `CLAUDE.md` calls the asking "not a formality" because a published
+version cannot be withdrawn. Pushing a commit is the light half and was done that day; a tag reaching
+the remote and a release are not a session's to take alone.
+
+---
+
 ## How the campaign is cut, and why it is more than one version
 
 **Decided on 2026-09-11.** Ten new items is not one release, and a third of them need no release at
