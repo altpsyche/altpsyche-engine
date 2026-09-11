@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { declaredFrame, geometryFileName, textureFileName } from '../fixtures/shader-describe';
+import { declaredFrame, geometryFileName } from '../fixtures/shader-describe';
 import { buffer, indices, moduleHandle, pipelineHandle, sampler, texture, uniform, vertices } from '../graph/handles.js';
 import { TEXTURE_CONTENT } from '../fixtures/shader-content';
 import type { DeclaredFrame } from '../fixtures/declared-frame';
@@ -44,7 +44,13 @@ fn fragMain(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
 }`;
 
 const SAMPLING_FRAME: DeclaredFrame = {
-  textures: [{ name: 'grain', size: { width: 64, height: 64 }, content: 'value-noise' }],
+  textures: [
+    {
+      name: 'grain',
+      size: { width: 64, height: 64 },
+      sampled: { format: 'rgba8unorm', source: 'core-texture-grain.bin' },
+    },
+  ],
   samplers: [{ name: 'grainSampler', filter: 'linear', wrap: 'repeat' }],
   passes: [{ pipeline: 'fragMain' }],
 };
@@ -100,15 +106,15 @@ describe('the pipeline kind a description takes off the source', () => {
 });
 
 describe('the texture a description says the build writes', () => {
-  it('carries the generator’s format and an address of its own, and is sampled rather than stored', () => {
+  it('carries the format and the address its declaration named, and is sampled rather than stored', () => {
     const frame = declaredFrame('core-texture', SAMPLES, SAMPLING_FRAME);
     // uniform block 0, grain texture 1, grainSampler 2.
     const grain = frame.resources[1] as TextureResource;
 
-    expect(grain.format).toBe(TEXTURE_CONTENT['value-noise'].format);
+    expect(grain.format).toBe('rgba8unorm');
     expect(grain.use).toEqual(['sample']);
     expect(grain.size).toEqual({ width: 64, height: 64 });
-    expect(grain.source).toBe(textureFileName('core-texture', 'grain'));
+    expect(grain.source).toBe('core-texture-grain.bin');
     expect(grain.data).toBeUndefined();
   });
 
@@ -125,7 +131,13 @@ describe('the texture a description says the build writes', () => {
     expect(() =>
       declaredFrame('x', COMPUTE, {
         ...COMPUTE_FRAME,
-        textures: [{ name: 'picture', size: { width: 64, height: 64 }, content: 'value-noise' }],
+        textures: [
+          {
+            name: 'picture',
+            size: { width: 64, height: 64 },
+            sampled: { format: 'rgba8unorm', source: 'x-picture.bin' },
+          },
+        ],
       })
     ).toThrow(/sizes a texture "picture" its source never samples/);
   });
@@ -140,7 +152,7 @@ describe('the texture a description says the build writes', () => {
     expect(() =>
       declaredFrame('x', SAMPLES, {
         ...SAMPLING_FRAME,
-        textures: [{ name: 'grain', size: { scale: 1 }, content: 'value-noise' }],
+        textures: [{ name: 'grain', size: { scale: 1 }, sampled: { format: 'rgba8unorm', source: 'x-grain.bin' } }],
       })
     ).toThrow(/gives "grain" contents and the frame/);
   });
@@ -257,7 +269,11 @@ fn shade(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
 
   const TWO_PASSES: DeclaredFrame = {
     textures: [
-      { name: 'previous', size: { width: 256, height: 256 }, content: 'value-noise' },
+      {
+        name: 'previous',
+        size: { width: 256, height: 256 },
+        sampled: { format: 'rgba8unorm', source: 'core-state-previous.bin' },
+      },
       { name: 'next', size: { width: 256, height: 256 } },
     ],
     samplers: [{ name: 'stateSampler', filter: 'linear', wrap: 'clamp' }],
@@ -1209,7 +1225,7 @@ fn shade(shaded: Shaded) -> @location(0) vec4<f32> {
 
 const PER_DRAW_FRAME: DeclaredFrame = {
   geometry: [{ name: 'grid', primitive: 'quad-grid', size: [16, 16] }],
-  buffers: [{ name: 'copies', bytes: 64, content: 'copy-tints' }],
+  buffers: [{ name: 'copies', bytes: 64, source: 'core-perdraw-copies.buffer.bin' }],
   passes: [{ pipeline: 'shade', vertex: 'warp', geometry: 'grid', instances: 4 }],
 };
 

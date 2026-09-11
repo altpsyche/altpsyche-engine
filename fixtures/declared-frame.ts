@@ -9,7 +9,6 @@
  * move it.
  */
 import type { GeometryPrimitive, StencilMode, TransientSize } from '@altpsyche/engine';
-import type { TextureContent, BufferContent } from './shader-content';
 import type { BlendMode } from './shader-blend';
 
 /**
@@ -30,11 +29,32 @@ export interface DeclaredFrame {
   textures?: {
     name: string;
     size: TransientSize;
-    /** Which picture the build writes into it before anything reads it, absent
-     * for a texture the shader itself writes. A texture with contents is one the
-     * source samples, and one without is one the source stores into, so this is
-     * also what says which of the two a name is. */
-    content?: TextureContent;
+    /** The picture this texture is handed before anything reads it, absent for a
+     * texture the shader itself writes. A texture with one is a texture the source
+     * samples, and one without is a texture the source stores into, so this is
+     * also what says which of the two a name is.
+     *
+     * **It carries the format and the address rather than naming a generator,
+     * because a generator's name is the data it generates.** The pictures this
+     * repository's corpus samples are value noise, draw lists and material
+     * tables, and a declaration naming one of those would put `'draw-list-models'`
+     * on a published surface and hand the corpus to every consumer with it. The
+     * two travel as one field because the bytes and the format are one answer: a
+     * picture written as four bytes a pixel and declared as anything else is a
+     * texture the card reads as garbage, so whatever supplies the bytes supplies
+     * the format beside them.
+     *
+     * **`geometry` below is the contrast, and it is what says this is not a rule
+     * about generators.** It still names one, because `GEOMETRY_PRIMITIVE` is on
+     * the door: a generator a consumer can already reach is one a declaration may
+     * name. What may not cross is a name only this repository holds.
+     *
+     * **What would change the answer.** A consumer wanting to sample a texture it
+     * fills at run time rather than fetches from an address. Nothing expresses
+     * that today — a fetched address is the only way a sampled texture gets bytes
+     * — so this field is exactly as wide as the path beneath it, and widening
+     * both is its own item rather than a line here. */
+    sampled?: { format: GPUTextureFormat; source: string };
     /** Whether it carries a ladder of smaller copies of itself, each half the size
      * of the one above it, so it can be read at any size without the picture
      * sparkling as it shrinks. The backend draws the levels, and how many there
@@ -56,11 +76,17 @@ export interface DeclaredFrame {
   buffers?: {
     name: string;
     bytes: number;
-    /** Which numbers the build writes into it before anything reads it, absent for
-     * a buffer a pass fills or a query resolves into. A buffer with contents is one
-     * the shader only reads, and it is what a copy of a pipeline is handed when it
-     * carries numbers of its own rather than working them out from its number. */
-    content?: BufferContent;
+    /** Where the numbers this buffer is handed before anything reads it are
+     * fetched from, absent for a buffer a pass fills or a query resolves into. A
+     * buffer with one is a buffer the shader only reads, and it is what a copy of
+     * a pipeline is handed when it carries numbers of its own rather than working
+     * them out from its number.
+     *
+     * An address and no format, where a sampled texture's is an address and a
+     * format both: `bytes` above already says how much there is, and how those
+     * bytes are read is the source's own type. The reason it is an address rather
+     * than the name of a generator is the one written at `sampled`. */
+    source?: string;
   }[];
   /** How the card reads a texture between its own pixels. The source declares
    * that a sampler exists and where it is bound and nothing else, so the two

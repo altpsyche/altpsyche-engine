@@ -341,6 +341,74 @@ function turning those names into bytes.
 without shipping content generators, the reader stays behind the corpus and this item closes as
 refused with that reading recorded, because the alternative is publishing fixture data.
 
+### Landed on 2026-09-11, step 1: the declaration carries what the generator's name stood for
+
+**The answer is the first of the two the step named** — `content` is gone from the declaration — and
+the item does not close as refused, because the reading it would have closed on turned out to be
+wrong. A useful declaration *can* be written without shipping a generator, and the reason is that a
+content name was never doing generator work at the point the reader read it. Three things came out
+of the name and no more: a texture's format, a texture's fetch address, and a buffer's fetch
+address. Those three are now declared:
+
+```ts
+textures?: { …; sampled?: { format: GPUTextureFormat; source: string } }[]
+buffers?:  { …; source?: string }[]
+```
+
+`sampled` is also still the discriminator it was, which is the part that did not have to change: a
+texture with one is a texture the source samples and a texture without one is a texture the source
+stores into, so the two refusals written on that distinction stand unedited.
+
+**The rule this settles, and it is written at the field rather than here.** A published declaration
+may name a generator a consumer can already reach and may not name one only this repository holds.
+`geometry` is the contrast that proves it is a rule about reach and not about generators: it still
+names `GEOMETRY_PRIMITIVE`, which is on the door, so the reader still derives its addresses and
+`geometryFileName` stayed with the reader. `textureFileName` and `bufferFileName` moved out to
+`fixtures/shader-content.ts`, because after this change nothing published derives them.
+
+**What the corpus does instead, which is what a consumer does.** `fixtures/shader-content.ts` gains
+`FixtureFrame`, which is `DeclaredFrame` with `content` put back on the two arrays, and
+`publishedFrame`, which lowers the one to the other by reading the format off `TEXTURE_CONTENT` and
+the address off the helpers beside it. The corpus still writes `content: 'value-noise'` once. It is
+a lowering and not a second reader — nothing in it checks anything — so `declaredFrame` is still the
+only path from a source and a declaration to a description, and the corpus goes down the published
+one. `generatedBytes` moved there too, which is where step 2's move needs it anyway.
+
+**Two readings in this entry had moved and the work was done against the tree.** The corpus is
+**eighteen** fixtures, not the sixteen this item says throughout: `core-blend` arrived with item 11
+and `core-count` with item 2, both after `v0.4.0`, which is the tag the sixteen was read at. The door
+carries **70** run-time names, not the 69 step 2 quotes. Steps 2, 3 and 4 below still say sixteen and 69; read those numbers off the tree when the
+step is taken, not off this entry.
+
+**Measured.**
+
+| | before | after |
+| --- | --- | --- |
+| run-time names on the door | 70 | 70 |
+| `npm test` | 931 over 78 files | 933 over 78 files |
+| `npm run type-check` | clean | clean |
+| `npm run gate:browser` | 4 of 4 | 4 of 4 |
+| `npm run gate:pack` | 13 of 13 | 13 of 13 |
+| corpus draws | 28, 0 failed, 9 WebGL 2 skips | 28, 0 failed, 9 WebGL 2 skips |
+
+The door is unchanged at 70 either side, which is what says this step settled a shape and published
+nothing. All eighteen fixtures drew on WebGPU under the new shape, six of them carrying contents:
+`core-texture`, `core-perdraw`, `core-perdraw-uniform`, `core-mips`, `core-draw-list` and
+`core-material`.
+
+**The two tests are new and both were proved red one at a time.** An address and its bytes used to
+come from one read of one field and are now two answers, so `tests/generated-bytes.test.ts` asserts
+the two sets of names agree in both directions over every fixture. Skipping the buffer generation
+reds the first and only the first; dropping the buffer's address from `publishedFrame` reds the
+second and only the second.
+
+**What the gates could not see.** The spelling of an address. `publishedFrame` and `generatedBytes`
+both go through `textureFileName`, so renaming that helper wrongly moves both and the new tests stay
+green — verified, not assumed: the mutation was run and passed. That is the intended shape, since one
+spelling in one place leaves only the sets of names to disagree about, and it is the browser gates
+that hold the spelling by fetching what a description names. Also unchanged: `gate:browser` is the
+software renderer, and `gate:card` was not run for this step, which touches no backend.
+
 ---
 
 ## Item 2 — a stencil that counts, since one face and the other are not the same face

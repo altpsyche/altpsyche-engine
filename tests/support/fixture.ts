@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { FrameGraph } from '@altpsyche/engine';
 import { CAPABILITY_FIXTURES } from '../../fixtures/capability-fixtures';
-import { declaredFrame, generatedBytes } from '../../fixtures/shader-describe';
+import { declaredFrame } from '../../fixtures/shader-describe';
+import { generatedBytes, publishedFrame } from '../../fixtures/shader-content';
 
 /**
  * A shader a backend test draws, derived from a source and a declaration this
@@ -53,7 +54,7 @@ export function loadFixture(name: FixtureName): Fixture {
   if (!one) throw new Error(`there is no fixture called "${name}"`);
   const code = readFileSync(sourcePath(name), 'utf-8');
   return {
-    description: declaredFrame(one.id, code, one.frame),
+    description: declaredFrame(one.id, code, publishedFrame(one.id, one.frame)),
     code,
     generated: generatedBytes(one.id, one.frame),
   };

@@ -13,10 +13,13 @@
  * pixel and declared as anything else is a texture the card reads as garbage.
  */
 
+import { GEOMETRY_PRIMITIVE } from '@altpsyche/engine';
 import { mat4 } from '@altpsyche/engine';
 import { drawList } from '@altpsyche/engine';
 import { batchOnePipeline } from '@altpsyche/engine';
 import { DRAW_LIST_SCENE, MATERIAL_SCENE, MATERIALS } from './capability-fixtures';
+import { geometryFileName } from './shader-describe';
+import type { DeclaredFrame } from './declared-frame';
 
 /** Which picture a texture's contents are. A shader's entry names one of these
  * and the build turns it into bytes. */
@@ -254,3 +257,119 @@ export const BUFFER_CONTENT: Record<BufferContent, { bytes: (byteCount: number) 
   'material-objects': { bytes: materialObjects },
   'perdraw-slices': { bytes: perdrawSlices },
 };
+
+
+/**
+ * What one of this repository's own fixtures declares about its frame: the
+ * published declaration, with the two names only this corpus holds put back.
+ *
+ * `DeclaredFrame` carries a sampled texture's format and address and a filled
+ * buffer's address, because a published declaration may not name a generator only
+ * this repository has — the reason is written at `DeclaredFrame.textures[].sampled`.
+ * A fixture still wants to say `'value-noise'` once rather than repeat a format and
+ * an address at every declaration, and it is allowed to, because these names never
+ * leave this directory. `publishedFrame` below is what turns the one into the other,
+ * so the corpus says a picture's name once and the format beside its bytes is still
+ * the generator's own.
+ */
+export interface FixtureFrame extends DeclaredFrame {
+  textures?: (NonNullable<DeclaredFrame['textures']>[number] & { content?: TextureContent })[];
+  buffers?: (NonNullable<DeclaredFrame['buffers']>[number] & { content?: BufferContent })[];
+}
+
+/** Where a texture the build wrote is fetched from. It is one address per shader
+ * and texture rather than one per rung, because the bytes do not change with the
+ * depth a phone marches to.
+ *
+ * It lives beside the generator rather than beside the reader, because after the
+ * declaration stopped naming a content the address is the corpus's own answer and
+ * nothing published derives it. */
+export const textureFileName = (id: string, name: string): string => `${id}-${name}.bin`;
+
+/** Where the contents of one build-filled buffer are fetched from. One address
+ * per shader and buffer, for the reason a texture's is: the numbers a copy is
+ * handed do not change with the depth a phone marches to. */
+export const bufferFileName = (id: string, name: string): string => `${id}-${name}.buffer.bin`;
+
+/**
+ * One fixture's frame as the published reader takes it: every content name
+ * lowered to the format and the address it stands for.
+ *
+ * This is the whole of what a consumer does for itself. It is one function and
+ * not a second reader — nothing here checks anything, and `declaredFrame` is
+ * still the only thing that reads a source against a declaration — so the corpus
+ * and a consumer outside this repository go down one path.
+ *
+ * The format comes off `TEXTURE_CONTENT` rather than being written at the
+ * declaration, which is what keeps the bytes and the format one answer now that
+ * they are two fields.
+ */
+export function publishedFrame(id: string, declared: FixtureFrame): DeclaredFrame {
+  return {
+    ...declared,
+    ...(declared.textures
+      ? {
+          textures: declared.textures.map(({ content, ...texture }) => ({
+            ...texture,
+            ...(content
+              ? {
+                  sampled: {
+                    format: TEXTURE_CONTENT[content].format,
+                    source: textureFileName(id, texture.name),
+                  },
+                }
+              : {}),
+          })),
+        }
+      : {}),
+    ...(declared.buffers
+      ? {
+          buffers: declared.buffers.map(({ content, ...buffer }) => ({
+            ...buffer,
+            ...(content ? { source: bufferFileName(id, buffer.name) } : {}),
+          })),
+        }
+      : {}),
+  };
+}
+
+/**
+ * Every picture and every run of numbers a fixture's declaration asks for, keyed
+ * by the address the description sends a reader to.
+ *
+ * It reads the fixture's own shape rather than the published one, because the
+ * published one names no generator and there is nothing here to look a name up
+ * in. The size is the declaration's and the layout and the format are the
+ * generator's, and `publishedFrame` writes the same addresses from the same
+ * names, so a file and the description it is fetched by cannot disagree about
+ * either.
+ */
+export function generatedBytes(id: string, declared: FixtureFrame | undefined): Map<string, Uint8Array<ArrayBuffer>> {
+  const made = new Map<string, Uint8Array<ArrayBuffer>>();
+
+  for (const texture of declared?.textures ?? []) {
+    if (!texture.content) continue;
+    // A texture carrying contents is fixed, never frame-following — the describe
+    // path refuses `{ scale }` beside contents — so its size is a `{ width, height }`
+    // pair. A `{ scale }` here is that refused case; generate nothing and let the
+    // describe throw name it.
+    if (!('width' in texture.size)) continue;
+    made.set(
+      textureFileName(id, texture.name),
+      TEXTURE_CONTENT[texture.content].bytes(texture.size.width, texture.size.height)
+    );
+  }
+
+  for (const one of declared?.geometry ?? []) {
+    const bytes = GEOMETRY_PRIMITIVE[one.primitive].bytes(one.size[0], one.size[1]);
+    made.set(geometryFileName(id, one.name, 'vertices'), bytes.vertices);
+    made.set(geometryFileName(id, one.name, 'indices'), bytes.indices);
+  }
+
+  for (const buffer of declared?.buffers ?? []) {
+    if (!buffer.content) continue;
+    made.set(bufferFileName(id, buffer.name), BUFFER_CONTENT[buffer.content].bytes(buffer.bytes));
+  }
+
+  return made;
+}

@@ -28,7 +28,6 @@ import {
   uniformBlocksOf,
   vertexInputsOf,
 } from './wgsl-pipelines';
-import { BUFFER_CONTENT, TEXTURE_CONTENT } from './shader-content';
 import { GEOMETRY_PRIMITIVE } from '@altpsyche/engine';
 import { BLEND_MODE } from './shader-blend';
 import type {
@@ -57,61 +56,19 @@ const FULLSCREEN_VERTICES = 3;
 /** How many copies of its geometry a pass draws when it asks for no number. */
 const ONE_INSTANCE = 1;
 
-/** Where a texture the build wrote is fetched from. It is one address per shader
- * and texture rather than one per rung, because the bytes do not change with the
- * depth a phone marches to. */
-export const textureFileName = (id: string, name: string): string => `${id}-${name}.bin`;
-
 /** Where one buffer of a generated primitive is fetched from. The role is in the
  * name because a primitive is two files and both are the same shader's, and it is
  * one address per shader and primitive for the reason a picture's is: the numbers
- * do not change with the depth a phone marches to. */
+ * do not change with the depth a phone marches to.
+ *
+ * It is the one address this module still writes, and the reason is the one
+ * written at `DeclaredFrame.textures[].sampled`: a primitive's generator is
+ * `GEOMETRY_PRIMITIVE`, which is on the door, so a declaration may name it and
+ * the reader may say where its bytes land. A picture's and a run of numbers'
+ * generators are this repository's own, so their addresses are declared rather
+ * than derived and those two helpers live beside the data they name. */
 export const geometryFileName = (id: string, name: string, role: 'vertices' | 'indices'): string =>
   `${id}-${name}.${role}.bin`;
-
-/** Where the contents of one build-filled buffer are fetched from. One address
- * per shader and buffer, for the reason a texture's is: the numbers a copy is
- * handed do not change with the depth a phone marches to. */
-export const bufferFileName = (id: string, name: string): string => `${id}-${name}.buffer.bin`;
-
-/**
- * Every picture and every run of numbers a frame's declaration asks for, keyed by
- * the address the description sends a reader to.
- *
- * It is here rather than beside the loader so one module owns both the name and
- * the bytes. The size is the declaration's and the layout and the format are the
- * generator's, which is the split `declaredFrame` reads them under, so a file and
- * the description it is fetched by cannot disagree about either.
- */
-export function generatedBytes(id: string, declared: DeclaredFrame | undefined): Map<string, Uint8Array<ArrayBuffer>> {
-  const made = new Map<string, Uint8Array<ArrayBuffer>>();
-
-  for (const texture of declared?.textures ?? []) {
-    if (!texture.content) continue;
-    // A texture carrying contents is fixed, never frame-following — the describe
-    // path refuses `{ scale }` beside contents — so its size is a `{ width, height }`
-    // pair. A `{ scale }` here is that refused case; generate nothing and let the
-    // describe throw name it.
-    if (!('width' in texture.size)) continue;
-    made.set(
-      textureFileName(id, texture.name),
-      TEXTURE_CONTENT[texture.content].bytes(texture.size.width, texture.size.height)
-    );
-  }
-
-  for (const one of declared?.geometry ?? []) {
-    const bytes = GEOMETRY_PRIMITIVE[one.primitive].bytes(one.size[0], one.size[1]);
-    made.set(geometryFileName(id, one.name, 'vertices'), bytes.vertices);
-    made.set(geometryFileName(id, one.name, 'indices'), bytes.indices);
-  }
-
-  for (const buffer of declared?.buffers ?? []) {
-    if (!buffer.content) continue;
-    made.set(bufferFileName(id, buffer.name), BUFFER_CONTENT[buffer.content].bytes(buffer.bytes));
-  }
-
-  return made;
-}
 
 /** The name the index buffer of one primitive carries on the description. It
  * comes off the primitive's own name rather than being declared, because the
@@ -337,19 +294,19 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     perDrawBuffers.set(pass.perDraw.buffer, { slice: pass.perDraw.slice, group: block.group, binding: block.binding });
   }
 
-  // A texture with contents is one the source samples and a texture without them
-  // is one the source stores into, so the entry saying which it is has to agree
+  // A texture declaring a picture is one the source samples and a texture without
+  // one is one the source stores into, so the entry saying which it is has to agree
   // with the file. Either way round the picture is silently wrong: a sampled name
   // sized as a storage one is a binding the layout declares as the other kind,
-  // and a stored name given contents is bytes written into a texture the shader
+  // and a stored name given a picture is bytes written into a texture the shader
   // overwrites before anything reads it.
   for (const texture of declared.textures ?? []) {
-    const holds = texture.content ? sampled : written;
+    const holds = texture.sampled ? sampled : written;
     if (!holds.has(texture.name)) {
-      const verb = texture.content ? 'samples' : 'writes';
+      const verb = texture.sampled ? 'samples' : 'writes';
       throw new Error(`the frame for "${id}" sizes a texture "${texture.name}" its source never ${verb}`);
     }
-    if (texture.content && 'scale' in texture.size) {
+    if (texture.sampled && 'scale' in texture.size) {
       throw new Error(`the frame for "${id}" gives "${texture.name}" contents and the frame's own size`);
     }
   }
@@ -579,17 +536,18 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
   const resources: ResourceSpec[] = [
     { kind: 'uniform' },
     ...(declared.textures ?? []).map((texture): ResourceSpec => {
-      // A stored texture's format is the source's, because the declaration
-      // carries it. A sampled one's is the generator's, because the bytes and
-      // the format are one answer and a sampled declaration names neither.
-      const content = texture.content ? TEXTURE_CONTENT[texture.content] : undefined;
+      // A stored texture's format is the source's, because the shader declares it
+      // on the store. A sampled one's is the declaration's, because the bytes and
+      // the format are one answer and the source samples without naming either.
       return {
         kind: 'texture',
         size: texture.size,
-        format: content ? content.format : (written.get(texture.name) as { format: GPUTextureFormat }).format,
-        use: content ? ['sample'] : ['storage'],
+        format: texture.sampled
+          ? texture.sampled.format
+          : (written.get(texture.name) as { format: GPUTextureFormat }).format,
+        use: texture.sampled ? ['sample'] : ['storage'],
         ...(texture.mips ? { mips: texture.mips } : {}),
-        ...(content ? { source: textureFileName(id, texture.name) } : {}),
+        ...(texture.sampled ? { source: texture.sampled.source } : {}),
       };
     }),
     ...(declared.pairs ?? []).flatMap((pair): ResourceSpec[] =>
@@ -613,10 +571,10 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
         // a query resolves into is read by nobody on this side of the card, so it
         // takes the access that names no writing.
         access: stored.get(buffer.name)?.access ?? 'read',
-        // A buffer the build fills carries the address its bytes were written to,
-        // the same split a picture and a run of vertices carry: the description
-        // names where they live and the runtime fetches them.
-        ...(buffer.content ? { source: bufferFileName(id, buffer.name) } : {}),
+        // A buffer that is filled before the frame runs carries the address its
+        // bytes live at, the same split a picture and a run of vertices carry: the
+        // description names where they live and the runtime fetches them.
+        ...(buffer.source ? { source: buffer.source } : {}),
       })
     ),
     ...(declared.samplers ?? []).map(

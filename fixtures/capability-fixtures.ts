@@ -6,7 +6,7 @@
  * draw. None of it is published: this directory is outside what the build config
  * compiles, so nothing under it reaches a consumer.
  */
-import type { DeclaredFrame } from './declared-frame';
+import type { FixtureFrame } from './shader-content';
 import { groupsToCover } from '../graph/refs';
 import { mat4, vec3 } from '@altpsyche/engine';
 import { type Camera, type Scene, viewProjection, worldMatrix } from '@altpsyche/engine';
@@ -239,7 +239,7 @@ export interface CapabilityFixture {
   uniforms: { name: string; type: string; value: number | number[] }[];
   /** Required rather than optional, because a shader with nothing to declare is
    * one pass over the whole frame and there is no capability in that to draw. */
-  frame: DeclaredFrame;
+  frame: FixtureFrame;
 }
 
 export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
