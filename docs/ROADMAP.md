@@ -2407,9 +2407,46 @@ citation was **not** re-checked, because that file is only exercised on a machin
 **Measured.** `npm test` 945 over 80 files and `npm run type-check` clean, unchanged either side — a
 documentation step whose measurement is the reading, which is what the step said it would be.
 
-**Step 2 is next and it is a decision**: whether a scissor is built at all, on the specification
-argument alone, with the weakness above answered rather than skipped. If the answer is no, the item
-closes there.
+#### Decided on 2026-09-11, step 2: a scissor is to be built, and one measurement can still refuse it
+
+**The answer is yes**, and the reasoning is at `RenderPassSpec` in `graph/types.ts` rather than here,
+with its reversal and what would change it.
+
+**The fork is narrower than the step makes it look.** `setScissorRect` is core WebGPU and
+`gl.scissor` with `gl.enable(gl.SCISSOR_TEST)` is core WebGL 2, and a pass here can reach neither. So
+the choice is not "build a capability or don't" — it is **build it, or qualify the claim** this file's
+own baseline makes, that the renderer is built to the whole WebGPU core specification. Building it is
+the honest side of that.
+
+**Both backends can, so it needs no `Capability` member and no refusal by name.** It is not a
+capability at all; it is core pass state the frame never carried. That is what makes it cheaper than
+it looks and is why `CLAUDE.md`'s standing refusal — no backend grows a method the other has to throw
+from — does not bite.
+
+**The weakness is answered and not skipped.** A caller can reach the same picture by discarding
+outside the rectangle in the fragment shader, or by drawing into a texture of its own. Both are real,
+and neither is an argument about whether this renderer expresses the specification: by the same
+reasoning a viewport would not need to exist, since a caller could scale its geometry. **A workaround
+argues priority, not belonging** — which is exactly the grading this item already gives it against
+item 2 — and the workarounds cost the thing a scissor is for, `discard` shading every pixel in order
+to throw most away.
+
+**Where it goes was decided with it**: on the pass, beside `depth`, not on a draw. That is reading
+6's constraint and the specification's own shape, since `setScissorRect` is a render-pass encoder
+call. No vocabulary redesign.
+
+**One measurement can still refuse this, and it belongs to step 3.** WebGPU's scissor origin is the
+top-left and WebGL 2's is the bottom-left. If the flip cannot be made to agree across the two to the
+single channel the corpus holds every preset to, then a scissor draws two different pictures
+depending on the backend — and **a capability that is not the same capability on both is worse than
+one absent from both.** Step 3's fixture is what settles it, and this decision is written so that a
+red fixture reverses it rather than being argued around.
+
+**Measured.** `npm test` 945 over 80 files and `npm run type-check` clean, unchanged either side. One
+doc comment; no behaviour and no type changed, which is what a decision step should move.
+
+**Steps 3 and 4 are now available work**, and they are the build: the field, the refusal, the cost
+answer, both backends, the cross-backend fixture, and the documents.
 
 3. **If built: `RenderPassSpec` names an optional scissor rectangle**, `validate` refuses one outside
    the frame's own size the way it refuses a per-draw slice past the end of its buffer, `cost` says

@@ -608,6 +608,55 @@ export const STENCIL_STATES: Record<
 };
 
 /** One run of work inside a frame, drawing into the frame's own colour target. */
+/**
+ * **A scissor rectangle belongs on this type and is to be built** (decided
+ * 2026-09-11, item 16 step 2). It is not here yet; step 3 adds the field, the
+ * refusal, the cost answer and both backends' application of it. This is the
+ * decision and its reasoning, written before the build rather than after.
+ *
+ * **The argument is the specification and nothing else.** `setScissorRect` is core
+ * WebGPU and `gl.scissor` with `gl.enable(gl.SCISSOR_TEST)` is core WebGL 2. A
+ * renderer claiming the whole core specification either expresses a scissor or does
+ * not claim it, and today a pass can reach neither call. The fork is therefore
+ * narrower than it looks: **build it, or qualify the claim** this package makes in
+ * `docs/ROADMAP.md`'s baseline and in its own README. Building it is the honest side.
+ *
+ * **Both backends can, so nothing grows a method the other throws from.** It needs no
+ * `Capability` member and no refusal by name, which is what separates it from every
+ * optional thing here — it is not a capability at all, it is core pass state the
+ * frame simply never carried.
+ *
+ * **The weakness, answered rather than skipped.** Unlike item 2's counted winding,
+ * which the specification offers exactly one way to express, a caller *can* reach the
+ * same picture without a scissor: `discard` outside the rectangle in the fragment
+ * shader, or drawing into a texture of its own and compositing it. Both are real. But
+ * neither is an argument about whether this renderer expresses the specification —
+ * by the same reasoning a viewport would not need to exist, since a caller could
+ * scale its geometry instead. What a workaround argues is **priority, not belonging**,
+ * and this item's own text already grades it below item 2 for that reason. The
+ * workarounds also cost what a scissor is for: `discard` shades every pixel in order
+ * to throw most of them away, and a texture of one's own needs a second pass, a blit,
+ * re-transformed geometry, and gives the shader a different `@builtin(position)` from
+ * the one it would see under a scissor.
+ *
+ * **It goes on the pass and not on a draw**, which is reading 6's constraint and also
+ * the specification's: `setScissorRect` is a call on the render-pass encoder. Per-draw
+ * scissors would be a shape neither backend has. That also means the vocabulary needs
+ * no redesign — it sits beside `depth` here the way a stencil mode sits beside the
+ * depth compare on a pipeline.
+ *
+ * **To reverse**: drop the field, its rule in `validate` and its application in both
+ * backends, and qualify the core-specification claim in `docs/ROADMAP.md`'s baseline
+ * so the package stops asserting something it does not do.
+ *
+ * **What would change the answer**, and step 3 is what tests it: WebGPU's scissor
+ * origin is the top-left and WebGL 2's is the bottom-left. If the flip cannot be made
+ * to agree across the two to the single channel the corpus holds every preset to —
+ * the tolerance every cross-backend fixture here already meets — then a scissor draws
+ * two different pictures depending on the backend, and a capability that is not the
+ * same capability on both is worse than one that is absent from both. **That is the
+ * one measurement that can still refuse this**, and it belongs to step 3's fixture.
+ */
 export interface RenderPassSpec {
   pipeline: PipelineHandle;
   /** The draws this pass issues, in order, all against the pass's one pipeline
