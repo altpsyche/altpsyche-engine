@@ -728,9 +728,30 @@ export function createWebGPUBackend(
         if (redrawn) {
           throw new Error(`the frame for "${frame.id}" gives resource ${redrawn.index} a ladder and writes it every frame`);
         }
-        const sourced = declared.find((one) => one.resource.data && spansFrame(one.resource));
+        //
+        // **Contents means `data` or `source`, settled by item 4's step 1.** A
+        // `TextureResource` carries `source`, the address its first contents come
+        // from, and `data`, the bytes that came back from it, and `graph/types.ts`
+        // says the build writes the first and the runtime fills the second — so a
+        // description in hand before its fetch carries `source` and no `data`.
+        // Reading `data` alone made this refusal, and the samples one below, wait
+        // for the fetch: **the same description was refused after its bytes arrived
+        // and drawn before**, and the WebGL 2 backend had always read both, so one
+        // description was refused on one card and drawn on the other. A description
+        // is refused for what it says. The contradiction — contents that arrive once
+        // against a texture thrown away and remade on every resize — is in the words
+        // and not in the bytes, and the distinguishing claim of this package is that
+        // a frame is refused before a driver sees it, which a refusal that waits for
+        // a fetch is not. **To reverse it**, read `data` alone in both backends and
+        // accept that a description's answer depends on when it is asked. **What
+        // would change the answer** is a `source` that could resolve to nothing at
+        // all, which would make it a request rather than a declaration; today a
+        // resource carrying one declares that its contents exist.
+        const sourced = declared.find((one) => (one.resource.data || one.resource.source) && spansFrame(one.resource));
         if (sourced) {
-          throw new Error(`the frame for "${frame.id}" gives resource ${sourced.index} contents and the frame's own size`);
+          throw new Error(
+            `the frame for "${frame.id}" gives resource ${sourced.index} contents and the frame's own size, which is thrown away on a resize`
+          );
         }
 
         // A texture keeping several samples of a pixel is the narrowest kind there
@@ -741,7 +762,10 @@ export function createWebGPUBackend(
         // source here has. A ladder over one needs no rule of its own, since the
         // check above already refuses a ladder over anything a pass writes.
         const multisampled = declared.filter((one) => one.resource.samples !== undefined);
-        const upload = multisampled.find((one) => one.resource.data);
+        // Contents here is `data` or `source` for the reason written at the size
+        // refusal above (item 4, step 1): nothing may write into a multisample
+        // texture from outside whether its bytes have arrived yet or not.
+        const upload = multisampled.find((one) => one.resource.data || one.resource.source);
         if (upload) {
           throw new Error(`the frame for "${frame.id}" gives resource ${upload.index} contents and several samples a pixel`);
         }

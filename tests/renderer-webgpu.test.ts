@@ -847,6 +847,27 @@ describe('the texture a shader samples', () => {
     ).toThrow(/gives resource 1 contents and the frame/);
   });
 
+  it('is refused where its contents are only an address yet, since a description is refused for what it says (item 4)', () => {
+    const { backend } = backendOver();
+    const frame = sampledFrame();
+    // `source` is the address the first contents come from and `data` is the bytes
+    // that came back, so a description in hand before its fetch carries the first
+    // and not the second. It is the same contradiction either way — contents that
+    // arrive once against a texture remade on every resize — and reading `data`
+    // alone made the refusal depend on how far the fetch had got rather than on
+    // what the description said.
+    expect(() =>
+      backend.program({
+        ...frame,
+        resources: [
+          frame.resources[0]!,
+          { ...(frame.resources[1] as TextureResource), size: { scale: 1 }, data: undefined },
+          frame.resources[2]!,
+        ],
+      })
+    ).toThrow(/gives resource 1 contents and the frame/);
+  });
+
   it('is refused where a binding points at a texture the frame neither writes nor samples', () => {
     const { backend } = backendOver();
     const frame = sampledFrame();

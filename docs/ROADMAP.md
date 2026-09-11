@@ -795,12 +795,13 @@ documented backstop is not a second home. `spansFrame` in `gpu/webgpu.ts:731` is
 
 ### Steps
 
-1. **Settle the two divergences before moving anything**, by deciding whether a texture carrying a
-   `source` and no `data` yet is refused for its samples and its size. Write the answer where the
-   rule lands. **The measurement**: the refusal each backend gives that description today, read off a
-   test rather than off the source, and one wording after.
-2. **Move the six into `graph/validate.ts`**, with both backends losing their copies and the frame
-   refused before either is built. **The measurement**: `npm test` and `npm run type-check` green,
+1. **Landed on 2026-09-11**, reading below. Settle the two divergences before moving anything, by
+   deciding whether a texture carrying a `source` and no `data` yet is refused for its samples and
+   its size. Write the answer where the rule lands. **The measurement**: the refusal each backend
+   gives that description today, read off a test rather than off the source, and one wording after.
+2. **Move the seven into `graph/validate.ts`** — six, plus the ladder-with-no-contents rule step 1
+   found single-homed in WebGL 2 and absent from WebGPU — with both backends losing their copies and
+   the frame refused before either is built. **The measurement**: `npm test` and `npm run type-check` green,
    the count of `throw` sites in each backend before and after, and `gate:browser` at 4 of 4 with the
    recording contract at 16 of 16, which is what says the calls did not move.
 3. **A test per moved rule that fails for the rule and not for the wording**, since a rule moved with
@@ -810,10 +811,62 @@ documented backstop is not a second home. `spansFrame` in `gpu/webgpu.ts:731` is
 
 ### Done when
 
-- None of the six rules appears in either backend, and `graph/validate.ts` states each once.
+- None of the seven rules appears in either backend, and `graph/validate.ts` states each once. It
+  read "six" until step 1 found the seventh: a ladder over a texture with no contents, refused by
+  WebGL 2 and by nothing on WebGPU.
 - A texture with a `source` and no `data` gets one answer, and the same answer on both backends.
 - `npm test`, `npm run type-check` and `gate:browser` are green, with the recording contract at
-  16 of 16, and the commit says the card gate was not re-taken.
+  **18 of 18** — it read 16 of 16 when this item was written and two presets have arrived since,
+  `core-blend` at item 11 and `core-count` at item 2 — and the commit says the card gate was not
+  re-taken.
+
+### Landed on 2026-09-11, step 1: a description is refused for what it says, not for how far its fetch has got
+
+**The divergence, measured off a test rather than read off the source, which is what the step asked
+for.** A texture carrying `source` and no `data` — the description a build hands over before its
+fetch comes back — was **refused by WebGL 2 and drawn by WebGPU**, at both rows the table marks. Two
+new tests against the WebGPU backend went red on the tree as it stood, by name:
+
+- *is refused where its contents are only an address yet* (`tests/renderer-webgpu.test.ts`, the
+  frame's own size)
+- *giving it contents that are only an address yet* (`tests/renderer-multisample.test.ts`, several
+  samples a pixel)
+
+and the two matching tests against WebGL 2 were green the moment they were written, because that
+backend had always read both fields.
+
+**The answer is `data || source`, and the reason is the package's own claim.** The contradiction in
+both rules — contents that arrive once against a texture remade on every resize, and contents against
+a texture nothing may write into from outside — is in the words of the description and not in the
+bytes. Reading `data` alone made the answer depend on *when* it was asked: the same description
+refused after its fetch and drawn before it. A frame that can be refused before a driver sees it
+cannot have a refusal that waits for a fetch. The reasoning is written at `gpu/webgpu.ts`'s size
+refusal, which is the site that changed, with a pointer at the WebGL 2 site; both move into
+`graph/validate.ts` at step 2 and the reasoning moves with them.
+
+**The wording is one sentence now**, and it is WebGL 2's fuller one: *contents and the frame's own
+size, which is thrown away on a resize*. WebGPU's stopped at *the frame's own size* and said nothing
+about why.
+
+**The measurement after.** `npm test` 906 passing, up from 902 before this step and 894 before
+item 2; `npm run type-check` green. No gate that draws was run and none was needed: this step moves a
+predicate and a message, and `gate:browser` at 4 of 4 belongs to step 2, which is where calls could
+move. **The card gate was not re-taken.**
+
+**The reading has moved and two things came with it.**
+
+- **The line numbers are all wrong now.** The six refusals are `gpu/webgl2.ts:555-594` against the
+  table's 424-470, and `gpu/webgpu.ts:700-757` against its 730-777. The predicates are as the table
+  says.
+- **There is a seventh rule and the table does not list it.** `gpu/webgl2.ts:565` refuses
+  `mips && !data && !source` — *a ladder and no contents to build it from* — and **WebGPU has no
+  such refusal at all**, so a WebGPU frame asking for a ladder over a texture with nothing in it is
+  built rather than refused. That is the same class of defect as the two settled here and it is not
+  step 1's, so step 2 moves seven rules rather than six, and its own text now says so.
+
+**What would change the answer** for the pair settled here is a `source` that could resolve to
+nothing, which would make it a request rather than a declaration. Today a resource carrying one
+declares that its contents exist.
 
 **What would change the answer.** If one of the six turns out to be genuinely backend-specific — a
 rule about what a renderbuffer can do rather than about what a description says — it stays in that

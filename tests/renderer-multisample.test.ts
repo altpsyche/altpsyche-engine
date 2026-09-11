@@ -272,6 +272,23 @@ describe('what a description keeping several samples a pixel is refused for', ()
     );
   });
 
+  it('giving it contents that are only an address yet, since a description is refused for what it says (item 4)', () => {
+    // `source` without `data` is the description a build hands over before its
+    // fetch has come back. Nothing may write into a multisample texture from
+    // outside whether the bytes have arrived or not, so the contradiction is in
+    // the description and the refusal does not wait for the fetch.
+    refused(
+      averaged({
+        resources: [
+          averaged().resources[0] as TextureResource,
+          picture('edges', { samples: 4, size: { width: 64, height: 64 }, source: 'edges.bin' }),
+          picture('flat'),
+        ],
+      }),
+      'the frame for "fixture-multisample" gives resource 1 contents and several samples a pixel'
+    );
+  });
+
   it('giving it a ladder, which is refused for the reason a ladder over any written texture is', () => {
     refused(
       averaged({

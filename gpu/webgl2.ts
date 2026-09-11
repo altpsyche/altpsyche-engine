@@ -588,6 +588,14 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         // size would be thrown away and re-uploaded on every resize. That is
         // refused by name rather than silently re-run, the same refusal the WebGPU
         // backend makes for the same reason.
+        //
+        // **`data || source` is the settled reading, and it was this backend's**
+        // (item 4, step 1). The WebGPU backend read `data` alone here and at its
+        // samples refusal, so one description was refused on one card and drawn on
+        // the other, and the answer depended on whether a fetch had come back. The
+        // reasoning is written out where it changed, at `gpu/webgpu.ts`'s size
+        // refusal; both rules move into `graph/validate.ts` at this item's step 2
+        // and it moves with them.
         if ((resource.data || resource.source) && followsFrame(resource.size)) {
           throw new Error(
             `the frame for "${frame.id}" gives resource ${index} contents and the frame's own size, which is thrown away on a resize`

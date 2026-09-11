@@ -402,6 +402,18 @@ describe('a description above the subset', () => {
     );
   });
 
+  it('refuses giving one contents that are only an address yet, in the same words (item 4)', () => {
+    const { backend } = backendOver();
+    // The description a build hands over before its fetch comes back: `source` set
+    // and `data` not. This backend has always read both, and the WebGPU backend read
+    // `data` alone and let it through, so one description was refused on one card and
+    // drawn on the other. Nothing may write into a multisample texture from outside
+    // whether the bytes have arrived or not.
+    expect(() => backend.program(multisample({}, { source: 'edges.bin' }))).toThrow(
+      'the frame for "fixture" gives resource 1 contents and several samples a pixel'
+    );
+  });
+
   it('refuses showing a multisample attachment, which nothing copies out of (item 80)', () => {
     const { backend } = backendOver();
     expect(() => backend.program(multisample({ present: texture(1) }))).toThrow(
@@ -1368,6 +1380,23 @@ describe('a pass sampling a resident image (item 78)', () => {
   it('refuses a content texture the frame own size, which a resize would throw away', () => {
     const { backend } = backendOver();
     expect(() => backend.program(textureFrame({ scale: 1 }))).toThrow(
+      'the frame for "core-texture" gives resource 1 contents and the frame\'s own size, which is thrown away on a resize'
+    );
+  });
+
+  it('refuses one whose contents are only an address yet, in the same words (item 4)', () => {
+    const { backend } = backendOver();
+    // The description a build hands over before its fetch comes back: `source` set,
+    // `data` not. This backend has always refused it and the WebGPU backend read
+    // `data` alone and let it through, so one description was refused on one card
+    // and drawn on the other. The answer is this one — a description is refused for
+    // what it says, not for how far its fetch has got — and item 4's step 1 made the
+    // other backend agree, in this sentence.
+    const frame = textureFrame({ scale: 1 });
+    const sourced = { ...(frame.resources[1] as TextureResource), data: undefined, source: 'grain.bin' };
+    expect(() =>
+      backend.program({ ...frame, resources: [frame.resources[0]!, sourced, frame.resources[2]!] })
+    ).toThrow(
       'the frame for "core-texture" gives resource 1 contents and the frame\'s own size, which is thrown away on a resize'
     );
   });
