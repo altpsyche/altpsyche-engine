@@ -90,6 +90,24 @@ destroys it, and if you do want the context gone that is one line on an object y
 reason that tearing a surface down and building another rebuilds the backend, recompiles every
 program and drops the frame loop. It is no longer a workaround for a destroyed context.
 
+**`Surface.read(): Promise<Uint8Array | null>` gives back the pixels the surface is showing** —
+RGBA, top row first, the same bytes and the same order `FrameRenderer.frame` hands back, because
+that is what it calls. It draws one frame at the clock's current value and reads that one, so what
+comes back is the picture as of the call rather than whatever the last tick left; it does not stop
+the loop or re-enter it. **It costs a stall you wait on**: on one full-screen shader at 1200x750,
+drawing is 1.9 to 2.5 ms a frame and drawing then reading is 5.0, so this does not belong in a loop.
+That reading is dated — 2026-09-11 — and is quoted rather than re-taken.
+
+`null` means the graphics card has been taken back or the surface has been disposed, so there are no
+pixels to give. A black frame is a different answer and comes back as bytes.
+
+**It is a method and not the renderer underneath, on purpose.** A surface replaces the renderer it
+holds when a context is lost and restored, so an accessor would hand you a reference that goes stale
+without saying so — disposed after the loss, and the wrong one after the restore. Reading through
+the method cannot be stale. It also means **no second canvas and no second renderer**, which used to
+be the only way to get these pixels and is not available at all on WebGL 2, where a canvas that has
+given one context gives the same one back.
+
 **`createFrameRenderer` draws through WebGL 2 unless you hand it a WebGPU device**, which is
 `RendererOptions.backend` and `RendererOptions.device` together. That is the primitive's
 contract and not this package's answer to which backend should draw — `openRenderer` is that

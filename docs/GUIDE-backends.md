@@ -148,6 +148,20 @@ real graphics card the two backends agree to within a single channel on every sc
 which is two hardware compilers folding the same arithmetic differently and not a difference
 you could see. [DEVICES.md](DEVICES.md) has that reading, taken by `npm run gate:card`.
 
+**Both backends read a frame back, and a live surface can too.** `Surface.read()` hands back RGBA
+with the top row first on either one, which is not free arithmetic: WebGL 2's `readPixels` gives the
+bottom row first and WebGPU's `copyTextureToBuffer` pads each row to an alignment, and the package
+owns both fixes so the bytes you get are the same shape whichever backend drew them. It costs a
+stall — 5.0 ms a frame against 1.9 to 2.5 drawing alone, on one full-screen shader at 1200x750,
+measured 2026-09-11 and quoted rather than re-taken — so it is a capture and not a loop.
+
+**Do not try to read the canvas instead.** Drawing the canvas into a 2D context gives you nothing on
+WebGPU: the canvas texture is configured to be copied *to* and presented, and the texture that can
+be copied *from* is the backend's own target, which is the one `read()` reads. A `drawImage` of a
+drawn canvas measured `(0,0,0,0)` at every one of 120,000 pixels while a screenshot of that same
+canvas read `(240, 92, 51)` inside the triangle — **a reading taken on a card on 2026-09-09 in the
+consuming package's repository, not by a gate here**, and no gate here can re-take it.
+
 WebGL 2 will never reach what GLSL ES 3.0 has no syntax for: compute, a shader-written storage
 buffer, storage textures, indirect draws, timestamp queries and occlusion queries. A graph that
 needs one of those is refused by name.

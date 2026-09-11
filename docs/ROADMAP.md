@@ -2653,6 +2653,58 @@ it.
 - The commit says the card gate was not re-taken and that the `(0,0,0,0)` reading belongs to another
   repository's session.
 
+### Landed on 2026-09-11, step 3: the documents name the path, and the canvas trap is named with them
+
+`docs/API.md` carries `Surface.read()` under "Getting something on the screen": the shape, the byte
+order, that it draws the frame it reads rather than taking the last tick's, what `null` means, the
+cost, and why it is a method rather than an accessor onto the renderer. `docs/GUIDE-backends.md`
+gains a paragraph under "What WebGL 2 reaches today" saying both backends read back and a live
+surface can too, **and a second one saying not to read the canvas instead** — which is the half of
+reading 11 that was right and the thing a reader would otherwise try first.
+
+**Two claims were checked against the tree before they were written down.** That WebGPU's readback
+pads each row to an alignment and the package unpads it: `gpu/webgpu.ts:1252-1267`, `ROW_ALIGNMENT`
+and the loop under it. That WebGL 2's gives the bottom row first and the package flips it:
+`gpu/webgl2.ts:1655-1663`.
+
+**The `(0,0,0,0)` reading is attributed where it is quoted.** It was taken on a card on 2026-09-09
+in the consuming package's repository and no gate here can re-take it, and the guide says so on the
+line rather than letting the number read as this repository's.
+
+**Measured.** `tests/api-signatures.test.ts` and `tests/docs-code.test.ts` green, 5 over 2 files.
+`npm test` 960 over 81 files, `npm run type-check` clean, `npm run gate:pack` 17 of 17, run-time
+names 73.
+
+**What the gates could not see.** `docs-code.test.ts` compiles the code blocks in the documents and
+these additions are prose, so nothing here was executed: the two line-number claims above were read
+by hand and the cost figure is quoted, not produced. `gate:browser` was not re-run for a documents
+change and `gate:card` was not re-taken.
+
+### Done when, verified
+
+- **A caller holding a `Surface` reads back the pixels it is showing, through one published path.**
+  `Surface.read()`, shown by six tests in `tests/renderer-surface.test.ts` on the WebGL 2 double —
+  the top row first against `bottomUpFrame`, and null after a lost context and after `dispose`.
+- **Neither a second canvas nor a second renderer is needed.** Asserted rather than argued: one
+  `getContext` is ever asked for across a `read()`, which is the test "needs no second canvas and no
+  second renderer to do it".
+- **The row-stride repack has one home, read off the tree.** `read()` calls `FrameRenderer.frame`,
+  the only caller of `Backend.readPixels`, whose repack is written once per backend —
+  `gpu/webgpu.ts:1252-1267` and `gpu/webgl2.ts:1655-1663`. Inverting the WebGL 2 flip turns the new
+  test red, so the one home is the one under test.
+- **`docs/API.md` names the path.** It does, and so does `docs/GUIDE-backends.md`.
+- **`npm test`, `npm run type-check` and `gate:pack` green.** 960 over 81 files, clean, 17 of 17.
+- **`gate:browser` at 4 of 4 with the surface gate at 21 of 21.** **Half satisfied, and the half is
+  named.** The surface gate ran alone at 21 of 21 on step 2. The other three were not run, so
+  `4 of 4` is not claimed here.
+- **The commit says the card gate was not re-taken and that the `(0,0,0,0)` reading belongs to
+  another repository's session.** Both said, in every commit of the three and in the guide itself.
+
+**What is left of item 17 is what the surface gate does not cover.** Its 21 checks are the count it
+already had and none of them calls `read()`, so **no real driver has read a frame back through the
+live path** — the only coverage is against a double. A gate check that draws a known colour on a
+surface and reads it back on both backends would close that, and it needs a display and a person.
+
 **What would change the answer.** If step 1 finds that reading the live path back requires the
 surface to stop its own loop and re-enter it — which would make `read()` a control operation wearing
 a reading's name — then the readback is the `FrameRenderer`'s and `Surface` exposes it, and the
