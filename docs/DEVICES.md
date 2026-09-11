@@ -38,6 +38,55 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-11, Linux, three presets compared across the backends for the first time, and two were wrong
+
+**Why this row exists.** Item 19 made `core-texture`, `core-target` and `core-mips` drawable on
+WebGL 2 — each had been skipped for want of a baked vertex, so each was drawn by one backend and
+compared with nothing. This is the first cross-backend reading any of them has ever had, and it is
+the reason that item existed.
+
+```
+core-target    hard jumps 26,856 against 26,855, worst   2,        77 of 1,440,000 differ
+core-texture   hard jumps      0 against      0, worst 235, 1,424,706 of 1,440,000 differ
+core-mips      hard jumps  7,725 against  7,731, worst 128, 1,401,861 of 1,440,000 differ
+```
+
+**The tolerance is 8.** `core-target` agrees and is on the gate's cross-backend list. The other two
+are **item 20** and are held off it — a gate expected to be red stops being read.
+
+**The diagnosis, taken in the same session by comparing each pair again with one frame flipped in Y:**
+
+```
+                as drawn                         WebGL 2 flipped in Y
+core-texture    worst 235, 1,424,706 differ      worst  1,      40 differ
+core-mips       worst 128, 1,401,861 differ      worst 15, 574,095 differ
+```
+
+**`core-texture` was an exact vertical mirror** — flipped it reads worst 1, 40 of 1,440,000, the same
+one-channel residual every agreeing preset has. `core-mips` was a mirror with a second defect under
+it.
+
+**After the upload fix** — `gpu/webgl2.ts` now uploads a texture's `data` top row first, because
+`texImage2D` puts the first row at OpenGL's *bottom* where WebGPU's `writeTexture` puts it at the
+*top*:
+
+```
+core-mips       as drawn worst 15,   574,191 differ   (was 1,401,861 at worst 128)
+core-texture    as drawn worst 231, 1,417,121 differ  (was 1,424,706 at worst 235)
+```
+
+**`core-mips` swapped exactly** — its straight reading became what its flipped reading had been, so
+the upload was its whole mirror. **`core-texture` did not**, so it had two mirror sources cancelling
+into a clean one; the remaining one is in the coordinate rather than the bytes, and item 20's step 2b
+hunts it. **Every gated cross-backend figure was unchanged by the fix**, `core-target` still 77 at
+worst 2.
+
+**The gate's timing line across four runs of this machine on one day**: p50 1.10–1.30 ms, p95
+1.60–4.00 ms, p99 115.00–196.10 ms, a thousand objects at 800x600, draw plus a full readback. That
+spread on one machine in one day is why it is reported and never gated.
+
+---
+
 ### 2026-09-11, Linux, the scissor's first reading on a card, taken after item 17 landed
 
 **Why this row exists.** Item 16 built a scissor and could not finish: its cross-backend agreement
