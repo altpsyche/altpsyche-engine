@@ -9,6 +9,112 @@ carries fixes. A caret range on a `0.x` version tracks the last number alone, so
 `^0.3.0` will not pick up a later `0.4.0`: a consumer moves to a feature release by
 asking for it.
 
+## 0.5.0
+
+**A breaking release, and `0.x` means it does not announce itself with a major number.** Three names
+arrive and none leaves or moves. What breaks is that **`StencilMode` gains two members**, so an
+exhaustive `switch` over it stops compiling; that **`Capability` gains two members** for the same
+reason; and that **several descriptions that used to draw are now refused by name**, each of them one
+that was drawing the wrong picture on one backend or the other. If you are on `^0.4.0` nothing here
+reaches you until you ask for it.
+
+### Added: `openRenderer`, which carries a backend selection through to a renderer
+
+`openRenderer(canvas, frame, options?)` gathers what the machine offers, asks `selectBackend` which
+backend should draw, asks the browser for a card only where that answer wants one, translates the
+frame where the chosen backend speaks another language, and builds the renderer — or answers with
+one sentence saying why none of that could be done. It answers `{ renderer, frame }` or
+`{ refusal }`, the two-armed shape `selectBackend` and `resolve` already use. `OpenedRenderer` and
+`RendererOpening` are its types.
+
+Those four steps were yours before, and the fourth was unannounced: a WGSL frame selected for WebGL 2
+reached that backend untranslated and was thrown out of it. **The frame comes back beside the
+renderer for that reason** — a WGSL frame drawn on WebGL 2 is drawn as its GLSL translation, so a
+caller keeping its own copy and submitting that hits the very throw this exists to stop. Where no
+translation was needed it is the same object.
+
+`createFrameRenderer` is unchanged underneath, for a caller that already knows which backend it
+wants. And `RendererOptions.backend` is a narrowing rather than an override: the backend you name is
+the only one offered to the selection, so a frame it cannot draw comes back refused rather than
+handed to a backend that will throw.
+
+### Added: a stencil that counts, so a filled path can have a hole
+
+`StencilMode` was `'mark' | 'inside'` — a boolean mask. It is now `'mark' | 'inside' | 'count' |
+'nonzero'`, and the new pair is a counter: `count` adds one for every front-facing fragment and takes
+one back for every back-facing one, both wrapping, and `nonzero` draws where that count did not come
+back to zero.
+
+That is the one thing a mask cannot do. A filled path with a hole, or one that crosses itself, has
+its interior decided by a winding number, and a winding number is counted by letting the faces of the
+path's triangles cancel — which is why `GPUDepthStencilState` carries `stencilFront` and
+`stencilBack` separately. Until now both were given the same state on both backends, so this package
+could not express a pipeline the core specification describes, and no device reported a capability
+that was missing: the frame drew the wrong picture instead of being refused.
+
+Both backends do it. On WebGL 2 it is `stencilOpSeparate` and `stencilFuncSeparate` with `INCR_WRAP`
+and `DECR_WRAP`, all four core WebGL, so **there is no capability to ask for and nothing to declare
+in `requires`** — every device that offers either backend has this.
+
+The two backends were measured drawing the same counting picture, channel for channel, on an NVIDIA
+Blackwell card: `0 of 1,440,000 channels differ`. And the counting picture was measured *against* the
+mask's, so the difference is a number rather than a claim: `302,512 of 1,440,000 channels differ`,
+which is the hole a mask fills in and a counter leaves alone.
+
+**Which face is the front is not something you have to reason about.** The two backends disagree
+about it — a framebuffer's rows run the other way on one of them — so the same shape counts `+1` on
+one and `-1` on the other. `nonzero` asks whether the counter came back to zero rather than which way
+it went, so both draw the same picture out of opposite counts.
+
+### Fixed: WebGL 2 applies the blend a pipeline names, which it had never done
+
+A pipeline naming `targets[].blend` drew blended on WebGPU and **unblended on WebGL 2**, with
+`refusal()` returning `null` for both — a different picture on the two backends with nothing in the
+data saying so. The word "blend" appeared nowhere in that backend, though `blendFuncSeparate`,
+`blendEquationSeparate` and `blendColor` are core WebGL 2 throughout. It applies them now, with
+WebGPU's own component defaults written out rather than left to GL's, which are not the same numbers.
+
+**A frame whose pipelines name no blend touches no blend state at all**, so every frame that drew
+before this has the call stream it had.
+
+`Capability` gains `dual-source-blend` and `per-target-blend` for the two corners that genuinely do
+not reach WebGL 2 — the `src1` family of factors, and a pass whose several colour targets name
+*different* blends. Both are **read off your pipelines rather than declared**, so you do not have to
+remember to put them in `requires`.
+
+### Changed: descriptions that drew the wrong picture are refused by name
+
+Each of these was drawing on one backend and refused on the other, or drawing wrong on both.
+
+- **A draw naming its own vertex count on a pipeline that reads geometry.** WebGL 2 refused it;
+  WebGPU built it and let the card refuse it afterwards with a message naming neither the draw nor
+  the pipeline, while `resolve` and `cost` passed it either way.
+- **A draw naming instances alone on a pipeline with no geometry to instance.** Refused twice before,
+  in two different sentences.
+- **A texture carrying a `source` and no `data` yet**, under several samples a pixel or under the
+  frame's own size. A `TextureResource` carries `source`, the address its contents come from, and
+  `data`, the bytes that came back, so that is the description you hold before your fetch returns.
+  WebGPU read `data` alone and drew it; WebGL 2 refused it. Both refuse it now, in one sentence: a
+  description is refused for what it says, not for how far its fetch has got.
+- **A mip ladder over a texture with nothing in it to average.** WebGL 2 refused it; WebGPU built the
+  levels of an empty texture and said nothing.
+
+### Changed: one wording where two backends printed two
+
+Where a frame shows a resource it does not declare, both backends printed their own sentence and a
+third was already coming from the validator. There is one now, the validator's: `the frame for "…"
+presents resource N, which it does not declare`. **If you match on the text of a refusal, this is the
+one to re-read.** Matching on refusal text is not something this package asks you to do, and these
+messages are written for a reader rather than for a parser.
+
+### Under the hood, with nothing for you to do
+
+Six rules about the shape of a declared texture were written once in each backend, two of them
+already disagreeing; they are stated once in the validator now and both backends reach it, so a
+description gets one answer whichever backend draws it. The stencil reference was declared three
+times with two values — WebGPU wrote and compared `1` where WebGL 2 used `0xff` — and is one number
+in one table. Neither changes a picture.
+
 ## 0.4.0
 
 **One addition and nothing else.** No name on the main import path changed: 69 run-time names and

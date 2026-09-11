@@ -194,8 +194,19 @@ additive door that removed nothing and moved no name, so a new export here does 
 is a patch whatever this table says.
 
 1. **`0.5.0` — item 2, the counting stencil**, carrying whichever of items 4, 5, 6, 7 and 8 have
-   landed by then.
-2. **`0.6.0` — the spine**: items 9, 10, 11 and 12, carrying items 13, 15 and 18 if they landed.
+   landed by then. **Cut on 2026-09-11, and it carries the spine as well, which this order did not
+   foresee.** Items 2, 4, 5, 6, 7 and 8 all landed that day — everything the row allowed for — but so
+   had items 9, 10, 11 and 12, *after* `0.4.0` was tagged and before this cut was taken. A version
+   carries every commit since the last tag and not the items a plan assigned it, so `0.5.0` is the
+   spine and the stencil together and row 2 below is already spent. The version is bumped in the
+   repository and **nothing has been pushed, tagged or published** — that is Siva's to ask for, the
+   release runs in CI from the tag, and a published version cannot be withdrawn.
+2. ~~**`0.6.0` — the spine**: items 9, 10, 11 and 12, carrying items 13, 15 and 18 if they landed.~~
+   **Spent inside `0.5.0`.** Those four landed before that cut was taken, so they shipped with it.
+   What is left for a second cut is items 13, 15 and 18 if they land, which are a patch by the table
+   above rather than a minor. **The lesson is worth keeping**: a cut order assigns items to versions
+   and a version carries commits, so an item that lands early rides the next cut whatever the plan
+   said. Check `git log <last tag>..HEAD` before writing a changelog entry, not the plan.
 3. **`0.7.0` — the lifetimes and the vocabulary**: items 14, 16 and 17.
 
 **Why item 2 goes first, and the reason is not the consumer.** Item 2 is argued on the specification —
