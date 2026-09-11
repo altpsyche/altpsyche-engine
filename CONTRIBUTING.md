@@ -94,9 +94,17 @@ proves less than it looks like. One honest line, in the commit message.
 
 ## How work is tracked
 
-**In the issue tracker and in commit messages.** There is no queue in this repository. Every
-landed change carries the measurement it earned in its commit message, so `git log` is the
-record of what was done and what it cost.
+**In [`docs/ROADMAP.md`](docs/ROADMAP.md) and in commit messages.** The roadmap is the queue: it
+says what is available to work on, what is blocked, and what is only an idea, and an item that has
+landed carries its reading there under a `Landed on` heading. Every landed change carries the
+measurement it earned in its commit message, so `git log` is the record of what was done and what
+it cost — `git log --grep '^item 27'` still finds what item 27 landed.
+
+This file said "there is no queue in this repository" until 2026-09-11, and that was true when it
+was written: the queue, the register, the direction document and the session handover were all
+deleted at 0.3.0 when the 107 items they tracked were emptied. A queue exists again, restarted on
+2026-08-27 when the package took on the layer above the renderer, and the edit that restarted it did
+not reach this file. `CLAUDE.md` has said so since that day.
 
 If you want the reasoning behind a design, read the doc comments. This codebase writes *why*
 at the point of the decision, not in a document beside it.

@@ -65,5 +65,15 @@ the format is being built. This package is not on the path to native and does no
 transforms and `sceneView`, is not what that painter will use. That is worth knowing before the scene
 layer is extended for a consumer that will not arrive.
 
-**The counting stencil is the one thing the figure work waits on here.** Nothing else in that
-repository's plan reaches this one.
+**Two items here were waited on and both have landed.** This read "the counting stencil is the one
+thing the figure work waits on here" until 2026-09-11, and it was one short: the ladder in
+[`ROADMAP.md`](ROADMAP.md) carries a row that closes the arithmetic written twice across the two
+packages — six `vec3` functions identical character for character and nine `mat4` functions
+overlapping — and what that row needed from here was **item 3**, the `./maths` door, which landed on
+2026-09-10. The counting stencil is **item 2**, which landed on 2026-09-11. So the count was wrong in
+this file rather than in that one, and it was wrong because the ladder moved twice after this
+document was last touched.
+
+**The count is that file's to keep and not this one's.** Read the ladder there rather than a number
+here; a sentence in this document naming how many items a consumer waits on is a sentence that goes
+stale the next time either plan moves, which is exactly what happened.

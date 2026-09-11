@@ -1235,13 +1235,15 @@ here is item 3". That document was last touched on 2026-09-08 and the ladder mov
 
 ### Steps
 
-1. **`CONTRIBUTING.md`'s "How work is tracked" says what is true**, which is that `docs/ROADMAP.md`
+1. **Landed on 2026-09-11.** `CONTRIBUTING.md`'s "How work is tracked" says what is true, which is that `docs/ROADMAP.md`
    is the queue and `git log` is the record of what landed. **The measurement**: the section before
    and after, and `tests/docs-paths.test.ts` green over the new link.
-2. **`docs/ARCHITECTURE.md`'s table names every edge the tree has**, with a row for the root-level
+2. **Landed on 2026-09-11**, and the walk found more wrong than the reading did — see below.
+   `docs/ARCHITECTURE.md`'s table names every edge the tree has, with a row for the root-level
    modules. **The measurement**: the table's "may import" column read off a walk rather than written,
    and every row of it true on the tree the day it lands.
-3. **`docs/FIGURE-FORMAT.md` names both items or defers to this file for the count.** **The
+3. **Landed on 2026-09-11**, as both: it names the two and defers the count. `docs/FIGURE-FORMAT.md`
+   names both items or defers to this file for the count. **The
    measurement**: the two documents naming the same set of items, read side by side.
 
 ### Done when
@@ -1254,6 +1256,50 @@ here is item 3". That document was last touched on 2026-09-08 and the ladder mov
 walk already exists in `tests/import-graph.test.ts`. Holding the table to that walk is a separate
 piece of work and is filed below as a candidate rather than folded in here, because it is a gate and
 not a correction.
+
+### Landed on 2026-09-11, and the layer table was wrong in five rows rather than three
+
+**All three documents say what a reader can check.** `npm test` 931 passing and `type-check` green,
+both unchanged — this item touches three markdown files and no code. `tests/docs-paths.test.ts`,
+`tests/api-signatures.test.ts` and `tests/docs-code.test.ts` are green over the edits, which is what
+holds the new `docs/ROADMAP.md` link in `CONTRIBUTING.md`.
+
+**Step 2's measurement, taken as the step said: read off a walk rather than written.** Every relative
+`import` and `export … from` specifier in every `.ts` file of these folders, recorded by which folder
+it crosses into. The result is the table, and **five rows were wrong rather than the three this entry
+named**:
+
+| row | the table said | the tree says |
+| --- | --- | --- |
+| `submit/` | `graph/`, `resource/`, `pipeline/` | `graph/`, `resource/` (types only), **`toy/`** — and **no `pipeline/` at all** |
+| `trace/` | `graph/` | **nothing** |
+| `host/` | `gpu/` | `gpu/`, **`graph/`** (types only), **`toy/`** |
+| `scene/` | `graph/` | `graph/`, **`resource/`** (types only) |
+| `toy/` | `graph/` | `graph/`, **the root modules** |
+
+Four of the five understate an edge and `submit/` is wrong in both directions at once. **The
+understated rows are the dangerous kind**: a reader trusting one to say a folder is reachable from
+fewer places than it is will move something and find out afterwards. `gpu/` read "everything below",
+which was a description of the diagram rather than of the tree; it is spelled out now, and what it
+does *not* reach — `scene/` and `host/` — is worth as much, being what keeps a renderer usable
+without either.
+
+**Two rows were added**: the root modules, which ship and which `toy/` imports two of, and `index.ts`,
+which reaches every folder but `pipeline/` and `submit/`. **A type-only edge is marked**, because it
+emits nothing at run time and so costs no download and cannot make a run-time cycle, while still
+being a compile-time dependency a reader tracing one needs to see.
+
+**Step 3 closed as both halves.** `docs/FIGURE-FORMAT.md` said the counting stencil was the one thing
+waited on and it was one short: the ladder's maths-duplication row needed **item 3**, the `./maths`
+door, which landed on 2026-09-10, beside **item 2**, which landed on 2026-09-11. Both are named, and
+the document now defers the count to this file rather than carrying a number of its own — a number
+there goes stale the next time either plan moves, which is exactly how it went stale.
+
+**What would make step 2 stick rather than rot again is still not done.** The table is prose about
+import edges and `tests/import-graph.test.ts` already walks the tree; holding the table to that walk
+is a gate rather than a correction and stays a candidate below. **So this row is true on the day it
+landed and nothing stops it drifting again**, which is the honest limit of this item and the reason
+the column is dated in the document itself.
 
 ---
 

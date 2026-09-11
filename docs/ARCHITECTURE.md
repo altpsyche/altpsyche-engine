@@ -29,17 +29,40 @@ execute.
 
 ## The layers
 
-| folder | owns | may import |
+**The `imports` column is read off the tree rather than written** (item 7). Every edge below was
+taken by walking the relative `import` and `export … from` specifiers of every `.ts` file in these
+folders on 2026-09-11 and recording which folder each one crosses into. It is what the tree *does*,
+not what it may: this column said "may import" until item 7 and three of its rows understated the
+edges while two overstated them, so a reader checking a row against the tree found it false either
+way. **A type-only edge is marked**, because it disappears at run time — nothing is emitted for it —
+so it costs no download and cannot make a cycle at run time, but it is still a compile-time
+dependency and a reader tracing one needs to know it is there.
+
+| folder | owns | imports, as of 2026-09-11 |
 | --- | --- | --- |
 | `graph/` | the frame graph: types, handles, and the pure functions over them (`validate`, `cost`, `refusal`, `capability`) | **nothing** |
-| `resource/` | the resident lifetime: `Arena`, and the on-demand translator chunk | `graph/` |
+| `resource/` | the resident lifetime: `Arena`, and the on-demand translator chunk | `graph/` (types only) |
 | `pipeline/` | the static lifetime: the pipeline cache, keyed on structure | `graph/` |
-| `submit/` | the transient lifetime: planning and executing one frame | `graph/`, `resource/`, `pipeline/` |
-| `gpu/` | the two backends, the renderer, and backend selection | everything below |
-| `toy/` | the toy tier: frame shortcuts, source reflection | `graph/` |
-| `scene/` | the scene tier: maths, scenes, materials, `sceneView` | `graph/` |
-| `host/` | the browser-facing edges: `createSurface`, `probe` | `gpu/` |
-| `trace/` | the recording double and frame coverage | `graph/` |
+| `submit/` | the transient lifetime: planning and executing one frame | `graph/`, `resource/` (types only), `toy/` |
+| `gpu/` | the two backends, the renderer, and backend selection | `graph/`, `pipeline/`, `resource/`, `submit/`, `toy/` |
+| `toy/` | the toy tier: frame shortcuts, source reflection | `graph/`, the root modules |
+| `scene/` | the scene tier: maths, scenes, materials, `sceneView` | `graph/`, `resource/` (types only) |
+| `host/` | the browser-facing edges: `createSurface`, `probe` | `gpu/`, `graph/` (types only), `toy/` |
+| `trace/` | the recording double and frame coverage | **nothing** |
+| the root modules | `wgsl-layout.ts`, `wgsl-binding.ts`, `wgsl-references.ts`, `shader-geometry.ts`, `deprecate.ts` — the WGSL reading a shader needs and the vertices a generated primitive is | `graph/` (types only) |
+| `index.ts` | the door, which is a list of re-exports and no logic | every folder above but `pipeline/` and `submit/`, and the root modules |
+
+**Five rows of that table were wrong before item 7, four of them understating an edge.** `submit/`
+was given `pipeline/` and imports none of it, while importing `toy/`, which was not listed — wrong in
+both directions at once. `trace/` was given `graph/` and imports nothing at all. `scene/` reaches
+`resource/` and `host/` reaches `graph/` and `toy/`, none of which the table allowed, and `toy/`
+reaches two of the root modules the table had no row for. **The understated rows are the dangerous
+kind**: a reader trusting one to say a folder is reachable from fewer places than it is will move
+something and find out afterwards.
+
+**`gpu/` read "everything below" and that was a description of the diagram rather than of the
+tree.** It is spelled out now, and what it does *not* import is worth as much: it reaches no `scene/`
+and no `host/`, which is what keeps a renderer usable without either.
 
 **`graph/` importing nothing is the rule everything else rests on.** It is what keeps a
 graph serialisable, comparable, and safe to post to a worker, and it is what lets `cost`,
