@@ -3313,31 +3313,73 @@ core-mips      as drawn: worst 128, 1,401,861 differ  |  flipped: worst 15, 574,
 `core-texture`'s flipped reading of **40 at worst 1** is the proof that the disagreement is a whole
 picture mirror and nothing else — with the upload left alone.
 
-### Steps, rewritten after step 2b — and step 2c is Siva's call
+### Landed on 2026-09-12, step 2c: the corpus agrees to zero, and the residual nobody could fix was the defect
 
-2c. **Decide how `@builtin(position)` is made to mean one thing on both backends.** This is an
-    architectural call and a session should not take it. The options, with what each costs:
+**Chosen by Siva after the research.** The WebGPU specification's own coordinate-system discussion
+names the approach for OpenGL in one line — *"flip Y in vertex shader and invert winding
+direction"* — and the levers that would avoid it do not exist here: `layout(origin_upper_left)` is
+desktop GLSL only, `glClipControl` is explicitly not in OpenGL ES, and a negative viewport height is
+Vulkan's. ANGLE, meeting the same problem from the other side, flips whole render passes rather than
+the builtin.
 
-    - **Negate y in the baked vertex stage**, so the picture rasterises the same way up as WebGPU's
-      and `gl_FragCoord` then agrees. Coherent, and it would let the `readPixels` and scissor flips
-      be deleted rather than kept — but it **reverses triangle winding**, which reaches face culling
-      and `core-count`'s whole reason for existing, since that preset cancels one square against
-      another by winding.
-    - **Correct the coordinate in the baked fragment**, replacing `gl_FragCoord` with
-      `vec4(gl_FragCoord.x, <height> - gl_FragCoord.y, …)`. Local and reverses nothing, but it means
-      rewriting naga's output and needs the frame height in the shader, which is a uniform the
-      package does not oblige a caller to declare.
-    - **Declare the mirror and refuse the frames that would show it.** Cheapest and honest, and it
-      makes a real capability difference visible instead of silent — but it narrows what WebGL 2
-      draws, and `@builtin(position)` is not an exotic thing to read.
+**What landed, in four places that must agree:**
 
-    **The measurement, whichever lands**: `core-texture` inside the tolerance on the card with no
-    flip, against 1,424,706 at worst 231.
-2d. **`core-mips`'s ladder residual**, which is a separate defect and is only visible once 2c lands.
-    Under the flip it reads 574,095 at worst 15 against a tolerance of 8 — WebGL 2 calls
-    `generateMipmap` where the WebGPU backend draws the steps by hand.
-3. **`core-texture` and `core-mips` join `gates/card.mjs`'s `SCENE_TIER`**, and the diagnostic block
-   and the comment holding them out come out with them.
+1. `gates/translate.mjs` **stops stripping** the clip-space y negation. Item 107 removed it; the
+   negation was right and the pairing was wrong.
+2. `GlslFrameGraph.framebufferOrigin` says which way up a frame's vertex stages leave the rows.
+   `glslFrameOf` sets `top-left`; a hand-authored frame carries nothing and is untouched.
+3. `gpu/webgl2.ts` inverts the **winding** for such a frame — `gl.frontFace(gl.CW)` — and
+   `readPixels` **does not turn it over**, because it is already stored top-first.
+4. `submit/gl2.ts` skips the **scissor** flip for the same frames, which is the second of the two
+   places this package reconciles the origin.
+
+**The result, on the card:**
+
+```
+                 before        after
+core-scissor     11            0
+core-blend        0            0
+core-target      77 (worst 2)  0
+core-stencil      0            0
+core-count        0            0
+core-scene       11            0
+core-draw-list   36            0
+core-material    18            0
+core-texture  1,424,706 (w235) 40 at worst 1  — inside the tolerance, and now gated
+core-mips     1,401,861 (w128) 574,095 at worst 15 — the ladder, still held out
+```
+
+**Every gated cross-backend preset is 0 of 1,440,000.** `core-texture` joins `SCENE_TIER`.
+
+**The finding that matters most is not `core-texture`.** It is that **11, 36 and 18 were never
+compiler noise.** `gates/translate.mjs` said so in as many words — "two hardware compilers folding
+the same arithmetic apart, which is what this gate's tolerance exists for" — and
+`docs/DEVICES.md` carried them as re-takeable constants a session seeing them "has found nothing
+wrong". They were the last trace of the coordinate mismatch, and the correct fix takes them to
+zero. **A tolerance is for what cannot be fixed; a residual that survives every attempt so far is
+not evidence that it is one.** That sentence is now in the file that made the claim.
+
+**Two things the plan did not foresee.** The scissor needed conditioning too — `submit/gl2.ts`'s own
+comment had named it as one of exactly two places, and only one had been done. And
+`core-draw-list` and `core-material` failed at 96,494 and 101,491 until their **hand-authored**
+vertex stages were given the same negation: those two files stand in for translator output where
+GLSL ES 3.00 has no storage-buffer syntax, so they must follow its conventions, and they still
+carried "Z only, never Y (item 107)".
+
+**Item 8's rejected alternative is vindicated in substance and its objection stands.** It measured
+this same 0 and was rejected because dropping the readback flip would break hand-authored GLSL. That
+objection was right — which is why the flip is **conditioned on the frame** rather than removed. A
+user's own `glslFrame` still gets the flip it always had.
+
+### Steps, remaining
+
+2d. **`core-mips`'s ladder**, which is the one defect left and is unrelated to the coordinate. It
+    reads 574,095 at worst 15 against a tolerance of 8. WebGL 2 calls `generateMipmap` where the
+    WebGPU backend draws the steps by hand, so the two ladders are two implementations. **The
+    measurement**: its straight comparison after, and if the two cannot be made to agree, an argued
+    tolerance for this preset written at the gate rather than a silent widening.
+3. **`core-mips` joins `SCENE_TIER`** and the diagnostic block comes out with it. `core-texture`
+   joined at step 2c.
 
 ### Done when
 

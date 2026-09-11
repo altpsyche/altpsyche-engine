@@ -705,6 +705,7 @@ const SCENE_TIER = [
   'core-count',
   'core-scissor',
   'core-target',
+  'core-texture',
 ];
 /**
  * One preset drawn through both backends on this card and compared two ways: as
@@ -838,7 +839,7 @@ for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
 // question, not an invariant. A gate that is expected to be red stops being read,
 // and these two are expected to be red until item 20's step 2 lands. **Step 3
 // deletes this block** when the two presets join `SCENE_TIER` above.
-const HELD_OUT = ['core-texture', 'core-mips'];
+const HELD_OUT = ['core-mips'];
 console.log('');
 console.log('     item 20, held off the list above — reported, never gated:');
 for (const one of corpus.filter((preset) => HELD_OUT.includes(preset.id))) {

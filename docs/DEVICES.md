@@ -38,6 +38,38 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-12, Linux, the whole cross-backend corpus reads zero, and 11/36/18 were never compiler noise
+
+**Why this row exists.** Item 20 gave WGSL its own framebuffer origin on WebGL 2 — the negation kept
+in the bake, the winding inverted, and the readback and scissor flips conditioned on the frame. Every
+gated cross-backend preset went to exact agreement, including three that this file previously carried
+as stable non-zero constants.
+
+```
+                 before        after
+core-scissor     11            0
+core-blend        0            0
+core-target      77 (worst 2)  0
+core-stencil      0            0
+core-count        0            0
+core-scene       11            0
+core-draw-list   36            0
+core-material    18            0
+core-texture  1,424,706 (w235) 40 at worst 1   — inside tolerance, now gated
+core-mips     1,401,861 (w128) 574,095 (w15)   — the mip ladder, a separate defect
+```
+
+**The rows above this one record 11, 36 and 18 three times as an independently reproduced reading,
+and said a session seeing them "has found nothing wrong".** That was true of the tree as it then
+stood and is no longer true of anything. They were the residue of WGSL's `@builtin(position)` being
+mirrored against GLSL's `gl_FragCoord`, not of two compilers folding arithmetic apart. **Those rows
+are left standing**: they were honest readings of the tree that existed, and deleting them would hide
+that a number can be reproduced exactly, three times, on one machine, and still be a defect.
+
+`gate:card` **33 of 33**. The whole corpus drew.
+
+---
+
 ### 2026-09-11, Linux, three presets compared across the backends for the first time, and two were wrong
 
 **Why this row exists.** Item 19 made `core-texture`, `core-target` and `core-mips` drawable on
