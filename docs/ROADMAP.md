@@ -3241,23 +3241,44 @@ explain every number above**: the character preserved, the values wrong nearly e
 `core-target` unaffected because its texture is written by the same backend that reads it and is
 mirrored either way.
 
-**It is a hypothesis and the item does not proceed on it.** Step 1 is the measurement that would
-settle it.
+### Landed on 2026-09-11, step 1: the hypothesis is right, and `core-mips` has a second defect under it
 
-### Steps
+**Measured on the card**, by a block in `gates/card.mjs` that draws each preset through both backends
+and compares twice — as drawn, and with the WebGL 2 frame flipped in Y. Reported, never gated.
 
-1. **Decide whether the two pictures are vertical mirrors of each other, by measuring it.** Compare
-   one backend's frame against the other's flipped in Y, on the card, for both presets. **The
-   measurement**: the channels differing under the flip against the 1,424,706 and 1,401,861 above.
-   If the flipped comparison comes back inside the tolerance, the cause is the texture origin and
-   step 2 is written to it. **If it does not, this entry's hypothesis is wrong and is deleted rather
-   than kept as a guess** — and the step says what the numbers were instead.
-2. **Fix it where the decision belongs, once step 1 says what it is.** Not written until then, on
-   purpose: the candidates differ completely depending on the answer, and a plan written now would
-   be a plan for the hypothesis rather than for the defect.
-3. **`core-texture` and `core-mips` join `gates/card.mjs`'s `SCENE_TIER`.** They are named in that
-   file's comment as held out under this item, so the comment comes out with them. **The
-   measurement**: both inside the tolerance on the card, quoted against the numbers above.
+```
+core-texture   as drawn: worst 235, 1,424,706 of 1,440,000 differ  |  flipped: worst  1,      40 differ
+core-mips      as drawn: worst 128, 1,401,861 of 1,440,000 differ  |  flipped: worst 15, 574,095 differ
+```
+
+**`core-texture` is a vertical mirror and nothing else.** Flipped it comes back at **worst 1, 40 of
+1,440,000** — inside the tolerance of 8, and the same one-channel residual every passing preset has.
+The hypothesis is confirmed for it outright.
+
+**`core-mips` is a vertical mirror *and something else*.** The flip takes it from 1,401,861 channels
+to 574,095 and from worst 128 to worst 15, which is most of the way and not far enough: 15 against a
+tolerance of 8. **So there are two defects here, not one**, and the second was hidden under the
+first. The likely second is the one the item already named as the reason this preset was worth
+comparing at all — the two backends build a mip ladder by different means — but that is again a
+hypothesis and step 2b is where it gets measured.
+
+**What this does to the steps.** Step 2 splits: the mirror is one fix for both presets, and
+`core-mips`'s residual is its own. `core-texture` can close on the mirror alone, and it is the
+cleaner check that the mirror fix is right, since nothing else is wrong with it.
+
+### Steps, rewritten after step 1
+
+2. **Fix the mirror where the decision belongs.** Both presets sample a texture uploaded from bytes
+   the build wrote, and `core-target` — which agrees — samples one a pass drew. **The measurement**:
+   `core-texture` on the card inside the tolerance *without* a flip, quoted against its 40-at-worst-1
+   flipped reading, which is the number the fix has to reproduce with no flip in it.
+2b. **Measure what is left of `core-mips` once the mirror is gone**, before fixing anything. **The
+   measurement**: its straight comparison after step 2, against 574,095 at worst 15. If it is inside
+   the tolerance then the mirror was the whole of it and this step closes empty; if not, it names
+   what remains and a step is written for it.
+3. **`core-texture` and `core-mips` join `gates/card.mjs`'s `SCENE_TIER`** and the diagnostic block
+   and the comment holding them out come out with them. **The measurement**: both inside the
+   tolerance on the card, quoted against the numbers above.
 
 ### Done when
 

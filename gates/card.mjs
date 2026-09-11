@@ -706,13 +706,18 @@ const SCENE_TIER = [
   'core-scissor',
   'core-target',
 ];
-console.log('');
-for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
-  // Bytes do not survive `page.evaluate`, so they cross as arrays keyed by the
-  // resource's index — its handle since item 87 — and are rebuilt inside the page.
-  const bytesArrays = Object.fromEntries([...one.bytes].map(([index, made]) => [index, [...made]]));
-  const both = await page.evaluate(
-    async ({ id, description, code, block, bytesArrays, values, W, H }) => {
+/**
+ * One preset drawn through both backends on this card and compared two ways: as
+ * drawn, and with the WebGL 2 frame flipped in Y. The straight reading is what
+ * `SCENE_TIER` gates on; the flipped one is item 20's step 1, which asks whether
+ * two disagreeing pictures are vertical mirrors of each other.
+ *
+ * It is one function so that the gated comparison and the diagnostic cannot drift
+ * apart: a diagnostic drawing its frames differently from the check it is
+ * diagnosing would explain the wrong thing.
+ */
+/** @type {(input: { id: string; description: any; code: string; block: any; bytesArrays: any; values: any; W: number; H: number }) => Promise<any>} */
+const compareBothWays = async ({ id, description, code, block, bytesArrays, values, W, H }) => {
       /** @param {any} description */
       const generatedFor = (description) => {
         const generated = new Map();
@@ -769,26 +774,97 @@ for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
       }
       gl.dispose();
 
-      return window.compareFrames(fromGPU, fromGL, W, H);
-    },
-    { id: one.id, description: one.description, code: one.code, block: one.block, bytesArrays, values: one.values, W, H }
-  );
+      // Both comparisons, because item 20 asks whether the two pictures are
+      // vertical mirrors of each other and the straight reading alone cannot say.
+      // The flip is of the WebGL 2 frame, row for row; `readPixels` has already
+      // put both frames top row first, so this is a mirror of the *picture* and
+      // not an undo of the row-direction repack.
+      const stride = W * 4;
+      const flipped = new Uint8Array(fromGL.length);
+      for (let y = 0; y < H; y++) {
+        flipped.set(fromGL.subarray((H - 1 - y) * stride, (H - y) * stride), y * stride);
+      }
+      return {
+        straight: window.compareFrames(fromGPU, fromGL, W, H),
+        flipped: window.compareFrames(fromGPU, flipped, W, H),
+      };
+    };
+
+console.log('');
+for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
+  // Bytes do not survive `page.evaluate`, so they cross as arrays keyed by the
+  // resource's index — its handle since item 87 — and are rebuilt inside the page.
+  const bytesArrays = Object.fromEntries([...one.bytes].map(([index, made]) => [index, [...made]]));
+  const both = await page.evaluate(compareBothWays, {
+    id: one.id,
+    description: one.description,
+    code: one.code,
+    block: one.block,
+    bytesArrays,
+    values: one.values,
+    W,
+    H,
+  });
 
   const label = `${one.id} on both backends`;
   if (both.skip) say(true, `${label}  skipped: ${both.skip}`);
   else if (both.error) say(false, `${label}  ${both.error}`);
   else {
+    const straight = /** @type {any} */ (both).straight;
     // **Asserted, since item 107 closed.** It reported rather than asserted while the
     // two backends drew different pictures; the mirror is gone and the residual is
     // now one channel of rounding, so this holds the same bar the gradient control
     // above does. Three numbers print whether it passes or not: a seam nobody prints
     // is a seam nobody looks at, and the average that would bury it does not exist.
     say(
-      both.maxDelta <= TOLERANCE,
-      `${label}  hard jumps ${both.hardJumps.a} against ${both.hardJumps.b}, ` +
-        `worst ${both.maxDelta}, ${both.differing.toLocaleString('en-US')} of ${both.channels.toLocaleString('en-US')} channels differ`
+      straight.maxDelta <= TOLERANCE,
+      `${label}  hard jumps ${straight.hardJumps.a} against ${straight.hardJumps.b}, ` +
+        `worst ${straight.maxDelta}, ${straight.differing.toLocaleString('en-US')} of ${straight.channels.toLocaleString('en-US')} channels differ`
     );
   }
+}
+
+// ── Item 20's step 1: are the two pictures vertical mirrors? ───────────────────
+//
+// `core-texture` and `core-mips` disagree across the backends at nearly every
+// channel — 1,424,706 and 1,401,861 of 1,440,000, against a tolerance of 8 — and
+// item 19's step 4 found it the moment they were first compared. Item 20 carries
+// one hypothesis: both sample a *generated* texture, where `core-target`, which
+// agrees, samples one a pass drew, and WebGPU's texture origin is top-left where
+// OpenGL's is bottom-left.
+//
+// **This prints both readings and gates neither**, which is the same form as the
+// timing line below and for the same reason: it is a measurement taken to settle a
+// question, not an invariant. A gate that is expected to be red stops being read,
+// and these two are expected to be red until item 20's step 2 lands. **Step 3
+// deletes this block** when the two presets join `SCENE_TIER` above.
+const HELD_OUT = ['core-texture', 'core-mips'];
+console.log('');
+console.log('     item 20, held off the list above — reported, never gated:');
+for (const one of corpus.filter((preset) => HELD_OUT.includes(preset.id))) {
+  const bytesArrays = Object.fromEntries([...one.bytes].map(([index, made]) => [index, [...made]]));
+  const both = await page.evaluate(compareBothWays, {
+    id: one.id,
+    description: one.description,
+    code: one.code,
+    block: one.block,
+    bytesArrays,
+    values: one.values,
+    W,
+    H,
+  });
+  if (both.skip || both.error) {
+    console.log(`     ${one.id}  ${both.skip ?? both.error}`);
+    continue;
+  }
+  const straight = /** @type {any} */ (both).straight;
+  const flipped = /** @type {any} */ (both).flipped;
+  console.log(
+    `     ${one.id}  as drawn: worst ${straight.maxDelta}, ` +
+      `${straight.differing.toLocaleString('en-US')} of ${straight.channels.toLocaleString('en-US')} differ  |  ` +
+      `WebGL 2 flipped in Y: worst ${flipped.maxDelta}, ` +
+      `${flipped.differing.toLocaleString('en-US')} of ${flipped.channels.toLocaleString('en-US')} differ`
+  );
 }
 
 // ── A thousand objects, timed on the card (item 31's millisecond half) ─────────
