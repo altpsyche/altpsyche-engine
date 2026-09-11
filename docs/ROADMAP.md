@@ -229,7 +229,20 @@ is a patch whatever this table says.
    above rather than a minor. **The lesson is worth keeping**: a cut order assigns items to versions
    and a version carries commits, so an item that lands early rides the next cut whatever the plan
    said. Check `git log <last tag>..HEAD` before writing a changelog entry, not the plan.
-3. **`0.7.0` — the lifetimes and the vocabulary**: items 14, 16 and 17.
+3. ~~**`0.7.0` — the lifetimes and the vocabulary**: items 14, 16 and 17.~~ **Spent inside `0.5.0`
+   as well, and that is the third time.** All three landed on 2026-09-11, after the `0.5.0` bump
+   and before any tag — `package.json` says `0.5.0`, the last tag that exists is still `v0.4.0`, and
+   `git log v0.4.0..HEAD` is 46 commits. A version carries commits, so `0.5.0` carries the stencil,
+   the spine, item 1, and the lifetimes and the vocabulary too. **No bump is owed and proposing one
+   would cut a version for work the unreleased number already covers.** What is left for a cut after
+   it is items 13, 15 and 18 if they land, which the table above makes a patch.
+
+**Every row of this order is now spent, and the order was written on the same day it was spent.**
+That is not a failure of the plan so much as what the plan could not do: it assigned items to
+versions while the session was landing them faster than a cut could be taken, and each row in turn
+was overtaken. **The rule that survives is the one rows 2 and 3 both record — read
+`git log <last tag>..HEAD`, never the plan, before writing a changelog entry or proposing a
+number.**
 
 **Item 1 landed on 2026-09-11, and `0.5.0` carries it.** Its five steps are five commits after the
 `0.5.0` version bump — but **`0.5.0` has never been tagged or published**, the bump being a number in
