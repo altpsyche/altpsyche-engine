@@ -531,7 +531,7 @@ export function createWebGPUBackend(
          * be — item 18's measurement is of geometry, and a rule this file grows
          * on a guess is the thing that comment is trying not to be.
          */
-        const refillable = new Map<number, { buffer: GPUBuffer; bytes: number }>();
+        const refillable = new Map<number, { buffer: GPUBuffer; bytes: number; last?: Uint8Array<ArrayBuffer> }>();
         // The arena handle each page-or-card buffer was allocated under, kept by the
         // resource's index so a readback can name one by handle through the arena's
         // own `read` (§9, item 89) rather than through a program method. Only
@@ -556,7 +556,7 @@ export function createWebGPUBackend(
           device.queue.writeBuffer(built, 0, bytes);
           arena.wrote(bytes.byteLength);
           buffers.set(index, built);
-          refillable.set(index, { buffer: built, bytes: bytes.byteLength });
+          refillable.set(index, { buffer: built, bytes: bytes.byteLength, last: bytes });
         }
 
         // Which buffers a query resolves into, so each carries the usage flag for a
@@ -687,14 +687,21 @@ export function createWebGPUBackend(
           buffers.set(index, built);
           bufferHandles.set(index, handle);
           // The contents the build wrote, uploaded once before anything reads them,
-          // which is what a copy of a pipeline carrying its own numbers is handed. A
-          // graph re-submitted with different bytes here (item 98) writes them the
-          // same way, at build, since a page changes a buffer by re-submitting the
-          // graph rather than mutating a held program.
+          // which is what a copy of a pipeline carrying its own numbers is handed.
+          //
+          // **This used to say that a graph re-submitted with different bytes
+          // (item 98) writes them the same way, at build, "since a page changes a
+          // buffer by re-submitting the graph rather than mutating a held
+          // program". That stopped being true on 2026-09-11** (item 18). A
+          // re-submitted graph whose bytes moved now hits the program cache and is
+          // written through `refill` instead, because writing at build meant
+          // compiling at build, and a picture whose geometry moves compiled every
+          // frame. Re-submitting the graph is still how a page changes a buffer;
+          // what changed is that doing so no longer costs a program.
           if (resource.data) {
             device.queue.writeBuffer(built, 0, resource.data);
             arena.wrote(resource.data.byteLength);
-            refillable.set(index, { buffer: built, bytes: resource.data.byteLength });
+            refillable.set(index, { buffer: built, bytes: resource.data.byteLength, last: resource.data });
           }
         }
 

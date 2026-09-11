@@ -900,7 +900,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
        * buffer bound and GL binds by target, which is the one thing that does not
        * generalise across the two backends.
        */
-      const refillable = new Map<number, { buffer: { target: number; buffer: WebGLBuffer }; bytes: number }>();
+      const refillable = new Map<
+        number,
+        { buffer: { target: number; buffer: WebGLBuffer }; bytes: number; last?: Uint8Array<ArrayBuffer> }
+      >();
       const buildGeometry = (handle: VertexHandle): GL2Geometry => {
         const key = indexOf(handle);
         const cached = geometryPlans.get(key);
@@ -914,7 +917,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, vertices.data, gl.STATIC_DRAW);
         arena.wrote(vertices.data.byteLength);
-        refillable.set(key, { buffer: { target: gl.ARRAY_BUFFER, buffer: vertexBuffer }, bytes: vertices.data.byteLength });
+        refillable.set(key, {
+          buffer: { target: gl.ARRAY_BUFFER, buffer: vertexBuffer },
+          bytes: vertices.data.byteLength,
+          last: vertices.data,
+        });
         let index: GL2Geometry['index'];
         if (vertices.indices !== undefined) {
           const indices = resourceOf(frame, vertices.indices);
@@ -931,6 +938,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           refillable.set(indexOf(vertices.indices), {
             buffer: { target: gl.ELEMENT_ARRAY_BUFFER, buffer: indexBuffer },
             bytes: indices.data.byteLength,
+            last: indices.data,
           });
           index = {
             buffer: indexBuffer,
@@ -1057,7 +1065,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         if (spec.data) {
           gl.bufferData(gl.UNIFORM_BUFFER, spec.data, gl.STATIC_DRAW);
           arena.wrote(spec.data.byteLength);
-          refillable.set(index, { buffer: { target: gl.UNIFORM_BUFFER, buffer }, bytes: spec.data.byteLength });
+          refillable.set(index, {
+            buffer: { target: gl.UNIFORM_BUFFER, buffer },
+            bytes: spec.data.byteLength,
+            last: spec.data,
+          });
         }
         perDrawGLBuffers.set(index, buffer);
       }
@@ -1081,7 +1093,11 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         if (spec.data) {
           gl.bufferData(gl.UNIFORM_BUFFER, spec.data, gl.STATIC_DRAW);
           arena.wrote(spec.data.byteLength);
-          refillable.set(index, { buffer: { target: gl.UNIFORM_BUFFER, buffer }, bytes: spec.data.byteLength });
+          refillable.set(index, {
+            buffer: { target: gl.UNIFORM_BUFFER, buffer },
+            bytes: spec.data.byteLength,
+            last: spec.data,
+          });
         }
         storageGLBuffers.set(index, buffer);
       }

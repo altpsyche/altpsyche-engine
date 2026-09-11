@@ -7,15 +7,18 @@ import { indices, pipelineHandle, vertices } from '../graph/handles.js';
 import { createFakeGL } from './support/fake-gl';
 
 /**
- * What a picture whose geometry moves costs the program cache (item 18, step 1).
+ * What a picture whose geometry moves costs the program cache (item 18).
  *
- * **This file measures a defect rather than asserting a fix.** The reading is
- * that `frameKey` serialises `VertexResource.data` byte for byte, and that the
- * `WeakMap` in front of it is keyed on the frame *object* — so a frame rebuilt
- * once per animation tick misses both caches and recompiles. Nothing here
- * changes that. The numbers below are the before-state the fix is measured
- * against, and they are written as assertions so the fix cannot land without
- * moving them.
+ * **This file measured the defect at step 1 and holds the fix at step 4.** The
+ * before-state is kept in the numbers below rather than deleted, because a
+ * measurement with nothing to compare against says very little.
+ *
+ * ```
+ *                                    before        after
+ *   sixty ticks, geometry moving     60 links      1 link
+ *   sixty ticks, bytes held still     1 link       1 link
+ *   the key, over 7,696 bytes        31,335 ch     1,319 ch
+ * ```
  *
  * **What is measured here and what is not.** These counts are what this machine
  * can take: how many programs the double was asked to link, and how long the key
@@ -30,10 +33,14 @@ import { createFakeGL } from './support/fake-gl';
 
 const FRAMES = 60;
 
-/** The two figures the last test pins, written down so a change to either is a
+/** The figures the last test pins, written down so a change to any of them is a
  * red test rather than a silently different measurement. Taken on 2026-09-11 on
  * this tree, for one 16x16 quad grid: 4,624 bytes of vertices and 3,072 of
- * indices, and a key of 31,335 characters built over them.
+ * indices.
+ *
+ * **The key was 31,335 characters over those 7,696 bytes and is now 1,319** — it
+ * went from four times the geometry to a sixth of it, because the bytes are gone
+ * and only their lengths remain.
  *
  * **The key is four times the geometry, and the reason was counted rather than
  * guessed.** `canonical` writes each byte as a latin1 character inside a JSON
@@ -45,10 +52,15 @@ const FRAMES = 60;
  * expansion is this bad and why it is worst for exactly the data a figure
  * carries most of.
  *
- * That is the per-tick serialisation a moving figure pays **before** the compile
- * it then also pays. */
-const KEY_LENGTH = 31_335;
+ * That was the per-tick serialisation a moving figure paid **before** the compile
+ * it then also paid. Both are gone: the compile because the geometry no longer
+ * identifies a program, and the escaping because the bytes are no longer in the
+ * string. */
+const KEY_LENGTH = 1_319;
 const CARRIED_BYTES = 7_696;
+/** What the key was before the bytes came out of it, kept so the assertion below
+ * is a comparison rather than a number on its own. */
+const KEY_LENGTH_BEFORE = 31_335;
 
 const GRID_VERTEX =
   '#version 300 es\nlayout(location=0) in vec2 position;\nlayout(location=1) in vec2 grid;\nvoid main(){gl_Position=vec4(position,0.0,1.0);}';
@@ -61,9 +73,10 @@ const FRAGMENT = '#version 300 es\nprecision highp float;\nout vec4 c;\nvoid mai
  * zero gives the control — a fresh object per tick carrying bytes that never
  * change.
  */
-function figureFrame(moved: number): FrameGraph {
+function figureFrame(moved: number, over: { grid?: number } = {}): FrameGraph {
   const grid = GEOMETRY_PRIMITIVE['quad-grid'];
-  const made = grid.bytes(16, 16);
+  const side = over.grid ?? 16;
+  const made = grid.bytes(side, side);
   // A fresh array per frame rather than a mutated one, because a live loop that
   // rebuilds geometry hands over new bytes and the key reads the bytes it is
   // given.
@@ -110,41 +123,76 @@ async function ticks(moving: boolean) {
   return { gl, linked: gl.of('linkProgram').length };
 }
 
-describe('a picture whose geometry moves, against the program cache (item 18, before-state)', () => {
-  it('compiles a program every frame, where the cache exists to compile once', async () => {
-    const { linked } = await ticks(true);
+describe('a picture whose geometry moves, against the program cache (item 18)', () => {
+  it('compiles once over sixty frames, where it used to compile sixty times', async () => {
+    const { gl, linked } = await ticks(true);
 
-    // One link per tick. This is the defect: the cache is keyed on a string that
-    // contains the geometry bytes, so the one field a moving figure changes every
-    // frame is the field that decides the key.
-    expect(linked).toBe(FRAMES);
+    // One link. Before the bytes came out of the key this was sixty — one per
+    // tick, because the one field a moving figure changes every frame was the
+    // field that decided the key.
+    expect(linked).toBe(1);
+
+    // And the geometry still reached the card on every tick after the first: two
+    // buffers refilled on each of the fifty-nine cache hits. Without this
+    // assertion the test above would pass on a cache that hit and drew the first
+    // frame's geometry for the rest of the run, which is the failure the whole
+    // step is written around.
+    expect(gl.of('bufferSubData')).toHaveLength((FRAMES - 1) * 2);
+    expect(gl.of('bufferSubData')[0]?.offset).toBe(0);
   });
 
-  it('compiles once where the bytes hold still, so it is the bytes and not the fresh object', async () => {
+  it('compiles once where the bytes hold still, as it always did', async () => {
     const { linked } = await ticks(false);
 
-    // The control separates the two caches. The frame object is fresh every tick
-    // here too, so the `WeakMap` misses all sixty times and `frameKey` runs all
-    // sixty times — but the string it builds is identical, the `programs` map
-    // hits, and one program is linked. So the recompile above is caused by the
-    // bytes being in the key and not by the frame being a new object.
     expect(linked).toBe(1);
   });
 
-  it('serialises the whole geometry into the key, once per tick', () => {
+  it('refills nothing at all for a page that re-submits one frame', async () => {
+    const gl = createFakeGL();
+    const renderer = await createFrameRenderer(gl.canvas, { backend: 'webgl2' });
+    if (!renderer) throw new Error('the fake canvas gave no WebGL 2 renderer');
+    // One frame object, submitted sixty times, which is the shape of a page whose
+    // picture does not move.
+    const held = figureFrame(0);
+    for (let tick = 0; tick < FRAMES; tick++) submit(renderer, held, {});
+
+    // The refill is an identity test on the arrays, not a comparison of contents,
+    // so a page handing back the same bytes writes no buffer. The cost item 18
+    // removed is not replaced by a smaller one charged to everybody.
+    expect(gl.of('linkProgram')).toHaveLength(1);
+    expect(gl.of('bufferSubData')).toHaveLength(0);
+  });
+
+  it('still separates two figures whose geometry is a different length', async () => {
+    const gl = createFakeGL();
+    const renderer = await createFrameRenderer(gl.canvas, { backend: 'webgl2' });
+    if (!renderer) throw new Error('the fake canvas gave no WebGL 2 renderer');
+
+    submit(renderer, figureFrame(0), {});
+    submit(renderer, figureFrame(0, { grid: 8 }), {});
+
+    // A buffer is allocated for a size, so a figure that grew is a different
+    // program and has to *miss* rather than hit and be refused: a miss
+    // recompiles, which is correct, where a throw would turn resizing a figure
+    // into an error the page never asked for. The lengths stay in the key for
+    // exactly this.
+    expect(gl.of('linkProgram')).toHaveLength(2);
+  });
+
+  it('carries the geometry as a length rather than as bytes', () => {
     const grid = GEOMETRY_PRIMITIVE['quad-grid'];
     const made = grid.bytes(16, 16);
     const key = frameKey(figureFrame(1));
 
-    // The key is longer than the geometry it carries, because every byte of both
-    // buffers is in it and the rest of the frame is on top of that. This is the
-    // string rebuilt on every tick of the loop above — the `WeakMap` in front of
-    // `frameKey` is keyed on the frame object, and a live loop's frame is a fresh
-    // object every tick, so it never hits.
     const carried = made.vertices.byteLength + made.indices.byteLength;
-    expect(key.length).toBeGreaterThan(carried);
-    expect(key.length).toBe(KEY_LENGTH);
     expect(carried).toBe(CARRIED_BYTES);
+    expect(key.length).toBe(KEY_LENGTH);
+    // The key is now a fraction of the geometry rather than four times it, which
+    // is the per-tick serialisation this step removed.
+    expect(key.length).toBeLessThan(carried);
+    expect(key.length).toBeLessThan(KEY_LENGTH_BEFORE / 20);
+    // The lengths themselves are still in it, which is what keeps a figure that
+    // grew from hitting a buffer built for the smaller one.
+    expect(key).toContain(String(made.vertices.byteLength));
   });
 });
-

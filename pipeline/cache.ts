@@ -329,11 +329,55 @@ function canonical(value: unknown): string {
  * static slice of a program's key is decided by the module that owns pipeline
  * structure rather than by a second serialisation the two could disagree on. The
  * modules are carried whole as well, so a document the frame declares but no
- * pipeline names still separates two frames. When items 13 and 15 move resource
- * and pipeline ownership out of `createProgram`, the resident and per-frame slices
- * here move to the arena's and the executor's handles and this composite key goes
- * with them.
+ * pipeline names still separates two frames.
+ *
+ * **A resource's bulk bytes are not in here any more** (item 18, 2026-09-11), only
+ * their length — see `keyableResources` below for why, and for why the length
+ * stays. Textures are the exception and keep their bytes.
+ *
+ * **A note that used to sit here has been removed rather than carried forward.**
+ * It said that "when items 13 and 15 move resource and pipeline ownership out of
+ * `createProgram`" this composite key would move with them. Those were the *old*
+ * queue's items 13 and 15, and that queue was deleted at 0.3.0; this repository's
+ * items 13 and 15 are the `createFrameRenderer` throw and the `probe()` canvases
+ * and have nothing to do with it. A forward reference whose numbering has been
+ * reused is worse than no note, because the next reader finds an item and it is
+ * the wrong one.
  */
+/**
+ * The resources as the key sees them: bulk bytes replaced by their length for the
+ * kinds a program can be refilled with (item 18).
+ *
+ * **Why the bytes come out.** A program used to bake in the bytes it was built
+ * from, so two frames differing only in geometry were two programs and the key
+ * said so correctly. They no longer are: `refill` re-uploads a later frame's
+ * bytes into the buffers a program already built, so one program draws either
+ * frame. Measured before this changed — sixty ticks of one 16x16 quad grid linked
+ * sixty programs, and the key was 31,335 characters over 7,696 bytes of geometry,
+ * because `canonical` writes each byte as a latin1 character and `JSON.stringify`
+ * escapes anything below `0x20` to six characters. Float32 geometry is mostly
+ * zero bytes.
+ *
+ * **Why the length stays.** A buffer is allocated for a size. Geometry that grew
+ * is a different program, and it has to be a different *key* rather than a hit
+ * that `refillBuffers` then refuses by name — a miss recompiles, which is
+ * correct, where a throw would turn a resize of a figure into an error a page
+ * never asked for.
+ *
+ * **Textures keep their bytes.** They are not refilled, so for them the old
+ * reasoning still holds exactly.
+ */
+function keyableResources(frame: FrameGraph): unknown[] {
+  return frame.resources.map((resource) => {
+    if (resource.kind !== 'vertices' && resource.kind !== 'indices' && resource.kind !== 'buffer') return resource;
+    if (!resource.data) return resource;
+    const { data, ...rest } = resource;
+    // A named field rather than a bare number, so the length can never collide
+    // with whatever another field of the same resource happens to serialise as.
+    return { ...rest, $dataBytes: data.byteLength };
+  });
+}
+
 export function frameKey(frame: FrameGraph): string {
   const pipelines = frame.pipelines.map((spec) => structureKey(pipelineStructureOf(frame, spec)));
   // One canonical serialisation over an array, rather than joined field strings,
@@ -344,7 +388,7 @@ export function frameKey(frame: FrameGraph): string {
     frame.id,
     frame.modules,
     pipelines,
-    frame.resources,
+    keyableResources(frame),
     frame.passes,
     frame.present ?? null,
     frame.swap ?? null,

@@ -216,6 +216,15 @@ export async function createFrameRenderer(
   // fix. A false miss only recompiles; a false *hit* — two different frames sharing
   // a key — is what `frameKey` exists to make impossible.
   //
+  // **Since item 18 two frames differing only in a resource's bulk bytes share a
+  // key deliberately**, and that is not a false hit: they are the same program,
+  // and `refill` above hands the cached one the bytes of the frame it is being
+  // drawn with. The lengths are still in the key, so geometry that *grew* still
+  // misses and recompiles, which is correct — the buffer is the wrong size. What
+  // the old key cost is measured: sixty ticks of one moving 16x16 quad grid linked
+  // sixty programs, and the key was 31,335 characters over 7,696 bytes of
+  // geometry.
+  //
   // Held against the frame object so the live loop, which redraws one unchanged
   // frame every tick, builds this string once rather than every frame: a frame is a
   // fresh object per edit and its fields never change after it is made, so its
@@ -235,6 +244,13 @@ export async function createFrameRenderer(
     if (cached) {
       programs.delete(k);
       programs.set(k, cached);
+      // The bytes of *this* frame, not the one the program was compiled from
+      // (item 18). The key no longer carries a resource's bulk bytes, so a frame
+      // whose geometry moved hits here — and a hit that drew the compiled frame's
+      // geometry would be the silent false hit the key used to prevent by missing.
+      // `refill` writes only the arrays that are not already in the buffers, so a
+      // page that does not move pays nothing for this line.
+      cached.refill(shader);
       return cached;
     }
     const program = backend.program(shader);

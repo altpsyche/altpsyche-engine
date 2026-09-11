@@ -2915,6 +2915,55 @@ member.
    on all three of sixty links, one link, and 31,335 characters, so it has to be updated in this
    commit and the new numbers quoted.
 
+**Landed on 2026-09-11, step 4, and the picture did not move on a card.** `keyableResources` in
+`pipeline/cache.ts` replaces a vertices, indices or buffer resource's `data` with its byte length;
+`programFor` in `gpu/renderer.ts` refills a cached program from the frame it was asked for. Textures
+keep their bytes, being the kind that is not refilled.
+
+**The three numbers step 1 pinned, re-taken:**
+
+```
+                                 before        after
+sixty ticks, geometry moving     60 links      1 link
+sixty ticks, bytes held still     1 link       1 link
+the key, over 7,696 bytes        31,335 ch     1,319 ch
+```
+
+**The key went from four times the geometry to a sixth of it.** Both per-tick costs are gone: the
+compile because geometry no longer identifies a program, and the escaping because the bytes are no
+longer in the string.
+
+**A page that does not move pays nothing.** The refill is an identity test on the arrays rather than
+a comparison of contents, so one frame object re-submitted sixty times writes no buffer at all —
+asserted. That is sound on the invariant the renderer already relies on one level up, which its own
+`WeakMap` comment states: a frame is a fresh object per edit and its fields never change after it is
+made.
+
+**A figure that grew still misses**, asserted with the same `id` so the length is the only
+difference. It has to miss rather than hit and be refused by `refillBuffers`: a miss recompiles,
+which is correct, where a throw would turn resizing a figure into an error a page never asked for.
+
+**One pre-existing test asserted the old rule and was rewritten.** `tests/pipeline-cache.test.ts`'s
+"carries a resource's bytes exactly, so one byte apart is one key apart" was true until this step and
+is now false by decision, not by defect. It now asserts that same-length bytes share a key and
+different-length bytes do not, and it carries the old sentence and the reason it changed.
+
+**Two comments that this commit falsified were rewritten with it**, as the plan said they must be:
+`gpu/webgpu.ts`'s item-98 line, and `frameKey`'s forward reference to "items 13 and 15" — the old
+queue's, deleted at 0.3.0, whose numbering this repository has since reused.
+
+**Measured.** `npm test` **969 over 83 files**, `npm run type-check` clean, `npm run gate:pack` 17 of
+17, run-time names 73. **`gate:browser` 4 of 4 with the surface gate at 21 of 21** — including its
+two re-submitted-buffer checks, which exercise the very path this step changed. **`gate:card` 30 of
+30 on nvidia / blackwell**: every preset's pixel count identical to the run before this landed, and
+every cross-backend figure identical — scissor 11, blend 0, stencil 0, count 0, scene 11, draw-list
+36, material 18.
+
+**What the gates could not see.** The card gate draws each preset once, so **it did not exercise a
+cache hit**: it proves this step broke nothing that was drawing, not that a refilled buffer is what a
+moving figure's draw reads. That is still step 6 and is the one thing no double and no single-draw
+gate can say.
+
 5. **A test per field `frameKey` reads, and one the fix could break.** Two frames differing in any
    one field `frameKey` still reads get two programs — written against the fields rather than
    against the new key, per `CONTRIBUTING.md`. **And the one step 4 puts at risk**: two frames

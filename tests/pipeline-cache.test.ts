@@ -211,12 +211,22 @@ describe('the program key that supersedes item 2', () => {
     expect(frameKey(frame)).toBe(frameKey(frame));
   });
 
-  it('carries a resource’s bytes exactly, so one byte apart is one key apart', () => {
-    // A byte a program uploads into a buffer is part of what the program draws, so
-    // two frames differing only in those bytes are two programs. The bytes travel
-    // in the key compactly rather than as a per-index object, but exactly: a single
-    // byte changed is a different key.
-    const withData = (byte: number) => {
+  it('carries a resource’s byte length and not its bytes, so a figure that moves is one program', () => {
+    // **This test used to assert the opposite** — "carries a resource's bytes
+    // exactly, so one byte apart is one key apart" — and it was right until
+    // 2026-09-11. A byte a program uploaded into a buffer was part of what the
+    // program drew, because the program owned the upload, so two frames differing
+    // only in those bytes genuinely were two programs.
+    //
+    // Item 18 moved the upload: `refill` writes a later frame's bytes into the
+    // buffers a program already built, so one program draws either frame and the
+    // bytes stopped identifying it. What the old rule cost was measured before it
+    // changed — sixty ticks of one moving 16x16 quad grid linked sixty programs.
+    //
+    // **The length is still exact**, which is the half that did not change: a
+    // buffer is allocated for a size, so a figure that grew must miss and
+    // recompile rather than hit a buffer built for the smaller one.
+    const withData = (byte: number, over: { length?: number } = {}) => {
       const frame = wgslFrame('bytes', CODE, BLOCK);
       return {
         ...frame,
@@ -228,13 +238,16 @@ describe('the program key that supersedes item 2', () => {
             count: 1,
             topology: 'triangle-list' as const,
             attributes: [{ location: 0, offset: 0, format: 'float32' as const }],
-            data: new Uint8Array([1, 2, 3, byte]),
+            data: new Uint8Array(over.length ?? 4).fill(byte),
           },
         ],
       };
     };
-    expect(frameKey(withData(4))).not.toBe(frameKey(withData(5)));
+    // Same length, different bytes: one program now, where it used to be two.
+    expect(frameKey(withData(4))).toBe(frameKey(withData(5)));
     expect(frameKey(withData(4))).toBe(frameKey(withData(4)));
+    // Different length: still two, and the key is what separates them.
+    expect(frameKey(withData(4))).not.toBe(frameKey(withData(4, { length: 8 })));
   });
 
   it('derives a pipeline structure from a frame that keys with the same string', () => {

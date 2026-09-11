@@ -45,7 +45,7 @@ import type { FrameGraph } from '../graph/types.js';
  */
 export function refillBuffers<Buffer>(
   next: FrameGraph,
-  held: Map<number, { buffer: Buffer; bytes: number }>,
+  held: Map<number, { buffer: Buffer; bytes: number; last?: Uint8Array<ArrayBuffer> }>,
   write: (buffer: Buffer, data: Uint8Array<ArrayBuffer>) => void
 ): number {
   let written = 0;
@@ -64,7 +64,20 @@ export function refillBuffers<Buffer>(
           'A buffer is allocated for a size, so geometry that changed length is a different program and not a refill of this one.'
       );
     }
+    // The same array the buffer already holds is not written again. This is an
+    // identity test and not a comparison of contents, which is sound because the
+    // package already relies on the same invariant one level up: the renderer
+    // holds its key strings in a `WeakMap` against the frame object "because a
+    // frame is a fresh object per edit and its fields never change after it is
+    // made". A caller that mutates a `data` array in place has already broken
+    // that, and would see a stale key before it saw a stale buffer.
+    //
+    // **What this buys is that a page which does not move pays nothing.** A
+    // static frame re-submitted every tick refills zero buffers, so the cost this
+    // item removes is not replaced by a smaller one charged to everybody.
+    if (slot.last === data) continue;
     write(slot.buffer, data);
+    slot.last = data;
     written++;
   }
   return written;
