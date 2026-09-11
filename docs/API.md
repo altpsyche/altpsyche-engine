@@ -477,6 +477,22 @@ gate: a door past the first is declared only where `tests/import-graph.test.ts` 
 closure to the one module it points at. So an import added to the maths module fails a gate
 rather than quietly putting the renderer back behind the arithmetic.
 
+## The blends worth a name
+
+```ts
+BLEND_MODE: Record<"over", GPUBlendState>
+```
+
+A table to read from, not a vocabulary to declare in. Everything that carries a blend carries
+a `GPUBlendState` — `RenderPipelineSpec.targets[].blend` and a frame declaration's
+`colour[].blend` both — so write any blend the card expresses and let the backends refuse by
+named capability what they cannot draw (`per-target-blend`, `dual-source-blend`). Reach here
+because the common blends are easy to spell wrongly and the mistake is silent: `over` written
+with `src-alpha` over an already-premultiplied picture doubles the alpha and darkens every
+edge, and four valid factors are four valid factors, so nothing refuses it. Spread an entry to
+vary it — `{ ...BLEND_MODE.over, alpha: … }` — to reach a blend that has no name yet. Type:
+`BlendMode`, the key type, which grows as entries do and bounds nothing.
+
 ## Geometry the build generates
 
 ```ts

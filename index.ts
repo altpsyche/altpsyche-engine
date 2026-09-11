@@ -196,6 +196,17 @@ export { uniformBlockOf } from './wgsl-layout.js';
 // word-alignment a graph is held to are no longer among them: they moved into the
 // renderer's own `validate`, which every draw runs, and are not a producer's to
 // call (item 19).
+// The blends worth a name, as the card's own fields. It is a table to read from
+// and not a vocabulary to declare in: everything carrying a blend carries a
+// `GPUBlendState`, so a consumer writes any blend the card expresses and reaches
+// for a name here only because the common ones are easy to spell wrongly and the
+// mistake is silent (item 1 step 3, and the reason is at the table itself).
+export {
+  BLEND_MODE,
+} from './graph/blend.js';
+export type {
+  BlendMode,
+} from './graph/blend.js';
 export {
   GEOMETRY_PRIMITIVE,
 } from './shader-geometry.js';

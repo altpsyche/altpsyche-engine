@@ -11,7 +11,6 @@
 import type { GeometryPrimitive } from '../shader-geometry.js';
 import type { StencilMode } from '../graph/types.js';
 import type { TransientSize } from '../graph/refs.js';
-import type { BlendMode } from './blend.js';
 
 /**
  * What a shader's entry says about its frame that its own source cannot.
@@ -167,11 +166,14 @@ export interface DeclaredFrame {
      * fragment stage returns them, absent where it writes the frame the reader
      * sees. An attachment with a clear value is emptied to it first and one
      * without keeps what the pass before it drew, which is what a surface drawn
-     * over another one needs. `blend` is how the colour arrives in it. */
+     * over another one needs. `blend` is how the colour arrives in it, in the
+     * card's own fields rather than by a name this package holds: `BLEND_MODE`
+     * carries the ones worth naming and says at its own doc comment why this
+     * field is not narrowed to them. */
     colour?: {
       resource: string;
       clear?: [number, number, number, number];
-      blend?: BlendMode;
+      blend?: GPUBlendState;
       /** Where the readings an attachment keeps several of are averaged into one
        * picture, which is another attachment of the same size and format keeping
        * one. Absent for an attachment keeping one already, and required for one

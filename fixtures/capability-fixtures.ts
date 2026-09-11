@@ -11,6 +11,7 @@ import { groupsToCover } from '../graph/refs';
 import { mat4, vec3 } from '@altpsyche/engine';
 import { type Camera, type Scene, viewProjection, worldMatrix } from '@altpsyche/engine';
 import { drawList } from '@altpsyche/engine';
+import { BLEND_MODE } from '@altpsyche/engine';
 import { type Material, batchOnePipeline } from '@altpsyche/engine';
 
 /**
@@ -446,7 +447,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
           pipeline: 'nearer',
           vertex: 'toward',
           geometry: 'sheet',
-          colour: [{ resource: 'picture', blend: 'over' }, { resource: 'distance' }],
+          colour: [{ resource: 'picture', blend: BLEND_MODE.over }, { resource: 'distance' }],
           depth: { resource: 'depth', compare: 'less', write: false },
         },
       ],
@@ -489,7 +490,7 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
           pipeline: 'over',
           vertex: 'front',
           geometry: 'sheet',
-          colour: [{ resource: 'picture', blend: 'over' }],
+          colour: [{ resource: 'picture', blend: BLEND_MODE.over }],
         },
       ],
       present: 'picture',

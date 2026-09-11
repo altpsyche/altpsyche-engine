@@ -29,7 +29,6 @@ import {
   vertexInputsOf,
 } from '../wgsl-pipelines.js';
 import { GEOMETRY_PRIMITIVE } from '../shader-geometry.js';
-import { BLEND_MODE } from './blend.js';
 import type {
   BindingSpec,
   FrameGraph,
@@ -189,7 +188,7 @@ export function declaredFrame(id: string, code: string, declared: DeclaredFrame)
     }
     const targets = (pass.colour ?? []).map((one) => ({
       format: attached(pass, one.resource, 'writes colour into').format,
-      ...(one.blend ? { blend: BLEND_MODE[one.blend] } : {}),
+      ...(one.blend ? { blend: one.blend } : {}),
     }));
     // Every attachment a pass opens keeps the same number of readings of each
     // pixel, so the number the pipeline is built under is theirs. Only the entry

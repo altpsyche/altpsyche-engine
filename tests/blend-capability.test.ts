@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BLEND_MODE } from '../index.js';
 import { refusal, webgl2Capabilities, webgpuCapabilities } from '@altpsyche/engine';
 import type { Capability, PipelineSpec } from '@altpsyche/engine';
 import { uniform } from '../graph/handles';
@@ -15,10 +16,11 @@ import { uniform } from '../graph/handles';
  * pipeline rather than declared, so a caller cannot forget to ask for them.
  */
 
-const OVER: GPUBlendState = {
-  color: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
-  alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
-};
+/** The blend every one of these draws under. It is the published table's own
+ * entry rather than a fourth copy of the same four factors, which is what item 1
+ * step 3 put on the door: one spelling of `over` in the package, and a test that
+ * spelled it itself could drift from what a consumer gets. */
+const OVER: GPUBlendState = BLEND_MODE.over;
 const DUAL: GPUBlendState = {
   color: { operation: 'add', srcFactor: 'src1', dstFactor: 'one-minus-src1' },
   alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'zero' },

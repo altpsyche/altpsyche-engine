@@ -287,7 +287,7 @@ Four things are not, and each one is a decision rather than a move.
   moved to the package root beside the other `wgsl-*` readers by step 2 — which is what turns a WGSL file
   into the entry points and bindings the check is run against. A consumer may want them and the item
   does not assume it, so they move into the package and stay unexported until something asks.
-- **`BlendMode`**, `declare/blend.ts`, 21 lines and one value, `'over'` — under `fixtures/` when
+- **`BlendMode`**, `graph/blend.ts`, 21 lines and one value, `'over'` — under `fixtures/` when
   this was written, moved by step 2 because the reader imports it. A declaration that
   names a blend publishes the name.
 - **The two content unions**, `fixtures/shader-content.ts`, 256 lines. `TextureContent` is
@@ -435,7 +435,7 @@ it is the layer that reads a source and a declaration and produces a graph, and 
 | --- | --- |
 | shader-describe.ts | `declare/declared.ts`, 745 lines |
 | declared-frame.ts | `declare/declared-frame.ts`, 233 lines |
-| shader-blend.ts | `declare/blend.ts`, 21 lines |
+| shader-blend.ts | `graph/blend.ts`, 21 lines — step 2 put it in declare/, step 3 moved it here |
 | wgsl-pipelines.ts | `wgsl-pipelines.ts`, 305 lines, beside the other `wgsl-*` readers |
 
 **shader-blend.ts moved too, which step 2's text does not list.** It is not a fourth decision — the
@@ -465,6 +465,62 @@ against a `dist` of 787,008 — about 9% — reachable from no door.** Nothing c
 shipping list is the thing that decides what is published and this step added to it deliberately.
 Step 4 is what earns those bytes by putting the reader on the door; if this item closed here instead,
 they would have to come back out.
+
+### Landed on 2026-09-11, step 3, and neither of the two answers it offered is the one that landed
+
+**The step offered a narrowing or a removal and the answer is neither: the declaration takes a
+`GPUBlendState`, and `BLEND_MODE` goes on the door as a table to read from.** Option A — `BlendMode`
+on the door beside the declaration — is a published union of **one value**. Under it a consumer
+cannot express additive, or multiply, or any of the blends a graphics package is expected to draw,
+through the reader at all, while `RenderPipelineSpec.targets[].blend` beneath it takes any
+`GPUBlendState` the card expresses. That would make the authoring path express **less than the graph
+it builds**, which is the opposite of what an authoring path is for. Option B — take a
+`GPUBlendState` and leave the name in the fixtures — fixes that and throws away something real.
+
+**What it would have thrown away was found by counting, not argued.** The same four factors were
+already written out **three times in this tree**: the blend module itself, and a hand-written
+`const OVER: GPUBlendState` in each of `tests/blend-capability.test.ts` and
+`tests/renderer-targets.test.ts`. A blend that gets copied three times inside the package is one a
+consumer will copy too, and the copy is the bug: `over` spelled with `src-alpha` over an
+already-premultiplied picture doubles the alpha and darkens every edge, and nothing refuses it,
+because four valid factors are four valid factors. So the table is published and the two tests now
+read `BLEND_MODE.over` instead of their own copy — one spelling of `over` in the package.
+
+**The distinction that makes this not option A.** `BLEND_MODE` bounds nothing. No field is typed as
+`BlendMode`; every field that carries a blend still carries a `GPUBlendState`, and
+`{ ...BLEND_MODE.over, alpha: … }` is the intended way to a blend that has no name yet. `BlendMode`
+is the record's key type, so it grows as entries do and a caller may hold a name, and that is all it
+is. The reason is written at the table in `graph/blend.ts`, not here.
+
+**It moved twice.** Step 2 put it under `declare/` because the reader imported it; step 3 moved it
+to `graph/blend.ts`, because a published blend table is a graph concern rather than a declaring
+one and the file imports nothing, which is what `graph/` requires.
+
+**Measured.**
+
+| | before | after |
+| --- | --- | --- |
+| run-time names on the door | 70 | **71** |
+| files reachable from `index.ts` | 35 | **36** |
+| `npm test` | 933 over 78 files | 933 over 78 files |
+| `npm run type-check` | clean | clean |
+| `npm run gate:pack` | 13 of 13 | 13 of 13 |
+| `npm run gate:browser` | 4 of 4 | 4 of 4 |
+
+The one name is `BLEND_MODE`, and the one file is `graph/blend.ts`. Nothing under `declare/` is
+reachable from the door yet, which is still step 4's to change. `docs/API.md` gained the name in the
+same commit, not because a step asked but because `tests/api-signatures.test.ts` refuses an
+undocumented run-time export — it went red on `BLEND_MODE: the document does not carry` before the
+entry was written.
+
+`core-blend` draws 158,400 of 480,000 pixels on **both** backends and `core-depth` draws 245,512 on
+WebGPU, unchanged across this step, which is what says routing the blend through the declaration as
+a state rather than a name changed no picture.
+
+**What the gates could not see.** No blend other than `over` is drawn anywhere in this tree, so the
+widening is proved by the compiler and by the two backends' existing capability refusals rather than
+by a picture. A fixture drawing an additive blend across both backends would close that, and it is
+item 19's kind of work rather than this item's.
 
 ---
 

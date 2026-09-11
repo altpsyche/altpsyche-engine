@@ -3,7 +3,7 @@ import { declaredFrame, geometryFileName } from '../declare/declared.js';
 import { buffer, indices, moduleHandle, pipelineHandle, sampler, texture, uniform, vertices } from '../graph/handles.js';
 import { TEXTURE_CONTENT } from '../fixtures/shader-content';
 import type { DeclaredFrame } from '../declare/declared-frame.js';
-import { BLEND_MODE } from '../declare/blend.js';
+import { BLEND_MODE } from '../graph/blend.js';
 import type {
   ComputePipelineSpec,
   IndexResource,
@@ -516,7 +516,7 @@ const CROSSING: DeclaredFrame = {
       pipeline: 'nearer',
       vertex: 'away',
       geometry: 'sheet',
-      colour: [{ resource: 'picture', blend: 'over' }, { resource: 'distance' }],
+      colour: [{ resource: 'picture', blend: BLEND_MODE.over }, { resource: 'distance' }],
       depth: { resource: 'depth', compare: 'less', write: false },
     },
   ],
