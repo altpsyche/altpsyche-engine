@@ -1642,9 +1642,46 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       return rows;
     },
 
+    /**
+     * Releases what this backend allocated and leaves the caller's canvas alone
+     * (decided 2026-09-11, item 14).
+     *
+     * **It used to call `gl.getExtension('WEBGL_lose_context')?.loseContext()` here
+     * and that has been removed.** A canvas hands back the same graphics context for
+     * as long as it exists, so losing it is not a thing the caller can undo: the next
+     * `getContext('webgl2')` on that canvas returns the lost one, where every
+     * `getParameter` answers null and draw calls are accepted while the picture stops
+     * moving. The WebGPU backend's `dispose` calls `context.unconfigure()`, which is
+     * reversible. So one name on one interface meant two different things, and the
+     * one a caller could not recover from was the unannounced one.
+     *
+     * **The canvas is not this renderer's to destroy.** `docs/ARCHITECTURE.md`'s three
+     * lifetimes say what a renderer owns, and the canvas is not among them — it is
+     * handed in as a parameter. `host/surface.ts`'s `setGraph` exists because of the
+     * old behaviour, and a workaround is where that fact used to be written.
+     *
+     * **The cost that was argued for keeping it does not exist here, and this was
+     * measured rather than assumed.** The reason to lose a context is to hand card
+     * memory back promptly in a backend with no explicit free. This backend has one
+     * and uses it everywhere: every program's own `dispose` deletes its textures,
+     * framebuffers, renderbuffers and programs through `gl.delete*`, and
+     * `gpu/renderer.ts`'s `dispose` runs all of those before reaching this line, which
+     * then frees the quad buffer. By the time control arrived here every GL object
+     * this backend created had already been deleted. What `loseContext` uniquely
+     * reclaimed was the context and its drawing buffer — which belong to the caller's
+     * canvas, not to this.
+     *
+     * **A caller who does want the context gone owns the canvas and can say so** in
+     * one line: `canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext()`.
+     * That is the escape hatch, and it costs nothing because the object is theirs.
+     *
+     * **To reverse**: put the `loseContext()` call back on the line after the free.
+     * **What would change the answer**: a resource this backend allocates that has no
+     * `gl.delete*` of its own, which would make losing the context the only way to
+     * reclaim it — there is none today.
+     */
     dispose() {
       arena.free(quadHandle);
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
     },
   };
   return backend;

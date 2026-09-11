@@ -40,13 +40,19 @@ export interface Surface {
   start(): void;
   stop(): void;
   /**
-   * Swaps the shader without taking the canvas with it.
+   * Swaps the shader without rebuilding the renderer under it.
    *
-   * A canvas hands back the same graphics context for as long as it exists, and
-   * disposing a surface loses that context on purpose, so building a second
-   * surface over the first leaves it drawing into a dead one. Nothing reports
-   * that: the draw calls are accepted and the picture stops moving. Anything
-   * that changes a shader while the page stays put comes through here.
+   * **This paragraph used to say that disposing a surface loses the canvas's
+   * graphics context on purpose, so a second surface over the first drew into a
+   * dead one. That stopped being true on 2026-09-11** (item 14): the WebGL 2
+   * backend's `dispose` no longer calls `loseContext`, and the reason is written
+   * where that call was. So this is no longer the only way to change a shader
+   * without ruining the canvas.
+   *
+   * It is still the way to prefer, and now for a plainer reason: tearing a surface
+   * down and building another rebuilds the backend, recompiles every program and
+   * drops the frame loop, where this swaps the graph and keeps all three. What it
+   * is not any more is a workaround for a destroyed context.
    *
    * A source that will not compile leaves the last one that did still drawing
    * and its message is returned, because a reader editing a shader wants the

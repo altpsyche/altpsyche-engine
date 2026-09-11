@@ -1780,10 +1780,34 @@ describe('what it gives back when it is done', () => {
     expect(gl.of('deleteBuffer')).toHaveLength(1);
   });
 
-  it('loses the context on purpose, so a canvas that stays cannot keep drawing into a dead one', () => {
+  /**
+   * This asserted the opposite until item 14, on 2026-09-11: `dispose` called
+   * `WEBGL_lose_context.loseContext()` and this test held it there. The decision is
+   * written at the call in `gpu/webgl2.ts`, and the short of it is that a lost
+   * context cannot be undone by the caller — a canvas hands back the same context
+   * for as long as it exists — while the WebGPU backend's `dispose` calls the
+   * reversible `context.unconfigure()`. One name meant two things and the
+   * unannounced one was the destructive one.
+   *
+   * It is not a lost guard. What losing the context uniquely reclaimed was the
+   * context and its drawing buffer; every GL object this backend allocates is
+   * deleted explicitly, which the test above this one holds, and
+   * `gpu/renderer.ts`'s `dispose` runs all of those before the backend's.
+   */
+  it('leaves the caller’s context alive, since the canvas is not this renderer’s to destroy', () => {
     const { gl, backend } = backendOver();
     backend.dispose();
-    expect(gl.lostContext).toBe(1);
+    expect(gl.lostContext).toBe(0);
+  });
+
+  it('still frees the quad buffer it allocated for itself', () => {
+    // The half that did not change: `dispose` releasing what this backend owns is
+    // the whole of what it is for, and removing the context loss must not have
+    // taken the free with it.
+    const { gl, backend } = backendOver();
+    const before = gl.of('deleteBuffer').length;
+    backend.dispose();
+    expect(gl.of('deleteBuffer').length).toBeGreaterThan(before);
   });
 });
 

@@ -2022,6 +2022,65 @@ returns card memory promptly — which is the reason it is there — then it sta
 as a door statement and a symmetry rather than a behaviour change**: `Surface.dispose` and
 `FrameRenderer.dispose` both say it, and the WebGPU side says what it does instead. That is a smaller
 landing and it is still the whole of the defect, which was that a caller could not find this out.
+
+### Landed on 2026-09-11, step 1: the answer is the first of the three, and the cost of it was measured away
+
+**`dispose` no longer loses the context.** The step named three answers and said the cost of each had
+to be named rather than assumed. The cost it attached to this one — that never losing the context
+"gives up the one prompt way a backend with no explicit free hands card memory back" — **is not true
+of this backend, and that is a measurement rather than an argument.** This backend has an explicit
+free and uses it everywhere: every program's own `dispose` deletes its textures, framebuffers,
+renderbuffers and programs through `gl.delete*` (`gpu/webgl2.ts:1600-1616`), and
+`gpu/renderer.ts`'s `dispose` runs every program's before it calls the backend's. By the time control
+reached `loseContext()` every GL object this backend created had already been deleted. What that call
+uniquely reclaimed was the context and its drawing buffer — which belong to the caller's canvas.
+
+With the cost gone the ownership argument stands alone and is decisive: `docs/ARCHITECTURE.md`'s
+three lifetimes say what a renderer owns and the canvas is not among them. A caller who does want the
+context gone owns the canvas and can say so in one line, which is the escape hatch and costs them
+nothing.
+
+**The reading had moved.** The `loseContext` call was at `gpu/webgl2.ts:1645-1648`, not the 1492-1494
+this entry was written against; the WebGPU `dispose` is at `gpu/webgpu.ts:1271-1279`, not 1315-1323;
+the `setGraph` paragraph is at `host/surface.ts:41-55`. Every shape was exactly as described.
+
+**A test asserted the old behaviour and has been flipped rather than deleted.**
+`tests/renderer-webgl2.test.ts` held `expect(gl.lostContext).toBe(1)` under the name *loses the
+context on purpose*. It now asserts `0` under *leaves the caller's context alive*, and carries the
+decision's reasoning so the next reader finds why it reversed. A second test was added beside it —
+*still frees the quad buffer it allocated for itself* — because removing a line from `dispose` must
+not take the free with it, and nothing else held that.
+
+**One paragraph this commit falsified was fixed in the same commit rather than left for step 3.**
+`host/surface.ts`'s `setGraph` doc said "disposing a surface loses that context on purpose, so
+building a second surface over the first leaves it drawing into a dead one", which this change makes
+false. It now says what it used to say, that this stopped being true, and gives the plainer reason to
+prefer `setGraph` anyway: it keeps the backend, the compiled programs and the frame loop where a
+teardown rebuilds all three. Leaving a sentence the commit disproves standing in the tree until a
+later step is worse than crossing a step boundary by one paragraph.
+
+**Measured.**
+
+| | before | after |
+| --- | --- | --- |
+| `npm test` | 937 over 78 files | **938 over 78 files** |
+| `npm run type-check` | clean | clean |
+| surface gate | 21 of 21 | 21 of 21 |
+| `npm run gate:browser` | 4 of 4 | 4 of 4 |
+| `npm run gate:pack` | 17 of 17 | 17 of 17 |
+
+**The gate that covers context loss was read against the change and is not blinded.** `a lost card is
+noticed` reads `1 lost` and `a returned card is picked up` reads `1 restored`, both still passing —
+because that check loses the context itself through `WEBGL_lose_context` at
+`gates/surface.mjs:293-315` rather than through `dispose`. It never depended on the removed line.
+
+**What the gates could not see.** `gate:browser` is the software renderer and **`gate:card` was not
+re-taken**, so the claim that a real driver frees the same memory without the context loss rests on
+every allocation having an explicit `gl.delete*` beside it — read off the source, not measured on
+hardware. A card run is what would close that, and it needs Siva.
+
+**Steps 2 and 3 remain**: a test building a renderer on a canvas a previous renderer disposed, on
+both backends, and the statement in `docs/API.md` and `docs/ARCHITECTURE.md`.
 ## Item 15 — `probe()` leaves a canvas on the caller's page for every backend it trials
 
 **Opened on 2026-09-11, out of reading 10 of the campaign above. This is finding C of the spike
