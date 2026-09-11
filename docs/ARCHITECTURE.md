@@ -45,12 +45,21 @@ dependency and a reader tracing one needs to know it is there.
 | `pipeline/` | the static lifetime: the pipeline cache, keyed on structure | `graph/` |
 | `submit/` | the transient lifetime: planning and executing one frame | `graph/`, `resource/` (types only), `toy/` |
 | `gpu/` | the two backends, the renderer, and backend selection | `graph/`, `pipeline/`, `resource/`, `submit/`, `toy/` |
+| `declare/` | the frame declaration reader: `declaredFrame`, which turns a WGSL source and a `DeclaredFrame` into a graph and refuses the two where they disagree | `graph/`, `toy/`, the root modules |
 | `toy/` | the toy tier: frame shortcuts, source reflection | `graph/`, the root modules |
 | `scene/` | the scene tier: maths, scenes, materials, `sceneView` | `graph/`, `resource/` (types only) |
 | `host/` | the browser-facing edges: `createSurface`, `probe` | `gpu/`, `graph/` (types only), `toy/` |
 | `trace/` | the recording double and frame coverage | **nothing** |
-| the root modules | `wgsl-layout.ts`, `wgsl-binding.ts`, `wgsl-references.ts`, `shader-geometry.ts`, `deprecate.ts` — the WGSL reading a shader needs and the vertices a generated primitive is | `graph/` (types only) |
+| the root modules | `wgsl-layout.ts`, `wgsl-binding.ts`, `wgsl-references.ts`, `wgsl-pipelines.ts`, `shader-geometry.ts`, `deprecate.ts` — the WGSL reading a shader needs and the vertices a generated primitive is | `graph/` (types only) |
 | `index.ts` | the door, which is a list of re-exports and no logic | every folder above but `pipeline/` and `submit/`, and the root modules |
+
+**`declare/` is an authoring path and not a second kind of graph.** It returns the `FrameGraph` the
+builders return, so `cost`, `validate`, `refusal` and both backends read one type however a frame was
+written. It is its own folder rather than part of `graph/` for the reason the first row gives: it
+reads WGSL, so it imports `wgsl-pipelines.ts`, `wgsl-binding.ts`, `wgsl-references.ts`,
+`shader-geometry.ts` and `toy/frame.ts`, and `graph/` imports nothing. That rule decided the layout
+here rather than a preference — the move was attempted into `graph/` first and the import-graph gate
+refused it by name.
 
 **Five rows of that table were wrong before item 7, four of them understating an edge.** `submit/`
 was given `pipeline/` and imports none of it, while importing `toy/`, which was not listed — wrong in

@@ -19,12 +19,19 @@ it" is thrown out and replaced by a reason that stands on the package's own meri
 
 **Where the package stands, as the baseline any item below is measured against.** The renderer is
 built to the whole WebGPU core specification, every capability has a fixture the gates draw, and the
-gates are green: 4 of 4 browser gates, 16 of 16 on the recording contract, 24 of 24 corpus draws
-with 9 WebGL 2 skips, 21 of 21 surface checks, and **866 node tests over 73 files**, all re-taken on
-2026-09-10 with the batch of that day landed. The node count read 864 until item 3's step 3 added
-two checks over the declared doors; before that it read 514 over 34 files, and the recording
-contract read 15 of 15 until it was re-taken at 16 of 16. Those last two had expired rather than
-moved, because the sixteenth capability fixture arrived and neither number followed it.
+gates are green: 4 of 4 browser gates, **18 of 18 on the recording contract**, **28 of 28 corpus
+draws** with 9 WebGL 2 skips, 21 of 21 surface checks, **17 of 17 consumer checks under
+`gate:pack`**, and **933 node tests over 78 files**, all re-taken on 2026-09-11 with item 1 landed.
+The door carries **73 run-time names** and `index.ts` reaches **39 files**.
+
+**Four of those numbers moved since the 2026-09-10 reading and none of them improved by itself.**
+The corpus went from sixteen fixtures to eighteen — `core-blend` arrived with item 11 and
+`core-count` with item 2 — which is what took the recording contract from 16 to 18 and the corpus
+draws from 24 to 28. The consumer checks went from 13 to 17 when item 1 put the frame declaration
+reader on the door. **A count here is the size of the gate and not a score**, and this file has been
+caught twice by numbers that expired rather than fell: the recording contract sat at 15 of 15 after
+the sixteenth fixture arrived, and item 1's own entry quoted sixteen fixtures and 69 door names
+through four steps that were worked against eighteen and 70.
 
 **The one line of this baseline no unattended session can re-take is the card**, and it was re-taken
 on 2026-09-11 with Siva present. **22 of 22 PASS and 0 FAIL**, run twice with the same result, on
@@ -32,6 +39,13 @@ on 2026-09-11 with Siva present. **22 of 22 PASS and 0 FAIL**, run twice with th
 was offered, and the gradient control at 0 of 1,440,000 channels. **Every preset's pixel count is
 identical to the 2026-08-26 reading**, which is what says items 9, 12 and 10 moved no pixel on real
 hardware. The row is in [DEVICES.md](DEVICES.md).
+
+**That card reading predates item 1 and has not been re-taken since.** Item 1's five steps touched
+no backend and changed no picture — the software-renderer corpus draws the same pixel counts either
+side, and `core-blend` sits at 158,400 of 480,000 on both backends across the step that changed how a
+blend reaches a pipeline. But the card is the only gate that reads a real driver, and no unattended
+session may run it, so the honest statement is that item 1 is unmeasured on hardware rather than
+measured as harmless.
 
 **That number is 22 and not the 17 of 17 this file carried from 2026-08-29**, and the gate grew
 rather than the reading improving: the sixteenth capability fixture and the three cross-backend
@@ -185,7 +199,7 @@ additive door that removed nothing and moved no name, so a new export here does 
 | 2 | `StencilMode` gains two members, which breaks an exhaustive switch | minor |
 | 9, 10, 11, 12 | new refusals for frames that drew before, a new `Capability` member, and either a new door name or a changed `selectBackend` answer | minor |
 | 14, 16, 17 | `dispose` means something different, `RenderPassSpec` gains a field both backends read, and a new readback name | minor |
-| 1 | new exports and nothing removed | minor, and it slots into any of them |
+| 1 | ~~new exports and nothing removed~~ **landed 2026-09-11**, in five steps. Three new run-time names — `declaredFrame`, `BLEND_MODE`, `groupsToCover` — plus the `DeclaredFrame` type, and nothing removed or moved | minor. **Rides the next cut, whatever it is called**, and see the note under the cut order |
 
 ### The cut order
 
@@ -208,6 +222,14 @@ is a patch whatever this table says.
    and a version carries commits, so an item that lands early rides the next cut whatever the plan
    said. Check `git log <last tag>..HEAD` before writing a changelog entry, not the plan.
 3. **`0.7.0` — the lifetimes and the vocabulary**: items 14, 16 and 17.
+
+**Item 1 landed on 2026-09-11 and is uncut.** Its five steps are five commits after the `0.5.0` bump,
+so nothing published carries them. It is additive — three run-time names and a type, nothing removed
+and nothing moved — which by this file's own precedent is a **minor** and not a patch: `0.4.0` was cut
+for one purely additive door. So the next cut is a minor whether or not items 13, 15 and 18 land
+first, and the row above that calls those three a patch is now the smaller half of what is waiting.
+This is the same lesson row 2 records: **a version carries commits and not the items a plan assigned
+it**, so read `git log v0.5.0..HEAD` before writing a changelog entry.
 
 **Why item 2 goes first, and the reason is not the consumer.** Item 2 is argued on the specification —
 `GPUDepthStencilState` carries `stencilFront` and `stencilBack` separately because the two differ, and
@@ -238,370 +260,6 @@ published from whether it is built.
 **Nothing here authorises a release.** `CLAUDE.md` is unchanged: a tag reaching the remote and a
 publish are not a session's to do, the release runs in CI from the tag, and a published version cannot
 be withdrawn. This section says what a cut would carry, not that one may be taken.
-
----
-
-## Item 1 — the frame declaration reader onto the door
-
-**Opened on 2026-08-29.** A consumer describing a frame of more than one pass has to write a
-`FrameGraph` by hand: allocate every handle in the order the arrays are built, repeat every binding
-number its own WGSL already declares, and get no complaint from this package when the two disagree.
-The reader that does that work and checks it exists, and it is not on the door. It is
-`declaredFrame` in `declare/declared.ts`, with its declaration type beside it in
-`declare/declared-frame.ts` — 787 and 205 lines in `fixtures/` when this was written, moved into the
-package by step 2 and unexported. **That file's own header names its trigger**, which is a
-shader outside the corpus declaring a frame of its own, and one now does.
-
-**What the reader does that hand-writing does not.** It reads the source for every compute entry
-point, every storage texture, every storage buffer, every uniform block, every sampler and every
-vertex input, and it checks what the entry declared against what the file declares. Every
-disagreement stops the build with a sentence naming it. Each of those disagreements is silent on the
-card: a dispatch of an entry point the file does not declare is a pipeline the driver refuses after
-the fact, a texture nothing binds is a picture that stays whatever the memory held, and a `present`
-naming nothing copies out the wrong texture.
-
-**Why it stands on this package's own merits.** The distinguishing claim here is that a frame can be
-described, costed and refused before a driver sees it. Today the refusal half of that claim reaches
-only the frames in `fixtures/`. Everything a consumer builds by hand is described and costed and
-never refused, so the claim is weaker outside this repository than inside it, and the code that
-would close the gap is already written and already covered by the gates.
-
-**Why the bound below does not block this one.** The bound decides what belongs in the layer above
-the renderer, and this is not new capability in that layer. It is an authoring path for the frame
-graph, which is the renderer's own centre, and it passes all three of the candidate bounds rather
-than needing one of them chosen: a frame graph is named there as the example of what a reader cannot
-reasonably write themselves, it is what the comparable packages expose in some form, and it is the
-diagnostics claim itself. An item that passes every candidate bound cannot be the one that sets the
-precedent by accident, which is what the bound exists to prevent.
-
-### What is on the door already and what is not
-
-The reader's dependencies are mostly published. `WGSL_DOCUMENT`, `uniformBindingOf`,
-`namesReachedBy`, the handle constructors, `GEOMETRY_PRIMITIVE`, `GeometryPrimitive`,
-`TransientSize` and `StencilMode` are all exported today.
-
-Four things are not, and each one is a decision rather than a move.
-
-- **The reader and its type**, `declaredFrame` and `DeclaredFrame`, which are what the item is for.
-- **The source readers**, `wgsl-pipelines.ts`, 305 lines — in `fixtures/` when this was written,
-  moved to the package root beside the other `wgsl-*` readers by step 2 — which is what turns a WGSL file
-  into the entry points and bindings the check is run against. A consumer may want them and the item
-  does not assume it, so they move into the package and stay unexported until something asks.
-- **`BlendMode`**, `graph/blend.ts`, 21 lines and one value, `'over'` — under `fixtures/` when
-  this was written, moved by step 2 because the reader imports it. A declaration that
-  names a blend publishes the name.
-- **The two content unions**, `fixtures/shader-content.ts`, 256 lines. `TextureContent` is
-  `'value-noise'` and `BufferContent` is `'copy-tints' | 'draw-list-models' | 'material-objects' |
-  'perdraw-slices'`. **These must not be exported.** They name this repository's fixture data, and
-  putting `'draw-list-models'` on a published surface hands that corpus to every consumer.
-
-**The content unions are the only part of the reader that is hard**, and the shape of the difficulty
-is known: inside `declaredFrame` the `content` field is read in one place for a sampled texture's
-format and everywhere else as a yes or no saying whether the source samples the name or stores into
-it. The half that needs the generators in full is `generatedBytes`, which is a separate exported
-function turning those names into bytes.
-
-### Steps
-
-1. **Settle what a published declaration says about generated contents, and write the reason where
-   the field is.** The choice is between dropping `content` from the door's declaration, so a
-   consumer names a format and supplies its own bytes, and keeping the field with the generator
-   passed in by the caller. Whichever lands, the fixtures keep their own names for their own data.
-   Quote: the count of names the door exports before and after, and `gate:browser` at 4 of 4, which
-   is the sixteen fixtures still drawing under the new shape.
-2. **Move the reader, its declaration type and the source readers out of `fixtures/` into the
-   package, without exporting any of them**, with the corpus importing them from their new home.
-   Quote: `npm test` at its count on the day (866 over 73 files as of 2026-09-10), `npm run
-   type-check` clean, and the door's export count unchanged at 69 run-time names, which is what says
-   a move was a move.
-3. **Settle `BlendMode`.** Either it goes on the door beside the declaration, or the declaration
-   takes a `GPUBlendState` and the fixtures keep their own one-value name for the blend they use.
-   Quote: `gate:pack`, and the export count against step 2's.
-4. **Export the reader and its declaration type**, with `docs/API.md` gaining both in the group a
-   reader building a frame is already reading, and `docs/GUIDE-frame-graph.md` gaining a worked
-   example of a frame of more than one pass declared rather than constructed. Quote: `gate:pack`,
-   which is what says a consumer outside this repository can import them, and `gate:browser` at
-   4 of 4.
-5. **Close it**, with what it leaves behind written into the documents rather than left here, and
-   the entry deleted.
-
-### Done when
-
-- A consumer outside this repository builds a `FrameGraph` from a WGSL source and a declaration,
-  shown by `gate:pack` rather than by an import from inside the tree.
-- None of `'value-noise'`, `'copy-tints'`, `'draw-list-models'`, `'material-objects'` or
-  `'perdraw-slices'` reaches the door, read off the declarations a build writes rather than off
-  `index.ts`.
-- The sixteen fixtures draw through the exported reader rather than through a copy of it, so the
-  gates cover the published path and there is one path. `gate:browser` at 4 of 4 and the recording
-  contract at 16 of 16.
-- `docs/API.md` names both and `docs/GUIDE-frame-graph.md` shows a declared frame of more than one
-  pass.
-- `npm test` and `npm run type-check` are green at every step, and `gate:pack` is green on every
-  step that moves the door.
-
-**What would change the answer.** If step 1 finds that a useful declaration cannot be written
-without shipping content generators, the reader stays behind the corpus and this item closes as
-refused with that reading recorded, because the alternative is publishing fixture data.
-
-### Landed on 2026-09-11, step 1: the declaration carries what the generator's name stood for
-
-**The answer is the first of the two the step named** — `content` is gone from the declaration — and
-the item does not close as refused, because the reading it would have closed on turned out to be
-wrong. A useful declaration *can* be written without shipping a generator, and the reason is that a
-content name was never doing generator work at the point the reader read it. Three things came out
-of the name and no more: a texture's format, a texture's fetch address, and a buffer's fetch
-address. Those three are now declared:
-
-```ts
-textures?: { …; sampled?: { format: GPUTextureFormat; source: string } }[]
-buffers?:  { …; source?: string }[]
-```
-
-`sampled` is also still the discriminator it was, which is the part that did not have to change: a
-texture with one is a texture the source samples and a texture without one is a texture the source
-stores into, so the two refusals written on that distinction stand unedited.
-
-**The rule this settles, and it is written at the field rather than here.** A published declaration
-may name a generator a consumer can already reach and may not name one only this repository holds.
-`geometry` is the contrast that proves it is a rule about reach and not about generators: it still
-names `GEOMETRY_PRIMITIVE`, which is on the door, so the reader still derives its addresses and
-`geometryFileName` stayed with the reader. `textureFileName` and `bufferFileName` moved out to
-`fixtures/shader-content.ts`, because after this change nothing published derives them.
-
-**What the corpus does instead, which is what a consumer does.** `fixtures/shader-content.ts` gains
-`FixtureFrame`, which is `DeclaredFrame` with `content` put back on the two arrays, and
-`publishedFrame`, which lowers the one to the other by reading the format off `TEXTURE_CONTENT` and
-the address off the helpers beside it. The corpus still writes `content: 'value-noise'` once. It is
-a lowering and not a second reader — nothing in it checks anything — so `declaredFrame` is still the
-only path from a source and a declaration to a description, and the corpus goes down the published
-one. `generatedBytes` moved there too, which is where step 2's move needs it anyway.
-
-**Two readings in this entry had moved and the work was done against the tree.** The corpus is
-**eighteen** fixtures, not the sixteen this item says throughout: `core-blend` arrived with item 11
-and `core-count` with item 2, both after `v0.4.0`, which is the tag the sixteen was read at. The door
-carries **70** run-time names, not the 69 step 2 quotes. Steps 2, 3 and 4 below still say sixteen and 69; read those numbers off the tree when the
-step is taken, not off this entry.
-
-**Measured.**
-
-| | before | after |
-| --- | --- | --- |
-| run-time names on the door | 70 | 70 |
-| `npm test` | 931 over 78 files | 933 over 78 files |
-| `npm run type-check` | clean | clean |
-| `npm run gate:browser` | 4 of 4 | 4 of 4 |
-| `npm run gate:pack` | 13 of 13 | 13 of 13 |
-| corpus draws | 28, 0 failed, 9 WebGL 2 skips | 28, 0 failed, 9 WebGL 2 skips |
-
-The door is unchanged at 70 either side, which is what says this step settled a shape and published
-nothing. All eighteen fixtures drew on WebGPU under the new shape, six of them carrying contents:
-`core-texture`, `core-perdraw`, `core-perdraw-uniform`, `core-mips`, `core-draw-list` and
-`core-material`.
-
-**The two tests are new and both were proved red one at a time.** An address and its bytes used to
-come from one read of one field and are now two answers, so `tests/generated-bytes.test.ts` asserts
-the two sets of names agree in both directions over every fixture. Skipping the buffer generation
-reds the first and only the first; dropping the buffer's address from `publishedFrame` reds the
-second and only the second.
-
-**What the gates could not see.** The spelling of an address. `publishedFrame` and `generatedBytes`
-both go through `textureFileName`, so renaming that helper wrongly moves both and the new tests stay
-green — verified, not assumed: the mutation was run and passed. That is the intended shape, since one
-spelling in one place leaves only the sets of names to disagree about, and it is the browser gates
-that hold the spelling by fetching what a description names. Also unchanged: `gate:browser` is the
-software renderer, and `gate:card` was not run for this step, which touches no backend.
-
-### Landed on 2026-09-11, step 2, and the destination the step assumed was refused by a rule
-
-**The move happened and the door did not change**, which is what the step asked to be shown. What it
-could not foresee is where: the step says "into the package" and the obvious home was `graph/`, and
-`graph/` refuses it. `tests/import-graph.test.ts` holds **§7 rule 1 — `graph/` imports nothing
-outside itself**, because importing nothing is what makes a graph serializable, comparable,
-snapshot-testable and sendable to a worker, which `cost()`, `validate()`, `refusal()` and item 34's
-golden snapshots all rest on. The reader imports `WGSL_DOCUMENT`, `uniformBindingOf`,
-`namesReachedBy` and `GEOMETRY_PRIMITIVE`, so it can never live there. The attempt was made and the
-rule caught it on the first `npm test`:
-
-```
-graph/declared-frame.ts imports shader-geometry.ts, which is outside graph/
-```
-
-**So the reader has a directory of its own**, which is the right answer rather than a consolation:
-it is the layer that reads a source and a declaration and produces a graph, and it sits above
-`graph/` in exactly the way `submit/` and `gpu/` do.
-
-| was, under `fixtures/` | is |
-| --- | --- |
-| shader-describe.ts | `declare/declared.ts`, 745 lines |
-| declared-frame.ts | `declare/declared-frame.ts`, 233 lines |
-| shader-blend.ts | `graph/blend.ts`, 21 lines — step 2 put it in declare/, step 3 moved it here |
-| wgsl-pipelines.ts | `wgsl-pipelines.ts`, 305 lines, beside the other `wgsl-*` readers |
-
-**shader-blend.ts moved too, which step 2's text does not list.** It is not a fourth decision — the
-reader imports `BLEND_MODE`, so leaving it behind would make a package module import `fixtures/`,
-which is the wrong direction and worse than the move. Step 3 still owns whether `BlendMode` reaches
-the door; this only changed where it lives.
-
-**Measured.**
-
-| | before | after |
-| --- | --- | --- |
-| run-time names on the door | 70 | 70 |
-| files reachable from `index.ts` | 35 | 35 |
-| `npm test` | 933 over 78 files | 933 over 78 files |
-| `npm run type-check` | clean | clean |
-| `npm run gate:pack` | 13 of 13 | 13 of 13 |
-| `npm run gate:browser` | 4 of 4 | 4 of 4 |
-
-Not one of the 35 files the door reaches is under `declare/` or is `wgsl-pipelines.ts`, which is the
-evidence that matters: the move moved and published nothing. The test count is identical either side
-because no test was added or deleted — every one of them was repointed at the new path and they all
-still pass, which is what says the reader behaves the same from its new home.
-
-**What the gates could not see, and it is a real cost.** `tsconfig.build.json` now compiles
-`declare/**` and `wgsl-pipelines.ts`, so the install carries **72,159 bytes it did not carry before,
-against a `dist` of 787,008 — about 9% — reachable from no door.** Nothing checks that, because the
-shipping list is the thing that decides what is published and this step added to it deliberately.
-Step 4 is what earns those bytes by putting the reader on the door; if this item closed here instead,
-they would have to come back out.
-
-### Landed on 2026-09-11, step 3, and neither of the two answers it offered is the one that landed
-
-**The step offered a narrowing or a removal and the answer is neither: the declaration takes a
-`GPUBlendState`, and `BLEND_MODE` goes on the door as a table to read from.** Option A — `BlendMode`
-on the door beside the declaration — is a published union of **one value**. Under it a consumer
-cannot express additive, or multiply, or any of the blends a graphics package is expected to draw,
-through the reader at all, while `RenderPipelineSpec.targets[].blend` beneath it takes any
-`GPUBlendState` the card expresses. That would make the authoring path express **less than the graph
-it builds**, which is the opposite of what an authoring path is for. Option B — take a
-`GPUBlendState` and leave the name in the fixtures — fixes that and throws away something real.
-
-**What it would have thrown away was found by counting, not argued.** The same four factors were
-already written out **three times in this tree**: the blend module itself, and a hand-written
-`const OVER: GPUBlendState` in each of `tests/blend-capability.test.ts` and
-`tests/renderer-targets.test.ts`. A blend that gets copied three times inside the package is one a
-consumer will copy too, and the copy is the bug: `over` spelled with `src-alpha` over an
-already-premultiplied picture doubles the alpha and darkens every edge, and nothing refuses it,
-because four valid factors are four valid factors. So the table is published and the two tests now
-read `BLEND_MODE.over` instead of their own copy — one spelling of `over` in the package.
-
-**The distinction that makes this not option A.** `BLEND_MODE` bounds nothing. No field is typed as
-`BlendMode`; every field that carries a blend still carries a `GPUBlendState`, and
-`{ ...BLEND_MODE.over, alpha: … }` is the intended way to a blend that has no name yet. `BlendMode`
-is the record's key type, so it grows as entries do and a caller may hold a name, and that is all it
-is. The reason is written at the table in `graph/blend.ts`, not here.
-
-**It moved twice.** Step 2 put it under `declare/` because the reader imported it; step 3 moved it
-to `graph/blend.ts`, because a published blend table is a graph concern rather than a declaring
-one and the file imports nothing, which is what `graph/` requires.
-
-**Measured.**
-
-| | before | after |
-| --- | --- | --- |
-| run-time names on the door | 70 | **71** |
-| files reachable from `index.ts` | 35 | **36** |
-| `npm test` | 933 over 78 files | 933 over 78 files |
-| `npm run type-check` | clean | clean |
-| `npm run gate:pack` | 13 of 13 | 13 of 13 |
-| `npm run gate:browser` | 4 of 4 | 4 of 4 |
-
-The one name is `BLEND_MODE`, and the one file is `graph/blend.ts`. Nothing under `declare/` is
-reachable from the door yet, which is still step 4's to change. `docs/API.md` gained the name in the
-same commit, not because a step asked but because `tests/api-signatures.test.ts` refuses an
-undocumented run-time export — it went red on `BLEND_MODE: the document does not carry` before the
-entry was written.
-
-`core-blend` draws 158,400 of 480,000 pixels on **both** backends and `core-depth` draws 245,512 on
-WebGPU, unchanged across this step, which is what says routing the blend through the declaration as
-a state rather than a name changed no picture.
-
-**What the gates could not see.** No blend other than `over` is drawn anywhere in this tree, so the
-widening is proved by the compiler and by the two backends' existing capability refusals rather than
-by a picture. A fixture drawing an additive blend across both backends would close that, and it is
-item 19's kind of work rather than this item's.
-
-### Landed on 2026-09-11, step 4, and the step found a name the newly published type could not reach
-
-**`declaredFrame` and `DeclaredFrame` are on the door**, `docs/API.md` carries both and
-`docs/GUIDE-frame-graph.md` works a frame of two passes end to end. What the step did not expect is
-a third name.
-
-**`groupsToCover` was not on the door and `DeclaredFrame`'s own doc comment names it.** The comment
-on `passes[].groups` says the count is "the whole workgroup count a producer worked out from the size
-it had (`groupsToCover` covers a pixel size in whole blocks of the entry point's own workgroup
-size)", and that function lived in `graph/refs.ts` reachable only from inside the tree — the corpus
-imports it as `'../graph/refs'`. Publishing the type is what made the reference dangle, so the fix
-belongs to this step rather than to a later one: a consumer declaring a compute pass would otherwise
-have to redo the one piece of arithmetic in a frame that is neither in the source nor a free choice,
-and rounding it down leaves the edge of a picture unwritten with nothing to say so. It is exported
-with that reason written above it.
-
-**The example in the guide was run before it was written down.** It is a compute pass growing a
-field out of the field it left last frame and a render pass drawing what that pass left behind: four
-resources, a compute pipeline and a render one, two passes, and no handle or binding number written
-anywhere in the declaration. `tests/docs-code.test.ts` compiles it, and it was executed first to
-check the numbers the prose quotes. The section sits at the **end** of the guide and not beside the
-long form, because a block marked `// continues the block above` chains to the previous checked block
-of the same document, and inserting a section in the middle re-pointed a later block at the wrong
-one — caught by that gate, not by reading.
-
-**Measured.**
-
-| | before | after |
-| --- | --- | --- |
-| run-time names on the door | 71 | **73** |
-| files reachable from `index.ts` | 36 | **39** |
-| `gate:pack` consumer checks | 13 of 13 | **17 of 17** |
-| `npm test` | 933 over 78 files | 933 over 78 files |
-| `npm run type-check` | clean | clean |
-| `npm run gate:browser` | 4 of 4 | 4 of 4 |
-| recording contract | 18 of 18 | 18 of 18 |
-| corpus draws | 28, 0 failed, 9 WebGL 2 skips | 28, 0 failed, 9 WebGL 2 skips |
-
-The two new names are `declaredFrame` and `groupsToCover`; `DeclaredFrame` is a type and does not
-count at run time. The three newly reachable files are `declare/declared.ts`,
-`declare/declared-frame.ts` and `wgsl-pipelines.ts`, which is what earns the 72,159 bytes step 2
-added to the install and could not yet justify.
-
-**The corpus now reaches the reader through the door.** `tests/support/fixture.ts` imports
-`declaredFrame` from the door rather than from the module directly, so the sixteen — now
-eighteen — fixtures, the recording contract and the browser gates all exercise the published path.
-There is one reader and no copy of it.
-
-### Done when, verified line by line
-
-- **A consumer outside this repository builds a `FrameGraph` from a WGSL source and a declaration,
-  shown by `gate:pack`.** Four new checks in `tests/consumer-check.ts`, run against the installed
-  tarball outside the repository: `a declared frame of two passes becomes a graph` (2 passes, 4
-  resources), `the stage each pipeline runs at came off the source rather than the declaration`
-  (`compute,render`), `it is the same kind of graph the builders make`, and `an entry point the
-  source does not declare is refused by name`. **17 of 17.**
-- **None of the five content names reaches the door, read off the declarations a build writes.**
-  Checked against a freshly rebuilt `dist`: no `.d.ts` carries `TextureContent`, `BufferContent` or
-  any of the five string literals as a **type**. `'draw-list-models'` does appear once in the built
-  declaration for `declare/declared-frame.ts` — inside the doc comment that explains why it must not cross —
-  which is prose and not surface, and is named here rather than rounded to zero.
-- **The fixtures draw through the exported reader rather than through a copy of it.** One reader,
-  reached through the door. `gate:browser` **4 of 4** and the recording contract **18 of 18** — the
-  sixteen this line was written against is now eighteen, which the step 1 entry above records.
-- **`docs/API.md` names both and `docs/GUIDE-frame-graph.md` shows a declared frame of more than one
-  pass.** API.md gained `declaredFrame` and `groupsToCover` under *Describing a frame*, each held to
-  its compiler-given signature by `tests/api-signatures.test.ts`. The guide gained the two-pass
-  example above.
-- **`npm test` and `npm run type-check` green at every step, `gate:pack` green on every step that
-  moves the door.** 933 over 78 files and clean at all four; `gate:pack` 13 of 13 at steps 1 and 2,
-  13 of 13 at step 3 and 17 of 17 here.
-
-**What the gates could not see.** `gate:browser` is the software renderer, and `gate:card` has not
-been run for any step of this item — none of the four touched a backend, and no picture changed. The
-guide's example is **compiled and was run once by hand, but nothing draws it**: no gate renders a
-declared frame written outside `fixtures/`, so the example is proved to describe correctly and not to
-draw correctly. The corpus covers drawing, through the same reader.
-
-**Step 5 is what remains**: close the item, move what it leaves behind into the documents, and delete
-the entry.
 
 ---
 
@@ -1267,9 +925,10 @@ list. A queue recording a death is not a signpost.
 
 - main.js — the row says it is "a file the reader creates in `docs/EXAMPLES.md`'s walkthrough".
   That walkthrough now writes `main.ts`, at `docs/EXAMPLES.md:14`, `:58` and `:63`.
-- docs/TESTING.md — the row says it is "cited by ROADMAP item 1's phone row". This file's item 1 is
-  the frame declaration reader and has no phone row; the words "phone" and "mobile" do not appear in
-  it.
+- docs/TESTING.md — the row says it is "cited by ROADMAP item 1's phone row". The item 1 that
+  reference was written against is long gone, and the item 1 that replaced it — the frame declaration
+  reader — had no phone row either and has itself now landed and been deleted. The citation resolves
+  to nothing.
 - host/loop.ts — the row credits "RoadToPureEngine §7 and ROADMAP item 39". Neither reference
   resolves: the first document was deleted at 0.3.0, and the item number belongs to the queue that
   was deleted with it rather than to this file, whose items run 1 to 18.
