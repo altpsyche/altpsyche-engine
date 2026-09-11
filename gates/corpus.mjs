@@ -106,6 +106,11 @@ const { bundle, staging } = bundleForPage({
   // against the uniforms the SOURCE declares, where `unreached` asked the built
   // pipeline and could therefore see a name the compiler had dropped.
   'index.ts': ['missing'],
+  // The three numbers the cross-backend comparison reports, used here for a
+  // comparison within one backend (item 2, step 2): the same function the card
+  // gate measures with, bundled rather than restated, which is the rule its own
+  // header sets.
+  'gates/compare.mjs': ['compareFrames'],
 });
 
 const browser = await chromium.launch({
@@ -334,6 +339,104 @@ for (const { id, frame, values, entry, description, bytes, code } of corpus) {
     skipped.push(`${gl2Label}  ${message}`);
   } else {
     console.log(`PASS ${gl2Label}  ${message}`);
+  }
+}
+
+/**
+ * The picture a mask cannot draw, drawn both ways and compared (item 2, step 2).
+ *
+ * Every other reading in this gate says a preset lit its buffer, and every reading
+ * in `gates/card.mjs` says the two backends agree. Neither says a mode drew the
+ * *right* picture: two backends collapsing a counting stencil's two faces the same
+ * way agree perfectly and are both wrong, which was measured when step 1 landed —
+ * the card gate stayed green at 0 of 1,440,000 channels with the faces collapsed,
+ * and only `core-count`'s own edge count moved.
+ *
+ * So the counting modes are held to a difference rather than to an agreement.
+ * `core-count` is two squares wound against each other: a counter cancels where they
+ * overlap and leaves the hole empty, and a mask marks the hole as solidly as the
+ * ring and fills it. The same frame is drawn under `count`/`nonzero` and under
+ * `mark`/`inside`, on one backend and in one page, and the two pictures must differ.
+ * **Identical is a failure**, because identical is what a collapsed counter gives.
+ *
+ * One backend is enough for this and the chain is worth stating: this says WebGPU's
+ * counter is not a mask, and the card gate's `core-count` row says WebGL 2 draws what
+ * WebGPU draws to zero channels of 1,440,000 on a real card. Together those say WebGL
+ * 2's counter is not a mask either. What neither says is that the hole is in the
+ * *right place* — no gate here reads geometry — which is what the shader's own
+ * comment is for.
+ */
+const counting = corpus.find((one) => one.id === 'core-count');
+if (!counting) {
+  console.log('FAIL core-count is not in the corpus, so the counting modes are held to nothing');
+  failures++;
+} else {
+  // The mask pair standing in for the counting pair, on a copy: the frame is the
+  // lowered description, so this swaps two names and changes nothing else — same
+  // geometry, same shaders, same attachments, same passes. A difference between the
+  // two pictures is therefore the modes and nothing but.
+  const swap = /** @type {Record<string, string>} */ ({ count: 'mark', nonzero: 'inside' });
+  const masked = {
+    ...counting.frame,
+    pipelines: counting.frame.pipelines.map((/** @type {any} */ pipeline) =>
+      pipeline.depth?.stencil !== undefined
+        ? { ...pipeline, depth: { ...pipeline.depth, stencil: swap[pipeline.depth.stencil] ?? pipeline.depth.stencil } }
+        : pipeline
+    ),
+  };
+
+  const separation = await page.evaluate(
+    async ({ counted, masked, values, W, H }) => {
+      const device = await window.requestWebGPUDevice();
+      if (!device) return { error: 'no WebGPU adapter, the browser needs --enable-unsafe-webgpu' };
+
+      /** One frame's pixels, on a canvas of its own for the reason the loop above
+       * gives: disposing a backend loses its context. */
+      const drawn = async (/** @type {any} */ frame) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const backend = window.createWebGPUBackend(canvas, device);
+        if (!backend) throw new Error('no webgpu context');
+        backend.resize(W, H);
+        const program = backend.program(frame);
+        program.setUniforms(values);
+        program.draw();
+        const px = await backend.readPixels();
+        // Copied before the backend goes, since the readback is a view the
+        // context owns and the next draw is on another one.
+        const kept = new Uint8Array(px);
+        program.dispose();
+        backend.dispose();
+        return kept;
+      };
+
+      try {
+        const a = await drawn(counted);
+        const b = await drawn(masked);
+        return window.compareFrames(a, b, W, H);
+      } catch (e) {
+        return { error: String(/** @type {any} */ (e).message || e).slice(0, 300) };
+      }
+    },
+    { counted: counting.frame, masked, values: counting.values, W, H }
+  );
+
+  console.log('');
+  if (separation.error) {
+    console.log(`FAIL core-count counted against masked  ${separation.error}`);
+    failures++;
+  } else {
+    const { hardJumps: jumps, maxDelta, differing, channels } = /** @type {any} */ (separation);
+    const reading =
+      `hard jumps ${jumps.a.toLocaleString('en-US')} counted against ${jumps.b.toLocaleString('en-US')} masked, ` +
+      `worst ${maxDelta}, ${differing.toLocaleString('en-US')} of ${channels.toLocaleString('en-US')} channels differ`;
+    if (differing === 0) {
+      console.log(`FAIL core-count counted against masked  the two are identical, so the counter is a mask  ${reading}`);
+      failures++;
+    } else {
+      console.log(`PASS core-count counted against masked  ${reading}`);
+    }
   }
 }
 

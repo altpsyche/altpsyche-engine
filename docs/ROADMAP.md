@@ -369,10 +369,11 @@ it.**
    decrementing on back faces, both wrapping, and `nonzero` covering where the counter is not zero.
    **Measures:** the two backends agreeing on a fixture that a mask cannot draw, to the single
    channel the corpus already holds them to.
-2. A fixture that separates them: a path wound so that a mask fills a hole a counter leaves empty.
-   `core-count` is that path already — step 1 landed it — so what is left is drawing it a second
-   time under `mark` and `inside` and recording the difference. **Measures:** the two pictures
-   differing by a named number of pixels under `mark`, and by none under `count`.
+2. **Landed on 2026-09-11**, reading below. A fixture that separates them: a path wound so that a
+   mask fills a hole a counter leaves empty. `core-count` is that path already — step 1 landed it —
+   so what is left is drawing it a second time under `mark` and `inside` and recording the
+   difference. **Measures:** the two pictures differing by a named number of pixels under `mark`,
+   and by none under `count`.
 3. `refusal` answers for a device that cannot do per-face stencil, if any reachable one cannot.
    **Measures:** the capability read off both backends on the machines the gates run.
 4. **`core-stencil` gets a vertex stage for its filling pass, so the mask modes can be compared
@@ -462,6 +463,49 @@ backend compares nothing, which is the trap `core-blend` was written to avoid.
 **Also moved:** `trace/trace.ts` recorded `stencilFront` alone and called it `stencil`, which was the
 whole story while every mode gave both faces one object. It now records both faces and the read mask,
 because a recorder reading one face cannot see a backend that collapsed them.
+
+### Landed on 2026-09-11, step 2, which closes the blind spot step 1 could only name
+
+**`gates/corpus.mjs` now draws `core-count` twice** — once under `count`/`nonzero` and once under
+`mark`/`inside`, one backend, one page, two names swapped on the lowered description and nothing else
+changed — and the two pictures must differ. The reading, on the software renderer that
+`gate:browser` runs:
+
+```
+PASS core-count counted against masked  hard jumps 2,102 counted against 2,700 masked,
+                                        worst 186, 302,512 of 1,440,000 channels differ
+```
+
+**302,512 channels of 1,440,000**, which is the hole: about a fifth of the frame drawn by a mask and
+left alone by a counter. The worst single channel is 186 of 255, so it is a visible difference and
+not a rounding one.
+
+**It was proved to catch a skipped counter rather than asserted to.** With `count`'s back face
+changed to increment — the collapse the mask modes are — the gate goes red and says why:
+
+```
+FAIL core-count counted against masked  the two are identical, so the counter is a mask
+                                        hard jumps 2,700 counted against 2,700 masked,
+                                        worst 0, 0 of 1,440,000 channels differ
+```
+
+and the run's total falls from `27 of 27 draws` to `26 of 27 ... with 1 failed`. **Identical is the
+failure**, because identical is exactly what a collapsed counter gives.
+
+**The two probes agree, which is the part worth keeping.** Step 1's card-gate probe put the collapsed
+counter's edge count at **2,700** against the correct **2,102**. This gate puts the *mask's* edge
+count at **2,700** as well. A collapsed counter and a mask are the same picture, measured twice by
+different gates on different renderers, which is what makes the number a reading rather than a
+coincidence.
+
+**Why one backend is enough here, stated so the chain is checkable.** This says WebGPU's counter is
+not a mask. The card gate's `core-count` row says WebGL 2 draws what WebGPU draws to 0 channels of
+1,440,000 on a real card. Together those say WebGL 2's counter is not a mask either.
+
+**What this still cannot see.** No gate here reads geometry, so nothing says the hole is in the
+*right* place — only that there is one, that it is the size a mask fills in, and that both backends
+agree about it. And `gate:browser` is a software renderer throughout: the separation was re-read on
+the card with the counting picture, not with the masked one.
 
 ---
 
