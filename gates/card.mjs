@@ -828,21 +828,27 @@ if (glslJoin.error || !glslJoin.offer) {
 //     one backend and read by the other's arithmetic is what is being compared.
 //     It agrees: worst 2, 77 of 1,440,000 channels.
 //
-// **`core-texture` and `core-mips` are NOT on this list, and the reason is a
-// defect this item found rather than a judgement that they are not worth
-// comparing.** Both were added here on 2026-09-11 and both came back red on the
-// first run:
+// **`core-texture` and `core-mips` were held off this list for a day, and item 20
+// is why they are on it.** Both were added on 2026-09-11 and both came back red on
+// the first run:
 //
 //   core-texture  hard jumps     0 against     0, worst 235, 1,424,706 of 1,440,000 differ
 //   core-mips     hard jumps 7,725 against 7,731, worst 128, 1,401,861 of 1,440,000 differ
 //
 // Almost every channel, against a tolerance of 8. **That is the exact defect class
 // item 19 was opened to expose** — both presets were skipped on WebGL 2 for want
-// of a baked vertex, so both have been drawing two different pictures for as long
-// as they have existed and nothing was red. They are held out of this list under
-// **item 20**, which carries the numbers and the diagnosis, and they join it when
-// that item closes. Adding them before then would be a red gate standing in for an
-// item, and a gate that is expected to be red stops being read.
+// of a baked vertex, so both had been drawing two different pictures for as long
+// as they had existed and nothing was red. They were held out under **item 20**
+// rather than left red, because a gate that is expected to be red stops being
+// read, and a diagnostic block below printed both readings until that item closed.
+//
+// **It closed on 2026-09-12 and they read 40 at worst 1 and 0 at worst 0.** Two
+// causes, neither of them the one the first hypothesis named. `@builtin(position)`
+// counts rows from the top left in WGSL and from the bottom left in GLSL ES, which
+// took a presentation step the backend owns and a clip-space y flip in the vertex
+// stage to reconcile — two reverted attempts proved neither half works alone. And
+// the WebGPU backend read *between* a ladder's levels with `nearest`, never having
+// set `mipmapFilter`, where the WebGL 2 backend mixed them.
 const SCENE_TIER = [
   'core-scene',
   'core-draw-list',
@@ -852,6 +858,18 @@ const SCENE_TIER = [
   'core-count',
   'core-scissor',
   'core-target',
+  // **The last two, added by item 20's step 3 on 2026-09-12.** They were held off
+  // this list and printed by a diagnostic block below, because they disagreed
+  // across the backends at nearly every channel — 1,424,706 and 1,401,861 of
+  // 1,440,000 against a tolerance of 8 — and a gate expected to be red stops being
+  // read. Item 20 found both causes: `@builtin(position)` counts rows from the
+  // opposite corner in the two languages, fixed by a presentation step and a
+  // vertex flip (steps 2c and 2d), and the WebGPU backend read between a ladder's
+  // levels with `nearest` because it never set `mipmapFilter` (step 2e). They read
+  // 40 at worst 1 and 0 at worst 0 now, so they are held to the same bar as the
+  // rest and the diagnostic block is gone.
+  'core-texture',
+  'core-mips',
 ];
 /**
  * One preset drawn through both backends on this card and compared two ways: as
@@ -958,60 +976,31 @@ for (const one of corpus.filter((preset) => SCENE_TIER.includes(preset.id))) {
   else if (both.error) say(false, `${label}  ${both.error}`);
   else {
     const straight = /** @type {any} */ (both).straight;
+    const flipped = /** @type {any} */ (both).flipped;
+    const ok = straight.maxDelta <= TOLERANCE;
     // **Asserted, since item 107 closed.** It reported rather than asserted while the
     // two backends drew different pictures; the mirror is gone and the residual is
     // now one channel of rounding, so this holds the same bar the gradient control
     // above does. Three numbers print whether it passes or not: a seam nobody prints
     // is a seam nobody looks at, and the average that would bury it does not exist.
+    //
+    // **A failing preset prints the same comparison with the WebGL 2 frame turned
+    // over**, which is the first question to ask of two pictures that disagree:
+    // mirroring preserves adjacency, so a flipped reading that is *better* than the
+    // straight one says the frame is upside down rather than wrong. That reading
+    // was a block of its own until item 20's step 3 deleted it — it existed to
+    // diagnose `core-texture` and `core-mips`, which are on this list now — and it
+    // is kept here because it costs one comparison over buffers already in hand and
+    // because it is what a session reading a red line wants next.
     say(
-      straight.maxDelta <= TOLERANCE,
+      ok,
       `${label}  hard jumps ${straight.hardJumps.a} against ${straight.hardJumps.b}, ` +
-        `worst ${straight.maxDelta}, ${straight.differing.toLocaleString('en-US')} of ${straight.channels.toLocaleString('en-US')} channels differ`
+        `worst ${straight.maxDelta}, ${straight.differing.toLocaleString('en-US')} of ${straight.channels.toLocaleString('en-US')} channels differ` +
+        (ok
+          ? ''
+          : `; turned over, worst ${flipped.maxDelta}, ${flipped.differing.toLocaleString('en-US')} differ`)
     );
   }
-}
-
-// ── Item 20's step 1: are the two pictures vertical mirrors? ───────────────────
-//
-// `core-texture` and `core-mips` disagree across the backends at nearly every
-// channel — 1,424,706 and 1,401,861 of 1,440,000, against a tolerance of 8 — and
-// item 19's step 4 found it the moment they were first compared. Item 20 carries
-// one hypothesis: both sample a *generated* texture, where `core-target`, which
-// agrees, samples one a pass drew, and WebGPU's texture origin is top-left where
-// OpenGL's is bottom-left.
-//
-// **This prints both readings and gates neither**, which is the same form as the
-// timing line below and for the same reason: it is a measurement taken to settle a
-// question, not an invariant. A gate that is expected to be red stops being read,
-// and these two are expected to be red until item 20's step 2 lands. **Step 3
-// deletes this block** when the two presets join `SCENE_TIER` above.
-const HELD_OUT = ['core-texture', 'core-mips'];
-console.log('');
-console.log('     item 20, held off the list above — reported, never gated:');
-for (const one of corpus.filter((preset) => HELD_OUT.includes(preset.id))) {
-  const bytesArrays = Object.fromEntries([...one.bytes].map(([index, made]) => [index, [...made]]));
-  const both = await page.evaluate(compareBothWays, {
-    id: one.id,
-    description: one.description,
-    code: one.code,
-    block: one.block,
-    bytesArrays,
-    values: one.values,
-    W,
-    H,
-  });
-  if (both.skip || both.error) {
-    console.log(`     ${one.id}  ${both.skip ?? both.error}`);
-    continue;
-  }
-  const straight = /** @type {any} */ (both).straight;
-  const flipped = /** @type {any} */ (both).flipped;
-  console.log(
-    `     ${one.id}  as drawn: worst ${straight.maxDelta}, ` +
-      `${straight.differing.toLocaleString('en-US')} of ${straight.channels.toLocaleString('en-US')} differ  |  ` +
-      `WebGL 2 flipped in Y: worst ${flipped.maxDelta}, ` +
-      `${flipped.differing.toLocaleString('en-US')} of ${flipped.channels.toLocaleString('en-US')} differ`
-  );
 }
 
 // ── What the presentation step costs, on the card (item 20, step 2c) ─────────
