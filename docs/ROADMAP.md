@@ -2305,6 +2305,28 @@ than nominal.
 **Measured.** Documents and one doc comment; `npm test` 945 over 80 files and `npm run type-check`
 clean, unchanged either side. No behaviour changed, which is the point of a step that settles
 something as staying put.
+
+### Done when, verified — and what is left is not a step this session can take
+
+**The `Done when` is one line and step 1 meets it.** `probe()` adds nothing to `document.body` that
+it does not remove, including where a trial throws, shown by `tests/probe-document.test.ts` counting
+children before and after on both paths, both red when the removal is replaced by a no-op.
+
+**Step 3 is outstanding and is not part of the `Done when`.** It asks that `probe()`'s answers be
+shown unchanged, and its measurement — "`gate:browser`'s device report" — does not exist: no browser
+gate calls `probe()`. What exists is `npm run device-report`, which is not a gate, asserts nothing,
+and launches headed with the card flags because a headless launch reaches the software renderer. **It
+needs a display and a person, like `gate:card`.** So the confirmation that the removal did not break
+the trial it exists for rests on:
+
+- `npm test` 945 over 80 files, which covers the removal and not the trial's answer;
+- the removal being a `remove()` after the trial has settled, which cannot reach anything the trial
+  read;
+- and **nothing on a real card.**
+
+**For Siva**: `npm run device-report` either side of `774b9ae` would close step 3 in one reading. The
+row it prints goes in [DEVICES.md](DEVICES.md). Nothing here should claim that reading until it is
+taken.
 - `probe()` answers the same for both backends as it did, read off `gate:browser`'s device report.
 - `npm test` and `npm run type-check` are green; `gate:browser` at 4 of 4.
 - The commit says whether step 2 was settled or left standing, and that a software renderer cannot
