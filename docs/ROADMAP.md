@@ -108,7 +108,8 @@ alone. **Reading 3 said WebGL 2 cannot apply a blend; it can** — `gl.blendFunc
 `gl.blendEquationSeparate` are core WebGL 2 and the backend simply never calls them, so item 11 is an
 implementation and a much narrower refusal rather than a refusal. Reading 5's second half said the
 word `viewport` appears nowhere; it appears on the WebGL 2 draw path, which this file already
-recorded on 2026-09-10 and which finding D still contradicts.
+recorded on 2026-09-10 and which finding D contradicted until item 16's step 1 rewrote it on
+2026-09-11.
 
 **Reading 6 files no item, and here is why.** It asked that the frame vocabulary work be designed
 knowing depth is coming. Depth is in the frame description today — `RenderPassSpec.depth`,
@@ -2382,6 +2383,34 @@ the depth compare. Both have a home in the types today and neither needs the voc
    `graph/types.ts` above the pass type, with how to reverse it and what would change it. **If the
    answer is no, the item closes here**, having corrected the plan and recorded that a rectangle clip
    is not a capability in this package.
+#### Landed on 2026-09-11, step 1: four passages, not the three the step named
+
+Finding D's own text, the 3.1.0 row in the dependants table, and finding D's re-reading section
+— plus a fourth the step did not list: the campaign section at the top said finding D "still
+contradicts" the 2026-09-10 viewport reading, which stops being true the moment finding D is
+rewritten. A correction that leaves a sentence upstream saying the thing is still wrong has not
+landed.
+
+**What each now says.** Finding D names `scissor` alone and zero occurrences, and says a viewport is
+set per pass on the WebGL 2 draw path, derived from the frame's size and declared nowhere in a
+graph — *a different thing from absent*, which is the distinction the original wording collapsed. The
+3.1.0 row drops "where a rectangle is a scissor" and says why: that clause was this file talking to
+itself, and the consumer's own ladder gives the row as depending on item 2's counting stencil with no
+scissor named at all.
+
+**The reading was re-verified and two line numbers in it had drifted.** `scissor` is still zero
+outside this file. The viewport assertions are at `tests/renderer-webgl2.test.ts:618`, not the 540
+this item cites, and the double records at `tests/support/fake-gl.ts:362`, not 314 — both moved by
+work landed earlier today. `tests/submit-executor.test.ts:98` is unchanged. The `gates/card.mjs:201`
+citation was **not** re-checked, because that file is only exercised on a machine with a card.
+
+**Measured.** `npm test` 945 over 80 files and `npm run type-check` clean, unchanged either side — a
+documentation step whose measurement is the reading, which is what the step said it would be.
+
+**Step 2 is next and it is a decision**: whether a scissor is built at all, on the specification
+argument alone, with the weakness above answered rather than skipped. If the answer is no, the item
+closes there.
+
 3. **If built: `RenderPassSpec` names an optional scissor rectangle**, `validate` refuses one outside
    the frame's own size the way it refuses a per-draw slice past the end of its buffer, `cost` says
    whether a scissor changes a cost, and both backends apply it — `setScissorRect` and `gl.scissor`
@@ -2684,9 +2713,15 @@ needs one capability built and not two, and finding D's own question — whether
 two — is answered by that difference.
 
 **Done when** finding D names `scissor` alone, and says a viewport is set from the frame size on the
-draw path but declared nowhere in a graph. **That correction is item 16's step 1 as of 2026-09-11**,
-which also re-read the consumer's own 3.1.0 row and found it names item 2's counting stencil and no
-scissor at all — so the correction and the decision whether to build one land together.
+draw path but declared nowhere in a graph. **Done on 2026-09-11 by item 16's step 1**, which rewrote
+finding D's text above, corrected the 3.1.0 row in the dependants table, and re-read the consumer's
+own ladder — which names item 2's counting stencil and no scissor at all.
+
+**Two line numbers in the paragraph above had drifted and are corrected with it**: the assertions are
+at `tests/renderer-webgl2.test.ts:618`, not 540, and the double records at
+`tests/support/fake-gl.ts:362`, not 314. `tests/submit-executor.test.ts:98` is unchanged. The
+`gates/card.mjs:201` citation was not re-checked, because that file is only read on a machine with a
+card.
 
 ### Settled on 2026-09-10: `gate:pack` now reads the declared types, and the claim that prompted it was wrong
 
@@ -2871,7 +2906,7 @@ behind it shifted by one, and its 2.1.0 through 2.5.1 are cut with none of them 
 | 2.8.0, dashes and quadratics | a dashed stroke and a quadratic segment | nothing beyond item 2 |
 | 2.9.0, text on a GPU and a recorder with no page | glyph outlines as filled paths | nothing beyond item 2 |
 | 3.0.0, depth | a figure in space that keeps its depth order | nothing beyond item 2. What gates it is a decision in that repository about whether a figure may be undrawable in SVG |
-| 3.1.0, a clip that is a path | a clip region that is not a rectangle | item 2 again, since a path clip is a stencil where a rectangle is a scissor |
+| 3.1.0, a clip that is a path | a clip region that is not a rectangle | item 2 again. **This row used to add "where a rectangle is a scissor" and that was this file talking to itself** (corrected 2026-09-11, item 16 step 1): that package's own ladder gives this row as depending on item 2's counting stencil and names no scissor at all, and a clip that is a path is a stencil either way |
 | 4.0.0, a figure a reader can act on | nothing decided yet | possibly nothing. Pointer and key state is a candidate above and is doubtful on its own merits |
 
 **One row in that ladder needs this package before any painter does, and it is not on the table
@@ -2942,12 +2977,16 @@ the document, and the first picture drawn afterwards had that corner covered by 
 changes a caller's document permanently is a defect in this package whatever the caller is. The trial
 needs the canvas composited while it runs and needs nothing of it afterwards.
 
-**Finding D: this package's own plan for 3.1.0 assumes a scissor that does not exist.** The row above
-reads "a path clip is a stencil where a rectangle is a scissor", and `FrameGraph`, `PassSpec` and
-`DrawSpec` name neither a scissor nor a viewport. **The reading.** The word appears nowhere in this
-tree outside this file. **Why it stands here.** A plan in this file resting on a capability this file
-is the only mention of is this package's own inconsistency, and it decides whether 3.1.0 is one item
-or two.
+**Finding D: this package's own plan for 3.1.0 assumed a scissor that does not exist.** The row above
+read "a path clip is a stencil where a rectangle is a scissor", and `FrameGraph`, `PassSpec` and
+`DrawSpec` declare no scissor. **The reading, corrected on 2026-09-11 by item 16's step 1.** The word
+`scissor` appears nowhere in this tree outside this file — re-grepped over every `.ts`, `.mjs` and
+`.md`, still zero. **A viewport is a different matter and this finding used to say otherwise**: one is
+set per pass on the WebGL 2 draw path and asserted against the frame size by
+`tests/renderer-webgl2.test.ts:618` and `tests/submit-executor.test.ts:98`, with the double recording
+it at `tests/support/fake-gl.ts:362`. It is derived from the frame's size and declared nowhere in a
+graph, which is a different thing from absent. **Why it stands here.** A plan in this file resting on
+a capability this file is the only mention of is this package's own inconsistency.
 
 ### What the spike found that needs nothing here
 
