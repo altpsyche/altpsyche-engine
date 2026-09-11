@@ -38,6 +38,49 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-12, Linux, a corpus at zero with the picture upside down — a reading that was reverted
+
+**Read this row for what it warns about rather than for its numbers.** The change it measures was
+reverted the same day. It gave WGSL its own framebuffer origin on WebGL 2 — the clip-space y
+negation kept, the winding inverted, the readback and scissor flips conditioned on the frame — and it
+took every gated cross-backend preset to exact agreement:
+
+```
+                 before          after
+core-scissor     11              0
+core-blend        0              0
+core-target      77 (worst 2)    0
+core-stencil      0              0
+core-count        0              0
+core-scene       11              0
+core-draw-list   36              0
+core-material    18              0
+core-texture  1,424,706 (w235)   40 at worst 1
+core-mips     1,401,861 (w128)   574,095 at worst 15
+```
+
+**And it displayed the frame mirrored.** No check in `gate:card` could see that, because every one of
+them reads pixels through `readPixels` — the very call the change had taught not to turn a translated
+frame over. Reading the same drawn frame off a 2D context instead:
+
+```
+                  screen top       screen bottom
+before and after  221,173,121      0,0,0          (top matches readPixels' top)
+under the change  0,0,0            221,173,121    (bottom matches readPixels' top)
+```
+
+**`gate:card` read 33 of 33 with the picture upside down.** Every cross-backend number in this file
+is a `readPixels` number, and that is worth knowing before trusting any of them about what a reader
+sees.
+
+**The zeros are kept because they say something that survives the revert**: the residuals this file
+records three times as 11, 36 and 18 — and once called "two hardware compilers folding the same
+arithmetic apart" — are a real defect and not compiler noise, because a change reached zero. **But
+they are an untested claim again**, the tree that produced them having been reverted, and item 20
+re-measures rather than assumes them.
+
+---
+
 ### 2026-09-11, Linux, three presets compared across the backends for the first time, and two were wrong
 
 **Why this row exists.** Item 19 made `core-texture`, `core-target` and `core-mips` drawable on
