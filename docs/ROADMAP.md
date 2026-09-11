@@ -39,7 +39,7 @@ above it belong to a software renderer.
 **Twelve readings arrived on 2026-09-11, taken against `0.4.0`.** They come from
 `@altpsyche/maths`, whose GPU painter is live at its 2.8.0 — its paint/gpu.ts and
 figure/gpu-frame.ts build a `FrameGraph` and call `resolve` and `cost` on it, and its manifest
-declares this package at `^0.4.0` both as a dependency and as a peer one. **Every reading was
+declares this package at `^0.4.0` in its `devDependencies` and in its `peerDependencies`. **Every reading was
 re-verified against this tree
 before this plan was written**, and three came back different from how they were handed over, which
 is recorded at the items rather than quietly fixed.
@@ -111,6 +111,85 @@ every declared door's types resolving under `nodenext`, and 11 of 11 consumer ch
 at the top of this file have not expired. `gate:browser` was not run by this session, which wrote a
 plan and touched no code; its 4 of 4, 16 of 16, 24 of 24 with 9 WebGL 2 skips and 21 of 21 are
 carried from 2026-09-10.
+
+---
+
+## How the campaign is cut, and why it is more than one version
+
+**Decided on 2026-09-11.** Ten new items is not one release, and a third of them need no release at
+all. What follows is the cut order and the reasoning, so a session finishing an item knows whether
+anything is owed to the outside world and a session proposing a release knows what it is carrying.
+
+**What a minor costs here, read off the manifests rather than assumed.** This package is at `0.4.0`.
+A caret on a `0.x` tracks the last number alone — `^0.4.0` resolves `>=0.4.0 <0.5.0` — so **every
+minor cut here is a breaking release for anything that carets it.** `@altpsyche/maths` at 2.8.0
+declares this package at `^0.4.0` twice: in its `devDependencies`, and — the one that costs — in its
+`peerDependencies`. **A peer range is a promise to the host page**, so a minor here forces that
+package to publish a version of its own for no reason but to widen a range, and until it does, a page
+installing both gets an unmet peer. That is the price each cut below is weighed against.
+
+**It is not an argument to bump to 1.0.0.** Two carets on a `1.x` intersect across minors and a
+package manager dedupes them with no help, which is why this file already records that reaching 1.0.0
+removes the problem rather than managing it — and records in the same breath that this is a
+consequence worth knowing and not a reason to move a number. **The version moves when the work does.**
+This campaign is roughly the surface work a 1.0.0 would sit on top of, and that is an observation
+rather than a plan.
+
+**This package's own precedent is that additive is still a minor.** `0.4.0` was cut for one purely
+additive door that removed nothing and moved no name, so a new export here does not get to be a patch.
+
+### What each item owes the outside world
+
+| items | what changes for a consumer | cut as |
+| --- | --- | --- |
+| 5, 6, 7, 8 | nothing. Documents and tests, and `files` ships only `dist`, `LICENSE` and `README.md` | **no release**; they ride along with whatever is next |
+| 13, 15, 18 | behaviour a caller cannot have been relying on: a `TypeError` becoming a `null` or a written throw, two canvases no longer left on the page, a cache that stops missing | patch, and only if something needs one before the next minor |
+| 4 | **not a free rider.** Its own `Done when` says a texture with a `source` and no `data` gets one answer where today the two backends give two, so one backend's refusal changes | rides with the next minor, named in its notes |
+| 2 | `StencilMode` gains two members, which breaks an exhaustive switch | minor |
+| 9, 10, 11, 12 | new refusals for frames that drew before, a new `Capability` member, and either a new door name or a changed `selectBackend` answer | minor |
+| 14, 16, 17 | `dispose` means something different, `RenderPassSpec` gains a field both backends read, and a new readback name | minor |
+| 1 | new exports and nothing removed | minor, and it slots into any of them |
+
+### The cut order
+
+**The numbers below are the shape and not a promise.** An item that closes as refused — items 13 and
+18 each say in their own text that they may — takes its row out, and a cut carrying nothing breaking
+is a patch whatever this table says.
+
+1. **`0.5.0` — item 2, the counting stencil**, carrying whichever of items 4, 5, 6, 7 and 8 have
+   landed by then.
+2. **`0.6.0` — the spine**: items 9, 10, 11 and 12, carrying items 13, 15 and 18 if they landed.
+3. **`0.7.0` — the lifetimes and the vocabulary**: items 14, 16 and 17.
+
+**Why item 2 goes first, and the reason is not the consumer.** Item 2 is argued on the specification —
+`GPUDepthStencilState` carries `stencilFront` and `stencilBack` separately because the two differ, and
+a renderer claiming the core specification either expresses per-face stencil state or does not claim
+it. That argument stands whether or not anything above ever draws a filled path, and this file says so
+at the item. **What the consumer decides is not whether item 2 is built but when what is already built
+is published**, which is a different question and the only one a dependant is allowed to answer here:
+its GPU painter's filled paths and its 2.9.0 glyph outlines both wait on this and nothing else, and
+item 2 depends on none of the spine. Queueing it behind group A would be a cut order chosen by
+accident.
+
+**The alternative, written down so it is not re-argued.** Land all ten, cut one `0.5.0`, and make that
+consumer widen its peer range once instead of three times. **Refused, on the length of the stretch:**
+the spine alone is four items with a decision at the head of it, and a batch that size is a long time
+with nothing published and a dependant blocked on an item that was finished early in it. Three cuts
+pay three range widenings and keep the lead time short, and this file already names that lead time —
+"a gap found there costs an item, a commit and a release here" — as the thing the arrangement between
+the two packages is built around.
+
+**What would change this.** If item 2 turns out to need something from the spine — most plausibly
+item 4's move, since a per-face stencil state is pipeline shape and item 4 is where shape rules are
+going — then the first two cuts merge and the order becomes the spine and then everything else. If
+that consumer widens its peer range to span `0.x` ahead of time, the cost of a cut drops to nothing
+and the three could be more. **What may not change it is a dependant asking for a capability**, which
+is the rule at the top of `CLAUDE.md` and is why the paragraph above separates when a thing is
+published from whether it is built.
+
+**Nothing here authorises a release.** `CLAUDE.md` is unchanged: a tag reaching the remote and a
+publish are not a session's to do, the release runs in CI from the tag, and a published version cannot
+be withdrawn. This section says what a cut would carry, not that one may be taken.
 
 ---
 
@@ -1633,8 +1712,10 @@ camera from here and hands it to a figure as data.
 **2.8.0** with its GPU painter built — its paint/gpu.ts and figure/gpu-frame.ts exist, the second
 builds a `FrameGraph` and calls `resolve` and `cost` — so the "2.7.0, a GPU painter" row below is
 landed rather than pending, and so is "2.8.0, dashes and quadratics". **The peer-dependency question
-below is answered too**: its manifest declares `@altpsyche/engine` at `^0.4.0` in both
-`dependencies` and `peerDependencies`. **And what its 2.x needed from here has landed** — two of its
+below is answered too, and answered the way that section recommended**: its manifest declares
+`@altpsyche/engine` at `^0.4.0` in `peerDependencies`, with a `devDependencies` entry at the same
+range for its own gates — a peer rather than a plain dependency, which is what keeps two copies of
+this package out of one page. **And what its 2.x needed from here has landed** — two of its
 value modules import their spatial arithmetic from `@altpsyche/engine/maths`, which is item 3 and
 0.4.0. Its ladder now runs 2.9.0, 3.0.0, 3.1.0 and 4.0.0, and **its 3.1.0 names item 2's counting
 stencil and no scissor**, which is the reading item 16 turns on. The table below is left as written
