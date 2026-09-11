@@ -199,7 +199,7 @@ additive door that removed nothing and moved no name, so a new export here does 
 | 2 | `StencilMode` gains two members, which breaks an exhaustive switch | minor |
 | 9, 10, 11, 12 | new refusals for frames that drew before, a new `Capability` member, and either a new door name or a changed `selectBackend` answer | minor |
 | 14, 16, 17 | `dispose` means something different, `RenderPassSpec` gains a field both backends read, and a new readback name | minor |
-| 1 | ~~new exports and nothing removed~~ **landed 2026-09-11**, in five steps. Three new run-time names — `declaredFrame`, `BLEND_MODE`, `groupsToCover` — plus the `DeclaredFrame` type, and nothing removed or moved | minor. **Rides the next cut, whatever it is called**, and see the note under the cut order |
+| 1 | ~~new exports and nothing removed~~ **landed 2026-09-11**, in five steps. Three new run-time names — `declaredFrame`, `BLEND_MODE`, `groupsToCover` — plus the `DeclaredFrame` type, and nothing removed or moved | minor, and **already inside the unreleased `0.5.0`**. See the note under the cut order |
 
 ### The cut order
 
@@ -223,13 +223,20 @@ is a patch whatever this table says.
    said. Check `git log <last tag>..HEAD` before writing a changelog entry, not the plan.
 3. **`0.7.0` — the lifetimes and the vocabulary**: items 14, 16 and 17.
 
-**Item 1 landed on 2026-09-11 and is uncut.** Its five steps are five commits after the `0.5.0` bump,
-so nothing published carries them. It is additive — three run-time names and a type, nothing removed
-and nothing moved — which by this file's own precedent is a **minor** and not a patch: `0.4.0` was cut
-for one purely additive door. So the next cut is a minor whether or not items 13, 15 and 18 land
-first, and the row above that calls those three a patch is now the smaller half of what is waiting.
-This is the same lesson row 2 records: **a version carries commits and not the items a plan assigned
-it**, so read `git log v0.5.0..HEAD` before writing a changelog entry.
+**Item 1 landed on 2026-09-11, and `0.5.0` carries it.** Its five steps are five commits after the
+`0.5.0` version bump — but **`0.5.0` has never been tagged or published**, the bump being a number in
+`package.json` and nothing more, so those commits are inside it rather than waiting for a cut after
+it. Publishing `v0.5.0` publishes item 1 with the stencil and the spine. No further bump is owed, and
+proposing one would cut a version for work the unreleased number already covers.
+
+That makes `0.5.0` bigger than row 1 above says a third time, and it is the same lesson row 2
+records: **a version carries commits and not the items a plan assigned it.** Read
+`git log v0.4.0..HEAD` before writing a changelog entry — `v0.4.0`, because that is the last tag that
+exists.
+
+It would have been a minor on its own in any case. It is additive — `declaredFrame`, `BLEND_MODE`
+and `groupsToCover`, plus the `DeclaredFrame` type, nothing removed and nothing moved — and by this
+file's own precedent additive is still a minor, `0.4.0` having been cut for one purely additive door.
 
 **Why item 2 goes first, and the reason is not the consumer.** Item 2 is argued on the specification —
 `GPUDepthStencilState` carries `stencilFront` and `stencilBack` separately because the two differ, and
