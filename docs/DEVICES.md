@@ -38,6 +38,51 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-11, Linux, the same card re-read after a batch of work, and nothing moved
+
+**Why this row exists.** The 2026-08-26 reading below was the only card reading this package
+had, and the roadmap carried its corpus line as dated and unverified because no unattended
+session can re-take it. This one was taken with a person present on the same machine, after
+items 9, 12 and 10 landed, and its purpose is the comparison rather than the numbers: a batch
+that changed a refusal on the drawing path should move no pixel on real hardware, and it moved
+none.
+
+```
+adapter         nvidia / blackwell, 18 adapter features, 0.3 GiB buffer ceiling
+WebGL 2         ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL 4.5.0)
+gradient        hard jumps 0 against 0, worst 0, 0 of 1,440,000 channels differ
+corpus          16 presets drew through WebGPU on the card
+selection       a GLSL frame selected WebGL 2 where WebGPU was offered, 480,000 of 480,000 lit
+gate            22 of 22 PASS, 0 FAIL, run twice with the same result
+```
+
+**Every pixel count is identical to 2026-08-26's**, preset for preset — `core-depth` 245,496,
+`core-scene` 91,571, `core-stencil` 188,356, `core-mips` 479,952, and the twelve others. Item
+10 moved two draw-form refusals into `graph/validate.ts` and this says no fixture was relying
+on either pairing, which is the thing a software renderer could not have said.
+
+**The cross-backend comparison, which is the reading this row was worth taking for.**
+
+```
+core-scene       hard jumps 8234 against 8234, worst 1, 11 of 1,440,000 channels differ
+core-draw-list   hard jumps 7895 against 7895, worst 1, 36 of 1,440,000 channels differ
+core-material    hard jumps 7527 against 7527, worst 1, 18 of 1,440,000 channels differ
+```
+
+**Those are 11, 36 and 18 — the numbers `git show 3324f56` recorded when the Y-negation strip
+landed, re-measured independently two weeks later.** Roadmap item 8 is about
+`gates/translate.mjs` attributing a literal `0 of 1,440,000` to that change when the zero
+belongs to an alternative that was tried and rejected. That item said its correction could only
+ever come from the record, because "nothing in an unattended run can re-take 11, 36 or 18".
+**This row re-takes them**, so the correction now rests on a fresh measurement as well as on the
+commit.
+
+**A timing line the gate prints and never gates**, carried here because it is the only place it
+has a home: a thousand objects at 800x600, 120 frames after a warm one, p50 1.20 ms, p95 3.20 ms,
+p99 198.50 ms — draw plus a full readback. The p99 is a readback stall and not a frame time.
+
+---
+
 ### 2026-08-26, Linux, a real graphics card read headed on the machine's own display
 
 **The first hardware reading in this file.** The two rows below it are transcribed

@@ -26,11 +26,22 @@ two checks over the declared doors; before that it read 514 over 34 files, and t
 contract read 15 of 15 until it was re-taken at 16 of 16. Those last two had expired rather than
 moved, because the sixteenth capability fixture arrived and neither number followed it.
 
-**The one line of this baseline no unattended session can re-take is the card**, which read 17 of 17
-on 2026-08-29. `gate:card` needs a desktop session and a real graphics card, every headless launch
-reaches the software renderer whatever the flags say, and the gate's own header says so. So that
-number is carried here as dated and unverified rather than re-asserted, and the four browser gates
-above it belong to a software renderer.
+**The one line of this baseline no unattended session can re-take is the card**, and it was re-taken
+on 2026-09-11 with Siva present. **22 of 22 PASS and 0 FAIL**, run twice with the same result, on
+`nvidia / blackwell` — 16 presets drawn through WebGPU, a GLSL frame selecting WebGL 2 where WebGPU
+was offered, and the gradient control at 0 of 1,440,000 channels. **Every preset's pixel count is
+identical to the 2026-08-26 reading**, which is what says items 9, 12 and 10 moved no pixel on real
+hardware. The row is in [DEVICES.md](DEVICES.md).
+
+**That number is 22 and not the 17 of 17 this file carried from 2026-08-29**, and the gate grew
+rather than the reading improving: the sixteenth capability fixture and the three cross-backend
+scene comparisons are checks the older total did not include. The old figure is not a number that
+fell, and nothing here should read it as one.
+
+**`gate:card` still needs a desktop session and a real graphics card**, every headless launch
+reaches the software renderer whatever the flags say, and the gate's own header says so. So an
+unattended session still re-takes none of it, and the four browser gates above belong to a software
+renderer whoever ran them.
 
 ---
 
