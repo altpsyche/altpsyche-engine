@@ -19,16 +19,16 @@ it" is thrown out and replaced by a reason that stands on the package's own meri
 
 **Where the package stands, as the baseline any item below is measured against.** The renderer is
 built to the whole WebGPU core specification, every capability has a fixture the gates draw, and the
-gates are green: 4 of 4 browser gates, **18 of 18 on the recording contract**, **28 of 28 corpus
+gates are green: 4 of 4 browser gates, **19 of 19 on the recording contract**, **30 of 30 corpus
 draws** with 9 WebGL 2 skips, 21 of 21 surface checks, **17 of 17 consumer checks under
-`gate:pack`**, and **933 node tests over 78 files**, all re-taken on 2026-09-11 with item 1 landed.
-The door carries **73 run-time names** and `index.ts` reaches **39 files**.
+`gate:pack`**, and **954 node tests over 81 files**, all re-taken on 2026-09-11 with items 1, 13, 14,
+15 and 16 landed. The door carries **73 run-time names** and `index.ts` reaches **39 files**.
 
-**Four of those numbers moved since the 2026-09-10 reading and none of them improved by itself.**
-The corpus went from sixteen fixtures to eighteen — `core-blend` arrived with item 11 and
-`core-count` with item 2 — which is what took the recording contract from 16 to 18 and the corpus
-draws from 24 to 28. The consumer checks went from 13 to 17 when item 1 put the frame declaration
-reader on the door. **A count here is the size of the gate and not a score**, and this file has been
+**Every one of those numbers moved on 2026-09-11 and not one improved by itself.** The corpus went
+from sixteen fixtures to **nineteen** — `core-blend` arrived with item 11, `core-count` with item 2
+and `core-scissor` with item 16 — which is what took the recording contract from 16 to 19 and the
+corpus draws from 24 to 30. The consumer checks went from 13 to 17 when item 1 put the frame
+declaration reader on the door, and the node count rose with the tests each item brought. **A count here is the size of the gate and not a score**, and this file has been
 caught twice by numbers that expired rather than fell: the recording contract sat at 15 of 15 after
 the sixteenth fixture arrived, and item 1's own entry quoted sixteen fixtures and 69 door names
 through four steps that were worked against eighteen and 70.
@@ -40,12 +40,19 @@ was offered, and the gradient control at 0 of 1,440,000 channels. **Every preset
 identical to the 2026-08-26 reading**, which is what says items 9, 12 and 10 moved no pixel on real
 hardware. The row is in [DEVICES.md](DEVICES.md).
 
-**That card reading predates item 1 and has not been re-taken since.** Item 1's five steps touched
+**That card reading predates every item landed on 2026-09-11 and has not been re-taken since.** Item 1's five steps touched
 no backend and changed no picture — the software-renderer corpus draws the same pixel counts either
 side, and `core-blend` sits at 158,400 of 480,000 on both backends across the step that changed how a
 blend reaches a pipeline. But the card is the only gate that reads a real driver, and no unattended
 session may run it, so the honest statement is that item 1 is unmeasured on hardware rather than
 measured as harmless.
+
+**Three later items want that run more than item 1 does.** Item 14 removed a `loseContext()` on the
+argument that every WebGL 2 allocation has an explicit `gl.delete*` beside it — read off the source,
+not measured on a driver. Item 15's step 3 wants `npm run device-report` either side of its change.
+And **item 16 added a scissor whose cross-backend agreement is a SwiftShader reading**: 9 of
+1,440,000 channels with a worst of 1, against a tolerance of 8, and `core-scissor` is on
+`gates/card.mjs`'s `SCENE_TIER` waiting for a card. One `gate:card` run closes all three.
 
 **That number is 22 and not the 17 of 17 this file carried from 2026-08-29**, and the gate grew
 rather than the reading improving: the sixteenth capability fixture and the three cross-backend
