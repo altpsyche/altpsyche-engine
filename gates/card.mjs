@@ -65,6 +65,13 @@ const { bundle, staging } = bundleForPage({
   // directly, which is the one thing `Surface.read()` exists not to make a caller
   // do.
   'host/surface': ['createSurface'],
+  // The program cache's key and the renderer over it, so the moving-geometry check
+  // can assert the two frames share a program *and* draw different pictures
+  // (item 18, step 6). Either half alone proves nothing: one key and one picture
+  // is a cache that is not refilling, two keys and two pictures is the recompile
+  // the item removed.
+  'pipeline/cache': ['frameKey'],
+  'gpu/renderer': ['createFrameRenderer', 'submit'],
 
   // The cross-backend comparison, bundled so the gate calls exactly the function
   // the node suite tests rather than a restatement of it (item 44).
@@ -288,6 +295,138 @@ for (const { id, frame, values, entry } of corpus) {
     const total = /** @type {number} */ (result.total);
     say(true, `${id} on the card  ${lit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pixels lit`);
   }
+}
+
+// ── A figure whose geometry moves, on a real driver (item 18, step 6) ─────────
+//
+// Item 18 took a resource's bulk bytes out of the program cache key so that a
+// picture whose shape moves stops recompiling every frame, and made a cache hit
+// refill the program's buffers from the frame it was handed. Sixty ticks of one
+// moving figure went from sixty linked programs to one.
+//
+// **Everything that guards it is a double.** A double can show the upload was
+// issued before the draw; it cannot show the driver honoured that order, or that
+// the draw sampled the refilled buffer rather than the bytes the program was
+// compiled with. A refill that writes a buffer the draw does not read looks
+// identical on both fakes. That is what this check is for, and it is the only
+// place in the repository that can say it.
+//
+// **Both halves are asserted together because either alone proves nothing.** One
+// key and one picture is a cache that hits and never refills — the silent stale
+// draw. Two keys and two pictures is the recompile the item removed, passing for
+// the wrong reason.
+console.log('');
+const movingGeometry = await page.evaluate(
+  async ({ W, H }) => {
+    const WGSL = `struct Uniforms { u_time: f32 };
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@vertex
+fn warp(@location(0) corner: vec2<f32>) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(corner, 0.0, 1.0);
+}
+@fragment
+fn shade() -> @location(0) vec4<f32> {
+  return vec4<f32>(0.9, 0.3, 0.2, 1.0);
+}`;
+
+    /** One triangle, `side` picking which half of the frame it covers. The two
+     * are the same length to the byte, so the only thing that could separate them
+     * is the geometry itself — which is exactly what no longer separates them. */
+    /** @type {(side: string) => any} */
+    const figure = (side) => {
+      const x = side === 'left' ? -0.5 : 0.5;
+      const corners = new Float32Array([x - 0.4, -0.9, x + 0.4, -0.9, x, 0.9]);
+      return {
+        id: 'moving-figure',
+        authored: 'wgsl',
+        resources: [
+          { kind: 'uniform', block: [{ name: 'u_time', offset: 0, size: 4 }] },
+          {
+            kind: 'vertices',
+            stride: 8,
+            attributes: [{ location: 0, offset: 0, format: 'float32x2' }],
+            topology: 'triangle-list',
+            count: 3,
+            data: new Uint8Array(corners.buffer.slice(0)),
+          },
+        ],
+        modules: [],
+        pipelines: [
+          {
+            kind: 'render',
+            source: { wgsl: { vertex: WGSL, fragment: WGSL } },
+            vertex: { document: 'wgsl', entry: 'warp' },
+            fragment: { document: 'wgsl', entry: 'shade' },
+            geometry: 1,
+            bindings: [{ group: 0, binding: 0, resource: 0, visibility: ['fragment'] }],
+          },
+        ],
+        passes: [{ pipeline: 0, draws: [{ instances: 1 }] }],
+      };
+    };
+
+    const left = figure('left');
+    const right = figure('right');
+    const sameKey = window.frameKey(left) === window.frameKey(right);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const adapter = await navigator.gpu?.requestAdapter();
+    if (!adapter) return { error: 'no adapter' };
+    const device = await adapter.requestDevice();
+    const renderer = await window.createFrameRenderer(canvas, { backend: 'webgpu', device });
+    if (!renderer) return { error: 'no renderer' };
+
+    /** Lit pixels either side of the centre line, which is how the picture is
+     * read: the triangle is on one side or the other and nothing is on both. */
+    /** @type {(pixels: Uint8Array) => { onLeft: number; onRight: number }} */
+    const halves = (pixels) => {
+      let onLeft = 0;
+      let onRight = 0;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const at = (y * W + x) * 4;
+          if (pixels[at] > 40 || pixels[at + 1] > 40) {
+            if (x < W / 2) onLeft++;
+            else onRight++;
+          }
+        }
+      }
+      return { onLeft, onRight };
+    };
+
+    try {
+      const first = halves(await renderer.frame(left, { u_time: 0 }));
+      // The same renderer, so this is a cache hit if the keys agree — and the
+      // whole question is whether the card then draws the geometry it was handed
+      // rather than the geometry the program was compiled with.
+      const second = halves(await renderer.frame(right, { u_time: 0 }));
+      renderer.dispose();
+      return { sameKey, first, second };
+    } catch (e) {
+      renderer.dispose();
+      return { error: String(/** @type {any} */ (e).message || e).slice(0, 200) };
+    }
+  },
+  { W, H }
+);
+
+if (movingGeometry.error) {
+  say(false, `a figure whose geometry moves redraws on the card  ${movingGeometry.error}`);
+} else {
+  const first = /** @type {{onLeft: number, onRight: number}} */ (movingGeometry.first);
+  const second = /** @type {{onLeft: number, onRight: number}} */ (movingGeometry.second);
+  // The first frame is on the left and nowhere else; the second is on the right
+  // and nowhere else. A stale draw would repeat the first reading exactly.
+  const moved = first.onLeft > 1000 && first.onRight === 0 && second.onRight > 1000 && second.onLeft === 0;
+  say(
+    movingGeometry.sameKey === true && moved,
+    `a figure whose geometry moves redraws on the card  one program for both frames: ` +
+      `${movingGeometry.sameKey}; first frame ${first.onLeft.toLocaleString('en-US')} left / ` +
+      `${first.onRight.toLocaleString('en-US')} right, second ${second.onLeft.toLocaleString('en-US')} left / ` +
+      `${second.onRight.toLocaleString('en-US')} right`
+  );
 }
 
 // ── The live path reads itself back, on a real driver (item 17) ───────────────

@@ -2999,61 +2999,50 @@ the backend issued the upload before the draw; it cannot show the driver honoure
 the draw sampled the refilled buffer rather than a stale one the fake never distinguishes. That is
 step 6 and it is the last thing in this item.
 
-6. **The card reads it, because a double cannot.** A `gates/card.mjs` check drawing a figure whose
-   geometry moves across frames and asserting the picture changes after the cache hit. **This is
-   the only check that can catch a refill that writes a buffer the draw does not read** — a
-   stale-but-written buffer looks identical on both doubles. Needs a display and a person, as
-   items 16 and 17 both did. **The measurement**: the gate at its new count on real hardware.
+**Landed on 2026-09-11, step 6, and the mutation is the reading that matters.** A check in
+`gates/card.mjs` draws one triangle whose geometry moves from the left half of the frame to the
+right between two frames through one `createFrameRenderer`, and asserts **both halves of the claim
+together**: the two frames share a program key, and the picture moved.
 
-**What the fork was, so the refused arm is not re-argued.** The alternative was to keep the upload
-in the program and give the key a cheap identity for the bytes instead of the bytes themselves.
-**Refused by Siva on 2026-09-11**: it fixes the 31,335-character per-tick serialisation and leaves
-all sixty compiles standing, because a different identity is still a different program. It is also
-not a step on the way to the chosen answer — under the chosen answer the geometry leaves the key
-entirely and the identity has nothing to key — so staging the two would be work thrown away. **What
-would reverse the choice**: a measurement on a card showing a recompile costs little enough that
-sixty of them a second do not matter, which is still unmeasured.
+```
+one program for both frames: true
+first frame   86,400 left / 0 right
+second frame       0 left / 86,400 right
+```
 
-**A third candidate the original step named first is now known not to apply**: "a resource's
-`source` where it has one and its bytes only where it does not". `source` is a *build-time address*,
-written by `fixtures/shader-content.ts:318,329` as a filename and resolved to baked bytes. A figure
-whose geometry is computed per frame has no address, so it fixes the baked case and does nothing for
-the measured one.
+**Either half alone proves nothing**, which is why they are asserted together. One key and one
+picture is a cache that hits and never refills — the silent stale draw. Two keys and two pictures is
+the recompile this item removed, passing for the wrong reason.
 
-### Landed on 2026-09-11, step 1: the defect is measured, it is not refused, and the key is four times the geometry
+**Removing `cached.refill(shader)` turns this check red on the card with exactly the stale-draw
+signature**: `second frame 86,400 left / 0 right`, identical to the first. That is the failure no
+double can produce — both fakes record a buffer write whether or not the draw reads it — and it is
+the whole reason this step exists. The renderer was restored and `git diff` confirms it.
 
-`tests/program-cache-moving-geometry.test.ts`, 3 tests, on the WebGL 2 double through
-`createFrameRenderer` and `submit`.
+**Measured.** `npm run gate:card` **31 of 31 on nvidia / blackwell**, 30 of 30 before this check.
+`npm test` 980 over 84 files and `npm run type-check` clean, both unchanged — the commit is a gate.
 
-**Sixty ticks of one 16x16 quad grid whose geometry moves link sixty programs.** The cache exists to
-link one. **The step's escape hatch did not open**: it said the item closes as refused if the compile
-count is already one, and it is sixty.
+### Done when, verified
 
-**A control separates the two caches, which the item's reading had joined.** Sixty ticks of a *fresh
-frame object* carrying bytes that never change link **one** program. So the `WeakMap` misses all
-sixty times in both runs — a live loop's frame is a fresh object every tick — and `frameKey` runs all
-sixty times in both, but only the moving figure misses the `programs` map. **The recompile is caused
-by the bytes being in the key, not by the frame being a new object**, and the two costs are now
-separable: the serialisation is paid by every live frame, and the compile only by a moving one.
+- **A picture whose geometry moves compiles once rather than every frame.** Sixty ticks of one 16x16
+  quad grid: **60 links before, 1 after**, `tests/program-cache-moving-geometry.test.ts`.
+- **The key stops carrying the bytes.** **31,335 characters before, 1,319 after** over the same
+  7,696 bytes of geometry — from four times the geometry to a sixth of it.
+- **No false hit is bought with it.** Eight fields still separate two frames, one test each,
+  written against the fields rather than the key; a resource's byte length is still exact, so a
+  figure that grew misses and recompiles rather than hitting a buffer built for the smaller one.
+- **The refilled bytes are what the card draws.** `gate:card` 31 of 31, and removing the refill
+  turns that check red on real hardware with the stale-draw signature.
+- **A page that does not move pays nothing.** One frame object re-submitted sixty times refills zero
+  buffers — the refill is an identity test on the arrays.
+- **Nothing that was drawing stopped.** `gate:card` every preset's pixel count and every
+  cross-backend figure identical across the item; `gate:browser` 4 of 4 with the surface gate at
+  21 of 21.
 
-**The key is 31,335 characters over 7,696 bytes of geometry, and the four-times expansion was counted
-rather than guessed.** `canonical` writes each byte as a latin1 character and `JSON.stringify`
-escapes anything below `0x20` to `\uXXXX` — six characters for one byte. Of the 7,696 bytes, 4,497
-are below `0x20`, 9 are a quote or backslash, 3,190 pass through: 4,497x6 + 9x2 + 3,190 = 30,190
-characters from the geometry, the remaining 1,145 being the rest of the frame. **Float32 geometry is
-mostly zero bytes, so the expansion is worst for exactly the data a figure carries most of.** That is
-new — the item's reading knew the bytes were in the key and did not know the key was four times their
-size.
-
-**Measured.** `npm test` **963 over 82 files, 960 over 81 before**. `npm run type-check` clean. The
-three figures are pinned as assertions so a fix cannot move them silently.
-
-**What the gates could not see, and it is the thing step 2 must not paper over.** **What a recompile
-costs in milliseconds is still unmeasured on any machine.** These are counts from a double: the fake
-`linkProgram` returns immediately and compiles nothing, so this file proves the cache misses and says
-nothing about what the miss costs. A real figure is also larger than this one — the consumer counted
-106,632 bytes serialised per frame, in their session and not this one. `gate:browser` and `gate:card`
-were not run for a node test.
+**Item 18 is closed.** What is not measured, and is named rather than left implied: **what a
+recompile costs in milliseconds is still unknown on any machine.** Every count in this item is a
+count of compiles, characters and pixels, never of time. The item was argued and settled on the
+counts, and that is what it claims.
 
 ### Done when
 

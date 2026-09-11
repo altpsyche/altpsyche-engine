@@ -30,6 +30,9 @@ declare global {
     glslFrameOf: typeof Door.glslFrameOf;
     glslFrame: typeof Door.glslFrame;
     wgslFrame: typeof Door.wgslFrame;
+    frameKey: typeof import('../pipeline/cache.js').frameKey;
+    createFrameRenderer: typeof Door.createFrameRenderer;
+    submit: typeof Door.submit;
     selectBackend: typeof Door.selectBackend;
     missing: typeof Door.missing;
     probe: typeof Door.probe;
