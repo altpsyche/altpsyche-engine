@@ -47,6 +47,7 @@ import type { BufferHandle, ModuleHandle, VertexHandle } from '../graph/handles.
 import { indexOf } from '../graph/handles.js';
 import { followsFrame, sizeAt, sizeKey } from '../graph/refs.js';
 import { Arena } from '../resource/arena.js';
+import { refillBuffers } from '../resource/refill.js';
 import type { Handle, Range } from '../resource/arena.js';
 import { planFramePasses } from '../submit/plan.js';
 import type { DrawnGeometry, FramePlan } from '../submit/plan.js';
@@ -453,6 +454,7 @@ export function createWebGPUBackend(
         bufferHandle,
         buffers,
         bufferHandles,
+        refillable,
         textures,
         times,
         counting,
@@ -512,6 +514,24 @@ export function createWebGPUBackend(
         // Keyed by the resource's index, which is the buffer handle a reference
         // resolves by (item 87).
         const buffers = new Map<number, GPUBuffer>();
+        /**
+         * Every buffer whose contents came from a resource's `data`, by the
+         * resource's index, with the length it was built for (item 18, step 3).
+         *
+         * **This is what lets a program be drawn with a frame other than the one
+         * it was built from.** Geometry that moves gives a fresh `data` every
+         * tick, and a program built from tick one holds tick one's bytes; the
+         * length is kept beside the buffer because a buffer is allocated for a
+         * size, so a frame whose geometry *grew* is a different program however
+         * the key is written and has to be refused by name rather than written
+         * past the end of.
+         *
+         * **Textures are deliberately not in here.** Their bytes stay part of
+         * what identifies a program until something measures that they need not
+         * be — item 18's measurement is of geometry, and a rule this file grows
+         * on a guess is the thing that comment is trying not to be.
+         */
+        const refillable = new Map<number, { buffer: GPUBuffer; bytes: number }>();
         // The arena handle each page-or-card buffer was allocated under, kept by the
         // resource's index so a readback can name one by handle through the arena's
         // own `read` (§9, item 89) rather than through a program method. Only
@@ -536,6 +556,7 @@ export function createWebGPUBackend(
           device.queue.writeBuffer(built, 0, bytes);
           arena.wrote(bytes.byteLength);
           buffers.set(index, built);
+          refillable.set(index, { buffer: built, bytes: bytes.byteLength });
         }
 
         // Which buffers a query resolves into, so each carries the usage flag for a
@@ -673,6 +694,7 @@ export function createWebGPUBackend(
           if (resource.data) {
             device.queue.writeBuffer(built, 0, resource.data);
             arena.wrote(resource.data.byteLength);
+            refillable.set(index, { buffer: built, bytes: resource.data.byteLength });
           }
         }
 
@@ -1111,6 +1133,7 @@ export function createWebGPUBackend(
           bufferHandle,
           buffers,
           bufferHandles,
+          refillable,
           textures,
           times,
           counting,
@@ -1137,6 +1160,13 @@ export function createWebGPUBackend(
       // the shape is now described inline on `Backend.program` and a widened local
       // is assignable to it with the extra method along for the ride.
       const program = {
+        refill(next: FrameGraph) {
+          return refillBuffers(next, refillable, (buffer, data) => {
+            device.queue.writeBuffer(buffer, 0, data);
+            arena.sent(data.byteLength);
+          });
+        },
+
         setUniforms(feed: Record<string, UniformValue>) {
           for (const [name, value] of Object.entries(feed)) {
             const start = at.get(name);

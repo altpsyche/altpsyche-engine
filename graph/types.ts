@@ -995,6 +995,32 @@ export interface Backend {
     /** Values by the names the shader declares. Where they land is the backend's
      * business: loose uniforms in one dialect, one block of bytes in the other,
      * and the caller writes the same call either way. */
+    /**
+     * Re-uploads the resource bytes of `next` into the buffers this program
+     * already built, so a program may be drawn with a frame other than the one it
+     * was compiled from (item 18).
+     *
+     * **It exists so that geometry can stop identifying a program.** A picture
+     * whose shape moves hands over fresh bytes every tick, and while those bytes
+     * are part of the program's cache key it compiles every tick: measured on this
+     * tree, sixty ticks of one 16x16 quad grid link sixty programs where the cache
+     * exists to link one. Dropping the bytes from the key without this would let a
+     * cache hit draw the *previous* frame's geometry in silence, which is the
+     * false hit the key exists to prevent — so the two go together and this one
+     * comes first.
+     *
+     * **A resource whose byte length moved is refused by name**, because a buffer
+     * is allocated for a size and geometry that grew is a different program
+     * however the key is written. The rule and its message are one rule for both
+     * backends, at `resource/refill.ts`.
+     *
+     * **Textures are not refilled.** Their bytes still identify a program, and
+     * they will until something measures that they need not — item 18 measured
+     * geometry.
+     *
+     * @returns how many buffers were written.
+     */
+    refill(next: FrameGraph): number;
     setUniforms(values: Record<string, UniformValue>): void;
     /** Draws the frame, and where `into` is given lands the finished picture in
      * that caller-supplied texture as well — an XR layer's target, or a texture a

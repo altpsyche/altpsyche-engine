@@ -54,6 +54,7 @@ const SHIPPING = [
   'host/probe.ts',
   'host/surface.ts',
   'resource/arena.ts',
+  'resource/refill.ts',
   'resource/editing.ts',
   'resource/translator.ts',
   'pipeline/cache.ts',

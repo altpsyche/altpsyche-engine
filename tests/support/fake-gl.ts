@@ -287,6 +287,18 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     createBuffer: () => ({ buffer: true }),
     deleteBuffer: () => record('deleteBuffer'),
     bindBuffer: (target: number) => record('bindBuffer', { target }),
+    /** A write into a buffer that already exists, which is what a refill is
+     * (item 18). Kept apart from `bufferData` on purpose: the distinction the
+     * backend is making is exactly that it does *not* respecify the store, and a
+     * double that recorded both under one name could not show the difference. The
+     * first byte is carried because it is what the refill tests move. */
+    bufferSubData: (target: number, offset: number, data: unknown) =>
+      record('bufferSubData', {
+        target,
+        offset,
+        bytes: data instanceof Uint8Array ? data.byteLength : undefined,
+        first: data instanceof Uint8Array ? data[0] : undefined,
+      }),
     bufferData: (target: number, data: unknown, usage: number) =>
       record('bufferData', {
         target,

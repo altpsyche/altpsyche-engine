@@ -2876,6 +2876,33 @@ picture whose geometry moves, which is a different claim from the one that comme
    `writeBuffer`/`bufferData`, `npm run type-check`, and run-time names — which should not move,
    the member being a type.
 
+**Landed on 2026-09-11, step 3.** `resource/refill.ts` holds the rule — which resources are
+refilled, and that a byte length that moved is refused by name rather than written past — generic
+over the buffer type, because the two backends hold a `GPUBuffer` and a `WebGLBuffer` and the rule is
+one rule. Both backends gained a `refill(next)` member recording every data-carrying buffer by
+resource index at build, and `Backend.program` at `graph/types.ts` declares it. **Additive and inert:
+nothing calls it**, so the picture cannot have moved.
+
+**Two things the plan did not know.** The arena already had the right ledger: `wrote()` is documented
+as first contents and `sent()` as a re-upload into a resource already made, so a refill counts
+through `sent` and the accounting needed no new concept. And **WebGL 2 refills with `bufferSubData`
+rather than a second `bufferData`** — respecifying drops the store the driver placed and asks for
+another, which is the allocation this item exists to avoid. `tests/support/fake-gl.ts` gained
+`bufferSubData` as a separate recorder for exactly that reason: a double folding both under one name
+could not show the difference the backend is making.
+
+**Measured.** `npm test` **967 over 83 files, 963 over 82 before** — 4 new tests, two per backend
+double. `npm run type-check` clean, `npm run gate:pack` 17 of 17, run-time names 73 before and after.
+`tests/import-graph.test.ts` needed `resource/refill.ts` adding to its shipping list, which is the
+check doing its job.
+
+**What the gates could not see.** The tests assert the second frame's bytes reached the buffer — the
+WebGPU one reads the mark off the trace, the WebGL 2 one off `bufferSubData`'s first byte — but **a
+double cannot show the draw then read that buffer**. A refill that writes a buffer nothing samples
+looks identical here, and that is step 6's check on a card. Textures are deliberately not refilled
+and their bytes still identify a program. `gate:browser` and `gate:card` were not run for an inert
+member.
+
 4. **The geometry bytes leave the key and the renderer refills on a hit.** `frameKey` stops
    serialising a resource's `data`; `programFor` refills a cached program from the frame it was
    asked for. **This is the commit the picture can move in**, which is why it lands after the

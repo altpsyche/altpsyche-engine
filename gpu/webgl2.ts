@@ -49,6 +49,7 @@ interface PassPlanBlend {
   constant?: [number, number, number, number];
 }
 import { Arena } from '../resource/arena.js';
+import { refillBuffers } from '../resource/refill.js';
 import type { Handle, Range } from '../resource/arena.js';
 import type { GL2Geometry, GL2PerDraw } from '../submit/gl2.js';
 import { drawGL2Frame } from '../submit/gl2.js';
@@ -887,6 +888,19 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // which is every attribute the `quad-grid` primitive carries; a byte or
       // integer attribute is a later primitive's and wants a row here first.
       const componentsOfFormat = (format: string) => Number(/x(\d)/.exec(format)?.[1] ?? '1');
+      /**
+       * Every buffer whose contents came from a resource's `data`, by the
+       * resource's index and with the length it was built for, so a program can be
+       * drawn with a frame other than the one it was built from (item 18, step 3).
+       * The WebGPU backend keeps the same map for the same reason; the rule about
+       * which resources go in it and what a changed length means is shared, at
+       * `resource/refill.ts`, rather than written twice.
+       *
+       * Each slot carries its binding target because `bufferSubData` needs the
+       * buffer bound and GL binds by target, which is the one thing that does not
+       * generalise across the two backends.
+       */
+      const refillable = new Map<number, { buffer: { target: number; buffer: WebGLBuffer }; bytes: number }>();
       const buildGeometry = (handle: VertexHandle): GL2Geometry => {
         const key = indexOf(handle);
         const cached = geometryPlans.get(key);
@@ -900,6 +914,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, vertices.data, gl.STATIC_DRAW);
         arena.wrote(vertices.data.byteLength);
+        refillable.set(key, { buffer: { target: gl.ARRAY_BUFFER, buffer: vertexBuffer }, bytes: vertices.data.byteLength });
         let index: GL2Geometry['index'];
         if (vertices.indices !== undefined) {
           const indices = resourceOf(frame, vertices.indices);
@@ -913,6 +928,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
           gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices.data, gl.STATIC_DRAW);
           arena.wrote(indices.data.byteLength);
+          refillable.set(indexOf(vertices.indices), {
+            buffer: { target: gl.ELEMENT_ARRAY_BUFFER, buffer: indexBuffer },
+            bytes: indices.data.byteLength,
+          });
           index = {
             buffer: indexBuffer,
             type: indices.format === 'uint32' ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT,
@@ -1038,6 +1057,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         if (spec.data) {
           gl.bufferData(gl.UNIFORM_BUFFER, spec.data, gl.STATIC_DRAW);
           arena.wrote(spec.data.byteLength);
+          refillable.set(index, { buffer: { target: gl.UNIFORM_BUFFER, buffer }, bytes: spec.data.byteLength });
         }
         perDrawGLBuffers.set(index, buffer);
       }
@@ -1061,6 +1081,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         if (spec.data) {
           gl.bufferData(gl.UNIFORM_BUFFER, spec.data, gl.STATIC_DRAW);
           arena.wrote(spec.data.byteLength);
+          refillable.set(index, { buffer: { target: gl.UNIFORM_BUFFER, buffer }, bytes: spec.data.byteLength });
         }
         storageGLBuffers.set(index, buffer);
       }
@@ -1368,6 +1389,19 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       };
 
       return {
+        refill(next: FrameGraph) {
+          return refillBuffers(next, refillable, (slot, data) => {
+            gl.bindBuffer(slot.target, slot.buffer);
+            // `bufferSubData` rather than a second `bufferData`: the buffer is
+            // already the right size — `refillBuffers` refuses a length that moved
+            // — and respecifying it would drop the store the driver has placed and
+            // ask for another, which is the allocation this whole item is about
+            // avoiding.
+            gl.bufferSubData(slot.target, 0, data);
+            arena.sent(data.byteLength);
+          });
+        },
+
         setUniforms(values: Record<string, UniformValue>) {
           if (blockLayoutMap && bytes && words && ubo) {
             for (const [name, value] of Object.entries(values)) {
