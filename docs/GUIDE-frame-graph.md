@@ -102,6 +102,15 @@ Five fields in there are decisions, so they are worth explaining.
 and it is what sends the graph to a backend. Nothing infers it from which other fields happen
 to be filled in.
 
+**`draws: [{ instances: COUNT }]`, not `{ vertices }`, because the pipeline names `geometry`.**
+The two forms are not interchangeable and the pipeline decides which one a pass may use. A
+pipeline reading a vertex buffer is drawn by instances — the count of vertices is the
+resource's, and repeating it in the draw is a number that could disagree with the buffer. A
+pipeline reading none is drawn by `{ vertices }`, which is the backend's own corners. Pair them
+the other way and the frame is refused by name before any backend is built: `{ vertices }` on
+this pipeline would never bind the buffer, and `{ instances }` on a fullscreen one has no count
+of vertices from anywhere. [API.md](API.md) has the table.
+
 **Resources are addressed by handle, not by name.** `uniform(0)`, `vertices(1)` and
 `texture(2)` mint kind-branded integers, the index of that resource in the list above. A
 handle carries its kind, so passing a texture where a buffer belongs is a compile error

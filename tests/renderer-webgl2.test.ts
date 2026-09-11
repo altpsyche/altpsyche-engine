@@ -931,11 +931,17 @@ describe('a pass drawing the shader own geometry (item 77)', () => {
   });
 
   it('refuses a pass mixing its own corners into the geometry it draws', () => {
+    // The refusal moved to `graph/validate.ts` with item 10, so both backends give
+    // it and in one wording — it was WebGL 2's alone before, and WebGPU drew the
+    // frame and let the card refuse it after the fact. What this asserts is that the
+    // description is still refused on this path and that the words name the pipeline
+    // rather than the backend; `tests/graph-draw-forms.test.ts` holds the rule
+    // itself, independently of either backend.
     const { backend } = backendOver();
     const frame = geometryFrame();
     const mixed: FrameGraph = { ...frame, passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }, { instances: 3 }] }] };
     expect(() => backend.program(mixed)).toThrow(
-      'the frame for "core-geometry" mixes its own corners into the geometry 1, which it draws from one buffer'
+      "the pass on pipeline 0 draws 3 corners of its own and its pipeline reads geometry from resource 1"
     );
   });
 });

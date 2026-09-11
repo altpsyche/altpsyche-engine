@@ -19,7 +19,7 @@
  * the build, because a graph carries no source to check them against.
  */
 import type { FrameGraph, ResourceSpec } from './types.js';
-import { isRenderPass, perDrawBinding, resourceOf, drawsIndirectly, groupsIndirectly } from './types.js';
+import { isRenderPass, perDrawBinding, resourceOf, drawsCorners, drawsIndirectly, groupsIndirectly } from './types.js';
 import type { BufferHandle, ModuleHandle, PipelineHandle, ResourceHandle } from './handles.js';
 import { indexOf } from './handles.js';
 
@@ -189,6 +189,60 @@ export function validate(graph: FrameGraph): void {
       throw new Error(
         `the frame for "${id}" resolves ${resolved} bytes of query into buffer ${index}, which holds ${resource.bytes}`
       );
+    }
+  }
+
+  // Which draw form a pass may use, decided by whether its pipeline names geometry.
+  //
+  // `DrawSpec` reads as three interchangeable shapes and they are not: `{ vertices }`
+  // is the backend's own corners, `{ instances }` is the geometry the pipeline names
+  // drawn that many times over, and the count of vertices in that second case is the
+  // resource's. So each form belongs to one kind of pipeline, and the pairing the
+  // type allows but nothing meant is a frame that draws nothing or draws wrong.
+  //
+  // **Neither rule is new and that is the finding** (item 10). The first was refused
+  // by WebGL 2 alone — "mixes its own corners into the geometry" — and WebGPU refused
+  // it not at all, so a description that drew on one backend was thrown out of the
+  // other and `resolve` and `cost` passed it either way. The second was refused
+  // twice, by `submit/plan.ts` for WebGPU and by `gpu/webgl2.ts` for WebGL 2, in two
+  // different sentences for one rule. Both are stated here once, in words that name
+  // neither backend, and what is left in the two backends are unreachable backstops.
+  //
+  // **What did not move with them.** WebGL 2's second throw covers an indirect draw
+  // on a geometry-less pipeline as well, and that half is a capability refusal rather
+  // than a shape rule: `drawIndirect` reads its vertex count out of the buffer, so it
+  // is a description WebGPU draws correctly and WebGL 2 has no call for. It stays in
+  // that backend with the capability it names.
+  for (const pass of graph.passes) {
+    if (!isRenderPass(pass)) continue;
+    const pipeline = indexOf(pass.pipeline);
+    const spec = graph.pipelines[pipeline];
+    if (!spec || spec.kind !== 'render') continue;
+    const namesGeometry = spec.geometry !== undefined;
+    for (const draw of pass.draws) {
+      // A pipeline reading a vertex buffer, drawn by the one form that never binds
+      // one. The card refuses this after the fact and names neither the draw nor the
+      // pipeline — "Vertex buffer slot 0 required by [RenderPipeline (unlabeled)] was
+      // not set" — and `cost` costs it as a draw that happens, so a caller holding
+      // both pure readings has no way to know the frame cannot draw.
+      if (namesGeometry && drawsCorners(draw)) {
+        throw new Error(
+          `the pass on pipeline ${pipeline} draws ${draw.vertices} corners of its own and its pipeline reads geometry from resource ${indexOf(spec.geometry!)}`
+        );
+      }
+      // The other way round: a draw naming instances alone, on a pipeline with no
+      // geometry to instance. There is no count of vertices anywhere — the form
+      // leaves it to the resource and the pipeline names no resource — so the
+      // executor reaches none of its three arms and the draw is silently skipped.
+      //
+      // **The wording is `submit/plan.ts`'s own**, kept rather than replaced. That
+      // rule was already written twice — there for WebGPU and in `gpu/webgl2.ts` in
+      // different words for WebGL 2 — so this is a move of the better-worded of the
+      // two rather than a third sentence for one rule, and the test that held it
+      // still holds it here.
+      if (!namesGeometry && !drawsCorners(draw) && !drawsIndirectly(draw)) {
+        throw new Error(`the pass on pipeline ${pipeline} draws its pipeline's geometry and that pipeline reads none`);
+      }
     }
   }
 

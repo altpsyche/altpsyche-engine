@@ -1021,6 +1021,58 @@ the measurement moves to a corpus fixture drawing that pair, and `validate` gain
 branch has to be settled in step 1 and not discovered in step 3**, because the two answers put the
 change in different files.
 
+### Landed on 2026-09-11, and neither rule turned out to be new
+
+**The item was written as though it were adding a refusal, and it was moving two.** That is the
+finding, and it makes this item item 4's shape rather than its own.
+
+- **A corners draw on a geometry pipeline was refused by `gpu/webgl2.ts` alone**, at what was then
+  `:1026`, in that backend's words — "mixes its own corners into the geometry N, which it draws from
+  one buffer". WebGPU refused it not at all, built the frame, and let the card refuse it after the
+  fact with a message naming neither the draw nor the pipeline, while `resolve` and `cost` passed it
+  on both. **One backend already knew, and the other drew the wrong thing.**
+- **An instances-alone draw on a geometry-less pipeline was refused twice**, by `submit/plan.ts` for
+  WebGPU and by `gpu/webgl2.ts` for WebGL 2, in **two different sentences for one rule** — exactly
+  the state item 4 opens by describing.
+
+**Both are in `graph/validate.ts` now, stated once each.** The second kept `submit/plan.ts`'s
+wording rather than gaining a third sentence, so the test that held it still holds it. The first
+took a new wording that names the pipeline and the resource, in the house style of the rules beside
+it, because the wording it replaced named a backend.
+
+**What did not move, and the reason it did not.** `gpu/webgl2.ts` also refuses an *indirect* draw on
+a geometry-less pipeline, and that half stayed. `drawIndirect` reads its vertex count out of the
+buffer, so it is a description WebGPU draws correctly and WebGL 2 has no call for — a capability
+that backend lacks rather than a shape the graph got wrong. **This is the branch item 4's own "What
+would change the answer" names**, arriving here first: a rule that is genuinely backend-specific
+stays in its backend. A test asserts the graph rule does not take it over.
+
+**Step 2's reverse pairing was answered by finding it already answered.** The item said an
+instances-alone draw on a geometry-less pipeline "draws nothing at all, silently". That is what
+`submit/execute.ts` does with one, and it is not what a caller saw, because the rule was already
+refusing it in both backends. The step landed as a move rather than a decision.
+
+**One thing was found rather than planned, and it is the best argument the item has.**
+`tests/renderer-pipeline-cache.test.ts` built its own fixture with `geometry: vertices(1)` on the
+pipeline and `draws: [{ vertices: 3 }]` on the pass — **the exact invalid pairing, inside the suite
+meant to catch it.** Two checks about pipeline-cache sharing had been running over a frame no card
+could have drawn. The new rule turned them red and the fixture now draws `{ instances: 1 }`. A rule
+that catches a mistake in this repository's own tests on the day it lands is a rule worth having.
+
+**Measurements.** `npm test` at **880 over 75 files**, against 874 over 74 — six checks in
+`tests/graph-draw-forms.test.ts`, which imports no backend and no device. `npm run type-check` clean.
+`gate:pack` green, with the door unchanged at **70 run-time names** and 13 of 13 consumer checks,
+which is what says this moved a rule and added no surface. **`gate:browser` at 4 of 4**, with the
+corpus at **24 of 24 draws, 0 failed and 9 WebGL 2 skips**, the recording contract at **16 of 16**
+and the surface gate at **21 of 21** — the numbers that say no fixture was relying on either pairing.
+
+**The three refusal checks were shown red before they were trusted**, by disabling both rules in
+`graph/validate.ts` and re-running: the three that refuse went red and the three that assert a form
+is *taken* stayed green, so they fail for the rule rather than for the wording.
+
+**The card gate was not re-taken** and cannot be in an unattended run, so the card message quoted in
+the reading above is still another repository's, from another machine, on 2026-09-09.
+
 ---
 
 ## Item 11 — the WebGL 2 backend applies no blend a pipeline names, and it is able to

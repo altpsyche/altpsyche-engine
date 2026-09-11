@@ -60,7 +60,12 @@ const meshFrame = (data: Uint8Array<ArrayBuffer>): FrameGraph => ({
       bindings: [{ group: 0, binding: 0, resource: uniform(0), visibility: ['fragment'] }],
     },
   ],
-  passes: [{ pipeline: pipelineHandle(0), draws: [{ vertices: 3 }] }],
+  // Instances rather than corners, because the pipeline above names `geometry` and a
+  // draw counting its own corners never binds that buffer. This fixture carried
+  // `{ vertices: 3 }` until item 10 put the rule in `graph/validate.ts`, so these two
+  // checks were reading a pipeline cache over a frame no card could have drawn — the
+  // very pairing that item is about, inside the suite that was meant to catch it.
+  passes: [{ pipeline: pipelineHandle(0), draws: [{ instances: 1 }] }],
 });
 
 function backendOver() {

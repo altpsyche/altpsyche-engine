@@ -156,6 +156,21 @@ perDrawBinding(spec: PipelineSpec): BindingSpec | undefined
 componentsOf(type: string): number
 ```
 
+**`DrawSpec`'s three forms are not interchangeable, and which one a pass may use is decided
+by its pipeline.** The type allows every pairing and only two of them draw:
+
+| the pipeline | the form | what it means |
+| --- | --- | --- |
+| names `geometry` | `{ instances }` | draw that geometry, that many times over. The count of vertices is the resource's |
+| names no `geometry` | `{ vertices }` | the backend's own corners, that many of them |
+| either | `{ indirect }` | the counts come out of a buffer an earlier pass wrote |
+
+The two pairings left are refused by name, before any backend is built. `{ vertices }` on a
+pipeline that reads geometry never binds the vertex buffer — the card refuses that after the
+fact with a message naming neither the draw nor the pipeline. `{ instances }` on a pipeline
+that reads none has no count of vertices from anywhere, and draws nothing at all in silence.
+Both refusals come from the same `validate` on both backends and in one wording.
+
 The first four are type guards, so reading a graph narrows a type instead of casting it.
 
 **The graph's own types**: `FrameGraph`, `WgslFrameGraph`, `GlslFrameGraph`, `ModuleSpec`,

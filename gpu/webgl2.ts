@@ -1015,6 +1015,10 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         if (geometryHandle === undefined) {
           // Every draw is asked, since one that walks a buffer is refused however
           // many corners-draws sit beside it (item 26).
+          // Half a backstop since item 10. The instances-alone half moved to
+          // `validate`, which refuses it for both backends in `submit/plan.ts`'s
+          // wording; what is still reachable here is the indirect draw, which this
+          // backend has no call for and which is a capability rather than a shape.
           if (!pass.draws.every(drawsCorners)) {
             throw new Error(`the frame for "${frame.id}" draws geometry of its own, and this backend has no buffer for it`);
           }
@@ -1022,9 +1026,18 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           // A geometry pass reads its counts off the vertex buffer, so a draw
           // carrying its own corner count, or one reading its counts out of a
           // buffer (item 28's indirect), has no place in it.
+          // An unreachable backstop since item 10: `validate` refuses a corners draw
+          // on a geometry pipeline before either backend is built, in one wording
+          // both give. It was this backend's rule alone before that, which is what
+          // made it a defect — WebGPU built the same description and let the card
+          // refuse it after the fact.
           if (pass.draws.some(drawsCorners)) {
             throw new Error(`the frame for "${frame.id}" mixes its own corners into the geometry ${indexOf(geometryHandle)}, which it draws from one buffer`);
           }
+          // This one is **not** a backstop and stays load-bearing: an indirect draw
+          // reads its vertex count out of the buffer, which WebGPU draws correctly
+          // and WebGL 2 has no call for. It is a capability this backend lacks
+          // rather than a shape the graph got wrong, so it did not move.
           if (pass.draws.some(drawsIndirectly)) {
             throw new Error(`the frame for "${frame.id}" reads resource ${indexOf(geometryHandle)}'s draw counts out of a buffer, which this backend does not`);
           }

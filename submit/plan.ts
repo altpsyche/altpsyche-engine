@@ -267,6 +267,12 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (handle: VertexHa
     // so a pipeline reading no buffer has nothing for such a draw to walk and says
     // so here rather than drawing nothing on the card. A draw reading its counts
     // out of a buffer, or one covering the frame's corners, needs no such buffer.
+    //
+    // **An unreachable backstop since item 10**, which moved this rule into
+    // `graph/validate.ts` — `validate(frame)` runs at the top of this same function,
+    // so a graph reaching here has already passed it. It moved because it was
+    // written twice: here for WebGPU and in `gpu/webgl2.ts` for WebGL 2, in two
+    // different sentences for one rule. The wording that survived is this one.
     const instancesAlone = pass.draws.some((draw) => !drawsCorners(draw) && !drawsIndirectly(draw));
     if (instancesAlone && spec.geometry === undefined) {
       throw new Error(`the pass on pipeline ${pipe} draws its pipeline's geometry and that pipeline reads none`);
