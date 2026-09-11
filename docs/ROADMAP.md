@@ -398,6 +398,22 @@ it.**
 - The two backends agree on that fixture to the single channel the corpus holds every preset to.
 - `npm test`, `npm run type-check` and `gate:browser` are green, and the card gate is re-taken.
 
+**Verified on 2026-09-11, line by line, with the number that satisfies each.**
+
+| line | what satisfies it |
+| --- | --- |
+| `StencilMode` names the counting modes, both backends implement them, `docs/API.md` describes each | `'mark' \| 'inside' \| 'count' \| 'nonzero'` in `graph/types.ts`; `STENCIL_STATES` read by `gpu/webgpu.ts`, `gpu/webgl2.ts` and `submit/execute.ts`; `docs/API.md` describes all four and where the reference comes from |
+| a fixture draws the path correctly under the counting mode and visibly wrongly under the mask, the pixel difference recorded | `core-count counted against masked  hard jumps 2,102 counted against 2,700 masked, worst 186, 302,512 of 1,440,000 channels differ`, in `gate:browser` every run, and proved to go red at `0` differing when the counter is collapsed |
+| the two backends agree on that fixture to the single channel the corpus holds every preset to | `core-count on both backends  hard jumps 2102 against 2102, worst 0, 0 of 1,440,000 channels differ` on nvidia / blackwell. A literal zero, better than the three scene presets at 11, 36 and 18 |
+| `npm test`, `type-check` and `gate:browser` green, card gate re-taken | 902 tests passing against 894 before the item; type-check and `gate:pack` green; `4 of 4 browser gates`, `28 of 28 draws`, `18 of 18 agree`, `21 of 21 checks`; the card drew the whole corpus and its cross-backend list grew from four presets to six |
+
+**What the four green gates could not see, carried out of the steps so it is not lost.**
+`gate:browser` is a software renderer throughout. `gate:card` is one machine, one driver, one vendor.
+No gate here reads geometry, so nothing says `core-count`'s hole is in the right *place* — only that
+there is one, that it is the size a mask fills in, and that both backends agree about it. And the
+counting modes' absence from `Capability` rests on two specifications offering no feature string to
+enumerate, which is an absence rather than a reading.
+
 **What would change the answer.** If WebGL 2 cannot reach `glStencilOpSeparate` through the path this
 package builds pipelines on, the counting modes are a WebGPU capability and `refusal` names them,
 which is the arrangement this package already uses everywhere the two backends differ. **It can, and
