@@ -19,10 +19,29 @@ it" is thrown out and replaced by a reason that stands on the package's own meri
 
 **Where the package stands, as the baseline any item below is measured against.** The renderer is
 built to the whole WebGPU core specification, every capability has a fixture the gates draw, and the
-gates are green: 4 of 4 browser gates, **19 of 19 on the recording contract**, **30 of 30 corpus
-draws** with 9 WebGL 2 skips, 21 of 21 surface checks, **17 of 17 consumer checks under
-`gate:pack`**, and **954 node tests over 81 files**, all re-taken on 2026-09-11 with items 1, 13, 14,
-15 and 16 landed. The door carries **73 run-time names** and `index.ts` reaches **39 files**.
+gates are green: 4 of 4 browser gates, **19 of 19 on the recording contract**, **33 of 33 corpus
+draws** with 0 failed and 6 WebGL 2 skips, 21 of 21 surface checks, **17 of 17 consumer checks under
+`gate:pack`**, and **989 node tests over 84 files**, **all re-taken on 2026-09-12 with every item in
+this file landed or closed.** The door carries **73 run-time names**, re-counted the same day.
+
+**Two of those numbers had expired and this is the fourth time that has happened here.** The corpus
+read 30 draws with 9 skips and the node count read 954 over 81, both taken on 2026-09-11 with items
+17, 18, 19 and 20 still to land. **The three skips that became draws are item 19's, one per step** —
+`core-texture` took the list to eight, `core-target`'s grading pass to seven and `core-mips` to six,
+each preset drawing its own corners rather than waiting on a baked vertex buffer WebGL 2 had not got.
+The total of draws and skips is 39 either way, so this is three presets moving across the line and
+not the corpus growing. **A count here is the size of
+the gate and not a score**, so three fewer skips is three more comparisons and not an improvement in
+anything. The four unchanged numbers are unchanged because those gates did not grow.
+
+**One figure in the old baseline was not re-taken and is therefore removed rather than corrected.**
+It said `index.ts` reaches 39 files. No gate produces that number — `tests/import-graph.test.ts`
+walks every import edge for four rules but asserts no total — so the only way to restate it is an
+ad-hoc count, and an ad-hoc count of a run-time closure gets a different answer depending on whether
+it follows type-only edges, which disappear at compile time. A count taken on 2026-09-12 following
+run-time edges only read 31. **That is not published here as a correction**, because the method that
+produced 39 is not recorded and two methods disagreeing is not one of them being wrong. If the figure
+matters it wants a recorder, which is a candidate and not an item.
 
 **Every one of those numbers moved on 2026-09-11 and not one improved by itself.** The corpus went
 from sixteen fixtures to **nineteen** — `core-blend` arrived with item 11, `core-count` with item 2
@@ -34,30 +53,38 @@ the sixteenth fixture arrived, and item 1's own entry quoted sixteen fixtures an
 through four steps that were worked against eighteen and 70.
 
 **The one line of this baseline no unattended session can re-take is the card**, and it was re-taken
-on 2026-09-11 with Siva present. **22 of 22 PASS and 0 FAIL**, run twice with the same result, on
-`nvidia / blackwell` — 16 presets drawn through WebGPU, a GLSL frame selecting WebGL 2 where WebGPU
-was offered, and the gradient control at 0 of 1,440,000 channels. **Every preset's pixel count is
-identical to the 2026-08-26 reading**, which is what says items 9, 12 and 10 moved no pixel on real
-hardware. The row is in [DEVICES.md](DEVICES.md).
+on 2026-09-12 with Siva present, after every item in this file had landed. **35 PASS and 0 FAIL** on
+`nvidia / blackwell` — the adapter reporting 18 features and a 0.3 GiB buffer ceiling, with WebGL 2
+in the same browser reporting `ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL
+4.5.0)`. **Ten presets are compared across the two backends and every one of them reads 0 of
+1,440,000 channels differing at worst 0**, `core-texture` excepted at 40 and worst 1, and the
+widened-exemption list is empty. The row is in [DEVICES.md](DEVICES.md).
 
-**That card reading predates every item landed on 2026-09-11 and has not been re-taken since.** Item 1's five steps touched
-no backend and changed no picture — the software-renderer corpus draws the same pixel counts either
-side, and `core-blend` sits at 158,400 of 480,000 on both backends across the step that changed how a
-blend reaches a pipeline. But the card is the only gate that reads a real driver, and no unattended
-session may run it, so the honest statement is that item 1 is unmeasured on hardware rather than
-measured as harmless.
+**That 35 is the same reading as the 34 item 20's entry recorded and not a gate that grew**: this
+count includes `PASS the adapter is the card`, the header check, and that entry's did not. Nothing
+was added to `gates/card.mjs` between them. **The earlier figure of 22 of 22 from 2026-09-11 is the
+one that is superseded**, and the gate grew rather than the reading improving — items 16, 19 and 20
+put `core-scissor` and the cross-backend scene comparisons on the list the older total did not
+include.
 
-**Three later items want that run more than item 1 does.** Item 14 removed a `loseContext()` on the
-argument that every WebGL 2 allocation has an explicit `gl.delete*` beside it — read off the source,
-not measured on a driver. Item 15's step 3 wants `npm run device-report` either side of its change.
-And **item 16 added a scissor whose cross-backend agreement is a SwiftShader reading**: 9 of
-1,440,000 channels with a worst of 1, against a tolerance of 8, and `core-scissor` is on
-`gates/card.mjs`'s `SCENE_TIER` waiting for a card. One `gate:card` run closes all three.
+**That hardware debt is paid, and this paragraph used to say it was outstanding.** It read that the
+card predated every item landed on 2026-09-11 and had not been re-taken, that item 1 was "unmeasured
+on hardware rather than measured as harmless", and that three later items wanted one `gate:card` run
+which would close all three. **The run happened.** Item 20 took it on 2026-09-12 and it was taken
+again the same day for this baseline, both green, with every item in this file landed.
 
-**That number is 22 and not the 17 of 17 this file carried from 2026-08-29**, and the gate grew
-rather than the reading improving: the sixteenth capability fixture and the three cross-backend
-scene comparisons are checks the older total did not include. The old figure is not a number that
-fell, and nothing here should read it as one.
+**What that closed, named one at a time rather than as a total.** Item 1's five steps are covered by
+a card reading taken after them. Item 14's `loseContext()` removal, argued off the source rather than
+off a driver, is covered by the same. **Item 16's scissor is measured on the card**: `core-scissor`
+reads 0 of 1,440,000 channels differing at worst 0 across the two backends, where the SwiftShader
+reading it landed on was 9 at worst 1 against a tolerance of 8. **Item 15's step 3 is the one a
+`gate:card` run could never have closed**, because no browser gate calls `probe()` — it was closed
+separately on 2026-09-12 by `npm run device-report` run either side of `774b9ae`, the two readings
+byte-for-byte identical over the whole JSON, and item 15's entry below carries it.
+
+**What a green card reading still cannot say.** One machine, one driver, one day. Ten presets
+compared across backends is ten, not the corpus, and a preset nothing compares across backends proves
+less than it looks like — which is the blind spot that hid item 20's defect for a day.
 
 **`gate:card` still needs a desktop session and a real graphics card**, every headless launch
 reaches the software renderer whatever the flags say, and the gate's own header says so. So an
