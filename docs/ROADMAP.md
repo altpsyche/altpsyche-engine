@@ -221,7 +221,8 @@ is a patch whatever this table says.
    had items 9, 10, 11 and 12, *after* `0.4.0` was tagged and before this cut was taken. A version
    carries every commit since the last tag and not the items a plan assigned it, so `0.5.0` is the
    spine and the stencil together and row 2 below is already spent. The version is bumped in the
-   repository and **nothing has been pushed, tagged or published** — that is Siva's to ask for, the
+   repository and — **as of 2026-09-12 — it is tagged `v0.5.0` and published.** It was not when this
+   row was written; see "Released on 2026-09-12" below. The asking was Siva's, the
    release runs in CI from the tag, and a published version cannot be withdrawn.
 2. ~~**`0.6.0` — the spine**: items 9, 10, 11 and 12, carrying items 13, 15 and 18 if they landed.~~
    **Spent inside `0.5.0`.** Those four landed before that cut was taken, so they shipped with it.
@@ -231,8 +232,9 @@ is a patch whatever this table says.
    said. Check `git log <last tag>..HEAD` before writing a changelog entry, not the plan.
 3. ~~**`0.7.0` — the lifetimes and the vocabulary**: items 14, 16 and 17.~~ **Spent inside `0.5.0`
    as well, and that is the third time.** All three landed on 2026-09-11, after the `0.5.0` bump
-   and before any tag — `package.json` says `0.5.0`, the last tag that exists is still `v0.4.0`, and
-   `git log v0.4.0..HEAD` is 46 commits. A version carries commits, so `0.5.0` carries the stencil,
+   and before any tag — `package.json` says `0.5.0`, the last tag that existed when this was written
+   was still `v0.4.0`, and `git log v0.4.0..HEAD` was 46 commits at that point. It reached 76 before
+   the tag was cut. A version carries commits, so `0.5.0` carries the stencil,
    the spine, item 1, and the lifetimes and the vocabulary too. **No bump is owed and proposing one
    would cut a version for work the unreleased number already covers.** What is left for a cut after
    it is items 13, 15 and 18 if they land, which the table above makes a patch.
@@ -245,9 +247,10 @@ was overtaken. **The rule that survives is the one rows 2 and 3 both record — 
 number.**
 
 **Item 1 landed on 2026-09-11, and `0.5.0` carries it.** Its five steps are five commits after the
-`0.5.0` version bump — but **`0.5.0` has never been tagged or published**, the bump being a number in
-`package.json` and nothing more, so those commits are inside it rather than waiting for a cut after
-it. Publishing `v0.5.0` publishes item 1 with the stencil and the spine. No further bump is owed, and
+`0.5.0` version bump — but **`0.5.0` had not been tagged or published when this was written**, the
+bump being a number in `package.json` and nothing more, so those commits are inside it rather than
+waiting for a cut after it. Publishing `v0.5.0` published item 1 with the stencil and the spine, and
+it did, on 2026-09-12. No further bump is owed, and
 proposing one would cut a version for work the unreleased number already covers.
 
 That makes `0.5.0` bigger than row 1 above says a third time, and it is the same lesson row 2
@@ -284,6 +287,32 @@ that consumer widens its peer range to span `0.x` ahead of time, the cost of a c
 and the three could be more. **What may not change it is a dependant asking for a capability**, which
 is the rule at the top of `CLAUDE.md` and is why the paragraph above separates when a thing is
 published from whether it is built.
+
+### Released on 2026-09-12: `v0.5.0`, and it carries every item in this file
+
+**Every item on this roadmap was landed or closed by 2026-09-12**, item 20 being the last, so the
+scope this cut was waiting on was finished. Siva said to cut and push the tag, and then to dispatch
+the publish.
+
+`git log v0.4.0..HEAD` was **76 commits**, which is why the changelog entry was rewritten before the
+tag rather than trusted: it had been written at the version bump and fifty commits had landed after
+it, covering items 1, 13, 14, 15, 16, 17, 18, 19 and 20. **That is the third time this file's own
+lesson has been paid for** — a version carries commits and not the items a plan assigned it — and the
+first time it was caught before rather than after.
+
+The release ran in CI from the tag through `.github/workflows/publish.yml`, dispatched with
+`gh workflow run publish.yml --ref v0.5.0`, and the run's own gates were green on the published
+commit: `npm test`, `gate:browser` and `gate:pack` all ran before the publish step. **Read back off
+the registry rather than off the run**, which is the reading item 3's entry says matters: `latest` is
+`0.5.0`, the published `exports` carries both doors, `npm audit signatures` reports a verified
+registry signature and a verified attestation, and the provenance statement names repository
+`altpsyche/altpsyche-engine`, workflow `.github/workflows/publish.yml`, ref `refs/tags/v0.5.0` and
+commit `14281cf`.
+
+**What it costs the one dependant.** `@altpsyche/maths` at 2.8.0 declares this package at `^0.4.0`
+twice, and the one that costs is the `peerDependency`: a page installing both now gets an unmet peer
+until that package publishes a version widening its range. That was known and weighed when this cut
+order was written, and it is the price the section above names.
 
 **Nothing here authorises a release.** `CLAUDE.md` is unchanged: a tag reaching the remote and a
 publish are not a session's to do, the release runs in CI from the tag, and a published version cannot
