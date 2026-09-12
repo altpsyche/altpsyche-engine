@@ -3823,6 +3823,37 @@ only measurement this step has.
   candidate to be picked up is admitted by a written rule rather than by arriving first.
 - `CLAUDE.md`'s standing refusals point at the bound in one line.
 
+### Done when, verified on 2026-09-12 — the bound exists and the queue is empty again
+
+**Line by line, with the number or the file that satisfies each.**
+
+- *The bound is written down, with what it admits and what it refuses, and a worked example of each* —
+  `CONTRIBUTING.md`, under "Design rules that are not negotiable", as the fifth rule. The worked admit
+  is `sceneView`, which ends at `sceneView(arena, options).graph(world, views)`; the worked refuse is a
+  per-frame pointer, key and touch reading, which produces no graph. **This is the original `Done
+  when` of the section above and it is met.**
+- *Every tier on the door is named admitted, or the exception is named with its reason* — **five
+  tested, five admitted, in three roles**: `toy/`, `declare/` and `scene/` as producers, `graph/` and
+  `scene/maths.ts` as the vocabulary, `host/` as the edge. No exception was needed, but only because
+  step 1 found that a one-clause bound would have refused `host/` and added the third clause.
+- *Each of the five candidates carries a ruling and the sentence that decides it* — the table under
+  "Candidates" carries a `ruled` column and five paragraphs beneath it. **One refused, two split, one
+  admitted on a condition, one admitted.**
+- *`CLAUDE.md`'s standing refusals point at the bound in one line* — they do, in five lines of wrapped
+  text carrying one sentence and the pointer.
+
+**What this unblocks and what it does not.** The headnote that said no candidate may be started
+before the bound exists is replaced by the ruling, so a candidate may now be picked up — but **being
+admitted is not being planned.** Each still needs an item written the way this file's last section
+says an item is written, and two of the five are admitted only in half. **The one thing that is
+settled is that the first candidate to be picked up will be admitted by a written rule rather than by
+arriving first**, which is what the section above said the bound was for.
+
+**With this the queue is empty a second time.** Item 20 emptied it on 2026-09-12 and the bound was
+what Siva named next; the bound is now written. **What comes next is Siva's call**, and the honest
+statement of the position is that this file holds five ruled candidates, four standing ideas under
+"Four candidates left on 2026-09-10", and no item.
+
 **What no gate can say about this item.** Nothing here executes. `npm test` and `npm run type-check`
 are green before and after and neither reads a sentence, `gate:pack` reads the export surface which
 this does not touch, and there is no fixture a prose rule can carry. **The only measurement either
@@ -3963,16 +3994,58 @@ thing itself.
 
 ## Candidates, which are ideas and not items
 
-**None of these is planned and none may be started before the bound above exists.** They are
-written down so the thinking is not lost.
+**The bound above exists now, and every row below is ruled by it — 2026-09-12.** None of these is
+planned and the ruling does not plan one: it says which of them a written rule already admits, so
+that the first candidate picked up is admitted by the rule rather than by arriving first. **One is
+refused outright, two are refused in one half and admitted in the other, one is admitted on a
+condition, and one is admitted.** The deciding sentence for each is under the table.
 
-| candidate | what it would be | what makes it doubtful |
-| --- | --- | --- |
-| input | a device-agnostic reading of pointer, key and touch state per frame | the smallest thing here and the least in need of a library |
-| assets | fetching, decoding and residency for images, geometry and text | the `gltf-cube` example parses a document itself in 458 lines on purpose, and its header says a `gltf()` door would be the wrong decision |
-| animation | a clock, curves, and a way to drive scene values from them | needs a scene model settled first |
-| a scene system | nodes with lifetimes, above the submission path in `scene/` | this is where an abstraction usually starts assuming one backend, which the whole stack is built not to do |
-| lights | a light as scene data rather than as uniforms a caller packs | a shadow pass is caller-side today and the `orbit-shadow` example is 464 lines showing it |
+| candidate | ruled | what it would be | what makes it doubtful |
+| --- | --- | --- | --- |
+| input | **refused** | a device-agnostic reading of pointer, key and touch state per frame | the smallest thing here and the least in need of a library |
+| assets | **split** | fetching, decoding and residency for images, geometry and text | the `gltf-cube` example parses a document itself in 458 lines on purpose, and its header says a `gltf()` door would be the wrong decision |
+| animation | **split** | a clock, curves, and a way to drive scene values from them | needs a scene model settled first |
+| a scene system | **admitted on a condition** | nodes with lifetimes, above the submission path in `scene/` | this is where an abstraction usually starts assuming one backend, which the whole stack is built not to do |
+| lights | **admitted** | a light as scene data rather than as uniforms a caller packs | a shadow pass is caller-side today and the `orbit-shadow` example is 464 lines showing it |
+
+**Input is refused, and not for being small.** It produces no frame graph, so `cost` has nothing to
+price and `refusal` has nothing to name — a page installing it would hold the one part of this
+package about which the package can say nothing true. **The argument that it is an edge like
+`createSurface` and so is admitted by precedent is answered in the rule itself**: `createSurface`
+carries a graph to a device and an input reading carries nothing, and the edge is occupied.
+
+**Assets split, and the admitted half is already built.** A resource a graph names is describable and
+costable, and that half is `resource/`'s `Arena`, which is below this bound rather than above it.
+Fetching and decoding produce bytes and not a graph, so a `gltf()` door stays refused — which is what
+`examples/gltf-cube`'s header says in its own words and for its own reason, and the two agree.
+
+**Animation splits on the clock.** Curves are pure functions over time producing values a graph's
+uniforms carry, so they are admitted the way `scene/maths.ts` is admitted, as vocabulary a producer
+is written in. A clock is not: it owns a `requestAnimationFrame` and a pause, which `host/surface.ts`
+already owns, and the edge is occupied. **So the doubt recorded in the row is answered too** — curves
+need no scene model settled first, because a curve produces a number and the producer decides what
+the number is for.
+
+**A scene system is admitted only on the condition that its nodes resolve to a graph before a device
+is reached**, which is precisely what `scene/` already does and why it is on the door. **Nodes
+holding device resources are refused**, and this is the sharpest edge of the bound: a node that owns
+a texture means `cost` can no longer price the frame from the graph alone, so the retained model
+would take the diagnostics down with it. The row's own doubt — that an abstraction here starts
+assuming one backend — is the same failure seen from the other side.
+
+**Lights are admitted.** A light that folds into a graph's uniforms is a graph at the end of it, and
+a shadow pass is a `PassSpec`, which `cost` already prices and `refusal` already reads. The row's
+doubt is a note about how much of `examples/orbit-shadow`'s 464 lines would move, which is a question
+about when to build it and not about whether it belongs — and **that is the job the two losing
+candidate bounds were kept for.**
+
+**How this ruling compares to the reading that chose the bound.** That reading predicted five
+different answers and got them, four of the five unchanged: input refused, assets split, animation
+split on the clock, lights admitted. **The fifth is corrected.** The reading tested `sceneView`,
+which is built and on the door, where the row is a retained node graph that is not — so the candidate
+is admitted on a condition rather than admitted, and the condition is the whole of the difference
+between the two things. That the entry's own reading step flagged this distinction before the bound
+was written is why the correction is one word here rather than a rewrite.
 
 **One standing obligation rather than a candidate.** Whatever the layer gains, a consumer that
 draws one fullscreen shader must not download it. `chunk-split` in the consuming repository counts
