@@ -3705,7 +3705,7 @@ wanted it. There is no specification for the layer above, so the same question n
 answer: what decides whether a scene system, an input abstraction, an asset path or an animation
 model belongs in this package.
 
-**Three candidate bounds, and none of them is chosen.**
+**Three candidate bounds, and the third is chosen — Siva, 2026-09-12.**
 
 - **What a reader doing graphics in a browser cannot reasonably write themselves.** A frame graph
   qualifies. A key handler does not.
@@ -3717,6 +3717,87 @@ model belongs in this package.
 
 **Done when** the bound is written down, with what it admits and what it refuses, and with a
 worked example of each.
+
+### Chosen on 2026-09-12: the diagnostics bound, and why the other two are not bounds
+
+**The bound is the third candidate, alone.** A capability belongs in the layer above the renderer
+only where it reduces to a `FrameGraph` that `graph/cost.ts` can cost and `graph/refusal.ts` can
+refuse before a driver is reached. The other two candidates are kept, demoted to tie-breakers on
+*when* an admitted capability is built rather than on whether it belongs.
+
+**The ground is checkability and not preference.** The renderer's bound worked because it was
+external and a reader who did not make the change could check a capability against it: the WebGPU
+core specification either names a thing or does not. Measured against that, the first candidate —
+what a reader cannot reasonably write themselves — is unfalsifiable, since it varies by reader and
+every argument for it and against it is an opinion. The second — what comparable packages expose —
+is checkable but the section above already disowns it as a target, and a bound nobody is allowed to
+meet is not deciding anything. The third is mechanical: either a capability comes out the other side
+as a graph the cost and refusal functions can read, or it does not.
+
+**It discriminates, which is the test of a bound.** Applied to the five candidates below in the
+reading that chose it, it gave five different answers rather than one — `sceneView` passes because it
+emits a graph, input fails because a key handler produces nothing to cost and nothing to refuse,
+assets split down the middle with residency admitted and fetch refused, animation passes only as pure
+functions over time and fails as a clock, and lights pass as scene data folded into uniforms. **A
+bound that admits everything is a slogan.** Step 2 below is where those five are ruled properly and
+the reading above is either confirmed or corrected.
+
+**What would reverse it.** A capability that is plainly this package's work and plainly cannot be
+described as a graph would say the bound is drawn too tight. Nothing in the table below is that
+today, and the honest thing to do if one arrives is to widen the bound in writing rather than to
+admit the capability past it.
+
+### The reading this plan is written on, taken 2026-09-12
+
+**One line of the section above has moved.** It asks what decides whether "a scene system" belongs
+here as though the question were open, and a scene tier is already published: `scene/scene.ts`,
+`scene/draw-list.ts`, `scene/material.ts` and `scene/scene-view.ts`, re-exported at `index.ts:266`
+through `index.ts:310` and shipped in `v0.5.0`. **So the bound is not written on a blank page.** It
+has to admit what the door already carries or it declares a published surface out of bounds, which is
+why step 1 tests it against every tier on the door before anything is ruled by it.
+
+**The candidate is not what is built.** The table below offers "a scene system" as nodes with
+lifetimes above the submission path; what exists in `scene/` is a flat list of entities and pure
+functions over it, holding no device resource and reaching no driver. The two are different things
+and the bound separates them, which is a point in the bound's favour rather than a wrinkle in it.
+
+### Steps
+
+1. **The bound is written where a contributor reads it.** The rule goes into `CONTRIBUTING.md`'s
+   "Design rules that are not negotiable", which already holds the four, with a worked example of
+   what it admits and a worked example of what it refuses. `CLAUDE.md`'s standing refusals gain one
+   line pointing at it, so every session loads the bound without `CLAUDE.md` growing by a screen.
+   **In the same commit the bound is tested against every tier already on the door** — `graph/`,
+   `toy/`, `declare/`, `scene/` and `host/` — because a bound that refuses a published surface is
+   wrong and is rewritten here rather than after something has been ruled by it. **The commit quotes
+   how many of the five tiers the bound admits and names any it does not**, and it says that
+   `npm test`, `npm run type-check` and `npm run gate:pack` are all blind to a prose change, which
+   they are.
+
+2. **The five candidates are ruled.** Each row of the candidates table gains admitted or refused and
+   the one sentence that decides it, and the headnote "none may be started before the bound above
+   exists" is replaced by the ruling, since the bound will exist. **The commit quotes the count** —
+   how many of the five the bound refuses outright, how many it admits, and how many it splits — and
+   says whether that matches the five-answer reading recorded above or corrects it.
+
+### Done when
+
+- `CONTRIBUTING.md` carries the bound under its non-negotiable rules, with **what it admits, what it
+  refuses, and a worked example of each**, which is the original `Done when` above and is checkable
+  by reading it.
+- **Every tier on the door is named admitted by the bound, or the exception is named with its
+  reason.** A reader can check this by taking the five folder names from
+  `docs/ARCHITECTURE.md`'s layer table and finding each one answered.
+- **Each of the five candidates carries a ruling and the sentence that decides it**, so the first
+  candidate to be picked up is admitted by a written rule rather than by arriving first.
+- `CLAUDE.md`'s standing refusals point at the bound in one line.
+
+**What no gate can say about this item.** Nothing here executes. `npm test` and `npm run type-check`
+are green before and after and neither reads a sentence, `gate:pack` reads the export surface which
+this does not touch, and there is no fixture a prose rule can carry. **The only measurement either
+commit can honestly quote is a count** — tiers tested, candidates ruled — and the commit says that
+the count is the whole of it.
+
 
 **Why it blocks every candidate.** Every candidate below is new capability in that layer, and
 without a bound the first one that arrives sets the precedent by accident. It does not block item 1,
