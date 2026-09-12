@@ -88,6 +88,11 @@ would change the answer. That belongs in the commit message.
 
 - No runtime dependency is added to this package without a deliberate decision. Zero runtime
   dependencies is a published property.
+- **A capability in the layer above the renderer is admitted only where it produces a frame graph**,
+  because `cost` and `refusal` each take one and nothing else, so a capability that is not a graph at
+  the end of it is one this package can say nothing true about. The rule, what it admits, what it
+  refuses and a worked example of each are in [CONTRIBUTING.md](CONTRIBUTING.md) under the rules that
+  are not negotiable.
 - **This package never imports `@altpsyche/maths`.** That package depends on this one, behind a
   dynamic import in its GPU painter, so a second import in this direction is a cycle. The case that
   looks like it needs one is a shader declaring a camera, and the answer there is that whatever holds

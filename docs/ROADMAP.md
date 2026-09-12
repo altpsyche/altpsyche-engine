@@ -3780,6 +3780,37 @@ and the bound separates them, which is a point in the bound's favour rather than
    how many of the five the bound refuses outright, how many it admits, and how many it splits — and
    says whether that matches the five-answer reading recorded above or corrects it.
 
+### Landed on 2026-09-12, step 1: the bound admits all five tiers, and it took a third clause to do it
+
+**The bound is written** in `CONTRIBUTING.md` under "Design rules that are not negotiable", with the
+worked admit (`sceneView`, which ends at a `FrameGraph` and so is costable and refusable for free)
+and the worked refuse (a per-frame pointer, key and touch reading, which produces no graph, so `cost`
+has nothing to price and `refusal` has nothing to name). `CLAUDE.md`'s standing refusals point at it
+in one line, which is the whole of what that file gains.
+
+**Five tiers were tested against it and it admits five**, which is the count this step owed. It does
+not admit them for one reason, and finding that out is what the step was for: **`toy/`, `declare/`
+and `scene/` are producers** — `frameOf`, `declaredFrame` and `sceneView(...).graph(world, views)`
+each return a `FrameGraph` — **`graph/` and `scene/maths.ts` are the vocabulary** a graph is written
+out of, and **`host/` is the edge**, which carries a graph to a device and reads what the device is.
+
+**The bound as the plan drafted it would have refused `host/`, and that is the defect this step
+found.** `createSurface` and `openRenderer` produce no graph: they are a loop, a clock, a canvas and
+a resize. Read literally, a one-clause bound declares a published surface out of bounds, which is
+exactly the failure step 1 existed to catch. **The fix is the three roles**, written into the rule
+rather than left for a reader to infer: a new capability is admitted as a producer, the vocabulary
+grows when a producer needs a word, and **the edge is occupied**. That last clause also answers an
+argument that was going to be made — that an input abstraction is an edge like `createSurface` and so
+is admitted by precedent. It is not, because `createSurface` carries a graph and an input reading
+carries nothing. `probe` stays admitted on its own ground: the `DeviceCapabilities` it produces is
+`refusal`'s other argument, so it is inside the diagnostic rather than beside it.
+
+**What the gates could not see: all of it.** `npm test` reads 989 passed across 84 files and
+`npm run type-check` is clean, before and after, and neither reads a sentence. `gate:pack` was not
+run because no export surface, `package.json` or `index.ts` line is touched. There is no fixture a
+prose rule can carry, and the count above — five tiers tested, five admitted, in three roles — is the
+only measurement this step has.
+
 ### Done when
 
 - `CONTRIBUTING.md` carries the bound under its non-negotiable rules, with **what it admits, what it

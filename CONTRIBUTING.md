@@ -122,6 +122,35 @@ at the point of the decision, not in a document beside it.
   `tests/import-graph.test.ts` holds its closure to a module that imports nothing, and every name
   behind it is still exported by `index.ts`.
 - **Zero runtime dependencies.**
+- **A capability in the layer above the renderer is admitted only where it produces a frame graph.**
+  `cost(graph, size)` and `refusal(graph, device)` each take a `FrameGraph` and nothing else, so a
+  capability that comes out the other side as a graph can be priced and can be refused by name before
+  a driver is reached, and one that does not cannot. That is this package's distinguishing claim and
+  the bound is drawn to keep it true: **a capability the diagnostics cannot say anything about
+  weakens the claim rather than extending it.** Chosen on 2026-09-12, and `docs/ROADMAP.md` carries
+  the two candidates that lost and why neither was checkable.
+
+  **What it admits, worked.** `sceneView` is a scene and its cameras, and it ends at
+  `sceneView(arena, options).graph(world, views)`, which returns a `FrameGraph`. Everything a
+  diagnostic promises therefore holds over a scene for free: the frame it describes can be costed
+  without a card, refused by name on a device that lacks what it needs, and compared as JSON. A light
+  as scene data would be admitted on the same ground, since a light that folds into a graph's
+  uniforms is still a graph at the end of it.
+
+  **What it refuses, worked.** A device-agnostic reading of pointer, key and touch state per frame
+  produces no graph. `cost` has nothing to price, `refusal` has nothing to name, and a page that
+  installed it would hold the one part of this package about which the package can say nothing true.
+  It is refused for that and not for being small.
+
+  **The three roles, because the bound governs one of them.** The tiers already on the door fill
+  three roles and only the first is open. **Producers** — `toy/`, `declare/`, `scene/` — turn
+  something into a graph, and that is where a new capability is admitted. **The vocabulary** —
+  `graph/`, and `scene/maths.ts` under it — is what a graph is written out of, and it grows when a
+  producer needs a word it does not have. **The edge** — `host/` — carries a graph to a device and
+  reads what the device is, `probe` producing the `DeviceCapabilities` that is `refusal`'s other
+  argument. **The edge is occupied and adding capability does not go there**, which is the answer to
+  the argument that an input abstraction is an edge like `createSurface` and so is admitted by
+  precedent. It is not: `createSurface` carries a graph and an input reading carries nothing.
 
 ## Commits
 
