@@ -3664,7 +3664,11 @@ to 0 under step 2d anyway.
 
 ## What is still to be settled, and it does not block item 1
 
-### The bound the layer above the renderer is built to
+### The bound the layer above the renderer is built to — **this is the next work, chosen by Siva on 2026-09-12**
+
+**Siva named this as what the next session takes**, after item 20 closed and left the queue empty.
+It is a planning session and no code is touched: the `Done when` below is a written bound with what
+it admits and what it refuses, and a worked example of each.
 
 **The renderer had one and it is why that work went well.** The WebGPU core specification was the
 bound, every capability landed with a fixture of its own, and nothing was built because a lesson

@@ -11,12 +11,20 @@ asking for it.
 
 ## 0.5.0
 
-**A breaking release, and `0.x` means it does not announce itself with a major number.** Three names
-arrive and none leaves or moves. What breaks is that **`StencilMode` gains two members**, so an
-exhaustive `switch` over it stops compiling; that **`Capability` gains two members** for the same
-reason; and that **several descriptions that used to draw are now refused by name**, each of them one
-that was drawing the wrong picture on one backend or the other. If you are on `^0.4.0` nothing here
-reaches you until you ask for it.
+**A breaking release, and `0.x` means it does not announce itself with a major number.** Names arrive
+and none leaves or moves. What breaks is that **`StencilMode` gains two members**, so an exhaustive
+`switch` over it stops compiling; that **`Capability` gains two members** for the same reason; that
+**several descriptions that used to draw are now refused by name**, each of them one that was drawing
+the wrong picture on one backend or the other; and that **`dispose()` no longer takes your canvas
+with it**, which is behaviour rather than a signature. If you are on `^0.4.0` nothing here reaches
+you until you ask for it.
+
+**The headline is that WebGL 2 and WebGPU now draw the same picture.** Ten of this package's fixture
+presets are compared channel for channel across the two backends on a real graphics card, where none
+was at `0.4.0`. Nine of them agree exactly — `0 of 1,440,000 channels differ` — and the tenth differs
+in 40 channels at worst 1, against a tolerance of 8. Three defects that had been drawing two
+different pictures for as long as the second backend has existed were found and fixed by that
+comparison, and they are described below under *Fixed*.
 
 ### Added: `openRenderer`, which carries a backend selection through to a renderer
 
@@ -66,6 +74,37 @@ about it — a framebuffer's rows run the other way on one of them — so the sa
 one and `-1` on the other. `nonzero` asks whether the counter came back to zero rather than which way
 it went, so both draw the same picture out of opposite counts.
 
+### Added: `declaredFrame`, for reading what a shader's own text says it needs
+
+`declaredFrame(source)` reads a frame declaration out of a shader's text and answers the resources,
+pipelines and passes it names, so a description and the shader it describes cannot drift apart with
+nothing checking that they agree. `DeclaredFrame` is its type. `BLEND_MODE` is a table of the blends
+worth a name, spendable straight into a pipeline's `targets[].blend`, and `groupsToCover` answers
+which bind groups a pass has to cover.
+
+### Added: `RenderPassSpec.scissor`, a rectangle a pass may write into
+
+A pass may now name `scissor: { x, y, width, height }`, in the top-left origin WebGPU counts one in,
+and both backends honour it — `setScissorRect` on one and `gl.scissor` with the flip on the other. It
+is pass state rather than pipeline state, which is where both APIs put it. A pass naming none is
+unchanged and touches no scissor state.
+
+Measured across the two backends on an NVIDIA Blackwell card with an off-centre rectangle, so that a
+rectangle flipped the wrong way round is a different picture rather than the same one: **0 of
+1,440,000 channels differ.**
+
+### Added: `Surface.read()`, so a live surface can hand back the frame it is showing
+
+A surface that is running its own loop could not be read. `read(): Promise<Uint8Array | null>` draws
+one more frame at the current clock and hands back its pixels, top row first, whichever backend is
+drawing; it answers `null` after `dispose()`. The loop keeps running.
+
+This exists because reading the canvas yourself does not work and quietly looks like it might: a
+WebGPU canvas cannot be drawn into a 2D context at all, and a WebGL 2 one asks for no
+`preserveDrawingBuffer`, so a `drawImage` after an `await` reads a buffer the browser was free to
+throw away. Measured on a real driver with the loop running: **480,000 of 480,000 pixels are the
+drawn colour, worst channel off by 0**, and `null` after dispose.
+
 ### Fixed: WebGL 2 applies the blend a pipeline names, which it had never done
 
 A pipeline naming `targets[].blend` drew blended on WebGPU and **unblended on WebGL 2**, with
@@ -81,6 +120,64 @@ before this has the call stream it had.
 not reach WebGL 2 — the `src1` family of factors, and a pass whose several colour targets name
 *different* blends. Both are **read off your pipelines rather than declared**, so you do not have to
 remember to put them in `requires`.
+
+### Fixed: the two backends draw the same picture, and three defects said they did not
+
+`0.4.0` compared no preset across the two backends on a card. Ten are compared now, and the
+comparison found three things.
+
+- **`@builtin(position)` counted rows from opposite corners.** WGSL counts its y from the top of the
+  target and GLSL ES 3.00's `gl_FragCoord` counts from the bottom, and the declarative fixes for that
+  do not exist in WebGL 2 — `layout(origin_upper_left)` is desktop GLSL only and `glClipControl` is
+  not in OpenGL ES. **The WebGL 2 backend now renders every frame into a colour target of its own and
+  blits that onto your canvas**, which is what lets the compensating flip exist at all, and the
+  translated vertex stage flips y with the winding inverted to match. A preset sampling a generated
+  texture went from `1,424,706 of 1,440,000 channels differ, worst 235` to `40, worst 1`. The
+  presentation step costs **0.0099 ms a frame at 800x600** on an RTX 5080, about 1% of that machine's
+  own 1.20 ms frame for a thousand objects, and it scales with pixels rather than with the scene.
+- **A mip ladder was read one level at a time on WebGPU and mixed on WebGL 2.** The WebGPU backend
+  never set `mipmapFilter`, which that API defaults to `nearest`, so a picture read at a size between
+  two levels came out banded on one backend and smooth on the other. Both ladders were always the
+  same 2x2 averages; only the read between them differed. `574,095 of 1,440,000 channels differ,
+  worst 15` to `0, worst 0`.
+- **A texture's rows were uploaded in one order and sampled in the other.** Found by the same
+  comparison and fixed with it.
+
+Eight presets that were already being compared and were already inside the tolerance went to **0 of
+1,440,000 at worst 0** as well, from 11, 0, 77, 0, 0, 11, 36, 18. Those residuals had been read three
+times as two hardware compilers folding the same arithmetic apart. They were the coordinate.
+
+### Fixed: a figure whose geometry moves no longer recompiles every frame
+
+The program cache was keyed on the *bytes* of a frame's geometry, so a figure that moved looked like
+a new pipeline every tick and linked a new program every tick. It is keyed on the byte length now,
+and a cache hit is refilled from the frame it was asked for, so the program the card holds draws the
+geometry you handed it rather than the geometry the first frame happened to carry.
+
+Sixty ticks of a moving figure: **60 program links to 1.** The cache key over the same figure went
+from **31,335 characters to 1,319**, a sixth of the geometry rather than four times it. A page whose
+bytes hold still pays nothing for this and writes no buffer at all — the refill is an identity test
+on the arrays, not a comparison of contents. A figure that *grew* still misses and recompiles, which
+is correct.
+
+### Fixed: `dispose()` leaves your canvas alone
+
+Disposing a WebGL 2 renderer used to call `loseContext()` on the canvas you handed it, and that is
+not something you can undo: a canvas hands back the same graphics context for as long as it exists,
+so the next `getContext('webgl2')` returns the lost one, where draw calls are accepted and the
+picture stops moving. Disposing a WebGPU renderer called `unconfigure()`, which is reversible. **One
+name on one interface meant two different things, and the one you could not recover from was the
+unannounced one.** Both now release what the renderer allocated and leave the canvas alone.
+
+Nothing is leaked by the change, and that was measured rather than argued: every program's `dispose`
+already deleted its own textures, framebuffers, renderbuffers and programs through `gl.delete*`
+before this line was reached. If you *do* want the context gone, the canvas is yours:
+`canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext()`.
+
+### Fixed: `probe()` no longer leaves canvases on your page
+
+Each backend `probe()` trialled left its trial canvas in the document. Both remove their own now, in
+a `finally`, so a machine that reports a backend and then fails midway does not leak one either.
 
 ### Changed: descriptions that drew the wrong picture are refused by name
 
@@ -106,6 +203,13 @@ third was already coming from the validator. There is one now, the validator's: 
 presents resource N, which it does not declare`. **If you match on the text of a refusal, this is the
 one to re-read.** Matching on refusal text is not something this package asks you to do, and these
 messages are written for a reader rather than for a parser.
+
+### Changed: `createFrameRenderer` refuses a non-canvas by name
+
+Handing it something that is not a canvas used to produce a `TypeError` from inside a backend, or a
+`null` — and `null` from this function means *this machine cannot give a context*, which is a fact
+about a reader's browser. It throws now, naming what it was given, so a bug in calling code stops
+reporting itself as a capability the reader's machine lacks.
 
 ### Under the hood, with nothing for you to do
 
