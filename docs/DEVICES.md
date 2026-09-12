@@ -38,6 +38,49 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-12, Linux, `probe()` reads the same card either side of taking its trial canvases off the page
+
+**Item 15's step 3, which no gate can take.** Step 1 made `probe()` remove the canvases it creates
+while trialling a backend, and the confirmation it owed was that the answers did not move. No browser
+gate calls `probe()` — `gates/device-report.mjs` is the only caller and it is not a gate, asserting
+nothing — so this is a reading with a person at the machine, which is what the step said it would
+need.
+
+**Taken either side of `774b9ae` by checking out that commit's parent version of `host/probe.ts`
+alone**, the rest of the tree unchanged, so the only difference between the two runs is the removal
+itself. **The two readings are byte-for-byte identical**, compared over the whole JSON and not only
+the printed row: 71 lines each, `diff` silent.
+
+```
+date            2026-09-12
+backend         webgpu
+tier            toy
+webgpu          reported, adapter returned
+compositing     survived a few on-screen frames
+renderer        nvidia
+architecture    blackwell (not swiftshader)
+features        bgra8unorm-storage, clip-distances, core-features-and-limits, depth-clip-control,
+                depth32float-stencil8, dual-source-blending, float32-blendable, float32-filterable,
+                indirect-first-instance, primitive-index, rg11b10ufloat-renderable, subgroups,
+                texture-component-swizzle, texture-compression-bc, texture-compression-bc-sliced-3d,
+                texture-formats-tier1, texture-formats-tier2, timestamp-query
+limits          36 reported
+```
+
+**The three states are all three**, which is what makes this a reading and not a boolean: WebGPU
+reported, an adapter returned, and the device survived on-screen compositing. The architecture
+asserts not-`swiftshader`, so this is the card and not the software renderer every headless launch on
+this machine reaches.
+
+**What this row cannot say.** One machine, one day, and one backend's trial. `probe()` trials both
+and the row records the one it selected; that the WebGL 2 trial's answer is also unmoved rests on the
+same JSON being identical, which covers every field `probe()` returns, rather than on a second
+reading taken through a forced WebGL 2 path. And an identical reading either side is evidence the
+removal changed no answer — it is not evidence that a page with many `probe()` calls leaks nothing,
+which is what `tests/probe-document.test.ts` counts and which needs no card.
+
+---
+
 ### 2026-09-12, Linux, `core-mips` joins the zeros, and what was read as a ladder defect was a sampler default
 
 **One line.** `gpu/webgpu.ts` never set `mipmapFilter`, which WebGPU defaults to `nearest`, so that

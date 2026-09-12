@@ -2356,13 +2356,14 @@ than nominal.
 clean, unchanged either side. No behaviour changed, which is the point of a step that settles
 something as staying put.
 
-### Done when, verified — and what is left is not a step this session can take
+### Done when, verified — and step 3, which needed a card, was taken on 2026-09-12
 
 **The `Done when` is one line and step 1 meets it.** `probe()` adds nothing to `document.body` that
 it does not remove, including where a trial throws, shown by `tests/probe-document.test.ts` counting
 children before and after on both paths, both red when the removal is replaced by a no-op.
 
-**Step 3 is outstanding and is not part of the `Done when`.** It asks that `probe()`'s answers be
+**Step 3 was outstanding and is not part of the `Done when`; it is closed now and the paragraph below
+is kept as what it cost to close.** It asks that `probe()`'s answers be
 shown unchanged, and its measurement — "`gate:browser`'s device report" — does not exist: no browser
 gate calls `probe()`. What exists is `npm run device-report`, which is not a gate, asserts nothing,
 and launches headed with the card flags because a headless launch reaches the software renderer. **It
@@ -2374,9 +2375,23 @@ the trial it exists for rests on:
   read;
 - and **nothing on a real card.**
 
-**For Siva**: `npm run device-report` either side of `774b9ae` would close step 3 in one reading. The
-row it prints goes in [DEVICES.md](DEVICES.md). Nothing here should claim that reading until it is
-taken.
+**Taken on 2026-09-12, with Siva at the machine, and step 3 is closed.** `npm run device-report` was
+run either side of `774b9ae` — the after at `HEAD`, the before by checking out that commit's parent
+version of `host/probe.ts` alone and restoring it afterwards, so the removal was the only difference
+between the two runs. **The two readings are byte-for-byte identical over the whole JSON**, 71 lines
+each with `diff` silent, not merely matching on the printed summary row. `nvidia / blackwell`, WebGPU
+reported, adapter returned, survived on-screen compositing, architecture asserting
+not-`swiftshader`, 18 features and 36 limits. The row is in [DEVICES.md](DEVICES.md).
+
+**So the item's last outstanding line is met and it was met by the reading, not by an argument.**
+What stood in its place until now was `npm test` covering the removal but not the trial's answer,
+plus the argument that a `remove()` after the trial has settled cannot reach anything the trial read.
+That argument was right, and it is now evidence rather than the whole case.
+
+**What the reading still cannot say**, because the entry above was careful about this and the closure
+should be too: one machine, one day. `probe()` trials both backends and the row records the one it
+selected — that the WebGL 2 trial's answer is also unmoved rests on the identical JSON covering every
+field `probe()` returns, not on a second reading through a forced WebGL 2 path.
 - `probe()` answers the same for both backends as it did, read off `gate:browser`'s device report.
 - `npm test` and `npm run type-check` are green; `gate:browser` at 4 of 4.
 - The commit says whether step 2 was settled or left standing, and that a software renderer cannot
