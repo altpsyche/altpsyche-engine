@@ -283,12 +283,27 @@ export function createWebGPUBackend(
   // Two things make that the shape. A read has to copy from the frame that was
   // drawn, and a canvas hands out a different texture once the browser has
   // presented, so a read that asked the canvas for one would get a cleared
-  // frame. And in the browser the gates run, **a page that configures a canvas
-  // for WebGPU at all can no longer wait on the card**: the next `mapAsync`
-  // fails with `A valid external Instance reference no longer exists`, measured
-  // on a bare page that drew one triangle, and it fails the same way whether the
-  // frame was drawn into the canvas or merely copied there afterwards. A run
-  // collecting pixels therefore must not configure one.
+  // frame. And under the software renderer every headless launch reaches,
+  // **a page that has taken the canvas's drawable can no longer wait on the
+  // card**: every later `mapAsync` on that device fails with `A valid external
+  // Instance reference no longer exists`. A run collecting pixels therefore must
+  // not present.
+  //
+  // **This said the poison was configuring the canvas, and it is not.** Narrowed
+  // on 2026-09-14 with no library in the path, one fresh page per case on
+  // Chromium 151.0.7922.34 headless with `--use-angle=swiftshader`: a page that
+  // only calls `getContext('webgpu')` maps fine, and so does one that goes on to
+  // `configure()`. The first `getCurrentTexture()` is the call that poisons the
+  // device, it poisons it for good — a read that succeeded before it fails after
+  // it, and unconfiguring does not give it back — and a device requested after
+  // that maps fine, so what is spent is the device and not the page.
+  //
+  // **It is the software renderer's defect and not the API's**, which is why the
+  // guard below is about what a reader can see rather than a rule against
+  // presenting. The same five cases run headed on this machine, adapter
+  // `nvidia / blackwell`, abort on none of them, and the library's own path reads
+  // the drawn colour back there with the canvas on the page — which is what
+  // `gate:card`'s live-surface read has asserted since 2026-09-12.
   let target: GPUTexture | null = null;
   let targetHandle: Handle | null = null;
   let configured = false;
@@ -337,8 +352,8 @@ export function createWebGPUBackend(
    * names no DOM object of its own. On a canvas someone can see, the target is
    * configured once and the picture copied onto the current drawable, on the same
    * encoder the frame was recorded on so it is still submitted once; a detached
-   * canvas is left alone, which is what keeps the pixel-reading path from
-   * configuring one and paying the reads that costs. */
+   * canvas is left alone, which is what keeps the pixel-reading path from taking
+   * a drawable and paying the reads that costs on the software renderer. */
   const composite = (encoder: GPUCommandEncoder, source: GPUTexture): void => {
     if (!onScreen()) return;
     if (!configured) {
