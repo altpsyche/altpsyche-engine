@@ -385,7 +385,14 @@ describe('a description above the subset', () => {
 
   it('refuses averaging a single-sample attachment, which has nothing to average (item 80)', () => {
     const { backend } = backendOver();
-    expect(() => backend.program(multisample({}, { samples: undefined }))).toThrow(
+    // The pipeline drops its count along with the attachment, because a pipeline at
+    // four samples over an attachment keeping one is the agreement rule `validate`
+    // refuses first (item 21's step 1) and it would speak before this one. What is
+    // left is the rule this holds: a resolve named over an attachment that has one
+    // sample a pixel and so has nothing to average.
+    const base = multisample({}, { samples: undefined });
+    const { samples: _drawn, ...single } = base.pipelines[0] as RenderPipelineSpec;
+    expect(() => backend.program({ ...base, pipelines: [single] })).toThrow(
       'the frame for "fixture" averages resource 1 into resource 2 and it keeps one sample a pixel'
     );
   });

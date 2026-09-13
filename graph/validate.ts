@@ -149,6 +149,50 @@ export function validate(graph: FrameGraph): void {
     }
   }
 
+  // Every attachment of one pass keeps the same number of samples a pixel, and it
+  // is the count the pipeline was built at. The card takes that count twice — once
+  // on the pipeline and once on each attachment — and reports a disagreement
+  // against whichever call arrived second, naming neither the pass nor the
+  // description; a WebGL 2 driver reports it later still, as
+  // `FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` when the framebuffer is checked, which
+  // names nothing at all. Three devices were read on 2026-09-14 and all three
+  // refuse a four-sample colour beside a single-sample depth, which is what makes
+  // this a rule about a description rather than a capability: there is no device
+  // for a capability to be had on (item 21, and `docs/DEVICES.md` carries the
+  // reading).
+  //
+  // **It was written in two places and neither was here** (item 21 step 1, which is
+  // item 4's move made again). `submit/plan.ts` held it twice, once for the colour
+  // attachments and once for the depth, and that file is reached from the WebGPU
+  // backend alone; the WebGL 2 backend planned its own passes and stated the same
+  // rule as a capability — "tests depth against the multisample target resource N,
+  // which this backend does not" — so one description was refused in two wordings
+  // on two paths, and a caller comparing the two would have read a device
+  // difference where there is none. One wording refuses it for both now.
+  //
+  // The declaration tier above keeps a rule of its own and it is not this one:
+  // `declare/declared.ts` compares a pass's attachments *against each other*,
+  // because there the pipeline's count is derived from them and has nothing
+  // independent to be compared against. Here the pipeline carries its own count, so
+  // each attachment is held to that.
+  for (const pass of graph.passes) {
+    if (!isRenderPass(pass)) continue;
+    const pipe = indexOf(pass.pipeline);
+    const spec = graph.pipelines[pipe];
+    if (!spec || spec.kind !== 'render') continue; // a pass naming neither is caught above
+    const drawn = spec.samples ?? 1;
+    const attached = [...(pass.colour ?? []).map((one) => one.resource), ...(pass.depth ? [pass.depth.resource] : [])];
+    for (const handle of attached) {
+      const resource = resourceOf(graph, handle);
+      if (!resource || resource.kind !== 'texture') continue; // the handle safety net above named it
+      if ((resource.samples ?? 1) !== drawn) {
+        throw new Error(
+          `the pass on pipeline ${pipe} draws ${drawn} samples a pixel and attaches resource ${indexOf(handle)}, which keeps ${resource.samples ?? 1}`
+        );
+      }
+    }
+  }
+
   // Which buffers a query resolves into, and how many bytes each resolve writes:
   // two answers for the pair of times a pass is opened and closed at, and one for
   // the samples a draw got through. A buffer named by two queries is refused,

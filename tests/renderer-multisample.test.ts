@@ -236,7 +236,7 @@ describe('what a description keeping several samples a pixel is refused for', ()
   it('a pipeline and an attachment disagreeing about the count', () => {
     refused(
       averaged({ pipelines: [shade({ samples: undefined })] }),
-      'the pass on pipeline 0 draws 1 samples a pixel into resource 1, which keeps 4'
+      'the pass on pipeline 0 draws 1 samples a pixel and attaches resource 1, which keeps 4'
     );
   });
 
@@ -327,7 +327,7 @@ describe('what a description keeping several samples a pixel is refused for', ()
         pipelines: [shade({ depth: { format: 'depth24plus', compare: 'less', write: true } })],
         passes: [into({ depth: { resource: texture(3), clear: 1 } })],
       }),
-      'the pass on pipeline 0 draws 4 samples a pixel and keeps depth in resource 3, which keeps 1'
+      'the pass on pipeline 0 draws 4 samples a pixel and attaches resource 3, which keeps 1'
     );
   });
 });

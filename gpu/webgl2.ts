@@ -1422,10 +1422,16 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           if (targets.length === 0) {
             throw new Error(`the frame for "${frame.id}" tests depth while drawing the frame directly, and this backend attaches no depth buffer to the target it presents from`);
           }
-          // A single-sample depth renderbuffer cannot share a framebuffer with a
-          // multisample colour target, and a multisample depth is out of item 80's
-          // scope, so a depth pass drawing a multisample attachment is refused by
-          // name rather than reaching the single-sample framebuffer lookup below.
+          // **An unreachable backstop since item 21's step 1**, kept rather than
+          // deleted because it also guards the single-sample framebuffer lookup
+          // below, which has no record for a multisample target. It read as this
+          // backend's own capability answer — a single-sample depth renderbuffer
+          // cannot share a framebuffer with a multisample colour target, which is
+          // `FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` on every device read on 2026-09-14.
+          // That is a rule about a description and it is `graph/validate.ts`'s now:
+          // a pass reaching here with a multisample colour target has a depth
+          // attachment at the same count, which this backend refuses above as a
+          // multisampled depth. Step 3 builds that depth and deletes both.
           if (multisampleColours.has(indexOf(targets[0].resource))) {
             throw new Error(`the frame for "${frame.id}" tests depth against the multisample target resource ${indexOf(targets[0].resource)}, which this backend does not`);
           }

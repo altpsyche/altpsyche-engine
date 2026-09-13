@@ -94,14 +94,11 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (handle: VertexHa
     if (!resource.use.includes('attachment')) {
       throw new Error(`the frame for "${frame.id}" keeps depth in resource ${at}, which is no attachment it declares`);
     }
-    // Every attachment of one pass keeps the same number of samples a pixel,
-    // the depth among them, and the card refuses the pass over the count
-    // without saying which attachment disagreed with which pipeline.
-    if ((resource.samples ?? 1) !== (spec.samples ?? 1)) {
-      throw new Error(
-        `the pass on pipeline ${pipe} draws ${spec.samples ?? 1} samples a pixel and keeps depth in resource ${at}, which keeps ${resource.samples ?? 1}`
-      );
-    }
+    // That this attachment keeps the count the pipeline was built at — the depth
+    // among the colours — is `graph/validate.ts`'s, moved there at item 21's step 1
+    // because it is a rule about a description and this file is reached from the
+    // WebGPU backend alone. It had a second wording in `gpu/webgl2.ts` and the two
+    // could not be compared.
     // An attachment with no clear value keeps what is in it, which is what a
     // second surface tested against the first needs. Keeping what no earlier
     // pass wrote is a frame reading its own last one, which is a capability a
@@ -224,11 +221,6 @@ export function planFramePasses(frame: FrameGraph, geometryOf: (handle: VertexHa
       if (attachment.clear === undefined && !filled.has(src)) {
         throw new Error(
           `the pass on pipeline ${pipe} keeps the colour in resource ${src}, which no earlier pass wrote`
-        );
-      }
-      if ((resource.samples ?? 1) !== (spec.samples ?? 1)) {
-        throw new Error(
-          `the pass on pipeline ${pipe} draws ${spec.samples ?? 1} samples a pixel into resource ${src}, which keeps ${resource.samples ?? 1}`
         );
       }
       return { handle: attachment.resource, clear: attachment.clear, resolve: resolved(pipe, attachment, resource) };
