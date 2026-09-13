@@ -11,6 +11,12 @@ because a piece of work with no place to be written down is a piece of work that
 done twice. A piece of work is filed where the thing it changes lives, which is the rule the
 consuming site recorded as its D118 and which put this file here in the first place.
 
+**What is open, as of 2026-09-13: item 21, and it is the only one.** The queue emptied twice — item
+20 closed it on 2026-09-12 and the layer bound closed it again the same day — and the entry below
+opened it again. Its step 1 is unblocked; **its step 2 is blocked on a card and on Siva being
+present**, and steps 3, 4 and 5 wait on what step 2 reads. The five ruled candidates and the four
+standing ideas further down are still ideas and not items.
+
 **What this file is not.** It does not track the website that consumes this package, and it does
 not track anything about the article series that site publishes. Those live in that repository and
 neither one queues work here. **A series wanting a capability is not a reason to build one**, which
@@ -3730,6 +3736,174 @@ a fixture defect and moved to `fixtures/`. It was not: both causes were in the b
 
 **What this item did not carry.** `core-target` was fine and stayed on the list — and it went from 77
 to 0 under step 2d anyway.
+
+---
+
+## Item 21 — a frame the door can author passes `validate`, `cost` and `refusal`, and the WebGL 2 backend throws on it
+
+**Opened on 2026-09-13, out of a report from `@altpsyche/maths` measured against the published
+`0.5.0`.** That report says in its own words that no argument from a consumer wanting the capability
+is offered and that it should be judged on WebGL 2 core alone. **It is not judged on that alone here,
+because a narrower reason arrived when the report was re-verified against this tree**: the gap is not
+only a capability WebGL 2 could have, it is a hole in the one claim that distinguishes this package —
+that a frame can be described, costed and refused before a driver sees it. That is the reason this is
+an item, and the specification argument is the reason step 3 is likely to close it by building rather
+than by naming.
+
+### The reading, taken on this tree on 2026-09-13
+
+**Not the report's numbers.** The report measured `dist/` inside another repository's
+`node_modules`; what follows was taken here, by a scratch test run under this project's own vitest
+and deleted afterwards, so it is a node reading on the software path and not a gate.
+
+**A frame nothing in this package refuses, which this backend will not build.** One `rgba8unorm`
+attachment at 4 samples resolving into a single-sample texture the frame shows, one `depth24plus`
+attachment **at the same 4 samples**, one render pipeline at `samples: 4` carrying
+`depth { format: 'depth24plus', compare: 'less-equal', write: true }`, one pass attaching the depth
+with `clear: 1`. Against that frame:
+
+- `validate(frame)` returns, throwing nothing.
+- `refusal(frame, …)` returns **`null` for both** — against `webgl2Capabilities([])` and against
+  `webgpuCapabilities([])`. There is no capability name in `graph/capability.ts` that carries this
+  difference, and `impliedCapabilities` in `graph/refusal.ts:48` reads a read-write buffer and the two
+  blend shapes and nothing about samples.
+- `cost(frame, { width: 800, height: 600 })` prices it: **17,280,000 transient bytes**, 1 pass, 1
+  draw. It counts the four samples of the depth at `graph/cost.ts:146`, so the costing model already
+  believes in the thing the backend refuses.
+- `backend.program(frame)` throws, from `gpu/webgl2.ts:697`:
+  `the frame for "fixture" keeps several samples of the depth in resource 3, and this backend keeps one`
+
+**And the door's own authoring path produces that frame and no other.** `declare/declared.ts:198-206`
+requires every attachment a pass opens to keep the same number of readings of each pixel, **the depth
+among them**, and `declare/declared-frame.ts:127` lets any declared attachment carry `samples: 4`. So
+`declaredFrame` — item 1's entry, on the door since `0.5.0` — **cannot author a
+four-sample colour pass that tests depth in a shape this backend will draw**. The only such frame it
+will emit is the one above.
+
+**The report's second refusal is a second finding and not a consequence of the first.** A
+single-sample depth under a four-sample colour target is refused twice, in two wordings, on two
+paths, and `validate` says nothing about it:
+
+- the WebGPU path, through `submit/plan.ts:100`:
+  `the pass on pipeline 0 draws 4 samples a pixel and keeps depth in resource 3, which keeps 1`
+- the WebGL 2 path, at `gpu/webgl2.ts:1426`:
+  `the frame for "fixture" tests depth against the multisample target resource 1, which this backend does not`
+
+`submit/plan.ts` is reached from `gpu/webgpu.ts` alone — the WebGL 2 backend plans its own passes —
+so **this is a rule about a description living in one backend's planner**, which is exactly the shape
+item 4 moved six of into `graph/validate.ts`. It is separable from the capability question and lands
+before it.
+
+### Why it stands on this package's own merits
+
+**It is Group A's defect, arriving after Group A closed.** The campaign above was cut into groups
+because three readings showed one claim with three holes in it: a frame passing `resolve` and `cost`
+and then failing on the device. This is a fourth hole in the same claim, and a worse-shaped one,
+because the frame passes `refusal` too and the entry on the door is what authored it. `cost` pricing
+17,280,000 bytes for an arrangement of memory one of the two backends will not allocate is the claim
+failing in both directions at once.
+
+**`CLAUDE.md`'s standing refusal names it directly** — no backend grows a method the other has to
+throw from, capability lives in the data. Today one backend throws where the other builds, and there
+is no name in the data for the difference. Whichever way step 3 goes, that sentence is satisfied
+afterwards and is not satisfied now.
+
+**The specification argument, which is the report's and which this file has accepted twice.**
+`renderbufferStorageMultisample` takes the depth-renderable internal formats in WebGL 2 core, no
+extension, and this backend already calls that function at `gpu/webgl2.ts:961` with `RGBA8`.
+`depthStencilOf` at `gpu/webgl2.ts:284-290` already maps all three formats this package declares onto
+`DEPTH_COMPONENT24`, `STENCIL_INDEX8` and `DEPTH24_STENCIL8`, and `buildDepth` at `gpu/webgl2.ts:910`
+is a four-line function whose one storage call is the single-sample one. **That is the same argument items 2 and 11 were admitted on**: a renderer built to
+the whole WebGPU core specification either expresses a core shape on both backends it claims or does
+not claim them. **No depth resolve is owed** — a `PassSpec` depth attachment carries no `resolve`,
+and WebGPU discards a multisampled depth at the end of the pass — so the resolve blit is not part of
+this.
+
+### What is not verified, and it is the first measurement
+
+**No card reading exists for any of it.** That a card completes a framebuffer whose colour and depth
+are both four-sample is the thing the report says must not be taken on trust, and this entry agrees:
+the refusals above fire before a GL call is made, so nothing here has been near a driver.
+`FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` is the status that would say otherwise, and `MAX_SAMPLES` is a
+colour bound — `getInternalformatParameter(RENDERBUFFER, <format>, SAMPLES)` is the per-format
+question and the one this backend does not currently ask.
+
+**The WebGPU half is read off source, not off a device.** `gpu/webgpu.ts:760-771` builds every
+declared texture through one format-agnostic path that spreads `sampleCount` from `resource.samples`,
+so a multisampled depth texture is created there the same way a multisampled colour one is. That is
+what the code does; whether a device draws with it is unmeasured here, and **the report's machine has
+no WebGPU at all**, so it could not be measured there either. `gate:card`'s machine has both and can
+answer both halves in one run.
+
+### Steps
+
+1. **Every attachment of one pass keeps the same number of samples, written once in
+   `graph/validate.ts`.** The rule at `submit/plan.ts:97-102` and the colour half at
+   `submit/plan.ts:229` are rules about a description and reach the WebGPU path alone; the WebGL 2
+   wording at `gpu/webgl2.ts:1426` is the same rule stated as a capability. This is item 4's move,
+   one rule, and it is unblocked. **The measurement**: one wording where two stood, the same sentence
+   from both paths for the same frame, `gpu/webgl2.ts:1426` demoted to an unreachable backstop the
+   way `storage-buffer-readwrite` demoted its throw, and `npm test` at its new count.
+2. **Probe the card — blocked, and it needs Siva and a desktop session.** No unattended run can take
+   it: every headless launch reaches the software renderer, which is `CLAUDE.md`'s table and
+   `gates/card.mjs`'s own header. **The measurement**, all from one run: `MAX_SAMPLES`, then
+   `getInternalformatParameter(RENDERBUFFER, SAMPLES)` for `DEPTH_COMPONENT24`, `DEPTH24_STENCIL8`
+   and `STENCIL_INDEX8`, then `checkFramebufferStatus` for a framebuffer carrying a four-sample
+   `RGBA8` colour renderbuffer and a four-sample depth renderbuffer at the same size — and, in the
+   same browser, whether WebGPU draws a `depth24plus` texture at `sampleCount: 4` beside a
+   four-sample colour attachment. A row in `docs/DEVICES.md` either way.
+3. **Close the gap, the way step 2's reading says to.** Two shapes, and **which one is not guessable
+   before step 2 because the wrong guess is unpublishable**: naming a capability adds a member to the
+   `Capability` union, and building it afterwards would mean *removing* a published member.
+   - *The card completes it* — the expected reading, since it is core: `buildDepth` calls
+     `renderbufferStorageMultisample` where `spec.samples` is set, the refusal at
+     `gpu/webgl2.ts:697` is deleted, and `depthSpecs` carries the sample count the way
+     `multisampleSpecs` already does, refused by name above what the format reports. **No new
+     capability name**, because `msaa` already covers it on both backends.
+   - *The card refuses it, or a format reports no four-sample support* — then the difference is real
+     and goes in the data as a second arm of `msaa`, the way `storage-buffer` and
+     `storage-buffer-readwrite` split at item 97 for the same reason: one arm has a form on this
+     backend and the other has none. `impliedCapabilities` reads it off a depth resource carrying
+     `samples`, so a caller who declared nothing is still refused before a build.
+   **The measurement**: in the first shape, the `renderbufferStorageMultisample` calls the double
+   records for the depth renderbuffer and their sample count; in the second, `refusal` red by the new
+   name on a device without it and `gate:pack` against the door's 73 run-time names, since a new
+   `Capability` member widens a published union without adding a run-time name.
+4. **A fixture the two backends are compared on**, since a preset nothing compares across backends
+   proves less than it looks like — which is item 20's blind spot and this file says so in its
+   baseline. Shape: `core-multisample` with a depth test, or the depth added to it. **The
+   measurement**: the corpus draw and skip counts at their new values, the recording contract at its
+   new count, `gate:browser` at 4 of 4, and — on the card — the channels differing between the two
+   backends against the tolerance the corpus already holds every preset to.
+5. **The documents say what the answer is.** `docs/GUIDE-backends.md:118`'s `msaa` row says
+   "multisample renderbuffer, resolved with a blit" and says nothing about the depth either way;
+   `docs/API.md` names `msaa` in its capability list. **The measurement**: `gate:pack`, and the count
+   of documents changed.
+
+### Done when
+
+- A frame declaring a four-sample colour attachment and a four-sample depth, authored through
+  `declaredFrame`, either draws on both backends or is refused by `refusal()` by a capability name
+  before either backend is built. **Not: throws from one backend's build.**
+- No frame passes `validate`, `cost` and `refusal` and then throws in `gpu/webgl2.ts` over a sample
+  count.
+- A pass whose attachments disagree on their sample count is refused in **one** wording, from
+  `graph/validate.ts`, on both paths.
+- The card reading of step 2 is in `docs/DEVICES.md` with the date and the machine.
+- A fixture some gate draws compares the two backends on a depth-tested multisample pass.
+- `npm test`, `npm run type-check` and `gate:pack` are green; `gate:browser` at 4 of 4 with the
+  corpus and recording-contract counts at their new values.
+- The commit for each step names what its gate could not see, and steps 1, 3 and 4 say plainly that
+  the software renderer drew whatever a browser gate drew.
+
+### What this item owes the outside world
+
+**A minor if step 3 goes the second way, and arguably nothing if it goes the first.** A new
+`Capability` member widens a published union, which is items 9 to 12's row in the cut order above. The
+first shape adds no name and removes none: frames that threw now draw, which is behaviour no caller
+can have been relying on, and by the table above that is a patch at most. **Neither is a reason to
+cut anything on its own** — `git log <last tag>..HEAD` decides that, which is the lesson three rows of
+the cut order paid for.
 
 ---
 
