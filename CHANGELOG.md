@@ -9,6 +9,67 @@ carries fixes. A caret range on a `0.x` version tracks the last number alone, so
 `^0.3.0` will not pick up a later `0.4.0`: a consumer moves to a feature release by
 asking for it.
 
+## 0.6.0
+
+**A feature release that removes nothing and moves nothing.** The door carries the same **73
+run-time names** it carried at `0.5.0` — none added, none taken away — so nothing here changes an
+import line. What it carries is a capability one of the two backends did not have and a refusal that
+was written in two places and is now written in one. If you are on `^0.5.0` nothing here reaches you
+until you ask for it.
+
+**One frame is the whole of it.** A pass that keeps four readings of every pixel of its colour and
+tests depth while it does so — antialiasing and a depth test at once — could be described, priced by
+`cost`, and passed by `refusal`, and then the WebGL 2 backend threw when it was built. WebGPU drew
+it. Nothing in the capability model named the difference, so a caller had no way to find out but to
+try. That frame draws on both backends now, and the two were measured drawing the same picture.
+
+### Added: a multisampled depth on WebGL 2, so antialiasing and a depth test can be asked for together
+
+Every attachment of one pass keeps the same number of readings of each pixel, the depth among them.
+So a pass drawing four readings of its colour tests against a depth keeping four, and that is the
+only shape the declaration entry will author for such a pass. WebGL 2 refused exactly that shape, in
+its own words and as a capability of its own:
+
+```
+the frame for "…" keeps several samples of the depth in resource 3, and this backend keeps one
+the frame for "…" tests depth against the multisample target resource 1, which this backend does not
+```
+
+**Both refusals are gone and neither is replaced.** `renderbufferStorageMultisample` takes the
+depth-renderable formats in WebGL 2 core with no extension, and three devices were measured before
+anything was built — an NVIDIA card, an AMD one and SwiftShader — all three completing such a
+framebuffer and running the depth test in it. **No new `Capability` name was added**, because there
+was no capability difference to name: `msaa` covers the depth beside the colour on both backends.
+
+The two backends are now compared on it. `core-multisample-depth` — two sheets leaning opposite
+ways and crossing in the middle, four readings a pixel, the depth kept at four — reads **0 of
+1,440,000 channels differing at worst 0** across WebGPU and WebGL 2 on a real graphics card. The edge
+that makes it worth comparing is the crossing, which exists only because the depth was tested: a
+backend keeping one sample of the depth beside four of the colour would draw that edge as a staircase
+while the outer edges came out smooth, and the two backends' hard-jump counts match as well as their
+channels, so neither does.
+
+### Changed: a pass whose attachments disagree about how many readings they keep is refused in one wording
+
+That rule was written twice and in two places, neither of them the one that refuses a description for
+both backends. **The message changed** and the rule did not:
+
+```
+the pass on pipeline 0 draws 4 samples a pixel and attaches resource 3, which keeps 1
+```
+
+It covers the colour attachments and the depth in one sentence, and both backends now give it for the
+same frame word for word. If you match on refusal text rather than reading it, this is the line of
+this release that touches you. A framebuffer whose attachments disagree on their sample count is
+incomplete on every device measured, which is why this is a rule about the description rather than a
+device answer.
+
+### Fixed: nothing, and that is worth saying
+
+No defect is fixed here. `0.5.0` shipped three, each a case of the two backends drawing different
+pictures; this release adds a capability and moves a rule, and the corpus reads what it read before
+everywhere else. The reason to take it is the frame in the first paragraph.
+
 ## 0.5.0
 
 **A breaking release, and `0.x` means it does not announce itself with a major number.** Names arrive
