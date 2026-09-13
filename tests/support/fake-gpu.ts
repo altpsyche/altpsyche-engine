@@ -31,6 +31,12 @@ export interface FakeGPU {
    * device pads to, so the repack the backend does is exercised rather than
    * assumed. */
   mapped: Uint8Array;
+  /** What `mapAsync` throws instead of resolving, or null where it resolves. It
+   * stands for a browser that has spent its device: under a headless software
+   * renderer the first canvas drawable does that, and every map after it is
+   * refused with a message naming nothing a caller can act on. A test sets this
+   * to hold the backend to what it says about that. */
+  mapRefusal: Error | null;
   /** What the next shader module reports about itself. Empty means it compiled. */
   compilation: GPUCompilationMessage[];
   /** The ceilings this device reports. A test varies them to stand for another
@@ -141,6 +147,7 @@ export function createFakeGPU({
     lifetimes,
     context: { configured: 0, unconfigured: 0 },
     mapped: new Uint8Array(0),
+    mapRefusal: null as Error | null,
     compilation: [] as GPUCompilationMessage[],
     // The specification's floors rather than any machine's, so a test reading one
     // is reading the least a device may report.
@@ -208,7 +215,9 @@ export function createFakeGPU({
       let handed: ArrayBuffer[] = [];
       return {
         size: descriptor.size,
-        async mapAsync() {},
+        async mapAsync() {
+          if (state.mapRefusal) throw state.mapRefusal;
+        },
         getMappedRange() {
           const range = (state.mapped.buffer as ArrayBuffer).slice(
             state.mapped.byteOffset,

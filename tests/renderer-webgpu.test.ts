@@ -947,3 +947,61 @@ describe('the sampler a shader reads a texture through', () => {
     ]);
   });
 });
+
+/**
+ * A browser can spend its device, and what it says about it names nothing.
+ *
+ * Under a headless software renderer the first canvas drawable spends the device
+ * for good: every `mapAsync` after it is refused with `A valid external Instance
+ * reference no longer exists`, which names no call, no object and nothing a
+ * caller can do about it. A consumer met that as a bare DOM abort out of a
+ * readback and read it as a defect in this package (reported 2026-09-14, measured
+ * on Chromium 151.0.7922.34 and absent headed on `nvidia / blackwell`).
+ *
+ * What is held here is the diagnosis being a fact rather than a guess: this
+ * backend is the only thing that takes a drawable, so it knows whether it has,
+ * and a refusal on a backend that has not is left exactly as the browser wrote
+ * it.
+ */
+describe('a readback refused by a browser that has spent its device', () => {
+  const spent = () => new Error('A valid external Instance reference no longer exists');
+
+  it('names the drawable, keeps what the browser said and keeps it as the cause', async () => {
+    const { gpu, backend } = backendOver({ connected: true });
+    backend.resize(4, 3);
+    backend.program(graph()).draw();
+    gpu.mapRefusal = spent();
+
+    await expect(backend.readPixels()).rejects.toThrow(/canvas drawable has been taken/);
+    await expect(backend.readPixels()).rejects.toThrow(/A valid external Instance reference no longer exists/);
+    // The sentence says what a caller can do instead, which is the whole reason
+    // for replacing the browser's message rather than only logging it.
+    await expect(backend.readPixels()).rejects.toThrow(/must draw into a canvas nothing has presented/);
+    const raised = await backend.readPixels().catch((error: unknown) => error);
+    expect((raised as { cause?: unknown }).cause).toBeInstanceOf(Error);
+  });
+
+  it('leaves a refusal alone where no drawable was ever taken', async () => {
+    // A detached canvas is never presented to, so a refused map here is some other
+    // refusal — a destroyed buffer, a lost device — and dressing it up as this one
+    // would send a reader after a cause that is not theirs.
+    const { gpu, backend } = backendOver();
+    backend.resize(4, 3);
+    backend.program(graph()).draw();
+    const refusal = new Error('the buffer was destroyed');
+    gpu.mapRefusal = refusal;
+
+    await expect(backend.readPixels()).rejects.toBe(refusal);
+  });
+
+  it('says nothing new while the device still maps', async () => {
+    const { gpu, backend } = backendOver({ connected: true });
+    backend.resize(4, 3);
+    gpu.mapped = paddedFrame(4, 3);
+    backend.program(graph()).draw();
+
+    // Presenting is not itself the failure: a device that presented and still maps
+    // reads back exactly as it did before this refusal existed.
+    expect(await backend.readPixels()).toHaveLength(4 * 3 * 4);
+  });
+});

@@ -57,8 +57,8 @@ const holding = (over: Partial<WgslFrameGraph> = {}): FrameGraph => ({
   ...over,
 });
 
-function backendOver() {
-  const gpu = createFakeGPU({ connected: false });
+function backendOver({ connected = false } = {}) {
+  const gpu = createFakeGPU({ connected });
   const backend = createWebGPUBackend(gpu.canvas, gpu.device);
   if (!backend) throw new Error('the fake canvas gave no WebGPU context');
   backend.resize(800, 600);
@@ -258,5 +258,34 @@ describe('the words a caller reads back', () => {
     // of this frame answers to is named rather than read as an empty buffer.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(() => (program as any).bufferHandle(buffer(5))).toThrow(/declares no buffer 5/);
+  });
+});
+
+/**
+ * The buffer door meets the same spent device the pixel door does.
+ *
+ * Both readbacks map a staging buffer, so a browser that refuses one refuses the
+ * other, and a caller reading words back through the arena would have met the
+ * same bare DOM abort. The pixel door's own tests are in
+ * `tests/renderer-webgpu.test.ts`; this holds the second door to the same
+ * sentence so neither can be fixed alone.
+ */
+describe('a word readback refused by a browser that has spent its device', () => {
+  it('names the drawable where this backend has taken one', async () => {
+    const { gpu, backend } = backendOver({ connected: true });
+    const program = backend.program(holding());
+    program.draw();
+    gpu.mapRefusal = new Error('A valid external Instance reference no longer exists');
+
+    await expect(readWords(backend, program, buffer(1))).rejects.toThrow(/canvas drawable has been taken/);
+  });
+
+  it('leaves a refusal alone where none was taken', async () => {
+    const { gpu, backend } = backendOver();
+    const program = backend.program(holding());
+    const refusal = new Error('the buffer was destroyed');
+    gpu.mapRefusal = refusal;
+
+    await expect(readWords(backend, program, buffer(1))).rejects.toBe(refusal);
   });
 });

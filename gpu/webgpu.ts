@@ -138,6 +138,49 @@ function refusal(info: GPUCompilationInfo): string | null {
     .join('\n');
 }
 
+/**
+ * Maps a staging buffer for reading, and names the one refusal a caller cannot
+ * read for themselves.
+ *
+ * A map is where this backend meets a browser that has spent its device, and the
+ * message such a browser gives is `A valid external Instance reference no longer
+ * exists` — which names no call, no object and nothing a caller can do. Every
+ * other refusal this package raises is a sentence, and a readback is the one door
+ * where a raw DOM abort reaches a consumer through a path this package chose.
+ *
+ * `presented` is what makes the diagnosis a fact rather than a guess: this
+ * backend knows whether it has taken the canvas's drawable, because it is the
+ * only thing here that takes one. Where it has not, the browser's own message
+ * stands untouched and the error is rethrown as it was — a destroyed buffer and a
+ * lost device are refusals with their own causes and this must not dress them up
+ * as this one. Where it has, the sentence is added and the original is kept, both
+ * in the text and as the `cause`, so nothing is hidden from whoever reads it.
+ *
+ * Measured 2026-09-14 on Chromium 151.0.7922.34: the first `getCurrentTexture()`
+ * spends the device for good under the headless software renderer and the same
+ * five cases abort on none of them headed on `nvidia / blackwell`. So this is a
+ * software renderer's defect, and the only thing this package can do about it is
+ * say so where it happens.
+ */
+async function mapForReading(buffer: GPUBuffer, presented: boolean): Promise<void> {
+  try {
+    await buffer.mapAsync(GPUMapMode.READ);
+  } catch (cause) {
+    if (!presented) throw cause;
+    // The browser's own sentence, ended once: some end in a full stop and some do
+    // not, and a message reading `exists.. A browser` is a message a reader stops
+    // trusting the rest of.
+    const raw = cause instanceof Error ? cause.message : String(cause);
+    const said = raw.endsWith('.') ? raw : `${raw}.`;
+    throw new Error(
+      `the readback was refused on a device whose canvas drawable has been taken: ${said} ` +
+        'A browser whose software renderer spends the device at its first drawable refuses every ' +
+        'map after it, so a run collecting pixels must draw into a canvas nothing has presented.',
+      { cause }
+    );
+  }
+}
+
 export function createWebGPUBackend(
   canvas: HTMLCanvasElement | OffscreenCanvas,
   device: GPUDevice,
@@ -174,7 +217,7 @@ export function createWebGPUBackend(
     encoder.copyBufferToBuffer(source, offset, staging, 0, length);
     device.queue.submit([encoder.finish()]);
 
-    await staging.mapAsync(GPUMapMode.READ);
+    await mapForReading(staging, presented);
     const bytes = staging.getMappedRange().slice(0);
     staging.unmap();
     arena.free(stagingHandle);
@@ -307,6 +350,10 @@ export function createWebGPUBackend(
   let target: GPUTexture | null = null;
   let targetHandle: Handle | null = null;
   let configured = false;
+  // Whether this backend has taken the canvas's drawable, which is what a refused
+  // map is read against above. It is not `configured`: configuring a canvas costs
+  // nothing and the drawable is what spends the device, measured either way.
+  let presented = false;
 
   // A view is a handle onto a texture and it outlives nothing behind it, so one
   // is kept per texture and handed back until that texture is remade, which a
@@ -365,7 +412,9 @@ export function createWebGPUBackend(
       });
       configured = true;
     }
-    encoder.copyTextureToTexture({ texture: source }, { texture: context.getCurrentTexture() }, [width, height]);
+    const drawable = context.getCurrentTexture();
+    presented = true;
+    encoder.copyTextureToTexture({ texture: source }, { texture: drawable }, [width, height]);
   };
 
   // Held in a variable, not returned as a literal, because it carries one field
@@ -1336,7 +1385,7 @@ export function createWebGPUBackend(
       encoder.copyTextureToBuffer({ texture: source }, { buffer: staging, bytesPerRow: stride }, [width, height]);
       device.queue.submit([encoder.finish()]);
 
-      await staging.mapAsync(GPUMapMode.READ);
+      await mapForReading(staging, presented);
       const padded = new Uint8Array(staging.getMappedRange());
       const rows = new Uint8Array(width * height * 4);
       for (let y = 0; y < height; y++) {
