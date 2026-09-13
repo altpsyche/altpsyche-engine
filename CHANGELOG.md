@@ -9,6 +9,56 @@ carries fixes. A caret range on a `0.x` version tracks the last number alone, so
 `^0.3.0` will not pick up a later `0.4.0`: a consumer moves to a feature release by
 asking for it.
 
+## 0.6.1
+
+**A fix release that changes one sentence and no behaviour.** The door carries the same **73
+run-time names**, nothing is added, nothing moves, and no call reaching a graphics card is different
+from `0.6.0`'s. What changed is what a WebGPU readback says when a browser refuses it.
+
+### Fixed: a refused readback says what happened, at both readback doors
+
+A browser can spend its device. Under the headless software renderer a `--use-angle=swiftshader`
+Chromium reaches, **the first canvas drawable spends it for good**: every `mapAsync` after it is
+refused, a read that succeeded before it fails after it, and unconfiguring does not give it back.
+The message such a browser gives is its own:
+
+```
+Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.
+```
+
+That names no call, no object and nothing you can do, and it arrived out of a door this package
+chose — `Surface.read()`, `FrameRenderer.frame` and the arena's word readback all map a staging
+buffer. Every other refusal this package raises is a sentence, and these two were the exception.
+They are not any more:
+
+```
+the readback was refused on a device whose canvas drawable has been taken: <what the browser said>
+A browser whose software renderer spends the device at its first drawable refuses every map after
+it, so a run collecting pixels must draw into a canvas nothing has presented.
+```
+
+**The diagnosis is a fact rather than a guess at a message.** The backend is the only thing that
+takes the canvas's drawable, so it knows whether it has. Where it has not, the browser's error is
+rethrown exactly as it was: a destroyed buffer and a lost device are other refusals and are not
+dressed up as this one. Where it has, the browser's own sentence is kept in the text and the
+original error is kept as the `cause`, so nothing is hidden from whoever reads it.
+
+**This is not a defect in this package and the fix does not pretend otherwise.** Measured on
+Chromium 151.0.7922.34, one fresh page per case, with no library loaded: `getContext('webgpu')`
+maps fine, `configure()` maps fine, the first `getCurrentTexture()` aborts every map after it, and a
+device requested after that maps fine. The same five cases headed on an `nvidia / blackwell` adapter
+abort on none of them, and the library's own path reads its drawn colour back there with the canvas
+on the page — which is what `gate:card`'s live-surface read has asserted since 2026-09-12. **If you
+draw on a real card, nothing here reaches you.** If you collect pixels headless, draw into a canvas
+nothing has presented; this package already does that for you on a detached canvas, and now says so
+when something else has presented.
+
+**Gates:** 1,003 node tests over 85 files, 4 of 4 browser gates, 21 of 21 surface checks, 35 of 35
+corpus draws with 0 failed and 6 WebGL 2 skips, 20 of 20 on the recording contract, 17 of 17
+consumer checks under `gate:pack`. What none of them can see: every browser gate draws under the
+software renderer, so a green run proves the untouched read still works rather than proving the new
+sentence ever appears — the browser probe in the commit is what says that.
+
 ## 0.6.0
 
 **A feature release that removes nothing and moves nothing.** The door carries the same **73

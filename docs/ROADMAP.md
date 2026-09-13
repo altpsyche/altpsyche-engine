@@ -17,6 +17,16 @@ and closed it on 2026-09-14**, all five steps and the card reading its last line
 ruled candidates and the four standing ideas further down are still ideas and not items, and picking
 one up is Siva's call.
 
+**`0.6.1` landed on 2026-09-14 without passing through this file, and that was the right shape for
+it.** A consumer reported a WebGPU readback aborting and it was not this package's defect: measured
+with no library in the path, a browser's headless software renderer spends its device at the first
+canvas drawable and refuses every `mapAsync` after it, while the same five cases headed on
+`nvidia / blackwell` abort on none. What *was* this package's was what a caller met — a bare DOM
+abort naming no call, no object and nothing to do about it, out of a door this package chose. Every
+other refusal here is a sentence, so both readbacks now raise one. **An item exists to plan work
+whose shape is not yet known**, and a one-file refusal with its wording already decided by the rest
+of the codebase is not that; what it needed was a measurement, and the measurement is in the commit.
+
 **What this file is not.** It does not track the website that consumes this package, and it does
 not track anything about the article series that site publishes. Those live in that repository and
 neither one queues work here. **A series wanting a capability is not a reason to build one**, which
@@ -25,10 +35,27 @@ it" is thrown out and replaced by a reason that stands on the package's own meri
 
 **Where the package stands, as the baseline any item below is measured against.** The renderer is
 built to the whole WebGPU core specification, every capability has a fixture the gates draw, and the
-gates are green: 4 of 4 browser gates, **19 of 19 on the recording contract**, **33 of 33 corpus
+gates are green: 4 of 4 browser gates, **20 of 20 on the recording contract**, **35 of 35 corpus
 draws** with 0 failed and 6 WebGL 2 skips, 21 of 21 surface checks, **17 of 17 consumer checks under
-`gate:pack`**, and **989 node tests over 84 files**, **all re-taken on 2026-09-12 with every item in
-this file landed or closed.** The door carries **73 run-time names**, re-counted the same day.
+`gate:pack`**, and **1,003 node tests over 85 files**, **all re-taken on 2026-09-14 at `0.6.1`, with
+every item in this file landed or closed.** The door carries **73 run-time names**, re-counted the
+same day.
+
+**Three of those numbers moved since 2026-09-12 and not one of them is an improvement.** The line
+above read 19 on the recording contract, 33 corpus draws and 989 node tests over 84 files. The
+contract and the corpus grew by one fixture: `core-multisample-depth` arrived with item 21's step 4
+and it draws on both backends, which is one more comparison and two more draws, with the six WebGL 2
+skips unchanged. The node count carries item 21's tests and the five that came with `0.6.1`'s named
+refusal. **A count here is the size of the gate and not a score**, which is the same sentence this
+file has had to write four times before.
+
+**The door's 73 is the one figure here no gate produces**, and it is restated rather than inherited
+because the last one that was inherited turned out to be unrepeatable — the removed `index.ts`
+reaches 39 files, further down. The method, so the next reader can disagree with the number rather
+than with a memory of it: bundle `index.ts` with `esbuild --format=esm`, import the bundle and count
+the exported keys that are not `default`. That reads 73 on 2026-09-14, which is what it read on
+2026-09-12 by whatever method took it then. **A figure with no recorder still wants one**, and that
+is a candidate and not an item.
 
 **Two of those numbers had expired and this is the fourth time that has happened here.** The corpus
 read 30 draws with 9 skips and the node count read 954 over 81, both taken on 2026-09-11 with items
