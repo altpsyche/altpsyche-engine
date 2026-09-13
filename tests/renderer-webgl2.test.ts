@@ -397,10 +397,67 @@ describe('a description above the subset', () => {
     );
   });
 
-  it('refuses a multisampled depth, which is item 80 colour-attachment scope alone', () => {
-    const { backend } = backendOver();
-    expect(() => backend.program(multisample({}, { format: 'depth24plus', use: ['attachment'] }))).toThrow(
-      'the frame for "fixture" keeps several samples of the depth in resource 1, and this backend keeps one'
+  it('keeps a multisampled depth in a multisample renderbuffer, at the count the colour keeps (item 21)', () => {
+    // The refusal this replaces said the backend kept one sample of the depth and
+    // that WebGPU did not, which made it a capability difference. Three devices were
+    // read on 2026-09-14 — nvidia, amd and SwiftShader — and all three complete such
+    // a framebuffer and test with it, so there was no difference to have.
+    const { gl, backend } = backendOver();
+    const resources = [
+      ...multisample().resources,
+      { kind: 'texture' as const, size: { scale: 1 }, format: 'depth24plus' as const, use: ['attachment' as const], samples: 4 as const },
+    ];
+    const pipelines = [
+      { ...(multisample().pipelines[0] as RenderPipelineSpec), depth: { format: 'depth24plus' as const, compare: 'less-equal' as const, write: true } },
+    ];
+    const passes = [
+      {
+        pipeline: pipelineHandle(0),
+        draws: [{ vertices: 3 }],
+        colour: [{ resource: texture(1), clear: [0, 0, 0, 0] as [number, number, number, number], resolve: texture(2) }],
+        depth: { resource: texture(3), clear: 1 },
+      },
+    ];
+    backend.program(multisample({ resources, pipelines, passes })).draw();
+    // Two multisample renderbuffers at four samples: the colour as RGBA8 and the
+    // depth as DEPTH_COMPONENT24. Nothing allocates the depth through the
+    // single-sample call.
+    const multisampled = gl.of('renderbufferStorageMultisample');
+    expect(multisampled).toHaveLength(2);
+    expect(multisampled.map((call) => call.internal).sort()).toEqual([0x81a6, 0x8058].sort());
+    expect(multisampled.every((call) => call.samples === 4)).toBe(true);
+    expect(gl.of('renderbufferStorage')).toHaveLength(0);
+    // And the depth joins the multisample colour's own framebuffer rather than the
+    // resolve target's, which is the half a sample count alone would not catch: a
+    // framebuffer whose attachments disagree is incomplete on every device.
+    const colourFbo = gl
+      .of('framebufferRenderbuffer')
+      .find((call) => call.attachment === 0x8ce0);
+    const depthFbo = gl.of('framebufferRenderbuffer').find((call) => call.attachment === 0x8d00);
+    expect(depthFbo).toBeDefined();
+    expect(depthFbo?.framebuffer).toBe(colourFbo?.framebuffer);
+  });
+
+  it('refuses more samples than the device keeps, colour and depth in the same words (item 21)', () => {
+    // The bound is read from the device rather than assumed, and step 2's reading is
+    // why that matters: SwiftShader answers `MAX_SAMPLES` 4 where both cards on the
+    // same machine answer 8, and an attachment above its answer comes back as an
+    // incomplete framebuffer naming no resource. Two samples here stands for that
+    // device, since a description may carry no count but four.
+    const lowered = (gl: ReturnType<typeof createFakeGL>) => {
+      gl.limits.MAX_SAMPLES = 2;
+    };
+    const colour = backendOver(lowered);
+    expect(() => colour.backend.program(multisample())).toThrow(
+      'the frame for "fixture" keeps 4 samples of resource 1, and this device keeps 2'
+    );
+    const depth = backendOver(lowered);
+    const resources = [
+      ...multisample().resources,
+      { kind: 'texture' as const, size: { scale: 1 }, format: 'depth24plus' as const, use: ['attachment' as const], samples: 4 as const },
+    ];
+    expect(() => depth.backend.program(multisample({ resources }))).toThrow(
+      'the frame for "fixture" keeps 4 samples of resource 3, and this device keeps 2'
     );
   });
 

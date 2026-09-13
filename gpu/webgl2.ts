@@ -645,10 +645,9 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // texture arriving with contents of its own, uploaded once (item 78), a
       // ladder generated off those contents (item 50), and a colour attachment
       // keeping several samples a pixel, averaged into a single-sample target
-      // (item 80). The one narrower texture kind still refused here is a storage
-      // texture, a compute output this backend has no compute stage to fill. A
-      // multisampled *depth* stays refused too — item 80 is colour-attachment MSAA
-      // alone — which is the safe direction until a later item lands it.
+      // (item 80), and a depth keeping as many of them as the colour beside it
+      // (item 21). The one narrower texture kind still refused here is a storage
+      // texture, a compute output this backend has no compute stage to fill.
       const samplerSpecs = frame.resources.filter((resource): resource is SamplerResource => resource.kind === 'sampler');
       for (const [index, resource] of frame.resources.entries()) {
         // The uniform block, the samplers, and the vertex/index buffers of the
@@ -685,16 +684,6 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           throw new Error(
             `the frame for "${frame.id}" writes resource ${index} as a storage texture, and this backend has no compute to fill one`
           );
-        }
-        // A multisampled *depth* is this backend's own refusal and stays here (item
-        // 80): item 4 moved the rules about what a description says into
-        // `graph/validate.ts`, and this is not one of them. WebGPU draws a
-        // multisampled depth attachment; this backend keeps one sample of the depth,
-        // so the sentence says "this backend" and means it. It is a capability answer
-        // belonging to the backend that lacks the power, which is where this
-        // codebase puts those.
-        if (resource.samples !== undefined && depthStencilOf(resource.format) !== null) {
-          throw new Error(`the frame for "${frame.id}" keeps several samples of the depth in resource ${index}, and this backend keeps one`);
         }
         // **Everything else a declared texture may and may not be is
         // `graph/validate.ts`'s** (item 4). Six rules stood here and are one wording
@@ -895,6 +884,39 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // resource however many passes attach it, so the second pass tests against the
       // depth the first pass left behind.
       const renderbufferArena = new Arena<WebGLRenderbuffer>((buffer) => gl.deleteRenderbuffer(buffer));
+
+      /**
+       * How many samples of a pixel this device will keep in a renderbuffer, which
+       * bounds the colour attachments and the depth alike. **It is read from the
+       * device rather than assumed**: three devices were measured on 2026-09-14 and
+       * SwiftShader answers 4 where both cards answer 8, refusing an eight-sample
+       * attachment as `FRAMEBUFFER_INCOMPLETE_ATTACHMENT` and raising a GL error on
+       * the allocation. `docs/DEVICES.md` carries the row.
+       *
+       * `MAX_SAMPLES` and not `getInternalformatParameter(RENDERBUFFER, f, SAMPLES)`,
+       * though the per-format call is the sharper question. On all three devices every
+       * format `depthStencilOf` maps offers exactly the counts `RGBA8` offers, so the
+       * per-format answer would be the same answer three times — and that is an
+       * observation on one machine rather than a guarantee, so reading it here would
+       * be spending a call to look general while resting on the same evidence.
+       * `MAX_SAMPLES` is the bound the specification gives for every renderbuffer
+       * format, which is the honest one to hold a description to. What would change
+       * this is a device whose depth formats offer fewer counts than its colour ones,
+       * which would make the per-format call load-bearing rather than tidier.
+       */
+      const maxSamples = gl.getParameter(gl.MAX_SAMPLES) as number;
+
+      /** How many samples of a pixel an attachment asks for against what the device
+       * keeps, refused by name here rather than at a framebuffer that comes back
+       * incomplete with nothing naming the resource. The colour and depth paths ask
+       * it in the same words, because it is one question. */
+      const withinDevice = (index: number, samples: number) => {
+        if (samples > maxSamples) {
+          throw new Error(`the frame for "${frame.id}" keeps ${samples} samples of resource ${index}, and this device keeps ${maxSamples}`);
+        }
+        return samples;
+      };
+
       interface DepthRecord {
         spec: TextureResource;
         handle: Handle;
@@ -902,6 +924,13 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         point: number;
         depth: boolean;
         stencil: boolean;
+        /** How many samples of the depth this renderbuffer keeps, 1 for the one a
+         * single-sample pass tests against. A pass's attachments all keep the same
+         * count — `graph/validate.ts` refuses a description where they do not, and
+         * every device refuses such a framebuffer as
+         * `FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` — so this is the count of the colour
+         * beside it whenever there is one. */
+        samples: number;
         follows: boolean;
         width: number;
         height: number;
@@ -912,7 +941,18 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         record.width = across;
         record.height = down;
         gl.bindRenderbuffer(gl.RENDERBUFFER, renderbufferArena.resolve(record.handle));
-        gl.renderbufferStorage(gl.RENDERBUFFER, record.internal, across, down);
+        // The same renderbuffer either way, allocated by the call that takes a sample
+        // count or the one that does not (item 21). `renderbufferStorageMultisample`
+        // takes the depth-renderable internal formats in WebGL 2 core, no extension,
+        // and it is the call this backend already makes for a multisample colour
+        // attachment a few lines below. **Nothing resolves a multisampled depth**: a
+        // `PassSpec` depth attachment carries no `resolve`, and the samples are
+        // discarded at the end of the pass, which is what WebGPU does with one too.
+        if (record.samples > 1) {
+          gl.renderbufferStorageMultisample(gl.RENDERBUFFER, record.samples, record.internal, across, down);
+        } else {
+          gl.renderbufferStorage(gl.RENDERBUFFER, record.internal, across, down);
+        }
       };
       for (const { index, spec } of depthSpecs) {
         const kind = depthStencilOf(spec.format) as NonNullable<ReturnType<typeof depthStencilOf>>;
@@ -923,6 +963,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           point: kind.point,
           depth: kind.depth,
           stencil: kind.stencil,
+          samples: withinDevice(index, spec.samples ?? 1),
           follows: followsFrame(spec.size),
           width: 0,
           height: 0,
@@ -940,9 +981,9 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
       // `resolveTarget` the WebGPU backend hands its colour attachment. A
       // multisampled attachment follows the frame like the colour and depth
       // targets beside it, remade at the new size on a resize, since an average
-      // and the samples it came from have to be the same picture. `MAX_SAMPLES`
-      // bounds how many a device keeps; more than it reports is refused by name.
-      const maxSamples = gl.getParameter(gl.MAX_SAMPLES) as number;
+      // and the samples it came from have to be the same picture. How many a device
+      // keeps is `withinDevice`'s question, asked above and asked of the depth in the
+      // same words.
       interface MultisampleRecord {
         spec: TextureResource;
         handle: Handle;
@@ -964,10 +1005,7 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       };
       for (const { index, spec } of multisampleSpecs) {
-        const samples = spec.samples as number;
-        if (samples > maxSamples) {
-          throw new Error(`the frame for "${frame.id}" keeps ${samples} samples of resource ${index}, and this device keeps ${maxSamples}`);
-        }
+        const samples = withinDevice(index, spec.samples as number);
         const record: MultisampleRecord = {
           spec,
           handle: renderbufferArena.allocate(() => gl.createRenderbuffer() as WebGLRenderbuffer),
@@ -1422,20 +1460,31 @@ export function createWebGL2Backend(canvas: HTMLCanvasElement | OffscreenCanvas)
           if (targets.length === 0) {
             throw new Error(`the frame for "${frame.id}" tests depth while drawing the frame directly, and this backend attaches no depth buffer to the target it presents from`);
           }
-          // **An unreachable backstop since item 21's step 1**, kept rather than
-          // deleted because it also guards the single-sample framebuffer lookup
-          // below, which has no record for a multisample target. It read as this
-          // backend's own capability answer — a single-sample depth renderbuffer
-          // cannot share a framebuffer with a multisample colour target, which is
-          // `FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` on every device read on 2026-09-14.
-          // That is a rule about a description and it is `graph/validate.ts`'s now:
-          // a pass reaching here with a multisample colour target has a depth
-          // attachment at the same count, which this backend refuses above as a
-          // multisampled depth. Step 3 builds that depth and deletes both.
-          if (multisampleColours.has(indexOf(targets[0].resource))) {
-            throw new Error(`the frame for "${frame.id}" tests depth against the multisample target resource ${indexOf(targets[0].resource)}, which this backend does not`);
-          }
-          const fbo = targets.length === 1 ? ((textures.get(indexOf(targets[0].resource)) as TextureRecord).fboHandle as Handle) : (mrtFbo as Handle);
+          // Which framebuffer the depth attaches to, and a multisample target has one
+          // of its own (item 21). A pass keeping several samples of its colour draws
+          // into the multisample renderbuffer's framebuffer rather than the resolve
+          // target's, so the depth has to join *that* one: a framebuffer whose
+          // attachments disagree on their sample count is
+          // `FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` on every device read on 2026-09-14,
+          // and attaching the depth to the resolve target's framebuffer would leave
+          // the pass drawing with no depth at all. The counts agree by the time a
+          // pass reaches here — `graph/validate.ts` holds every attachment of a pass
+          // to its pipeline's count — so what is chosen here is which framebuffer and
+          // never whether.
+          //
+          // **This is where a refusal used to be**, and it said that this backend does
+          // not test depth against a multisample target. It was this backend's own
+          // capability answer, it became unreachable at step 1, and step 3 replaced it
+          // with the lookup it was standing in front of.
+          //
+          // Only one target can keep several samples: a pass whose *several* targets
+          // include a multisample one is refused by name above, so there is no
+          // multiple-target framebuffer carrying a multisample attachment to consider.
+          const multisampled = multisampleColours.get(indexOf(targets[0].resource));
+          const fbo =
+            targets.length === 1
+              ? ((multisampled ?? (textures.get(indexOf(targets[0].resource)) as TextureRecord)).fboHandle as Handle)
+              : (mrtFbo as Handle);
           attachDepth(fbo, record);
           const tested = spec.kind === 'render' ? spec.depth : undefined;
           depthPlan = {

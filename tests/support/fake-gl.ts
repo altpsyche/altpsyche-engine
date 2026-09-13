@@ -264,6 +264,12 @@ export function createFakeGL({ context = true } = {}): FakeGL {
 
   const record = (call: string, fields: Record<string, unknown> = {}) => calls.push({ call, ...fields });
 
+  /** The framebuffers this context has handed out and which of them is bound, so an
+   * attachment records the framebuffer it landed in and not only the point (item 21).
+   * `null` is the canvas, which is what a real context calls framebuffer zero. */
+  let framebuffers = 0;
+  let boundFramebuffer: number | null = null;
+
   /** Every uniform a program reports, flattened across its blocks in block order,
    * each carrying which block it sits in. A program with `blocks` set reports those
    * members; one with the legacy single `block` reports it as block 0, so a test
@@ -453,12 +459,24 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     // Framebuffers, one per texture a pass draws into, and the blit that shows a
     // texture on the canvas (item 46). `checkFramebufferStatus` answers complete,
     // since the fake attaches a texture of the right shape by construction.
-    createFramebuffer: () => ({ framebuffer: true }),
+    //
+    // **Each framebuffer carries an identity** (item 21). A recorded attachment used
+    // to say which point it landed on and not which framebuffer it landed in, so a
+    // test could see that a depth was attached somewhere and not that it joined the
+    // colour it draws beside — which is the difference between a complete
+    // framebuffer and `FRAMEBUFFER_INCOMPLETE_MULTISAMPLE`. `fbo` is the number the
+    // fake gave the framebuffer bound at the time, `null` for the canvas.
+    createFramebuffer: () => ({ framebuffer: true, fbo: framebuffers++ }),
     deleteFramebuffer: () => record('deleteFramebuffer'),
-    bindFramebuffer: (target: number, framebuffer: unknown) =>
-      record('bindFramebuffer', { target, bound: framebuffer ? 'texture' : 'canvas' }),
+    bindFramebuffer: (target: number, framebuffer: unknown) => {
+      boundFramebuffer = (framebuffer as { fbo?: number } | null)?.fbo ?? null;
+      // The record keeps `bound` and not the number: which framebuffer is bound is
+      // read off the attachment calls, and adding a field here would change what
+      // every existing `bindFramebuffer` assertion compares.
+      return record('bindFramebuffer', { target, bound: framebuffer ? 'texture' : 'canvas' });
+    },
     framebufferTexture2D: (target: number, attachment: number) =>
-      record('framebufferTexture2D', { target, attachment }),
+      record('framebufferTexture2D', { target, attachment, fbo: boundFramebuffer }),
     checkFramebufferStatus: () => CONSTANTS.FRAMEBUFFER_COMPLETE,
     blitFramebuffer: (
       sx0: number,
@@ -504,7 +522,7 @@ export function createFakeGL({ context = true } = {}): FakeGL {
     renderbufferStorageMultisample: (target: number, samples: number, internal: number, width: number, height: number) =>
       record('renderbufferStorageMultisample', { target, samples, internal, width, height }),
     framebufferRenderbuffer: (target: number, attachment: number) =>
-      record('framebufferRenderbuffer', { target, attachment }),
+      record('framebufferRenderbuffer', { target, attachment, fbo: boundFramebuffer }),
 
     // The depth and stencil test state a pass draws under (item 48). `enable`/
     // `disable` turn each test on or off, and the funcs, masks and ops are what a

@@ -449,12 +449,15 @@ function shapes(graph: FrameGraph): void {
       throw new Error(`the frame for "${id}" gives resource ${index} a ladder and no contents to build it from`);
     }
 
-    // A texture keeping several samples of a pixel is a multisample colour
-    // attachment (item 80) and the narrowest kind there is, so everything else is
-    // closed to it: nothing writes bytes into one from outside, nothing copies out of
-    // one, and a shader reads one only through a binding declared as multisampled,
-    // which no source here has. Each of these is a call a card refuses over a usage
-    // flag or a copy size rather than over the name the description gave it.
+    // A texture keeping several samples of a pixel is an attachment a pass writes —
+    // a colour averaged into a resolve target (item 80), or the depth tested beside
+    // it (item 21) — and the narrowest kind there is, so everything else is closed to
+    // it: nothing writes bytes into one from outside, nothing copies out of one, and
+    // a shader reads one only through a binding declared as multisampled, which no
+    // source here has. Each of these is a call a card refuses over a usage flag or a
+    // copy size rather than over the name the description gave it. **None of them is
+    // about which half of the framebuffer it is**, which is why the depth joining the
+    // multisample attachments needed no change here.
     if (texture.samples !== undefined) {
       if (texture.data || texture.source) {
         throw new Error(`the frame for "${id}" gives resource ${index} contents and several samples a pixel`);
