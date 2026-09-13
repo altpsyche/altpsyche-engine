@@ -11,11 +11,12 @@ because a piece of work with no place to be written down is a piece of work that
 done twice. A piece of work is filed where the thing it changes lives, which is the rule the
 consuming site recorded as its D118 and which put this file here in the first place.
 
-**What is open, as of 2026-09-13: item 21, and it is the only one.** The queue emptied twice — item
+**What is open, as of 2026-09-14: item 21, and it is the only one.** The queue emptied twice — item
 20 closed it on 2026-09-12 and the layer bound closed it again the same day — and the entry below
-opened it again. Its step 1 is unblocked; **its step 2 is blocked on a card and on Siva being
-present**, and steps 3, 4 and 5 wait on what step 2 reads. The five ruled candidates and the four
-standing ideas further down are still ideas and not items.
+opened it again on 2026-09-13. **Its step 2 was taken on 2026-09-14** by Siva, across three devices,
+and it decided step 3's fork: the capability is built rather than named. Steps 1 and 3 are unblocked;
+step 4 wants a browser carrying both backends, which this machine has not got. The five ruled
+candidates and the four standing ideas further down are still ideas and not items.
 
 **What this file is not.** It does not track the website that consumes this package, and it does
 not track anything about the article series that site publishes. Those live in that repository and
@@ -3895,6 +3896,52 @@ answer both halves in one run.
   corpus and recording-contract counts at their new values.
 - The commit for each step names what its gate could not see, and steps 1, 3 and 4 say plainly that
   the software renderer drew whatever a browser gate drew.
+
+### Measured on 2026-09-14, step 2: three devices complete it and test with it, so step 3 builds rather than names
+
+**Taken by Siva on this machine with a person at it, and carried here rather than re-measured.** No
+unattended session can take it — every headless launch reaches the software renderer — and this one
+did not. The reading is in [DEVICES.md](DEVICES.md) in full; what follows is only what it decides.
+
+**It decides step 3's fork, and it decides it the first way.** A framebuffer carrying a four-sample
+`RGBA8` colour renderbuffer and a four-sample `DEPTH_COMPONENT24` or `DEPTH24_STENCIL8` one reads
+`FRAMEBUFFER_COMPLETE` on nvidia, on amd and on SwiftShader, and the depth **tests and writes** rather
+than merely attaching: two quads at z -0.5 and z 0.5 under `LEQUAL` give the near one in both draw
+orders on all three. So the capability is there to have, **no new `Capability` member is added**, and
+`msaa` keeps covering multisampling on both backends. The second shape of step 3 — a second arm of
+`msaa` naming a difference in the data — is refused by this reading and is not built.
+
+**Three facts from it that step 3 has to honour, and one is a trap.**
+
+- `getInternalformatParameter(RENDERBUFFER, <format>, SAMPLES)` offers all three formats
+  `depthStencilOf` maps at exactly the counts `RGBA8` is offered at, on all three devices. **That is
+  consistent with one list per device and does not establish it**, which the row says in its own
+  words, so step 3 does not read a per-format list and then treat it as general.
+- **SwiftShader's `MAX_SAMPLES` is 4 and it means it**: an eight-sample attachment is
+  `INCOMPLETE_ATTACHMENT` there and raises a GL error on allocation. The depth path must be bounded by
+  what the device reports, the way `gpu/webgl2.ts:967-969` already bounds the colour path, rather than
+  by the 8 both cards offer.
+- **`TextureResource.samples` is `4` or absent** (`graph/types.ts:228`) and
+  `RenderPipelineSpec.samples` the same (`:429`), so eight is not a count a description can carry and
+  the eight-sample row is unreachable from this package. It is recorded because the bound is what
+  makes that true rather than the type alone, and a later widening of the type would meet it.
+
+**The mismatched row is step 1 seen from the device side.** Four-sample colour with a single-sample
+depth is `FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` on all three devices, which is the rule step 1 moves
+into `graph/validate.ts` — and it is the reason that rule is a description rule and not a capability:
+every device refuses it, so there is nothing for a capability to name.
+
+**The WebGPU half of step 2 is unanswered and step 3 does not wait on it.** `navigator.gpu` is absent
+from every browser build on the machine, flags included, so no reading of that backend drawing a
+multisampled depth can be taken here. **What that costs is bounded**: step 3 changes nothing in
+`gpu/webgpu.ts`, which already spreads `sampleCount` onto every declared texture through one
+format-agnostic path, so the unmeasured claim is the same one this item opened with and is no larger
+after step 3 than before it. **What it does cost is step 4**, whose cross-backend comparison needs a
+browser with both, and that is named there rather than here.
+
+**What this reading cannot say.** Three devices on one machine, all three reached through ANGLE over
+Vulkan, so it is three drivers under one translation layer and not three WebGL 2 implementations.
+Nothing of this package was in the path: it says a card will do this, not that this package does it.
 
 ### What this item owes the outside world
 

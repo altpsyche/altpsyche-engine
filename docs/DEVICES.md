@@ -38,6 +38,91 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-14, Linux, three devices say a multisampled depth renderbuffer completes, and tests
+
+**Item 21's step 2, which no unattended session can take.** Taken by Siva on this machine with a
+person at it, in raw WebGL 2 with no part of this package in the path — both of the refusals the item
+is about fire before a GL call is made, so nothing the package does could be measured through. **It
+is carried here, not re-measured**: this session has no display and every headless launch it could
+make reaches the software renderer, which is `CLAUDE.md`'s table and `gates/card.mjs`'s own header.
+GL errors were drained before and after every case.
+
+**Three devices, one machine**, which is a wider reading than any row above it and still one machine:
+
+```
+nvidia          ANGLE (NVIDIA, Vulkan 1.4.341), via --use-angle=vulkan
+amd             ANGLE (AMD, Vulkan 1.4.354, RADV RAPHAEL_MENDOCINO), via the radv ICD
+swiftshader     ANGLE (Google, Vulkan 1.3.0, Subzero), playwright's default
+```
+
+**What the devices offer.** `MAX_SAMPLES` reads 8 on both cards and 4 on SwiftShader, and
+`getInternalformatParameter(RENDERBUFFER, <format>, SAMPLES)` answers per format:
+
+```
+                      nvidia    amd       swiftshader
+RGBA8                 8,4,2     8,4,2     4
+DEPTH_COMPONENT24     8,4,2     8,4,2     4
+STENCIL_INDEX8        8,4,2     8,4,2     4
+DEPTH24_STENCIL8      8,4,2     8,4,2     4
+```
+
+**All three formats `depthStencilOf` maps are offered at exactly the counts `RGBA8` is offered at, on
+all three devices.** That is an observation and not a proof: three devices on one machine. A backend
+reading one list per device rather than one per format would be consistent with this row and is not
+established by it.
+
+**What a framebuffer does with them**, `checkFramebufferStatus`:
+
+```
+                                   nvidia      amd         swiftshader
+4x colour + 4x DEPTH_COMPONENT24   COMPLETE    COMPLETE    COMPLETE
+4x colour + 4x DEPTH24_STENCIL8    COMPLETE    COMPLETE    COMPLETE
+8x colour + 8x DEPTH_COMPONENT24   COMPLETE    COMPLETE    INCOMPLETE_ATTACHMENT
+4x colour + 1x DEPTH_COMPONENT24   INCOMPLETE_MULTISAMPLE, all three
+1x colour + 1x DEPTH_COMPONENT24   COMPLETE, all three
+```
+
+**SwiftShader's `MAX_SAMPLES` of 4 means it**: the 8x row also raises a GL error on allocation there.
+A backend must read the count rather than assume the 8 both cards offer. The mismatched row is
+`FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` on all three, which is the sample-agreement rule item 21's step 1
+moves into `graph/validate.ts`, seen from the device side.
+
+**And the depth test runs rather than merely attaching.** On the 4x colour + 4x `DEPTH_COMPONENT24`
+framebuffer: two full-screen quads, red at z -0.5 and green at z 0.5, `LEQUAL`, depth writes on,
+blit-resolved, centre pixel read back.
+
+```
+                       nvidia         amd            swiftshader
+drawn far then near    255,0,0,255    255,0,0,255    255,0,0,255
+drawn near then far    255,0,0,255    255,0,0,255    255,0,0,255
+```
+
+Near wins in both orders on every device, no GL error. So the attachment tests and writes, which is
+the half of the question a `COMPLETE` status does not answer.
+
+**The WebGPU half has no reading and will not get one on this machine.** `navigator.gpu` is absent
+from playwright's Chromium headless on software, headless on the card, and headed on `DISPLAY :0`,
+and from `/usr/bin/chromium` headless and headed — with `--enable-unsafe-webgpu`,
+`--enable-features=Vulkan`, `VulkanFromANGLE`, `WebGPU`, `--ignore-gpu-blocklist` and `--enable-gpu`
+in combination. **It is absent from the build rather than blocked by a flag**, so that this package's
+WebGPU backend draws a multisampled depth attachment stays read off `gpu/webgpu.ts` building every
+texture through one format-agnostic path, and off the WebGPU specification, rather than off a device.
+Another machine or another browser build is what would answer it.
+
+**One flag worth knowing, and item 21's step 4 may want it.** Playwright's Chromium defaults to
+SwiftShader here. `--use-angle=vulkan --enable-features=Vulkan --ignore-gpu-blocklist --enable-gpu`
+puts it on the NVIDIA card, and the radeon ICD through `VK_DRIVER_FILES` puts it on the AMD one. The
+four browser gates are a software renderer's today whoever runs them.
+
+**What this row cannot say.** Three devices on one machine on one day, all three reached through
+ANGLE over Vulkan — so it is three drivers under one translation layer rather than three independent
+WebGL 2 implementations, and a device that reaches WebGL 2 by another road is unread. It says nothing
+about WebGPU, nothing about a stencil-only multisample attachment beyond the counts
+`STENCIL_INDEX8` reports, and nothing about what this package does with any of it: no part of
+`@altpsyche/engine` was in the path.
+
+---
+
 ### 2026-09-12, Linux, `probe()` reads the same card either side of taking its trial canvases off the page
 
 **Item 15's step 3, which no gate can take.** Step 1 made `probe()` remove the canvases it creates
