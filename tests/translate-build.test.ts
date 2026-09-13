@@ -118,8 +118,10 @@ describe('the build-time translation path bakes GLSL and ships no translator', (
     // already draws rather than declaring a grid of its own — making 50. Step 3
     // added `core-mips`'s, the last of the three — making 51. After it no preset is
     // skipped on WebGL 2 for want of a baked vertex: every remaining skip is a real
-    // capability answer.
-    expect(entryTotal).toBe(51);
+    // capability answer. Item 21's step 4 added `core-multisample-depth`'s four — two
+    // vertex stages for the two sheets, which lean opposite ways and so cannot share
+    // one, and two fragment stages for the two colours — making 55.
+    expect(entryTotal).toBe(55);
   });
 
   it('overlays a hand-authored GLSL bake where naga has no storage-buffer syntax (item 105)', () => {

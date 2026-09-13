@@ -669,6 +669,71 @@ export const CAPABILITY_FIXTURES: CapabilityFixture[] = [
     },
   },
   {
+    id: 'core-multisample-depth',
+    language: 'wgsl',
+    source: 'core-multisample-depth.wgsl',
+    uniforms: [
+      { name: 'u_time', type: 'float', value: 0 },
+      { name: 'u_resolution', type: 'vec2', value: [800, 600] },
+      // The same projection `core-depth` and `core-multisample` are aimed with, so
+      // the three can be read against each other: this preset is the two of them at
+      // once and a difference in where it is seen from would be a difference nobody
+      // could attribute.
+      {
+        name: 'u_place',
+        type: 'mat4',
+        value: AIMED_PROJECTION,
+      },
+    ],
+    frame: {
+      // Sixteen quads across and down, the grid the depth preset draws.
+      geometry: [{ name: 'sheet', primitive: 'quad-grid', size: [16, 16] }],
+      // **The depth keeps as many readings of a pixel as the colour beside it**
+      // (item 21), which is the arrangement this preset exists for: every
+      // attachment of a pass keeps one count, so a depth tested beside a
+      // four-sample colour is a four-sample depth or it is nothing. The WebGL 2
+      // backend refused exactly this until item 21's step 3, and refused it as a
+      // capability of its own — three devices were read on 2026-09-14 and all three
+      // complete such a framebuffer and test with it, so there was no capability
+      // there to lack.
+      //
+      // All three follow the frame, so all three are rebuilt when the reader
+      // resizes: an average and the readings it came from have to be the same
+      // picture, and a distance kept at one size and tested at another would decide
+      // which sheet is in front out of the wrong pixels.
+      attachments: [
+        { name: 'edges', size: { scale: 1 }, format: 'rgba8unorm', samples: 4 },
+        { name: 'flat', size: { scale: 1 }, format: 'rgba8unorm' },
+        { name: 'depth', size: { scale: 1 }, format: 'depth24plus', samples: 4 },
+      ],
+      passes: [
+        // The sheet leaning away first, emptying the picture and the depth. Its
+        // distances are what the second pass is tested against.
+        {
+          pipeline: 'farther',
+          vertex: 'away',
+          geometry: 'sheet',
+          colour: [{ resource: 'edges', clear: [0, 0, 0, 0], resolve: 'flat' }],
+          depth: { resource: 'depth', clear: 1, compare: 'less', write: true },
+        },
+        // The sheet leaning toward the camera second, drawn only where it is nearer.
+        // It names the average again because **every pass writing a multisample
+        // attachment names where its readings go**: nothing can read the attachment
+        // itself, so a pass that averaged nowhere would leave what it drew
+        // unreachable. The second average lands on top of the first, which is the
+        // picture after both sheets rather than after one.
+        {
+          pipeline: 'nearer',
+          vertex: 'toward',
+          geometry: 'sheet',
+          colour: [{ resource: 'edges', resolve: 'flat' }],
+          depth: { resource: 'depth', compare: 'less', write: true },
+        },
+      ],
+      present: 'flat',
+    },
+  },
+  {
     id: 'core-indirect',
     language: 'wgsl',
     source: 'core-indirect.wgsl',

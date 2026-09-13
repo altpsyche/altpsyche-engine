@@ -88,7 +88,7 @@ describe('the projection the capability presets are aimed with', () => {
     expect(mat4.pack(mat4.perspective(FOV_Y, ASPECT, NEAR, FAR))).toHaveLength(16);
   });
 
-  it('is the one array all four aimed presets are fed, rather than four copies of it', () => {
+  it('is the one array all five aimed presets are fed, rather than five copies of it', () => {
     // Read off the registry, not asserted about the constant: what item 6 changed is
     // that the four presets *share* this array, and the way to check sharing is
     // identity. A future preset that pastes the sixteen numbers again instead of
@@ -97,11 +97,11 @@ describe('the projection the capability presets are aimed with', () => {
     const aimed = CAPABILITY_FIXTURES.flatMap((preset) =>
       preset.uniforms.filter((one) => one.name === 'u_place').map((one) => one.value)
     );
-    expect(aimed).toHaveLength(4);
+    expect(aimed).toHaveLength(5);
     for (const value of aimed) expect(value).toBe(AIMED_PROJECTION);
   });
 
-  it('is fed to the four presets the item named and no others', () => {
+  it('is fed to the four presets the item named, and to the one added since', () => {
     // Which four, by name, so a preset gaining or losing the projection is a red
     // gate that says which one rather than a count that moved. Item 6 named the four
     // by line number rather than by name and the names are not the ones a reader
@@ -110,9 +110,21 @@ describe('the projection the capability presets are aimed with', () => {
     // count — is aimed by this one. `core-blend` and `core-count` are deliberately
     // absent: both were written without a projection so that this item's four copied
     // literals did not become five or six.
+    //
+    // **`core-multisample-depth` is the fifth and it arrived at item 21's step 4.**
+    // It is `core-depth` and `core-multisample` at once — two sheets whose crossing
+    // is decided by a depth kept at the colour's own sample count — so it is aimed
+    // with the projection both of those are aimed with, and being aimed with the
+    // same one is what lets the three be read against each other.
     const aimed = CAPABILITY_FIXTURES.filter((preset) =>
       preset.uniforms.some((one) => one.name === 'u_place')
     ).map((preset) => preset.id);
-    expect(aimed.sort()).toEqual(['core-depth', 'core-multisample', 'core-report', 'core-stencil']);
+    expect(aimed.sort()).toEqual([
+      'core-depth',
+      'core-multisample',
+      'core-multisample-depth',
+      'core-report',
+      'core-stencil',
+    ]);
   });
 });

@@ -215,6 +215,29 @@ const EXPECTED: Record<string, FrameCost> = {
     // 800*600*4*4 + 800*600*4.
     transientBytes: 9600000,
   },
+  'core-multisample-depth': {
+    passes: 2,
+    draws: 2,
+    dispatches: 0,
+    pipelineSwitches: 2,
+    // Both pipelines bind the one uniform block and nothing else, so the bindings
+    // never change between the two passes.
+    bindSwitches: 1,
+    // The second pass clears neither the colour nor the depth, keeping what the
+    // first left: two loads.
+    attachmentLoads: 2,
+    // The first pass stores `edges` for the second to draw over, its average into
+    // `flat`, and the depth for the second to test against: three. The second stores
+    // its average and nothing else — nothing reads `edges` or the depth after it, so
+    // both discard. Three and one.
+    attachmentStores: 4,
+    // edges (four samples) + flat (one) + depth (four samples), all frame-sized and
+    // four bytes a pixel: 800*600*4*4 + 800*600*4 + 800*600*4*4. **The depth is
+    // counted at its sample count like any other attachment**, which is the line of
+    // `graph/cost.ts` item 21 found already believing in a multisampled depth that
+    // one of the two backends would not build.
+    transientBytes: 17280000,
+  },
   'core-indirect': {
     passes: 3,
     draws: 1,

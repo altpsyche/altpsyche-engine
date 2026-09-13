@@ -870,6 +870,22 @@ const SCENE_TIER = [
   // rest and the diagnostic block is gone.
   'core-texture',
   'core-mips',
+  // **Added by item 21's step 4 on 2026-09-14, and it has never been run here.**
+  // `gate:card` needs a display and a person, so an unattended session cannot take
+  // the reading that would say whether this one agrees. What is known is that both
+  // backends draw it and light the same 153,066 of 480,000 pixels under
+  // `gates/corpus.mjs`, which is a software renderer and a lit count rather than a
+  // card and a channel comparison.
+  //
+  // It is on this list for the reason `core-blend` and `core-scissor` are: it is the
+  // only preset whose two backends can be compared with a depth kept at the colour's
+  // own sample count, which is the arrangement item 21 built into the WebGL 2 backend
+  // — and a capability whose only proof is that the picture still looks right is the
+  // fourth invariant of `docs/ARCHITECTURE.md` going unheld. The edge that matters is
+  // the one where the two sheets cross: it exists only because the depth was tested,
+  // so a backend keeping one sample of the depth beside four of the colour would draw
+  // that edge as a staircase while the outer edges came out smooth.
+  'core-multisample-depth',
 ];
 /**
  * One preset drawn through both backends on this card and compared two ways: as
