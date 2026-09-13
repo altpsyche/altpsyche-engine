@@ -104,7 +104,7 @@ One rule holds the design together: **no backend grows a method the other has to
 from.** If WebGL 2 cannot do a thing, a graph that needs it is refused by name before a driver
 is reached. Nothing is accepted and then failed halfway through a frame.
 
-The eleven capabilities:
+The thirteen capabilities:
 
 | capability | WebGPU | WebGL 2 | why |
 | --- | --- | --- | --- |
@@ -115,12 +115,25 @@ The eleven capabilities:
 | `indirect` | core | **no** | draw counts read out of a buffer |
 | `timestamp` | optional | **no** | |
 | `occlusion` | core | **no** | |
-| `msaa` | optional | **yes** | multisample renderbuffer, resolved with a blit |
+| `msaa` | optional | **yes** | multisample renderbuffer, resolved with a blit; the depth beside it keeps the same count |
 | `float-blend` | optional | via `EXT_float_blend` | |
 | `depth-clamp` | optional | **no** | |
 | `bgra-storage` | optional | **no** | |
 | `dual-source-blend` | optional | **no** | the `src1` factors blend against a second fragment output, which ES 3.00 has none of |
 | `per-target-blend` | core | **no** | WebGL 2 has one blend state for every draw buffer at once |
+
+**`msaa` covers the depth as well as the colour, and it did not always.** Every attachment of one
+pass keeps the same number of readings of each pixel — the depth among them — so a pass drawing four
+readings of its colour tests against a depth keeping four. WebGL 2 refused such a depth until item
+21, as a capability of its own; three devices were then measured and all three complete that
+framebuffer and test with it, so there was no capability there to lack. The row above is one row
+because the two backends do the same thing.
+
+**What a description may say about a count is 4 or nothing**, since four is the only count core
+WebGPU guarantees, and a device reporting fewer refuses it by name before a framebuffer is built.
+A pass whose attachments disagree on the count is refused by `validate()` on either backend, which
+is a rule about the description rather than a device answer: a framebuffer whose attachments
+disagree is incomplete everywhere.
 
 **An ordinary blend is on neither row and needs no capability.** A pipeline whose `targets` name
 a blend draws it on both backends — WebGL 2 applies it through `blendFuncSeparate`,

@@ -11,12 +11,14 @@ because a piece of work with no place to be written down is a piece of work that
 done twice. A piece of work is filed where the thing it changes lives, which is the rule the
 consuming site recorded as its D118 and which put this file here in the first place.
 
-**What is open, as of 2026-09-14: item 21, and it is the only one.** The queue emptied twice — item
-20 closed it on 2026-09-12 and the layer bound closed it again the same day — and the entry below
-opened it again on 2026-09-13. **Its step 2 was taken on 2026-09-14** by Siva, across three devices,
-and it decided step 3's fork: the capability is built rather than named. Steps 1 and 3 are unblocked;
-step 4 wants a browser carrying both backends, which this machine has not got. The five ruled
-candidates and the four standing ideas further down are still ideas and not items.
+**What is open, as of 2026-09-14: one line of item 21, and it needs Siva at the machine.** The
+queue emptied twice — item 20 closed it on 2026-09-12 and the layer bound closed it again the same
+day — and item 21 opened it again on 2026-09-13. **All five of its steps landed on 2026-09-14**,
+step 2 being Siva's reading across three devices. What is left is one line of its `Done when`: the
+new preset is on `gates/card.mjs`'s cross-backend list and **that gate has never been run on it**,
+so this item has built a capability whose two backends have never been compared on a card. One
+`gate:card` run closes the item or finds a defect in it. The five ruled candidates and the four
+standing ideas further down are still ideas and not items.
 
 **What this file is not.** It does not track the website that consumes this package, and it does
 not track anything about the article series that site publishes. Those live in that repository and
@@ -3942,6 +3944,86 @@ browser with both, and that is named there rather than here.
 **What this reading cannot say.** Three devices on one machine, all three reached through ANGLE over
 Vulkan, so it is three drivers under one translation layer and not three WebGL 2 implementations.
 Nothing of this package was in the path: it says a card will do this, not that this package does it.
+
+### Landed on 2026-09-14, steps 1, 3, 4 and 5 — and the one line still open is a card reading
+
+**Step 1: one wording where two stood.** The sample-agreement rule left `submit/plan.ts`, which is
+reached from the WebGPU backend alone, and the second wording left `gpu/webgl2.ts`, which stated the
+same fault as a capability of its own. `graph/validate.ts` refuses it for both now, in the sentence
+`the pass on pipeline 0 draws 4 samples a pixel and attaches resource 3, which keeps 1`. Two throw
+sites left `submit/plan.ts` (25 to 23) and one arrived in `graph/validate.ts` (26 to 27);
+`tests/graph-pass-samples.test.ts` holds the rule from the graph alone and hands the same frame to
+each backend for the same sentence back.
+
+**Step 3: the WebGL 2 backend keeps a multisampled depth.** `buildDepth` allocates through
+`renderbufferStorageMultisample` where the resource carries a count, and the depth attaches to the
+multisample colour's own framebuffer rather than the resolve target's — the half a sample count alone
+would not catch. **Two refusals are gone and neither is replaced**, and no `Capability` member was
+added: step 2's reading is why. The device bound is one question in one place now (`withinDevice`),
+holding colour and depth to `MAX_SAMPLES`, which nothing had tested before for either.
+
+**Step 4: `core-multisample-depth`.** Two sheets leaning opposite ways, crossing in the middle, four
+readings a pixel with the depth kept at four. The edge that matters is the crossing, which exists
+only because the depth was tested — so a backend keeping one sample of the depth beside four of the
+colour draws that edge as a staircase while the outer edges come out smooth. Both backends draw it
+and light the same 153,066 of 480,000 pixels. `gate:browser` 4 of 4 with the corpus at **35 of 35
+draws**, 0 failed and 6 WebGL 2 skips, and the recording contract at **20 of 20**.
+
+**Step 5: the documents.** `docs/GUIDE-backends.md`'s `msaa` row says the depth beside the colour
+keeps the same count, with a paragraph on why that is one row rather than two. **Its heading said
+"the eleven capabilities" over a table of thirteen** and now says thirteen; that was stale before this
+item and is corrected here rather than left beside a row this step rewrote.
+
+**The headline claim, closed on the door's own path.** `declaredFrame` authors
+`core-multisample-depth` into a `depth24plus` at `samples: 4` beside a pipeline at `samples: 4` —
+the exact frame this item opened on, the one that passed `validate`, `cost` and `refusal` and then
+threw. It draws on both backends now.
+
+**`npm test` 998 over 85 files**, from 989 over 84 when the item opened. `npm run type-check` clean,
+`npm run gate:pack` green.
+
+### Done when, verified — with one line open and it needs Siva
+
+- *A frame declaring a four-sample colour attachment and a four-sample depth, authored through
+  `declaredFrame`, either draws on both backends or is refused by `refusal()` by name* — **it draws
+  on both.** `core-multisample-depth` is that frame and `gates/corpus.mjs` draws it through each.
+- *No frame passes `validate`, `cost` and `refusal` and then throws in `gpu/webgl2.ts` over a sample
+  count* — **met, with one refusal left standing and it is a device answer rather than a description
+  one.** `withinDevice` still throws where an attachment asks for more samples than `MAX_SAMPLES`
+  reports, which no pure reading can predict: `DeviceCapabilities` carries capability names and not
+  limits, so `refusal()` cannot see a device's count. **It is unreachable on every device read so
+  far** — a description may carry no count but 4, and the lowest of the three devices reports 4 — and
+  it is written down here because a widening of `TextureResource.samples` past 4 would make it
+  reachable and would owe a reading first.
+- *A pass whose attachments disagree on their sample count is refused in one wording, from
+  `graph/validate.ts`, on both paths* — met, and `tests/graph-pass-samples.test.ts` asserts the two
+  paths word for word.
+- *The card reading of step 2 is in `docs/DEVICES.md` with the date and the machine* — met, three
+  devices, 2026-09-14.
+- *A fixture some gate draws compares the two backends on a depth-tested multisample pass* —
+  **half met, and this is the open line.** `gates/corpus.mjs` draws the preset through both backends
+  and they light the same count, which is a software renderer and a lit count. The channel comparison
+  is `gates/card.mjs`'s `SCENE_TIER`, the preset is on that list, and **no session here can run it**:
+  `gate:card` needs a display and a person. Until it is run, this item has built a capability whose
+  two backends have never been compared on a card — which is precisely the blind spot item 20 spent
+  two days in, named here rather than left implied.
+- *Gates green* — `npm test` 998 over 85, `npm run type-check` clean, `gate:pack` green,
+  `gate:browser` 4 of 4 with 35 of 35 corpus draws and 20 of 20 on the recording contract.
+- *Each commit names what its gate could not see* — each does, and the recurring line is that every
+  browser gate above belongs to SwiftShader, its WebGPU included.
+
+**What would close the open line.** One `gate:card` run with Siva at the machine. If
+`core-multisample-depth` reads within the tolerance the corpus holds every other compared preset to,
+the item closes outright. If it does not, step 3's build draws differently from WebGPU's and that is
+a defect this item introduced, which is the honest reason the line is left open rather than called
+met.
+
+**What no gate can say about any of it.** The WebGPU backend was not touched and could not be
+measured: `navigator.gpu` is absent from every browser build on the one machine, flags included, so
+that it draws a multisampled depth attachment is still read off `gpu/webgpu.ts` spreading
+`sampleCount` onto every declared texture through one format-agnostic path, and off the
+specification. Every device reading this item rests on is three drivers under one ANGLE-over-Vulkan
+translation layer on one machine on one day.
 
 ### What this item owes the outside world
 
