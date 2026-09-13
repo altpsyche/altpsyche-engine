@@ -11,14 +11,11 @@ because a piece of work with no place to be written down is a piece of work that
 done twice. A piece of work is filed where the thing it changes lives, which is the rule the
 consuming site recorded as its D118 and which put this file here in the first place.
 
-**What is open, as of 2026-09-14: one line of item 21, and it needs Siva at the machine.** The
-queue emptied twice — item 20 closed it on 2026-09-12 and the layer bound closed it again the same
-day — and item 21 opened it again on 2026-09-13. **All five of its steps landed on 2026-09-14**,
-step 2 being Siva's reading across three devices. What is left is one line of its `Done when`: the
-new preset is on `gates/card.mjs`'s cross-backend list and **that gate has never been run on it**,
-so this item has built a capability whose two backends have never been compared on a card. One
-`gate:card` run closes the item or finds a defect in it. The five ruled candidates and the four
-standing ideas further down are still ideas and not items.
+**What is open, as of 2026-09-14: nothing.** The queue has emptied three times now — item 20 closed
+it on 2026-09-12, the layer bound closed it again the same day, and **item 21 opened it on 2026-09-13
+and closed it on 2026-09-14**, all five steps and the card reading its last line wanted. The five
+ruled candidates and the four standing ideas further down are still ideas and not items, and picking
+one up is Siva's call.
 
 **What this file is not.** It does not track the website that consumes this package, and it does
 not track anything about the article series that site publishes. Those live in that repository and
@@ -3742,7 +3739,7 @@ to 0 under step 2d anyway.
 
 ---
 
-## Item 21 — a frame the door can author passes `validate`, `cost` and `refusal`, and the WebGL 2 backend throws on it
+## Item 21 — a frame the door can author passes `validate`, `cost` and `refusal`, and the WebGL 2 backend throws on it — **closed 2026-09-14**
 
 **Opened on 2026-09-13, out of a report from `@altpsyche/maths` measured against the published
 `0.5.0`.** That report says in its own words that no argument from a consumer wanting the capability
@@ -3982,7 +3979,7 @@ threw. It draws on both backends now.
 **`npm test` 998 over 85 files**, from 989 over 84 when the item opened. `npm run type-check` clean,
 `npm run gate:pack` green.
 
-### Done when, verified — with one line open and it needs Siva
+### Done when, verified on 2026-09-14 — item 21 is closed
 
 - *A frame declaring a four-sample colour attachment and a four-sample depth, authored through
   `declaredFrame`, either draws on both backends or is refused by `refusal()` by name* — **it draws
@@ -4000,23 +3997,24 @@ threw. It draws on both backends now.
   paths word for word.
 - *The card reading of step 2 is in `docs/DEVICES.md` with the date and the machine* — met, three
   devices, 2026-09-14.
-- *A fixture some gate draws compares the two backends on a depth-tested multisample pass* —
-  **half met, and this is the open line.** `gates/corpus.mjs` draws the preset through both backends
-  and they light the same count, which is a software renderer and a lit count. The channel comparison
-  is `gates/card.mjs`'s `SCENE_TIER`, the preset is on that list, and **no session here can run it**:
-  `gate:card` needs a display and a person. Until it is run, this item has built a capability whose
-  two backends have never been compared on a card — which is precisely the blind spot item 20 spent
-  two days in, named here rather than left implied.
+- *A fixture some gate draws compares the two backends on a depth-tested multisample pass* — **met
+  on 2026-09-14, with Siva at the machine.** `core-multisample-depth` reads **0 of 1,440,000 channels
+  differing at worst 0**, hard jumps 12447 against 12447, on `nvidia / blackwell`. The hard-jump
+  halves matching is the part worth reading: it counts pixels sitting on a step rather than a
+  gradient, so two pictures agreeing on the channels while one drew the crossing edge as a staircase
+  would differ there. The whole gate is 37 PASS and 0 FAIL, and the row is in
+  [DEVICES.md](DEVICES.md).
 - *Gates green* — `npm test` 998 over 85, `npm run type-check` clean, `gate:pack` green,
   `gate:browser` 4 of 4 with 35 of 35 corpus draws and 20 of 20 on the recording contract.
 - *Each commit names what its gate could not see* — each does, and the recurring line is that every
   browser gate above belongs to SwiftShader, its WebGPU included.
 
-**What would close the open line.** One `gate:card` run with Siva at the machine. If
-`core-multisample-depth` reads within the tolerance the corpus holds every other compared preset to,
-the item closes outright. If it does not, step 3's build draws differently from WebGPU's and that is
-a defect this item introduced, which is the honest reason the line is left open rather than called
-met.
+**The open line closed the same day, and the item with it.** It asked for one `gate:card` run: if
+`core-multisample-depth` read within the tolerance the corpus holds every other compared preset to,
+the item closed outright, and if it did not, step 3's build drew differently from WebGPU's and was a
+defect this item introduced. **It read zero**, so the first of the two happened and **item 21 is
+closed**. The gate went from 35 PASS to 37, which is the gate growing by this item's preset and not a
+reading improving.
 
 **What no gate can say about any of it.** The WebGPU backend was not touched and could not be
 measured: `navigator.gpu` is absent from every browser build on the one machine, flags included, so

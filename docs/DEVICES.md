@@ -38,6 +38,50 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-14, Linux, the two backends agree to the channel on a depth kept at the colour's sample count
+
+**Item 21's last open line, taken with Siva at the machine.** The item built a multisampled depth
+into the WebGL 2 backend and added `core-multisample-depth` to the cross-backend list, and until this
+run the two backends had never been compared on it anywhere but a software renderer. **They agree
+exactly.**
+
+```
+core-multisample-depth  hard jumps 12447 against 12447, worst 0, 0 of 1,440,000 channels differ
+```
+
+Zero channels differing at worst zero, against a tolerance of 8 — the reading every other compared
+preset gets except `core-texture`, which stays at 40 at worst 1. The hard-jump counts match as well,
+which is the separate reading: it counts how many pixels sit on a step rather than a gradient, so two
+pictures agreeing on the channels but drawing one edge as a staircase would differ here. They are the
+same number, so the crossing edge the depth test creates is averaged on both backends rather than on
+one.
+
+**The whole gate, on `nvidia / blackwell`: 37 PASS and 0 FAIL**, the adapter reporting 18 features
+and a 0.3 GiB buffer ceiling, WebGL 2 in the same browser reporting `ANGLE (NVIDIA Corporation,
+NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL 4.5.0)`. **That 37 against the 35 of 2026-09-12 is the gate
+growing and not a reading improving**: item 21's preset adds one corpus draw and one cross-backend
+comparison. Eleven presets are compared across the two backends now and every one reads 0 of
+1,440,000 at worst 0, `core-texture` excepted at 40 and worst 1. The widened-exemption list is empty.
+
+```
+core-multisample-depth on the card   153,064 of 480,000 pixels lit
+```
+
+Two pixels short of the 153,066 SwiftShader lit under `gates/corpus.mjs`, which is two backends'
+worth of rasteriser disagreeing about two edge pixels and not a difference between the two backends
+here — those differ by zero.
+
+**What this row closes.** Item 21 built a capability on the strength of a raw-WebGL 2 reading with
+none of this package in the path, and the honest gap was that nothing had compared what this package
+then drew with it. This is that comparison, and the item closes on it.
+
+**What this row cannot say.** One machine, one driver, one day, and one preset for this capability.
+It says the two backends agree on a four-sample depth beside a four-sample colour at 800x600 on a
+5080; it says nothing about another count, another format — `DEPTH24_STENCIL8` is built by the same
+line and drawn by no preset — or another card.
+
+---
+
 ### 2026-09-14, Linux, three devices say a multisampled depth renderbuffer completes, and tests
 
 **Item 21's step 2, which no unattended session can take.** Taken by Siva on this machine with a
