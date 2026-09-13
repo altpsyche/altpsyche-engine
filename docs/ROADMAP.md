@@ -321,6 +321,40 @@ and the three could be more. **What may not change it is a dependant asking for 
 is the rule at the top of `CLAUDE.md` and is why the paragraph above separates when a thing is
 published from whether it is built.
 
+### Released on 2026-09-14: `v0.6.0`, one item's worth, and the scope was read off `git log`
+
+**Item 21 was the whole of it.** Siva said to cut, tag and publish after the card gate closed the
+item's last line. `git log v0.5.0..HEAD` was **13 commits**, of which eight are documents — the
+`0.5.0` release corrections, the layer bound and its ruling, item 15's step 3, the re-taken baseline,
+and item 21's own opening and step 2 entries — and five carry the work. **That reading was taken off
+`git log` and not off this file's cut order**, which is the lesson three earlier rows paid for; this
+time there was no plan to be overtaken, the item having opened and closed inside two days.
+
+**Minor rather than patch, and Siva's call.** The cut-order table above would have made it a patch:
+frames that threw now draw, which no caller can have relied on, and the door carries the same **73
+run-time names** it carried at `0.5.0` with none added, removed or moved. Siva chose the middle
+number, which `CHANGELOG.md`'s own first paragraph supports — that number carries feature additions,
+and a backend gaining a capability is one. **The one thing that does break is a refusal message**: a
+pass whose attachments disagree about their sample count is refused in a new wording from
+`graph/validate.ts`, so a caller matching on refusal text rather than reading it is reached.
+
+The release ran in CI from the tag through `.github/workflows/publish.yml`, dispatched with
+`gh workflow run publish.yml --ref v0.6.0`, run `34778039807`, and the run's own gates were green on
+the published commit: `npm test`, `gate:browser` and `gate:pack` all ran before the publish step.
+**Read back off the registry rather than off the run**, which is the reading `0.5.0`'s entry says
+matters: `latest` is `0.6.0`, the published `exports` carries both doors, `npm audit signatures`
+reports a verified registry signature and a verified attestation, and the SLSA provenance names
+repository `altpsyche/altpsyche-engine`, workflow `.github/workflows/publish.yml`, ref
+`refs/tags/v0.6.0` and commit `cb75ea6`.
+
+**What it costs the one dependant.** `@altpsyche/maths` at 2.8.0 declares this package at `^0.4.0`
+twice and the `peerDependency` is the one that costs. It was already behind `0.5.0`, so this cut adds
+no new unmet peer — it moves the range that package will eventually widen to from `^0.5.0` to
+`^0.6.0` and nothing more.
+
+**Nothing here authorises the next one.** `CLAUDE.md` is unchanged: a tag reaching the remote and a
+publish are asked for in the session, every time, and a published version cannot be withdrawn.
+
 ### Released on 2026-09-12: `v0.5.0`, and it carries every item in this file
 
 **Every item on this roadmap was landed or closed by 2026-09-12**, item 20 being the last, so the
