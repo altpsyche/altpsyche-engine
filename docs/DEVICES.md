@@ -30,6 +30,13 @@ second counts as a success in any two-state reading. The adapter architecture is
 **not** to be `swiftshader`, since `--enable-unsafe-webgpu` reports a software renderer that a
 reading trusting the adapter's own name would record as hardware.
 
+**A row is pasted from the gate's own stdout and never retyped from a summary of it.** That applies
+to `npm run device-report` and to `npm run gate:card` alike, and it is written down because a row
+here was once written from prose about a run rather than from the run: it lost two words off a
+renderer string and counted twenty-two presets where the gate draws twenty. Neither error is visible
+to a reader who does not have the machine, which is what makes the rule worth a sentence — a
+transcription slip and a real change read identically from this side of the handover.
+
 ## Readings
 
 The two software-renderer rows are **transcribed from measurements recorded during
@@ -50,21 +57,29 @@ was taken twice and read identically both times.
 
 ```
 adapter     nvidia / blackwell, 18 adapter features, 0.3 GiB buffer ceiling
-WebGL 2     ANGLE (NVIDIA Corporation, RTX 5080/PCIe/SSE2, OpenGL 4.5.0)
+WebGL 2     ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL 4.5.0)
 display     X11 on :0, which is what the gate's own flags need
 whole gate  37 PASS, 0 FAIL, 0 SKIP
 ```
 
-**The WebGL 2 string is quoted as it was handed over.** The rows above this one record it as `ANGLE
-(NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL 4.5.0)`, two words longer. A
-transcription losing two words and a driver renaming itself look the same from here, so this row
-does not claim which happened.
+**Every figure below is pasted from the second run's stdout**, which is how this row is taken and
+why the section above now says so. The first version of this row was written from a prose summary of
+the same run and carried two errors that the stdout does not: a renderer string two words short, and
+a preset count of twenty-two where the gate draws twenty.
 
 **37 against the 37 of 2026-09-14, and the figures under it are the same figures.** That is the
 whole point of the row rather than a disappointment in it: `0.6.1` added no fixture, so the gate did
 not grow, and it changed one refusal's wording on a path a card never takes, so the pictures should
 not have moved. They did not. **A release can now say that its own tree was drawn on a card**, which
 is a thing `0.6.1` could not say on the day it was cut.
+
+**Both 37s are `gate:card` on this same adapter, so this is a card read against a card and not a
+card read against a software renderer.** The row says nothing moved, and what it means is that one
+driver drew the same corpus the same way at two trees. The comparison that *would* say something
+about the ground under the reading — a real driver refusing limits, formats and alignments
+SwiftShader accepts, which is `gates/card.mjs`'s own header saying a corpus that draws headless is
+not a corpus that draws — is against `gate:browser`, and it is not made here. What that header buys
+is already bought by the gate passing at all; it is not bought again by two passes agreeing.
 
 **Eleven presets compared across the two backends**, of 1,440,000 channels each:
 
@@ -86,7 +101,8 @@ Ten of the eleven agree channel for channel at worst 0. `core-texture`'s 40 of 1
 is the figure this file has carried since 2026-09-11 and is not new here. The gradient check reads
 hard jumps 0 against 0, worst 0, 0 of 1,440,000 differing, and the widened-exemption list is empty.
 
-**Pixels lit of 480,000, drawing on the card alone:**
+**All twenty presets the gate draws, in gate order, pixels lit of 480,000, drawing on the card
+alone:**
 
 ```
 core-compute 480,000      core-texture 480,000      core-state 480,000
@@ -98,15 +114,13 @@ core-report 270,400       core-stencil 188,356      core-count 480,000
 core-scene 91,571         core-draw-list 78,215     core-material 84,933
 ```
 
-**That is twenty names and the run reported twenty-two drawn.** Two were not transcribed in the
-handover, so this row does not have them and does not guess at them. The twenty-two is the gate's
-own count and the twenty is this file's.
-
 **The four checks that are not a pixel count**, each as it was reported:
 
 ```
 the canvas shows what readPixels reads   0 of 1,920,000 differ, worst 0; turned over,
                                          1,245,602 differ, so the row-direction control holds
+                                         on screen  top 221,173,121,255  bottom 119,142,178,255
+                                         readPixels top 221,173,121,255  bottom 119,142,178,255
 a figure whose geometry moves redraws    one program for both frames: true;
                                          86,400 left / 0 right, then 0 / 86,400
 a live surface reads itself back         480,000 of 480,000 are the drawn colour, worst
@@ -119,25 +133,37 @@ on a real card never meets the new refusal. It has read that way since 2026-09-1
 time it has read that way on the tree that carries the refusal.
 
 **Reported and never gated**, carried here because it is a card's number and no unattended run can
-take it:
+take it. **Both runs are given, because these are the only figures in this row that moved between
+them:**
 
 ```
-presentation step, 800x600, 200 frames x 5 rounds interleaved
-  straight to the canvas   0.0019 ms a frame
-  offscreen then copied    0.0127
-  offscreen then flipped   0.0153
-  so the copy costs 0.0108 and the flip adds 0.0026
+presentation step, 800x600, 200 frames x 5 rounds     run 1     run 2
+  straight to the canvas                              0.0019    0.0022  ms a frame
+  offscreen then copied                               0.0127    0.0124
+  offscreen then copied turned over                   0.0153    0.0142
+  so the copy costs                                   0.0108    0.0102
+  and the flip adds                                   0.0026    0.0018
 
 a thousand objects, 800x600, 120 frames after a warm one
-  p50 1.20 ms, p95 3.00 ms, p99 12.40 ms — draw plus a full readback
+  p50                                                 1.20      1.20    ms
+  p95                                                 3.00      1.70
+  p99                                                12.40      3.80
 
 a live surface through a 2D context   alpha 0 at the centre, which is why Surface.read() exists
 ```
 
-The p99 of 12.40 ms is a readback stall and not a frame time, which is the same caveat the
-2026-09-11 row's 198.50 ms carries. **The two p99s are not comparable as a trend**: different day,
-different tree, and nothing here establishes that a stall got shorter rather than that a run missed
-one.
+**Two runs, minutes apart, same tree, same card: the p99 moved by better than three times and the
+p95 by nearly two, while every gated figure above is identical and the p50 did not move at all.**
+That is the reading, and it is a reading about the numbers rather than about the machine. **p50 is
+the only figure here a single run establishes.** The p95 and the p99 are one sample each per run and
+this row does not average them, pick the friendlier one, or call the difference a warm cache — the
+likeliest story is a first run paying for a cold compositor or shader cache, and two samples cannot
+tell that from noise.
+
+The p99 is a readback stall and not a frame time, which is the same caveat the 2026-09-11 row's
+198.50 ms carries. **That 198.50 against either of these is not a trend**: different day, different
+tree, and a quantity that moves three times between two runs of the same gate is not one a
+month-apart comparison can say anything about.
 
 **What this row cannot say.** One machine, one driver, one day, and a reading nobody else can
 reproduce without that machine. It says nothing about AMD, Intel or Apple drivers, nothing about
