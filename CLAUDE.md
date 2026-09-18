@@ -83,6 +83,12 @@ would change the answer. That belongs in the commit message.
   built from. A local `npm publish` would break that chain even where it succeeded. `gh workflow run
   publish.yml --ref <tag>` is the whole of it once Siva has said to go.
 - One item per commit, except where an item's own text says it goes alone.
+- **A release commit says what `gate:card` read at the tree being tagged, or says that no card read
+  it.** `0.6.1` shipped without a reading and said so, which was honest and left the released tree
+  unread; the run taken by hand afterwards is the 2026-09-19 row in [docs/DEVICES.md](docs/DEVICES.md).
+  The rule is not that a release needs a card — CI has no display and no card, so that rule could not
+  be kept — it is that the omission is stated. [CONTRIBUTING.md](CONTRIBUTING.md) carries the
+  reasoning under what a release owes a card.
 
 ## Standing refusals
 

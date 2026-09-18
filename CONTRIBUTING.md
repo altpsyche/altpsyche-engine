@@ -92,6 +92,31 @@ number from another machine. If a claim needs a measurement, take it or say you 
 **Name what a gate could not see.** A green gate over a picture that cannot move by construction
 proves less than it looks like. One honest line, in the commit message.
 
+## What a release owes a card
+
+**A release commit says what `gate:card` read at the tree being tagged, or says that no card read
+it.** One of those two lines is in the message, naming the adapter and the PASS/FAIL where there is
+a reading, and naming what is left unread where there is not. Added on 2026-09-19, after `0.6.1`
+shipped without a card reading and a run taken by hand afterwards found nothing had moved — the
+release was honest about the gap and the gap was still open, because nothing asked.
+
+**The rule is not "a release needs a card reading", and that is deliberate.** `gate:card` needs a
+desktop session, a real display and a graphics card. The release runs in CI from a tag, and CI has
+none of those by construction, so a rule demanding a reading per release is a rule the release
+process cannot keep — and a rule that cannot be kept is broken in silence, which is worse than the
+gap it was written for. What *can* be kept is that the omission is stated rather than absent, which
+turns an unread release from something nobody noticed into something someone decided.
+
+**Where `git diff <last tag>..HEAD` touches `host/` or `gpu/`, a reading is wanted and a sentence is
+the fallback.** That is the code a card is the only honest reader of: every other gate in this
+repository draws under the software renderer. A release changing the path to a device and carrying
+no card reading is a decision, and it is written down as one.
+
+**What would change the answer**, and what reverses this: a `gate:card` that could run unattended
+would make the sentence-fallback unnecessary, and the rule would become the stricter one. Nothing
+here is enforced by a gate — no gate can read a commit message — so this section is a habit written
+down, and deleting it costs nothing but the habit.
+
 ## How work is tracked
 
 **In [`docs/ROADMAP.md`](docs/ROADMAP.md) and in commit messages.** The roadmap is the queue: it
