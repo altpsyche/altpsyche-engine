@@ -93,6 +93,16 @@ in the same browser reporting `ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 508
 1,440,000 channels differing at worst 0**, `core-texture` excepted at 40 and worst 1, and the
 widened-exemption list is empty. The row is in [DEVICES.md](DEVICES.md).
 
+**That card line was re-taken again on 2026-09-19, at the released `0.6.1` tree and not at this
+baseline's.** `0.6.1` was cut without it and said so, which was honest and left the released tree
+unread by any card. It is read now: **37 PASS and 0 FAIL** on the same `nvidia / blackwell`, eleven
+presets compared across the backends with ten at 0 of 1,440,000 differing and `core-texture` at 40
+at worst 1, the widened-exemption list empty. **37 against 2026-09-14's 37 is the gate standing
+still, which is what a fix release touching no fixture and no card path should read.** The row, with
+the pixel counts and the timings no gate asserts, is in [DEVICES.md](DEVICES.md). What it does not
+do is stop the next version being cut unread, and that is answered in
+[CONTRIBUTING.md](../CONTRIBUTING.md) under what a release owes a card.
+
 **That 35 is the same reading as the 34 item 20's entry recorded and not a gate that grew**: this
 count includes `PASS the adapter is the card`, the header check, and that entry's did not. Nothing
 was added to `gates/card.mjs` between them. **The earlier figure of 22 of 22 from 2026-09-11 is the

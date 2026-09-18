@@ -38,6 +38,117 @@ field names are `probe()`'s. Both came from a software renderer: that machine's 
 card is reachable through WebGL 2 but not, headless, through a WebGPU adapter. This is exactly
 why the three-state reading and the SwiftShader assertion exist.
 
+### 2026-09-19, Linux, the released `0.6.1` tree is read on a card, and not one number moved
+
+**This is the reading `0.6.1` shipped without.** That release's own message said so plainly:
+`gate:card` was not re-taken, because the arm its refusal exists for is one a real card does not
+have, and every browser gate in the run was a software renderer's. The run below was taken
+afterwards, by hand, on a machine with a card and a display, against the released tree `84889ba`
+with `node_modules` as installed. **It is carried here, not re-measured**: the session writing this
+row has no display, and every headless launch it could make reaches the software renderer. The run
+was taken twice and read identically both times.
+
+```
+adapter     nvidia / blackwell, 18 adapter features, 0.3 GiB buffer ceiling
+WebGL 2     ANGLE (NVIDIA Corporation, RTX 5080/PCIe/SSE2, OpenGL 4.5.0)
+display     X11 on :0, which is what the gate's own flags need
+whole gate  37 PASS, 0 FAIL, 0 SKIP
+```
+
+**The WebGL 2 string is quoted as it was handed over.** The rows above this one record it as `ANGLE
+(NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL 4.5.0)`, two words longer. A
+transcription losing two words and a driver renaming itself look the same from here, so this row
+does not claim which happened.
+
+**37 against the 37 of 2026-09-14, and the figures under it are the same figures.** That is the
+whole point of the row rather than a disappointment in it: `0.6.1` added no fixture, so the gate did
+not grow, and it changed one refusal's wording on a path a card never takes, so the pictures should
+not have moved. They did not. **A release can now say that its own tree was drawn on a card**, which
+is a thing `0.6.1` could not say on the day it was cut.
+
+**Eleven presets compared across the two backends**, of 1,440,000 channels each:
+
+```
+core-texture            hard jumps 0 v 0          worst 1   40 differ
+core-scissor            hard jumps 4254 v 4254    worst 0    0 differ
+core-blend              hard jumps 4006 v 4006    worst 0    0 differ
+core-target             hard jumps 26856 v 26856  worst 0    0 differ
+core-mips               hard jumps 7731 v 7731    worst 0    0 differ
+core-multisample-depth  hard jumps 12447 v 12447  worst 0    0 differ
+core-stencil            hard jumps 2712 v 2712    worst 0    0 differ
+core-count              hard jumps 2102 v 2102    worst 0    0 differ
+core-scene              hard jumps 8234 v 8234    worst 0    0 differ
+core-draw-list          hard jumps 7895 v 7895    worst 0    0 differ
+core-material           hard jumps 7527 v 7527    worst 0    0 differ
+```
+
+Ten of the eleven agree channel for channel at worst 0. `core-texture`'s 40 of 1,440,000 at worst 1
+is the figure this file has carried since 2026-09-11 and is not new here. The gradient check reads
+hard jumps 0 against 0, worst 0, 0 of 1,440,000 differing, and the widened-exemption list is empty.
+
+**Pixels lit of 480,000, drawing on the card alone:**
+
+```
+core-compute 480,000      core-texture 480,000      core-state 480,000
+core-geometry 129,600     core-perdraw 115,267      core-perdraw-uniform 112,896
+core-depth 245,496        core-scissor 480,000      core-blend 158,400
+core-target 248,832       core-mips 479,958         core-multisample 87,477
+core-multisample-depth 153,064                      core-indirect 480,000
+core-report 270,400       core-stencil 188,356      core-count 480,000
+core-scene 91,571         core-draw-list 78,215     core-material 84,933
+```
+
+**That is twenty names and the run reported twenty-two drawn.** Two were not transcribed in the
+handover, so this row does not have them and does not guess at them. The twenty-two is the gate's
+own count and the twenty is this file's.
+
+**The four checks that are not a pixel count**, each as it was reported:
+
+```
+the canvas shows what readPixels reads   0 of 1,920,000 differ, worst 0; turned over,
+                                         1,245,602 differ, so the row-direction control holds
+a figure whose geometry moves redraws    one program for both frames: true;
+                                         86,400 left / 0 right, then 0 / 86,400
+a live surface reads itself back         480,000 of 480,000 are the drawn colour, worst
+                                         channel 0, loop still running, null after dispose
+a GLSL frame selects WebGL 2             webgpu offered: true, chose webgl2, 480,000 lit
+```
+
+The live-surface line is the one `0.6.1`'s changelog entry leans on when it says that a page drawing
+on a real card never meets the new refusal. It has read that way since 2026-09-12; this is the first
+time it has read that way on the tree that carries the refusal.
+
+**Reported and never gated**, carried here because it is a card's number and no unattended run can
+take it:
+
+```
+presentation step, 800x600, 200 frames x 5 rounds interleaved
+  straight to the canvas   0.0019 ms a frame
+  offscreen then copied    0.0127
+  offscreen then flipped   0.0153
+  so the copy costs 0.0108 and the flip adds 0.0026
+
+a thousand objects, 800x600, 120 frames after a warm one
+  p50 1.20 ms, p95 3.00 ms, p99 12.40 ms — draw plus a full readback
+
+a live surface through a 2D context   alpha 0 at the centre, which is why Surface.read() exists
+```
+
+The p99 of 12.40 ms is a readback stall and not a frame time, which is the same caveat the
+2026-09-11 row's 198.50 ms carries. **The two p99s are not comparable as a trend**: different day,
+different tree, and nothing here establishes that a stall got shorter rather than that a run missed
+one.
+
+**What this row cannot say.** One machine, one driver, one day, and a reading nobody else can
+reproduce without that machine. It says nothing about AMD, Intel or Apple drivers, nothing about
+mobile, and nothing about the refusal `0.6.1` added — the browser this ran in never spends its
+device, which is exactly why the release shipped without this reading in the first place. And it
+closes `0.6.1` only. It does not stop the next version being cut from a tree no card has touched,
+which is a process question and is answered in [CONTRIBUTING.md](../CONTRIBUTING.md) rather than
+here.
+
+---
+
 ### 2026-09-14, Linux, the two backends agree to the channel on a depth kept at the colour's sample count
 
 **Item 21's last open line, taken with Siva at the machine.** The item built a multisampled depth
