@@ -62,8 +62,9 @@ display     X11 on :0, which is what the gate's own flags need
 whole gate  37 PASS, 0 FAIL, 0 SKIP
 ```
 
-**Every figure below is pasted from the second run's stdout**, which is how this row is taken and
-why the section above now says so. The first version of this row was written from a prose summary of
+**Every figure below is pasted from a run's own stdout**, which is how this row is taken and why
+the section above now says so: the corpus and comparison figures from the second of the two runs at
+this tree, and the timings from the five later runs named beside them. The first version of this row was written from a prose summary of
 the same run and carried two errors that the stdout does not: a renderer string two words short, and
 a preset count of twenty-two where the gate draws twenty.
 
@@ -132,66 +133,61 @@ The live-surface line is the one `0.6.1`'s changelog entry leans on when it says
 on a real card never meets the new refusal. It has read that way since 2026-09-12; this is the first
 time it has read that way on the tree that carries the refusal.
 
+**The gated part of this gate is deterministic on this adapter, and five runs are what says so.**
+`gate:card` was run five times back to back on the same machine, and every line of every run with
+the two timing blocks removed is byte-identical to run 1's: every pixel count, every hard-jump pair,
+every channel difference, the adapter line and the renderer string, 37 PASS and exit 0 each time.
+**One run could not have said that.** It was taken at `de91405` rather than at `84889ba` above, and
+`git diff 84889ba..de91405` is `CLAUDE.md`, `CONTRIBUTING.md`, `docs/DEVICES.md` and
+`docs/ROADMAP.md` — four documents, no source, no gate, no manifest — so the gate path is the same
+bytes and the corpus figures are the ones already listed.
+
 **Reported and never gated**, carried here because it is a card's number and no unattended run can
-take it. **Both runs are given, because these are the only figures in this row that moved between
-them:**
+take it. **Every sample is given and none is summarised**, because the tail below is not a quantity
+a summary would survive:
 
 ```
-presentation step, 800x600, 200 frames x 5 rounds     run 1     run 2
-  straight to the canvas                              0.0019    0.0022  ms a frame
-  offscreen then copied                               0.0127    0.0124
-  offscreen then copied turned over                   0.0153    0.0142
-  so the copy costs                                   0.0108    0.0102
-  and the flip adds                                   0.0026    0.0018
+presentation step, 800x600, 200 frames x 5 rounds     five runs at de91405       range
+  straight to the canvas      0.0017  0.0021  0.0020  0.0020  0.0022  ms a frame  0.0017-0.0022
+  offscreen then copied       0.0126  0.0124  0.0127  0.0124  0.0125              0.0124-0.0127
+  offscreen then flipped      0.0147  0.0150  0.0148  0.0153  0.0159              0.0147-0.0159
+  so the copy costs           0.0109  0.0103  0.0107  0.0104  0.0103              0.0103-0.0109
+  and the flip adds           0.0021  0.0026  0.0021  0.0029  0.0034              0.0021-0.0034
 
 a thousand objects, 800x600, 120 frames after a warm one
-  p50                                                 1.20      1.20    ms
-  p95                                                 3.00      1.70
-  p99                                                12.40      3.80
+  p50                         1.30    1.30    1.20    1.30    1.20    ms          1.20-1.30
+  p95                         1.60    1.60    1.50    1.50    3.20                1.50-3.20
+  p99                         1.70    3.50    1.50    3.60    12.30               1.50-12.30
 
 a live surface through a 2D context   alpha 0 at the centre, which is why Surface.read() exists
 ```
 
-**Two runs, minutes apart, same tree, same card: the p99 moved by better than three times and the
-p95 by nearly two, while every gated figure above is identical and the p50 did not move at all.**
-That is the reading, and it is a reading about the numbers rather than about the machine. **p50 is
-the only figure here a single run establishes.** The p95 and the p99 are one sample each per run and
-this row does not average them, pick the friendlier one, or call the difference a warm cache — the
-likeliest story is a first run paying for a cold compositor or shader cache, and two samples cannot
-tell that from noise.
+**Two earlier runs at `84889ba` read p50 1.20 and 1.20, p95 3.00 and 1.70, p99 12.40 and 3.80.**
+They are the same quantity on the same card and they widen the p99's top to 12.40. Seven samples,
+then, and the ranges are what the row publishes.
+
+**The copy the presentation step costs holds inside 6 per cent across five runs, and the flip ranges
+over 60 per cent of its own smallest value.** The flip is the smallest quantity the gate reports, so
+that is the expected shape and not a finding about the flip.
+
+**`p50` is solid and `p99` is not a quantity.** Five consecutive runs put the p99 between 1.50 and
+12.30 — better than eight times — with nothing the gate reports distinguishing one run from another,
+while the p50 sits inside 0.10 ms across all five. **A p99 from this gate says what else the machine
+was doing**, most likely a compositor, another client or the scheduler landing on one run in five,
+and it is published here as five samples and a range precisely because a single figure from it would
+read as a regression the next time anyone quoted it against another row. **A median of the five is
+not published either**: it would look like a measurement and would hide that one run in five is
+eight times the others.
+
+**The cold-cache explanation this row carried on 2026-09-19 is withdrawn.** It said the likeliest
+story for a large tail was a first run paying for a cold compositor or shader cache. The largest
+tail of the five came *last*, on a hot machine after four runs, so whatever produces it is not
+first-run cost. Two samples could not tell that story from noise and five say it is the wrong story.
 
 The p99 is a readback stall and not a frame time, which is the same caveat the 2026-09-11 row's
-198.50 ms carries. **That 198.50 against either of these is not a trend**: different day, different
-tree, and a quantity that moves three times between two runs of the same gate is not one a
-month-apart comparison can say anything about.
-
-**What this row cannot say.** One machine, one driver, one day, and a reading nobody else can
-reproduce without that machine. It says nothing about AMD, Intel or Apple drivers, nothing about
-mobile, and nothing about the refusal `0.6.1` added — the browser this ran in never spends its
-device, which is exactly why the release shipped without this reading in the first place. And it
-closes `0.6.1` only. It does not stop the next version being cut from a tree no card has touched,
-which is a process question and is answered in [CONTRIBUTING.md](../CONTRIBUTING.md) rather than
-here.
-
----
-
-### 2026-09-14, Linux, the two backends agree to the channel on a depth kept at the colour's sample count
-
-**Item 21's last open line, taken with Siva at the machine.** The item built a multisampled depth
-into the WebGL 2 backend and added `core-multisample-depth` to the cross-backend list, and until this
-run the two backends had never been compared on it anywhere but a software renderer. **They agree
-exactly.**
-
-```
-core-multisample-depth  hard jumps 12447 against 12447, worst 0, 0 of 1,440,000 channels differ
-```
-
-Zero channels differing at worst zero, against a tolerance of 8 — the reading every other compared
-preset gets except `core-texture`, which stays at 40 at worst 1. The hard-jump counts match as well,
-which is the separate reading: it counts how many pixels sit on a step rather than a gradient, so two
-pictures agreeing on the channels but drawing one edge as a staircase would differ here. They are the
-same number, so the crossing edge the depth test creates is averaged on both backends rather than on
-one.
+198.50 ms carries. **That 198.50 is not comparable with any of these**: different day, different
+tree, and a figure that moves eight times between consecutive runs of one gate carries no trend at
+all.
 
 **The whole gate, on `nvidia / blackwell`: 37 PASS and 0 FAIL**, the adapter reporting 18 features
 and a 0.3 GiB buffer ceiling, WebGL 2 in the same browser reporting `ANGLE (NVIDIA Corporation,
