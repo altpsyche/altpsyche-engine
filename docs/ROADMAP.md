@@ -2990,6 +2990,11 @@ and it evicts sixteen programs' worth of card resources while missing.** The com
 says "a false miss only recompiles"; the reading is that a false miss is the *normal* case for a
 picture whose geometry moves, which is a different claim from the one that comment is making.
 
+**A consumer is waiting on this one, which is what picks it out of the unblocked eight.**
+`altpsyche.dev` has a figure painter on a card that is landed, working and drawn by nothing, because
+the page it would draw on is five times slower than the SVG painter it replaces. That site's own step
+is held until this item names where the time goes.
+
 **The consumer measured it on a card on 2026-09-20 and the predicted symptom is not there.**
 `altpsyche.dev` drew a figure of 1,688 marks on a page through `paintGpu` on WebGL 2, on a window on
 a real card, and counted the calls over 60 animating frames: **1 `drawArraysInstanced`, 1
