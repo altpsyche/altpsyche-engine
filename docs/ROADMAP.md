@@ -2990,6 +2990,22 @@ and it evicts sixteen programs' worth of card resources while missing.** The com
 says "a false miss only recompiles"; the reading is that a false miss is the *normal* case for a
 picture whose geometry moves, which is a different claim from the one that comment is making.
 
+**The consumer measured it on a card on 2026-09-20 and the predicted symptom is not there.**
+`altpsyche.dev` drew a figure of 1,688 marks on a page through `paintGpu` on WebGL 2, on a window on
+a real card, and counted the calls over 60 animating frames: **1 `drawArraysInstanced`, 1
+`bufferSubData` and 3 `useProgram` a frame, and 0 programs created or linked**. `JSON.stringify` ran
+**2.07 times a frame over 3,759 characters at 0.0 ms**, so nothing serialised a `VertexResource`'s
+bytes on that path either. So on a moving picture drawn through the WebGL 2 backend the cache hits
+and the key costs nothing, which is the opposite of what reading the code predicted.
+
+**What that reading did find is a cost, and it is not in the cache.** The same figure draws at
+**83.3 ms a frame against an SVG painter's 16.7**, and the same canvas at 133 marks draws at 16.7
+either way, so the cost follows the marks rather than the canvas's pixels. The consumer's own two
+calls are 4.3 ms and 6.0 ms for those marks, and one draw call of 3,376 triangles is nothing for a
+card, which leaves about **66 ms a frame inside `renderer.draw`** with no name on it. **So step 1
+below is still owed**, and what it has to find is where those milliseconds go rather than how much a
+recompile costs.
+
 ### Steps
 
 1. **Measure it here, before changing anything.** A node test building sixty frames of one figure's
