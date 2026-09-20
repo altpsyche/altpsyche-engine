@@ -2990,10 +2990,11 @@ and it evicts sixteen programs' worth of card resources while missing.** The com
 says "a false miss only recompiles"; the reading is that a false miss is the *normal* case for a
 picture whose geometry moves, which is a different claim from the one that comment is making.
 
-**A consumer is waiting on this one, which is what picks it out of the unblocked eight.**
-`altpsyche.dev` has a figure painter on a card that is landed, working and drawn by nothing, because
-the page it would draw on is five times slower than the SVG painter it replaces. That site's own step
-is held until this item names where the time goes.
+**The consumer's slow page was not this package's, and the line claiming it was is withdrawn.**
+`altpsyche.dev` drew a figure at 83.3 ms a frame against an SVG painter's 16.7 and the cost was in
+`@altpsyche/maths`, whose `gpuFrame` flattened every curve ten times finer than the picture could
+show: 104,656 triangles where a fifth of a pixel as drawn is 23,632. That package fixed it at 3.0.2
+and the same page now draws at 16.7. Nothing is waiting on this item from over there.
 
 **The consumer measured it on a card on 2026-09-20 and the predicted symptom is not there.**
 `altpsyche.dev` drew a figure of 1,688 marks on a page through `paintGpu` on WebGL 2, on a window on
@@ -3003,13 +3004,10 @@ a real card, and counted the calls over 60 animating frames: **1 `drawArraysInst
 bytes on that path either. So on a moving picture drawn through the WebGL 2 backend the cache hits
 and the key costs nothing, which is the opposite of what reading the code predicted.
 
-**What that reading did find is a cost, and it is not in the cache.** The same figure draws at
-**83.3 ms a frame against an SVG painter's 16.7**, and the same canvas at 133 marks draws at 16.7
-either way, so the cost follows the marks rather than the canvas's pixels. The consumer's own two
-calls are 4.3 ms and 6.0 ms for those marks, and one draw call of 3,376 triangles is nothing for a
-card, which leaves about **66 ms a frame inside `renderer.draw`** with no name on it. **So step 1
-below is still owed**, and what it has to find is where those milliseconds go rather than how much a
-recompile costs.
+**The cost that reading chased turned out to be the consumer's own**, at a tolerance its page never
+named, so the 66 ms it could not account for was flattening rather than anything here. **So step 1
+below is still owed on its own merits**: what a false miss costs is unmeasured, and the measurement
+above says only that a moving picture on WebGL 2 is not missing.
 
 ### Steps
 
