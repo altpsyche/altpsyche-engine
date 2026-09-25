@@ -11,7 +11,7 @@ because a piece of work with no place to be written down is a piece of work that
 done twice. A piece of work is filed where the thing it changes lives, which is the rule the
 consuming site recorded as its D118 and which put this file here in the first place.
 
-**What is open, as of 2026-09-14: nothing.** The queue has emptied three times now — item 20 closed
+**What is open, as of 2026-09-26: item 22**, a clock a caller can move. Before it, as of 2026-09-14, nothing was open. The queue has emptied three times now — item 20 closed
 it on 2026-09-12, the layer bound closed it again the same day, and **item 21 opened it on 2026-09-13
 and closed it on 2026-09-14**, all five steps and the card reading its last line wanted. The five
 ruled candidates and the four standing ideas further down are still ideas and not items, and picking
@@ -4123,6 +4123,36 @@ cut anything on its own** — `git log <last tag>..HEAD` decides that, which is 
 the cut order paid for.
 
 ---
+
+## Item 22 — a live surface's clock can be paused and cannot be moved
+
+**Opened on 2026-09-26.** `host/surface.ts` owns the clock a live shader is drawn at: `elapsed`
+advances only while the surface runs, and `start()` and `stop()` are its pause. There is no way to
+set it and no way to read it. A caller that wants a picture at a chosen time — a timeline a reader
+scrubs, a frame captured at a given second for a figure or a test, a shader stepped back to look at
+what it did — has to keep a second clock of its own and feed that through `uniforms` instead of the
+`elapsed` it is handed, and the two part the first time this file freezes its clock for a paused
+canvas. **The reason stands on the package's own merits**: the edge is already occupied by this
+file, as the candidates below record for animation, so a clock a caller cannot move is a clock half
+built rather than a feature a consumer asked for.
+
+### Steps
+
+1. **`Surface.seek(seconds)` and `Surface.elapsed`.** Seek sets the clock; a stopped surface draws
+   one frame at it straight away, as `resize` does, and a running one carries on from it at the next
+   tick. `elapsed` reads the clock. A number that is not finite is refused and leaves the clock
+   where it was. Quotes the node tests added and the suite's total.
+2. **Release it as `0.7.0`**, a feature release, with its changelog entry and the baseline re-taken,
+   and a card reading or a sentence saying none was taken, since `host/` is touched.
+
+### Done when
+
+- A stopped surface seeked to a time draws exactly one frame, at that time, and queues no animation
+  frame.
+- A running surface seeked to a time draws its next frame at that time plus the frame's delta.
+- `elapsed` reads the clock after a seek and after frames.
+- A non-finite seek throws and leaves the clock unchanged.
+- A seek on a surface whose card has gone, or that was disposed, draws nothing.
 
 ## What is still to be settled, and it does not block item 1
 
