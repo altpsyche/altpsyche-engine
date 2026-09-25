@@ -4138,7 +4138,9 @@ built rather than a feature a consumer asked for.
 
 ### Steps
 
-1. **`Surface.seek(seconds)` and `Surface.elapsed`.** Seek sets the clock; a stopped surface draws
+1. **Landed on 2026-09-26: `Surface.seek(seconds)` and `Surface.elapsed`.** 5 node tests in
+   `tests/renderer-surface.test.ts`, the suite 1,008 over 85 files; with the stopped surface's
+   redraw removed, 2 of them fail. **As planned:** Seek sets the clock; a stopped surface draws
    one frame at it straight away, as `resize` does, and a running one carries on from it at the next
    tick. `elapsed` reads the clock. A number that is not finite is refused and leaves the clock
    where it was. Quotes the node tests added and the suite's total.

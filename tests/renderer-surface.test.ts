@@ -197,6 +197,64 @@ describe('the clock', () => {
   });
 });
 
+describe('moving the clock', () => {
+  const times = (gpu: Awaited<ReturnType<typeof surfaceOver>>['gpu']) =>
+    gpu.calls('writeBuffer').map((entry) => (entry.data as Float32Array)[0]!);
+
+  it('draws one frame at the time a stopped surface is moved to, and queues none', async () => {
+    const { gpu, surface } = await surfaceOver();
+    surface.seek(42.5);
+
+    expect(times(gpu)).toEqual([42.5]);
+    expect(surface.running).toBe(false);
+    expect(pending).toHaveLength(0);
+  });
+
+  it('carries a running surface on from the time it was moved to', async () => {
+    const { gpu, surface } = await surfaceOver();
+    surface.start();
+    frame(100);
+    frame(1100);
+    surface.seek(5);
+    frame(1116);
+
+    // The seek draws nothing of its own while running; the next tick adds its
+    // 16 ms to the time sought rather than to the time the clock had reached.
+    expect(times(gpu).at(-1)).toBeCloseTo(5.016, 5);
+    expect(times(gpu)).toHaveLength(3);
+  });
+
+  it('reads the clock after a move and after frames', async () => {
+    const { surface } = await surfaceOver();
+    expect(surface.elapsed).toBe(0);
+    surface.seek(-2);
+    expect(surface.elapsed).toBe(-2);
+    surface.start();
+    frame(100);
+    frame(600);
+    expect(surface.elapsed).toBeCloseTo(-1.5, 5);
+  });
+
+  it('refuses a time that is not finite and leaves the clock where it was', async () => {
+    const { gpu, surface } = await surfaceOver();
+    surface.seek(3);
+
+    expect(() => surface.seek(Number.NaN)).toThrow(RangeError);
+    expect(() => surface.seek(Number.POSITIVE_INFINITY)).toThrow(RangeError);
+    expect(surface.elapsed).toBe(3);
+    expect(times(gpu)).toEqual([3]);
+  });
+
+  it('draws nothing once the card has gone or the surface is disposed', async () => {
+    const { gpu, surface } = await surfaceOver();
+    surface.dispose();
+    surface.seek(7);
+
+    expect(surface.elapsed).toBe(7);
+    expect(gpu.calls('writeBuffer')).toHaveLength(0);
+  });
+});
+
 describe('swapping the shader without taking the canvas with it', () => {
   it('draws the new source straight away, since compiling is what says it took', async () => {
     const { gpu, surface } = await surfaceOver();

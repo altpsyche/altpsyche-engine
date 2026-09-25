@@ -108,6 +108,15 @@ the method cannot be stale. It also means **no second canvas and no second rende
 be the only way to get these pixels and is not available at all on WebGL 2, where a canvas that has
 given one context gives the same one back.
 
+**`Surface.seek(seconds)` moves the clock, and `Surface.elapsed` reads it.** The clock is the value
+`uniforms` is handed each frame; it advances only while the surface runs, and `stop()` holds it.
+Seeking a stopped surface draws one frame at the new time straight away, so a paused picture
+scrubbed along a timeline shows each time it is moved to. Seeking a running one draws nothing of its
+own, and the next tick carries on from the time sought. A time that is not finite throws a
+`RangeError` and leaves the clock where it was; a negative time is taken. Keep no clock of your own
+beside it: one fed through `uniforms` in place of `elapsed` keeps counting while a stopped surface
+holds its own still, and the two part.
+
 **`createFrameRenderer` draws through WebGL 2 unless you hand it a WebGPU device**, which is
 `RendererOptions.backend` and `RendererOptions.device` together. That is the primitive's
 contract and not this package's answer to which backend should draw — `openRenderer` is that

@@ -134,6 +134,33 @@ export interface Surface {
    * disposed, so there is nothing to read. See the decision above for why this
    * is a method and not an accessor onto the renderer underneath. */
   read(): Promise<Uint8Array | null>;
+  /**
+   * **Moves the clock to `seconds`**, which is the value `uniforms` is handed on
+   * every frame after it. A stopped surface draws one frame there straight away,
+   * as `resize` does, so a paused picture scrubbed to a time shows that time; a
+   * running one carries on from it at its next tick, adding that frame's delta.
+   *
+   * **Why this and not a clock the caller keeps.** `uniforms` could ignore the
+   * `elapsed` it is handed and read a clock of its own, and that is what a caller
+   * had to do before this existed. It is a second clock over this one, and the
+   * two part the first time this file holds its clock still for a stopped
+   * surface while the caller's keeps counting. The clock is this file's, so
+   * moving it is too.
+   *
+   * **A number that is not finite is refused with a `RangeError`** and the clock
+   * stays where it was: `NaN` reaching a shader draws nothing on one backend and
+   * garbage on the other, and neither says why. A negative time is a time, and is
+   * taken. On a surface whose card has gone, or that was disposed, the clock is
+   * set and nothing is drawn, since there is nothing to draw with.
+   *
+   * **How to reverse it.** Delete this member, `elapsed` below and their
+   * implementations; a caller goes back to keeping its own clock. **What would
+   * change the answer**: a clock that had to be shared between surfaces, which
+   * would make it an object a caller passes in rather than state this one owns.
+   */
+  seek(seconds: number): void;
+  /** The clock, in seconds: what `uniforms` is handed on the next frame. */
+  readonly elapsed: number;
   /** In CSS pixels. What the drawing buffer becomes is this times the resolved
    * density, which is the only place that multiplication happens. */
   resize(width: number, height: number): void;
@@ -294,6 +321,17 @@ export async function createSurface(
     backend: renderer.backend,
     get running() {
       return running;
+    },
+    get elapsed() {
+      return elapsed;
+    },
+    seek(seconds) {
+      if (!Number.isFinite(seconds)) throw new RangeError(`seek takes a finite number of seconds, and was given ${seconds}`);
+      elapsed = seconds;
+      // Drawn straight away while stopped, for the reason `resize` redraws: the
+      // loop is not going to, and a scrubbed picture that does not move is a
+      // scrubber that looks broken.
+      if (!running) drawOne();
     },
     start,
     stop,
