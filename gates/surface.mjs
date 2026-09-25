@@ -287,6 +287,27 @@ const results = await page.evaluate(
         : 'no frame was sampled',
     });
 
+    // A stopped surface moved along its clock, which is a reader scrubbing a
+    // paused picture. The probe's blue is abs(sin(u_time)), so a seek to pi/2
+    // must paint the centre full blue and a seek to 0 none, each in one frame.
+    surface.stop();
+    const beforeSeek = frames;
+    surface.seek(Math.PI / 2);
+    const atQuarter = centre;
+    surface.seek(0);
+    const atZero = centre;
+    const blueAt = (/** @type {string | null} */ at) => Number((at ?? '').split(',')[2]);
+    checks.push({
+      name: 'a stopped surface seeked to a time draws that time, one frame per seek',
+      ok:
+        frames - beforeSeek === 2 &&
+        blueAt(atQuarter) >= 250 &&
+        blueAt(atZero) <= 5 &&
+        surface.elapsed === 0 &&
+        !surface.running,
+      detail: `${frames - beforeSeek} frames for 2 seeks, blue ${blueAt(atQuarter)} at pi/2 and ${blueAt(atZero)} at 0`,
+    });
+
     // The card taken back, simulated. A real one comes from sleep or a driver
     // update, and neither can be arranged in a test.
     const gl = canvas.getContext('webgl2');
