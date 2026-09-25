@@ -9,6 +9,31 @@ carries fixes. A caret range on a `0.x` version tracks the last number alone, so
 `^0.3.0` will not pick up a later `0.4.0`: a consumer moves to a feature release by
 asking for it.
 
+## 0.7.0
+
+**A feature release: a live surface's clock can be moved and read.** No export is added and none
+moves, so no import line changes; `Surface` gains one method and one read-only property. A caret on
+`^0.6.x` will not pick this up, since a `0.x` caret tracks the last number alone.
+
+### Added: `Surface.seek(seconds)` and `Surface.elapsed`
+
+The clock a surface hands `uniforms` each frame advanced only while the surface ran, and `stop()`
+held it, but nothing set it and nothing read it. A caller wanting a picture at a chosen time — a
+timeline a reader scrubs, a frame captured at a given second — kept a second clock and fed it
+through `uniforms` in place of `elapsed`, and that clock kept counting while a stopped surface held
+its own still.
+
+```ts
+surface.stop();
+surface.seek(12.5); // draws one frame at 12.5 seconds, straight away
+surface.elapsed; // 12.5
+surface.start(); // carries on from 12.5
+```
+
+Seeking a stopped surface draws one frame at the new time at once. Seeking a running one draws
+nothing of its own, and its next tick carries on from the time sought. A time that is not finite
+throws a `RangeError` and leaves the clock where it was; a negative time is taken.
+
 ## 0.6.1
 
 **A fix release that changes one sentence and no behaviour.** The door carries the same **73

@@ -11,7 +11,7 @@ because a piece of work with no place to be written down is a piece of work that
 done twice. A piece of work is filed where the thing it changes lives, which is the rule the
 consuming site recorded as its D118 and which put this file here in the first place.
 
-**What is open, as of 2026-09-26: item 22**, a clock a caller can move. Before it, as of 2026-09-14, nothing was open. The queue has emptied three times now — item 20 closed
+**What is open, as of 2026-09-26: nothing.** Item 22, a clock a caller can move, opened and closed that day with `0.7.0`. The queue has emptied three times now — item 20 closed
 it on 2026-09-12, the layer bound closed it again the same day, and **item 21 opened it on 2026-09-13
 and closed it on 2026-09-14**, all five steps and the card reading its last line wanted. The five
 ruled candidates and the four standing ideas further down are still ideas and not items, and picking
@@ -36,10 +36,14 @@ it" is thrown out and replaced by a reason that stands on the package's own meri
 **Where the package stands, as the baseline any item below is measured against.** The renderer is
 built to the whole WebGPU core specification, every capability has a fixture the gates draw, and the
 gates are green: 4 of 4 browser gates, **20 of 20 on the recording contract**, **35 of 35 corpus
-draws** with 0 failed and 6 WebGL 2 skips, 21 of 21 surface checks, **17 of 17 consumer checks under
-`gate:pack`**, and **1,003 node tests over 85 files**, **all re-taken on 2026-09-14 at `0.6.1`, with
-every item in this file landed or closed.** The door carries **73 run-time names**, re-counted the
-same day.
+draws** with 0 failed and 6 WebGL 2 skips, **22 of 22 surface checks**, **17 of 17 consumer checks
+under `gate:pack`**, and **1,008 node tests over 85 files**, **all re-taken on 2026-09-26 at `0.7.0`,
+with every item in this file landed or closed.** The surface checks and the node tests grew by item
+22's one browser check and five tests. The door carries **73 run-time names** as counted on
+2026-09-14, and `0.7.0` adds no export, only a method and a property on `Surface`. **The card read
+the `0.7.0` tree on 2026-09-26**: 37 PASS and 0 FAIL on `nvidia / blackwell`, eleven presets compared
+with ten at 0 of 1,440,000 channels differing and `core-texture` at 40 at worst 1, the widened list
+empty.
 
 **Three of those numbers moved since 2026-09-12 and not one of them is an improvement.** The line
 above read 19 on the recording contract, 33 corpus draws and 989 node tests over 84 files. The
@@ -4124,7 +4128,7 @@ the cut order paid for.
 
 ---
 
-## Item 22 — a live surface's clock can be paused and cannot be moved
+## Item 22 — a live surface's clock can be paused and cannot be moved — **closed 2026-09-26**
 
 **Opened on 2026-09-26.** `host/surface.ts` owns the clock a live shader is drawn at: `elapsed`
 advances only while the surface runs, and `start()` and `stop()` are its pause. There is no way to
@@ -4144,7 +4148,8 @@ built rather than a feature a consumer asked for.
    one frame at it straight away, as `resize` does, and a running one carries on from it at the next
    tick. `elapsed` reads the clock. A number that is not finite is refused and leaves the clock
    where it was. Quotes the node tests added and the suite's total.
-2. **Release it as `0.7.0`**, a feature release, with its changelog entry and the baseline re-taken,
+2. **Released on 2026-09-26 as `0.7.0`**, the card reading 37 PASS and 0 FAIL at the tagged tree.
+   **As planned:** release it as `0.7.0`, a feature release, with its changelog entry and the baseline re-taken,
    and a card reading or a sentence saying none was taken, since `host/` is touched.
 
 ### Done when
